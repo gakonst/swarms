@@ -4,4 +4,3 @@ import './style.css'
 import './research.css'
 
 createRoot(document.getElementById('root')!).render(<App />)
-

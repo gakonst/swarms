@@ -563,4 +563,3 @@ export function document(origin: string) {
     servers: [{ url: origin }],
   }
 }
-

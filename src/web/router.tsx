@@ -39,4 +39,3 @@ export function Link(props: { children: ReactNode; className?: string; to: strin
     </a>
   )
 }
-

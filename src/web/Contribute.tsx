@@ -121,7 +121,7 @@ export function Box(props: { config: Config | undefined; note: string; noteRef: 
     }
   }
 
-  const heading = props.swarm.status === 'paused' ? 'Refuel this quest' : props.swarm.status === 'funding' ? 'Start the adventure' : props.swarm.status === 'done' ? 'Quest complete' : 'Fuel the next discovery'
+  const heading = props.swarm.status === 'paused' ? 'Fund the next round' : props.swarm.status === 'funding' ? 'Fund the first round' : props.swarm.status === 'done' ? 'Done' : 'Add money'
   const action = mode === 'send' ? `Send ${valid(amount, props.config, least) ? mach(decimal(units(amount))) : ''} ${symbol}` : mode === 'budget' ? `Approve ${valid(amount, props.config, least) ? mach(decimal(units(amount))) : ''} ${symbol} a day` : `Pledge ${valid(amount, props.config, least) ? mach(decimal(units(amount))) : ''} ${symbol}`
 
   return (
@@ -190,4 +190,3 @@ export function Box(props: { config: Config | undefined; note: string; noteRef: 
     </div>
   )
 }
-

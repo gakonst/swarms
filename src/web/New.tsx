@@ -11,7 +11,7 @@ import * as Wallet from './wallet.ts'
 
 const stages = ['Choose', 'Equip', 'Launch'] as const
 const working = { create: 'Preparing your swarm…', request: 'Preparing your budget…', approve: 'Approve in Tempo Wallet…', confirm: 'Launching…' } as const
-const titles = ['Pick your first quest.', 'Fuel your swarm.', 'Ready for discovery?'] as const
+const titles = ['Pick your first quest.', 'Choose a budget.', 'Ready for discovery?'] as const
 
 export function New(props: { config: Config | undefined }) {
   const [stage, setStage] = useState(0)

@@ -31,7 +31,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const [note, setNote] = useState('')
   const last = useRef(0)
   const box = useRef<HTMLDivElement>(null)
-  const [view, setView] = useState<'mission' | 'findings' | 'fund'>(() => new URLSearchParams(location.search).get('view') === 'fund' ? 'fund' : 'mission')
   const loaded = detail.data !== undefined
   const draft = useLive(props.id, detail.data?.status === 'running')
 
@@ -86,7 +85,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const live = swarm.status === 'running'
   const back = (text: string) => {
     setNote(text)
-    setView('fund')
     box.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     setTimeout(() => document.getElementById('amount')?.focus({ preventScroll: true }), 400)
   }
@@ -94,13 +92,20 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   return (
     <article className="page swarm game-swarm" data-status={swarm.status}>
       <div className="quest-title"><div><Meta swarm={swarm} /><h1>{swarm.title}</h1></div><span className="quest-mode">{Api.fixture ? 'DEMO QUEST' : 'LIVE QUEST'}</span></div>
-      <nav aria-label="Quest view" className="quest-tabs">
-        <button aria-pressed={view === 'mission'} onClick={() => setView('mission')} type="button">The expedition</button>
-        <button aria-pressed={view === 'findings'} onClick={() => setView('findings')} type="button">Findings</button>
-        {swarm.status !== 'done' && <button aria-pressed={view === 'fund'} className="quest-fund-tab" onClick={() => setView('fund')} type="button">Add fuel +</button>}
-      </nav>
-      <div hidden={view !== 'mission'}>
-        <Mission entries={entries} swarm={swarm} />
+      {swarm.status !== 'running' && <p className="banner">{swarm.status === 'done' ? 'Done. The answer below is what the swarm found.' : swarm.reason ?? 'No money behind it yet. The first contribution starts round 1.'}</p>}
+      {(swarm.answer || live) && (
+        <section className="quest-findings">
+          <h2 className="answer-head">{swarm.status === 'done' ? 'Answer' : 'Latest answer'}</h2>
+          <Latest draft={draft} swarm={swarm} />
+        </section>
+      )}
+      <Mission entries={entries} swarm={swarm} />
+      {swarm.status !== 'done' && (
+        <section className="quest-funding" id="fund">
+          <Box config={props.config} note={note} noteRef={box} onDone={reload} onNote={setNote} swarm={swarm} />
+        </section>
+      )}
+      <div>
         <div className="mission-extras">
           <details className="game-details"><summary>The research question</summary><p>{swarm.goal}</p></details>
           <details className="game-details"><summary>Activity log</summary><Feed entries={entries} live={live} /></details>
@@ -110,8 +115,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
           <details className="game-details"><summary>Funding record</summary><Ledger config={props.config} swarm={swarm} /><Budgets budgets={swarm.budgets} config={props.config} /><Contributions config={props.config} contributions={swarm.contributions} /><Pledges config={props.config} pledges={swarm.pledges} /></details>
         </div>
       </div>
-      <section className="quest-findings" hidden={view !== 'findings'}><Latest draft={draft} swarm={swarm} /></section>
-      <section className="quest-funding" hidden={view !== 'fund'}><Box config={props.config} note={note} noteRef={box} onDone={reload} onNote={setNote} swarm={swarm} /></section>
     </article>
   )
 }
@@ -301,4 +304,3 @@ function History(props: { draft: Draft | undefined; history: readonly Round[] })
     </ol>
   )
 }
-

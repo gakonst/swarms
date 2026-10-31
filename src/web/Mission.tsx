@@ -31,10 +31,10 @@ export function Mission(props: { swarm: Detail; entries: readonly Entry[] }) {
   }
   return (
     <section aria-label="Quest progress" className="mission">
-      <div className="mission-summary"><div><span className="label">Expedition progress</span><h2>{active ? `Round ${number} is underway` : swarm.status === 'done' ? 'Expedition complete' : round ? `Round ${number}` : 'Ready when you are'}</h2></div><div className="mission-fuel"><span className="label">Fuel left</span><span>{usd(swarm.remaining)}</span></div></div>
+      <div className="mission-summary"><div><span className="label">Expedition progress</span><h2>{active ? `Round ${number} is underway` : swarm.status === 'done' ? 'Expedition complete' : round ? `Round ${number}` : 'Ready when you are'}</h2></div><div className="mission-fuel"><span className="label">Left to spend</span><span>{usd(swarm.remaining)}</span></div></div>
       <ol aria-label="Research rounds" className="round-trail">
         {swarm.history.slice(-6).map((item) => <li key={item.n}><button aria-pressed={item.n === number} data-state={item.status} onClick={() => { setRound(item.n); setSelected('lead') }} type="button"><span>{item.status === 'completed' ? '✓' : item.status === 'failed' ? '!' : item.status === 'running' ? '◉' : '−'}</span>Round {item.n}</button></li>)}
-        {swarm.history.length === 0 && <li className="round-upcoming">Round 1 · waiting for fuel</li>}
+        {swarm.history.length === 0 && <li className="round-upcoming">Round 1 · waiting for money</li>}
       </ol>
       <div className="mission-camp">
         <div className="mission-camp-label"><span>Your research party</span><span>{researchers.length ? `${party.length} tracked` : `${Math.max(1, swarm.workers)} researchers`}</span></div>

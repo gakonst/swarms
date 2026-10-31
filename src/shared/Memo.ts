@@ -3,8 +3,11 @@ import { keccak256, stringToHex } from 'viem'
 export const maxNote = 280
 
 export function units(amount: string) {
-  const [whole = '0', fraction = ''] = amount.trim().split('.')
-  return BigInt(whole || '0') * 1_000_000n + BigInt((fraction + '000000').slice(0, 6))
+  const text = amount.trim()
+  const negative = text.startsWith('-')
+  const [whole = '0', fraction = ''] = text.replace(/^-/, '').split('.')
+  const value = BigInt(whole || '0') * 1_000_000n + BigInt((fraction + '000000').slice(0, 6))
+  return negative ? -value : value
 }
 
 export function decimal(atomics: bigint) {

@@ -4,7 +4,7 @@ import { decimal, units } from '../shared/Memo.ts'
 
 type Line = readonly [Kind, string, (string | null)?]
 
-type Live = Omit<Detail, 'answer'> & { cursor: number; flicker: readonly string[]; next: number; script: readonly Line[]; steered: Set<string> }
+type Live = Omit<Detail, 'answer' | 'reason' | 'researchers'> & { cursor: number; flicker: readonly string[]; next: number; script: readonly Line[]; steered: Set<string> }
 
 const minute = 60_000
 
@@ -447,7 +447,7 @@ function summary(swarm: Live): Summary {
 }
 
 function detail(swarm: Live): Detail {
-  return { ...summary(swarm), budgets: swarm.budgets, contributions: swarm.contributions, feed: swarm.feed.slice(-200), hands: swarm.hands, history: swarm.history, notes: swarm.notes, pledges: swarm.pledges, researchers: demoTeam(swarm) }
+  return { ...summary(swarm), budgets: swarm.budgets, contributions: swarm.contributions, feed: swarm.feed.slice(-200), hands: swarm.hands, history: swarm.history, notes: swarm.notes, pledges: swarm.pledges, reason: swarm.status === 'paused' ? 'Paused: the money is used up. A contribution, budget or pledge starts the next round.' : null, researchers: demoTeam(swarm) }
 }
 
 function demoTeam(swarm: Live): Researcher[] {
@@ -568,4 +568,3 @@ export async function allow(key: string, budget: string): Promise<Budgeted> {
   settle(swarm)
   return delay({ budget: allowed, swarm: summary(swarm) }, 600)
 }
-

@@ -158,4 +158,3 @@ export function hand(env: Cloudflare.Env, key: string, name: string) {
 export function detach(env: Cloudflare.Env, key: string, name: string) {
   return send<{ disconnected: boolean }>(env, `/v1/hands/${encodeURIComponent(name)}`, { key, method: 'DELETE' })
 }
-

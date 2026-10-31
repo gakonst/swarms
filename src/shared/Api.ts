@@ -158,7 +158,8 @@ export type Live =
   | { type: 'end' | 'idle' }
 
 export type Detail = Summary & {
-  researchers?: Researcher[]
+  reason: string | null
+  researchers: Researcher[]
   budgets: Budget[]
   contributions: Contribution[]
   feed: Entry[]
@@ -200,7 +201,8 @@ export type Running = { n: number; startedAt: number }
 export type Brief = Omit<Round, 'message'> & { excerpt: string | null }
 
 export type Overview = Summary & {
-  researchers?: Researcher[]
+  reason: string | null
+  researchers: Researcher[]
   budgets: Budget[]
   contributions: Contribution[]
   hands: Hand[]
@@ -241,4 +243,3 @@ export type Budgeted = { budget: Budget; swarm: Summary }
 export type Contributed = { contribution: Contribution; swarm: Summary }
 
 export type Problem = { code: string; detail: string; status: number }
-

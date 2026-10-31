@@ -46,15 +46,15 @@ function Observatory(props: { swarm: Summary }) {
       <dl className="game-metrics">
         <div><dt>Round</dt><dd>{swarm.rounds}</dd></div>
         <div><dt>Researchers</dt><dd>{swarm.workers}</dd></div>
-        <div><dt>Fuel left</dt><dd>{usd(swarm.remaining)}</dd></div>
+        <div><dt>Left</dt><dd>{usd(swarm.remaining)}</dd></div>
       </dl>
       <div className="observatory-finding">
         <p className="label">{swarm.answer ? `Field note · round ${swarm.answer.round}` : 'Next discovery'}</p>
-        <p>{swarm.answer ? Answer.excerpt(swarm.answer.text, 140) : swarm.status === 'running' ? 'The team is on the case.' : 'A little fuel starts the adventure.'}</p>
+        <p>{swarm.answer ? Answer.excerpt(swarm.answer.text, 140) : swarm.status === 'running' ? 'The team is on the case.' : 'Funding starts the first round.'}</p>
       </div>
       <p className="actions">
         <Link className="btn btn-high" to={`/s/${swarm.id}`}>Enter quest <span aria-hidden="true">→</span></Link>
-        {swarm.status !== 'done' && <Link className="btn btn-low" to={`/s/${swarm.id}?view=fund`}>Add fuel</Link>}
+        {swarm.status !== 'done' && <Link className="btn btn-low" to={`/s/${swarm.id}#fund`}>Fund</Link>}
       </p>
       <details className="game-details"><summary>The question</summary><p>{swarm.goal}</p><Bar swarm={swarm} /></details>
     </aside>
@@ -98,7 +98,7 @@ export function World(props: { error: string | undefined; loading: boolean; swar
         </div>
         <div id="world-observatory">{current ? <Observatory key={current.id} swarm={current} /> : <aside className="observatory observatory-empty"><p className="label">Your next quest</p><h3>Every discovery starts with a question.</h3><Link className="btn btn-high" to="/new">Start exploring →</Link></aside>}</div>
       </div>
-      <details className="game-details world-about"><summary>How to play</summary><p>Pick a question. Fund the team. Follow what they find.</p><p>Fuel pays for real research. Completed means the team reported a result; findings remain open to review. Fields are inferred from the brief.</p></details>
+      <details className="game-details world-about"><summary>How to play</summary><p>Pick a question. Fund the team. Follow what they find.</p><p>The money pays for real research. Completed means the team reported a result; findings remain open to review. Fields are inferred from the brief.</p></details>
     </section>
   )
 }

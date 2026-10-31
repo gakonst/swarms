@@ -113,10 +113,6 @@
 .quest-title { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; padding:28px 0; }
 .quest-title h1 { max-width:850px; font-size:clamp(30px,3.5vw,48px); font-weight:400; line-height:1.08; letter-spacing:-.03em; margin-top:16px; overflow-wrap:anywhere; }
 .quest-mode { padding-top:7px; flex-shrink:0; color:var(--grey-600); font:10px var(--mono); }
-.quest-tabs { display:flex; gap:20px; align-items:center; border-bottom:1px solid var(--grey-300); margin-bottom:24px; }
-.quest-tabs button { padding:12px 0; border:0; border-bottom:2px solid transparent; background:none; font-size:16px; cursor:pointer; }
-.quest-tabs button[aria-pressed='true'] { border-bottom-color:#294827; }
-.quest-tabs .quest-fund-tab { margin-left:auto; color:#31552b; }
 .mission { border:1px solid #d6decf; border-radius:14px; overflow:hidden; }
 .mission-summary { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:24px; }
 .mission-summary h2 { font-size:26px; font-weight:400; margin-top:8px; letter-spacing:-.02em; }
@@ -157,7 +153,7 @@
 .researcher-action { max-width:800px; font-size:18px; line-height:1.4; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 .researcher-time { color:var(--grey-600); font:11px var(--mono); margin:12px 0 22px; }
 .mission-extras { margin-top:24px; }
-.quest-findings { max-width:960px; margin:32px auto; min-width:0; }
+.quest-findings { margin:32px 0; min-width:0; }
 .quest-funding { max-width:480px; margin:32px auto; }
 .quest-funding .pledge { margin-top:0; }
 .quest-funding .btn-wide { min-height:44px; }
@@ -185,8 +181,6 @@
   .quest-title { flex-direction:column; gap:12px; }
   .quest-title .meta { flex-wrap:wrap; gap:10px; }
   .quest-mode { padding:0; }
-  .quest-tabs { gap:16px; }
-  .quest-tabs button { font-size:14px; min-height:44px; }
 }
 @media (max-width:400px) {
   .game-header .brand { font-size:23px; }

@@ -42,7 +42,15 @@ export type Budgeted = {
   token: Token
 }
 
-export type View = { feed: Entry[]; hands: Hand[]; left: string | null; researchers: Researcher[]; rounds: Round[]; steered: string[] }
+export type View = {
+  feed: Entry[]
+  hands: Hand[]
+  left: string | null
+  reason: string | null
+  researchers: Researcher[]
+  rounds: Round[]
+  steered: string[]
+}
 
 type Current = { backing: Store.Backing; kind: 'pledge'; token: string } | { kind: 'pool'; token: string }
 
@@ -147,8 +155,13 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return listed.ok ? listed.value.hands.filter((hand) => hand.connected).map((hand) => hand.name) : []
   }
 
-  view(): View {
+  async view(): Promise<View> {
     const sql = this.ctx.storage.sql
+    const paused = this.kv.get<string>('paused')
+    if (paused && !this.kv.get<string>('turn') && this.kv.get<string>('rechecked') !== paused) {
+      this.kv.put('rechecked', paused)
+      if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now())
+    }
     const feed = sql
       .exec<Record<string, SqlStorageValue>>(
         'SELECT seq, at, round, kind, text, detail FROM feed ORDER BY seq DESC LIMIT 200',
@@ -159,6 +172,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return {
       feed,
       hands: this.kv.get<Hand[]>('hands') ?? [],
+      reason: this.kv.get<string>('paused') ?? null,
       researchers: sql.exec<{ snapshot: string }>('SELECT snapshot FROM researchers ORDER BY round, id').toArray().map((row) => JSON.parse(row.snapshot) as Researcher),
       left: this.kv.get<string>('left') ?? null,
       rounds: this.rounds(),
@@ -295,6 +309,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const now = Date.now()
     this.kv.put('fresh', false)
     this.kv.put('turn', sent.value.request_id)
+    this.kv.delete('paused')
     this.kv.put('round', n)
     this.kv.put('seen:' + agent, n)
     this.kv.put('started', now)
@@ -389,6 +404,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       status === 'completed' ? null : message,
     )
 
+    if (status !== 'completed' && /HTTP 402|billing_error|payment_failed/.test(message ?? '') && current?.kind === 'pledge' && this.kv.get<string>('pledge') === current.backing.id)
+      await this.release(current.backing, current.token, 'spent')
     const failures = status === 'completed' ? 0 : (this.kv.get<number>('failures') ?? 0) + 1
     this.kv.put('failures', failures)
     if (status === 'completed' && /STATUS:\s*done/i.test(message ?? '')) {
@@ -422,22 +439,31 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     const id = this.kv.get<string>('source') === 'pledge' ? this.kv.get<string>('pledge') : undefined
     const active = await Store.active(this.env, row.id)
-    const kept = active.find((backing) => backing.id === id)
-    if (kept && left(kept) >= Store.reserve) return { backing: kept, kind: 'pledge', token: await this.open(kept) }
-    if (kept) {
-      const token = await this.open(kept)
-      const me = await Gateway.me(this.env, token)
-      const spent = me.ok && me.value.usage.channel ? Memo.units(me.value.usage.channel.spent) : BigInt(kept.spent)
-      if (spent !== BigInt(kept.spent)) await Store.spend(this.env, kept.id, spent)
-      const settled = { ...kept, spent: String(spent) }
-      if (left(settled) >= Store.reserve) return { backing: settled, kind: 'pledge', token }
-      await this.release(settled, token, 'spent', spent)
+    const ordered = [...active.filter((backing) => backing.id === id), ...active.filter((backing) => backing.id !== id)]
+    for (const backing of ordered) {
+      if (left(backing) < Store.reserve) continue
+      const token = await this.open(backing)
+      const checked = await this.live(backing, token)
+      const settled = { ...backing, spent: String(checked.spent) }
+      if (checked.left < Store.reserve) {
+        await this.release(settled, token, checked.status, checked.spent)
+        continue
+      }
+      if (checked.spent !== BigInt(backing.spent)) await Store.spend(this.env, backing.id, checked.spent)
+      if (backing.id !== id) this.use('pledge', backing.id)
+      return { backing: settled, kind: 'pledge', token }
     }
+    return undefined
+  }
 
-    const chosen = active.find((backing) => backing.id !== id && left(backing) >= Store.reserve)
-    if (!chosen) return undefined
-    this.use('pledge', chosen.id)
-    return { backing: chosen, kind: 'pledge', token: await this.open(chosen) }
+  async live(backing: Store.Backing, token: string): Promise<{ left: bigint; spent: bigint; status: 'ended' | 'spent' }> {
+    const me = await Gateway.me(this.env, token)
+    if (!me.ok) return { left: me.status === 401 ? 0n : left(backing), spent: BigInt(backing.spent), status: 'ended' }
+    const channel = me.value.usage.channel
+    const spent = channel ? Memo.units(channel.spent) : BigInt(backing.spent)
+    const remaining = BigInt(backing.amount) - spent
+    const available = channel ? Memo.units(channel.available) : spent > 0n ? 0n : remaining
+    return { left: remaining < available ? remaining : available, spent, status: 'spent' }
   }
 
   use(source: 'pledge' | 'pool', pledge?: string) {
@@ -787,19 +813,20 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async pause(row: Store.Row, status: 'funding' | 'paused', reason?: string) {
-    if (row.status === status && (!reason || this.kv.get<string>('paused') === reason)) return
-    if (reason) this.kv.put('paused', reason)
-    await Store.update(this.env, row.id, { status })
-    this.log(
-      'status',
+    const text =
       reason ??
-        (status === 'funding'
-          ? 'Waiting for its first contribution, budget or pledge.'
-          : 'Paused: the money is used up. A contribution, budget or pledge starts the next round.'),
-    )
+      (status === 'funding'
+        ? 'Waiting for its first contribution, budget or pledge.'
+        : 'Paused: the money is used up. A contribution, budget or pledge starts the next round.')
+    if (row.status === status && this.kv.get<string>('paused') === text) return
+    this.kv.put('paused', text)
+    this.kv.put('rechecked', text)
+    await Store.update(this.env, row.id, { status })
+    this.log('status', text)
   }
 
   async done(row: Store.Row, reason: string) {
+    this.kv.delete('paused')
     for (const backing of await Store.active(this.env, row.id)) {
       const token = await this.open(backing)
       await Gateway.revoke(this.env, token)
@@ -1202,4 +1229,3 @@ function per(period: number) {
 function percent(share: number) {
   return `${Math.round(share * 1000) / 10}%`
 }
-
