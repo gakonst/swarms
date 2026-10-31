@@ -6,6 +6,7 @@ export default defineConfig(({ command }) => {
   const gateway = command === 'serve' ? process.env['SWARMS_GATEWAY'] : undefined
 
   return {
+    server: { allowedHosts: ['terminal.local'] },
     plugins: [
       react(),
       cloudflare({
@@ -24,3 +25,4 @@ export default defineConfig(({ command }) => {
     ],
   }
 })
+

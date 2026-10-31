@@ -41,10 +41,10 @@ function Header(props: { config: Config | undefined; crumb: string | undefined; 
     <header className="header">
       <nav className="header-nav">
         <Link className={props.path === '/' ? 'nav-link nav-on' : 'nav-link'} to="/">
-          <span className="index">[1]</span> Swarms
+          <span className="index">[1]</span> Swarm World
         </Link>
         <Link className={props.path === '/new' ? 'nav-link nav-on' : 'nav-link'} to="/new">
-          <span className="index">[N]</span> Start a swarm
+          <span className="index">[N]</span> Fund a new question
         </Link>
         <Link className={props.path === '/docs' ? 'nav-link nav-on' : 'nav-link'} to="/docs">
           <span className="index">[D]</span> API and MCP
@@ -77,11 +77,11 @@ function Footer(props: { config: Config | undefined }) {
   return (
     <footer className="footer">
       <p>
-        Swarms run on the{' '}
+        Community-funded research. Open questions, public findings. Powered by the{' '}
         <a href={props.config?.gateway ?? 'https://gateway.tempo-dev.workers.dev'} rel="noreferrer" target="_blank">
           Tempo gateway
         </a>
-        : models, machines and payments in MACH.
+        .
       </p>
       <p>
         <Link to="/docs">API and MCP</Link> · <a href="/openapi.json">openapi.json</a>
@@ -99,7 +99,7 @@ export function App() {
   const swarm = /^\/s\/([^/]+)\/?$/.exec(path)?.[1]
 
   useEffect(() => {
-    if (!swarm) document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : 'Swarms'
+    if (!swarm) document.title = path === '/new' ? 'Fund a new question · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : 'Swarms · Fund breakthroughs'
   }, [path, swarm])
 
   useEffect(() => {
@@ -138,3 +138,4 @@ export function App() {
     </div>
   )
 }
+

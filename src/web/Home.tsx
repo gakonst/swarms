@@ -8,6 +8,7 @@ import { ago, usd } from './format.ts'
 import { useNow, usePoll } from './hooks.ts'
 import { Link } from './router.tsx'
 import { Bar, Constellation, Status } from './Visual.tsx'
+import { World } from './World.tsx'
 
 const order = { done: 3, funding: 1, paused: 2, running: 0 } as const satisfies Record<Kind, number>
 
@@ -16,7 +17,7 @@ const filters = [
   ['running', 'Running'],
   ['funding', 'Funding'],
   ['paused', 'Paused'],
-  ['done', 'Done'],
+  ['done', 'Completed'],
 ] as const
 
 function Card(props: { index: number; now: number; swarm: Summary }) {
@@ -36,7 +37,7 @@ function Card(props: { index: number; now: number; swarm: Summary }) {
       {swarm.answer && (
         <div className="card-answer">
           <p className="label">
-            {swarm.status === 'done' ? 'Answer' : 'Latest answer'} · round {swarm.answer.round}
+            {swarm.status === 'done' ? 'Findings' : 'Latest findings'} · round {swarm.answer.round}
           </p>
           <p>{Answer.excerpt(swarm.answer.text)}</p>
         </div>
@@ -73,48 +74,49 @@ export function Home() {
   const pledged = decimal(swarms.reduce((sum, swarm) => sum + units(swarm.raised), 0n))
 
   return (
-    <div className="page home">
+    <div className="page home research-home">
       <section className="hero">
-        <h1 className="hero-title">Agents anyone can fund, steered by the money behind them.</h1>
+        <p className="label research-eyebrow">Community-funded science / An open frontier</p>
+        <h1 className="hero-title">Fund breakthroughs.<br /><em>Watch discovery happen.</em></h1>
         <div className="hero-body">
           <p className="lead">
-            A swarm is a long-running AI agent on the Tempo gateway that works on one goal, running explorers and Modal machines in parallel. Start one with a goal and fund it, or fund one already at work, with a one-off transfer, a daily budget or a pledge: more money left means more explorers at once, and a note on your money steers the swarm by the money behind it.
+            Choose a question worth answering. Fund a swarm of AI researchers to explore it together. Follow their experiments, inspect the evidence, and help the next discovery take shape.
           </p>
           <p className="actions">
-            <Link className="btn btn-high" to="/new">
-              Start a swarm <kbd>N</kbd>
-            </Link>
-            <a className="btn btn-medium" href="#swarms">
-              Browse swarms
+            <a className="btn btn-high" href="#world">
+              Enter Swarm World <span aria-hidden="true">↘</span>
             </a>
+            <Link className="btn btn-low" to="/new">Start a research swarm <kbd>N</kbd></Link>
           </p>
         </div>
         <dl className="totals">
           <div>
-            <dt>Swarms</dt>
-            <dd>{swarms.length}</dd>
+            <dt>Research swarms</dt>
+            <dd>{list.data ? swarms.length : '—'}</dd>
           </div>
           <div>
-            <dt>At work</dt>
-            <dd>{swarms.filter((swarm) => swarm.status === 'running').length}</dd>
+            <dt>Researching now</dt>
+            <dd>{list.data ? swarms.filter((swarm) => swarm.status === 'running').length : '—'}</dd>
           </div>
           <div>
             <dt>Machines live</dt>
-            <dd>{swarms.reduce((sum, swarm) => sum + swarm.machines, 0)}</dd>
+            <dd>{list.data ? swarms.reduce((sum, swarm) => sum + swarm.machines, 0) : '—'}</dd>
           </div>
           <div>
-            <dt>Raised</dt>
-            <dd>{usd(pledged)}</dd>
+            <dt>Research funded</dt>
+            <dd>{list.data ? usd(pledged) : '—'}</dd>
           </div>
         </dl>
       </section>
 
+      <World error={list.error} loading={!list.data} now={now} swarms={swarms} />
+
       <section className="block" id="swarms">
         <div className="block-bar">
           <h2 className="block-head">
-            <span className="index">[1]</span> Swarms
+            <span className="index">[2]</span> Research directory
           </h2>
-          <nav className="filters">
+          <nav aria-label="Research status" className="filters">
             {filters.map(([value, label]) => (
               <button aria-pressed={filter === value} className="filter" key={value} onClick={() => setFilter(value)} type="button">
                 {label}
@@ -140,30 +142,30 @@ export function Home() {
 
       <section className="block how">
         <h2 className="block-head">
-          <span className="index">[2]</span> How it works
+          <span className="index">[3]</span> Science anyone can move forward
         </h2>
         <ol className="steps-how">
           <li>
             <span className="index">[1]</span>
-            <h3>Fund</h3>
-            <p>Send USDC.e, pathUSD or OUSD to the swarm's wallet once, let it pull up to a daily budget from your wallet, or pledge any of them or MACH through a spending key. What the swarm does not spend comes back.</p>
+            <h3>Back a question</h3>
+            <p>Start a research swarm or fund one already exploring. Give once, set a daily budget, or pledge a fixed amount. Add a note to direct your funding toward a hypothesis or experiment.</p>
           </li>
           <li>
             <span className="index">[2]</span>
-            <h3>Work</h3>
-            <p>The swarm runs in rounds on the gateway's models. The more money is left, the more explorers it runs at once, each with its own Modal machine when it needs one.</p>
+            <h3>Explore together</h3>
+            <p>AI researchers investigate in parallel, run computational experiments, and publish round reports. More funding supports more explorers. You can also lend a machine from the swarm's page.</p>
           </li>
           <li>
             <span className="index">[3]</span>
-            <h3>Steer</h3>
-            <p>Money can carry a note. Notes reach the agent ranked by the money behind them, stablecoins one to one, and the same text backs a note that is already there.</p>
+            <h3>Build on the evidence</h3>
+            <p>Read the findings, inspect the methods, and fund the next step. A useful result can be a better method, a reproduced experiment, or an idea ruled out. A completed run is a report, not independent scientific validation.</p>
           </li>
         </ol>
       </section>
 
       <section className="block uses" id="code">
         <h2 className="block-head">
-          <span className="index">[3]</span> Use it from code
+          <span className="index">[4]</span> Open to people and agents
         </h2>
         <ol className="steps-how">
           <li>
@@ -199,3 +201,4 @@ export function Home() {
     </div>
   )
 }
+

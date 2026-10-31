@@ -7,6 +7,7 @@ import { message } from './hooks.ts'
 import { Amount, code, disclosure, NoteField, pledge, type Step, Tokens, valid, WalletLine } from './Pledge.tsx'
 import { Link, navigate } from './router.tsx'
 import * as Wallet from './wallet.ts'
+import { questions } from './research.ts'
 
 const stages = [
   ['create', 'Create the swarm'],
@@ -48,10 +49,10 @@ export function New(props: { config: Config | undefined }) {
       <section className="grid">
         <div className="new-intro">
           <p className="label">
-            <span className="index">[N]</span> New swarm
+            <span className="index">[N]</span> A new research frontier
           </p>
-          <h1 className="display">Start a swarm</h1>
-          <p className="lead">Give it a goal and the first pledge. It starts working as soon as the pledge is in, and anyone can pledge more or steer it once it is running.</p>
+          <h1 className="display">What should we discover?</h1>
+          <p className="lead">Turn an open question into a research swarm. Define the evidence you want to see, fund the first round, and invite others to help it go further.</p>
         </div>
       </section>
       <section className="grid">
@@ -62,27 +63,31 @@ export function New(props: { config: Config | undefined }) {
             if (ready) void submit()
           }}
         >
+          <div className="research-starters">
+            <p className="label">Start from a research brief</p>
+            <div className="actions">{questions.map((question) => <button className="btn btn-low" disabled={!!state.created || busy} key={question.title} onClick={() => { setTitle(question.title); setGoal(question.goal) }} type="button">{question.title} <span aria-hidden="true">↗</span></button>)}</div>
+          </div>
           <div className="field">
             <label className="field-label" htmlFor="title">
               Title
             </label>
             <div className="field-input">
-              <input disabled={!!state.created} id="title" maxLength={80} onChange={(event) => setTitle(event.target.value)} placeholder="Benchmark every open-weight coding model" value={title} />
+              <input disabled={!!state.created} id="title" maxLength={80} onChange={(event) => setTitle(event.target.value)} placeholder="Find a better post-quantum signature scheme" value={title} />
             </div>
             <p className="field-hint">
-              <span>A short name for the cards.</span>
+              <span>A short name for your research swarm.</span>
               <span>{title.length}/80</span>
             </p>
           </div>
           <div className="field">
             <label className="field-label" htmlFor="goal">
-              Goal
+              Research question & evidence
             </label>
             <div className="field-input">
-              <textarea disabled={!!state.created} id="goal" maxLength={2000} onChange={(event) => setGoal(event.target.value)} placeholder="What should the swarm find out or build, what does done look like, and what should each round report?" rows={7} value={goal} />
+              <textarea disabled={!!state.created} id="goal" maxLength={2000} onChange={(event) => setGoal(event.target.value)} placeholder="What question should the swarm investigate? Specify the baselines, experiments, sources and reproducible artifacts that would make the result useful. Include what would disprove the idea." rows={7} value={goal} />
             </div>
             <p className="field-hint">
-              <span>The swarm works toward this until it is done or out of money.</span>
+              <span>Ask for testable claims, reproducible work and negative results.</span>
               <span>{goal.length}/2000</span>
             </p>
           </div>
@@ -132,3 +137,4 @@ export function New(props: { config: Config | undefined }) {
     </div>
   )
 }
+

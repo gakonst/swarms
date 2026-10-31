@@ -21,7 +21,7 @@ function merge(previous: Entry[], next: readonly Entry[]) {
 }
 
 const banners = {
-  done: 'Done. The answer below is what the swarm found.',
+  done: 'Research complete. These are the swarm’s reported findings, open to independent review.',
   funding: 'No money behind it yet. The first transfer, daily budget or pledge starts round 1.',
   paused: 'Out of money, so the swarm is paused. A transfer, a budget or a pledge resumes it, and it resumes on its own when a budget allows its next pull.',
 } as const
@@ -108,7 +108,7 @@ export function Swarm(props: { config: Config | undefined; id: string; onTitle: 
           {swarm.status !== 'running' && <p className="banner">{banners[swarm.status]}</p>}
           <section className="answer-block">
             <h2 className="answer-head">
-              {swarm.status === 'done' ? 'Answer' : 'Latest answer'}
+              {swarm.status === 'done' ? 'Research findings' : 'Latest findings'}
               {swarm.answer && <span>Round {swarm.answer.round}</span>}
             </h2>
             <Latest draft={draft} swarm={swarm} />
@@ -321,7 +321,7 @@ function Latest(props: { draft: Draft | undefined; swarm: Detail }) {
           <p className="answer-meta">
             <span>Round {answer.round}</span>
             <span>{ago(answer.at, now)}</span>
-            {answer.done ? <span className="tag tag-on">Goal met</span> : answer.next && <span>Next: {answer.next}</span>}
+            {answer.done ? <span className="tag tag-on">Reported complete</span> : answer.next && <span>Next: {answer.next}</span>}
           </p>
           <Markdown text={answer.text} />
         </div>
@@ -364,3 +364,4 @@ function History(props: { draft: Draft | undefined; history: readonly Round[] })
     </ol>
   )
 }
+

@@ -1,0 +1,420 @@
+.research-home .hero {
+  padding-top: 52px;
+}
+
+.research-eyebrow {
+  margin-bottom: 24px;
+}
+
+.research-home .hero-title {
+  max-width: 13em;
+}
+
+.research-home .hero-title em {
+  font-weight: 400;
+}
+
+.research-home .hero-body {
+  max-width: 620px;
+  margin-top: 28px;
+}
+
+.research-home .totals {
+  margin-top: 40px;
+  gap: 24px 56px;
+}
+
+.research-home .totals dd {
+  font-size: 30px;
+}
+
+.research-home .world {
+  margin-top: 48px;
+  scroll-margin-top: 90px;
+}
+
+.world .block-bar {
+  margin-bottom: 20px;
+}
+
+.world-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.world-caption {
+  color: var(--grey-600);
+}
+
+.world-area {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.world-area select {
+  max-width: 100%;
+  padding: 8px 26px 8px 10px;
+  border: 1px solid var(--grey-300);
+  border-radius: 4px;
+  background: var(--white);
+  color: var(--black);
+  font: inherit;
+}
+
+.world-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border: 1px solid var(--grey-300);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.world-landscape {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 440px;
+  background-color: #f1f5f0;
+  background-image: radial-gradient(#c7d3c8 0.7px, transparent 0.7px), repeating-radial-gradient(ellipse at 45% 55%, transparent 0 52px, #dce5da 53px 54px, transparent 55px 90px);
+  background-size: 22px 22px, 100% 100%;
+}
+
+.world-coordinates,
+.world-legend {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 20px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.025em;
+  color: #526653;
+}
+
+.world-habitats {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  align-content: center;
+  justify-items: center;
+  gap: 28px 10px;
+  padding: 30px 20px 40px;
+}
+
+.world-habitat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 180px;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+}
+
+.world-habitat:hover,
+.world-habitat[aria-pressed='true'] {
+  background: #ffffff80;
+}
+
+.world-habitat .habitat {
+  width: 150px;
+  max-width: 100%;
+  height: 112px;
+  overflow: visible;
+  transition: transform 200ms var(--ease);
+}
+
+.world-habitat:hover .habitat {
+  transform: translateY(-4px);
+}
+
+.habitat-shadow { fill: #223f2820; }
+.habitat-base { fill: #d5dfcf; stroke: #859c81; stroke-width: 1; }
+.habitat-ground { fill: #e7eddd; stroke: #a1b498; stroke-width: 1; }
+.habitat-grid { fill: none; stroke: #c2d0b9; stroke-width: 0.6; }
+.habitat-ring { fill: none; stroke: #afc1a4; stroke-width: 1; }
+.habitat-tower { fill: #71886c; stroke: #496144; stroke-width: 1; }
+.habitat-roof { fill: #a5b79c; stroke: #496144; stroke-width: 1; }
+.habitat-seam { fill: none; stroke: #496144; stroke-width: 1; }
+.habitat-signal { fill: #7d8d7a; }
+.habitat-explorer { fill: #193d24; stroke: #f1f5f0; stroke-width: 1; }
+.habitat-machine { fill: #f1f5f0; stroke: #496144; stroke-width: 1; }
+.habitat-selection { fill: none; stroke: #193d24; stroke-width: 1.5; }
+
+.world-habitat[data-status='running'] .habitat-ground { fill: #d6f6b2; }
+.world-habitat[data-status='running'] .habitat-roof { fill: #98e15e; }
+.world-habitat[data-status='running'] .habitat-signal { fill: #2a7d25; animation: habitat-signal 2.5s ease-in-out infinite; }
+.world-habitat[data-status='running'] .habitat-explorer { animation: habitat-explorer 4s ease-in-out infinite; }
+.world-habitat[data-status='done'] .habitat-tower { fill: #9da99a; }
+
+.habitat-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 100%;
+  min-height: 2.5em;
+  margin-top: 8px;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.habitat-label {
+  margin: 8px 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #526653;
+}
+
+.world-habitat .status {
+  font-size: 11px;
+}
+
+.world-legend {
+  justify-content: flex-start;
+  margin-top: auto;
+}
+
+.world-legend > span {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.world-legend > span:last-child {
+  margin-left: auto;
+}
+
+.legend-explorer,
+.legend-machine {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: #193d24;
+}
+
+.legend-explorer { border-radius: 50%; }
+.legend-machine { border: 1px solid #496144; background: #f1f5f0; }
+
+.observatory {
+  height: 100%;
+  min-width: 0;
+  padding: 24px;
+  background: var(--white);
+}
+
+#world-observatory {
+  min-width: 0;
+  scroll-margin-top: 90px;
+}
+
+.observatory h3 {
+  margin-top: 14px;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.observatory .meta {
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+
+.observatory-goal {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--grey-600);
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.observatory .figures {
+  margin: 24px 0;
+}
+
+.observatory-finding {
+  padding-top: 20px;
+}
+
+.observatory-finding > p:last-child {
+  margin-top: 10px;
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.world-events {
+  margin-top: 22px;
+}
+
+.world-event {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--grey-200);
+}
+
+.world-event > span,
+.world-event > time {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--grey-600);
+}
+
+.world-event > p {
+  display: -webkit-box;
+  grid-row: 2;
+  grid-column: 1 / -1;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.world-event > time {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.observatory .actions {
+  margin-top: 24px;
+}
+
+.observatory .actions .btn {
+  min-height: 36px;
+}
+
+.observatory-empty > p:last-child {
+  margin-top: 20px;
+  color: var(--grey-600);
+  line-height: 1.4;
+}
+
+.world-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 48px 24px;
+  text-align: center;
+  font-size: 24px;
+}
+
+.world-habitats:empty {
+  display: none;
+}
+
+.world-footnote {
+  margin-top: 12px;
+  color: var(--grey-600);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.research-starters {
+  margin-bottom: 32px;
+}
+
+.research-starters .actions {
+  margin-top: 12px;
+}
+
+.research-starters .btn {
+  min-height: 36px;
+  height: auto;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  white-space: normal;
+  text-align: left;
+}
+
+@keyframes habitat-signal {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes habitat-explorer {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@media (min-width: 800px) {
+  .world-layout {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+  .world-landscape { min-height: 590px; }
+  .observatory { border-left: 1px solid var(--grey-300); }
+}
+
+@media (min-width: 1024px) {
+  .research-home .hero-title {
+    grid-column: 1 / span 7;
+    grid-row: 2;
+    font-size: clamp(48px, 4.9vw, 76px);
+  }
+  .research-home .hero-body {
+    grid-column: 8 / -1;
+    grid-row: 2;
+    align-self: end;
+    margin-top: 0;
+  }
+  .research-home .hero-body .lead { font-size: 21px; }
+  .world-habitats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); padding: 36px; }
+}
+
+@media (max-width: 799px) {
+  .observatory { border-top: 1px solid var(--grey-300); }
+  .world-habitat,
+  .world-area select,
+  .world .filter { min-height: 44px; }
+  .world-area select { font-size: 16px; }
+  .observatory .actions .btn { min-height: 44px; }
+}
+
+@media (max-width: 400px) {
+  .research-home .hero { padding-top: 36px; }
+  .research-home .hero-title { font-size: 37px; }
+  .research-home .totals { gap: 24px; }
+  .world-habitats { padding-left: 8px; padding-right: 8px; gap: 24px 4px; }
+  .world-habitat .habitat { width: 130px; }
+  .world-coordinates,
+  .world-legend { padding: 16px; }
+  .observatory { padding: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world-habitat .habitat,
+  .world-habitat[data-status='running'] .habitat-signal,
+  .world-habitat[data-status='running'] .habitat-explorer {
+    animation: none;
+    transition: none;
+    transform: none;
+  }
+}

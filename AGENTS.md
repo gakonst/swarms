@@ -1,6 +1,14 @@
 # Swarms
 
-A third-party app on the Tempo gateway (https://gateway.tempo-dev.workers.dev): anyone starts a swarm, a long-running gateway agent working on a goal, and funds it with a one-off transfer, a daily budget or a pledge, and anyone can add more to a running one. It uses only the gateway's public HTTP API, as any outside developer would, so it doubles as a test of that API.
+A community-funded science project on the Tempo gateway (https://gateway.tempo-dev.workers.dev): anyone starts a research swarm with a question and evidence requirements, funds it with a one-off transfer, a daily budget or a pledge, and can contribute to an existing swarm or lend a machine. Swarm World makes the research visible. It uses only the gateway's public HTTP API, as any outside developer would, so it also tests that API.
+
+## Research experience
+
+- The product framing is "Fund breakthroughs. Watch discovery happen." The home page leads with `World.tsx`, a schematic landscape of all non-completed swarms returned by the funded listing, with a separate completed-research view. Each native button selects a real swarm and opens an observatory with its public brief, exact explorer/machine counts, funding, latest report and the last three non-thinking feed entries. The existing five-second list poll drives the world; only the selected swarm's detail is additionally polled. Failed polls preserve the last received state and identify it as stale.
+- Research areas in `research.ts` are inferred from titles first, then goals, and are navigation hints. World position is layout, not evidence of collaboration or similarity. Glyphs depict up to twelve explorers and eight machines, with exact counts always present in the observatory. Animation represents running status, not individual verified experiments, and respects reduced motion. No synthetic live activity or fabricated research is inserted into the production listing.
+- New-swarm starter briefs ask for matched baselines, reproducible artifacts, falsifiable hypotheses, negative results and explicit proof gaps. Selecting a brief only fills the existing title and goal inputs; it neither creates a swarm nor authorizes payment. Funding and execution semantics remain those below.
+- A completed run is labeled reported completion; it is not independently verified science. `README.md` distinguishes the decentralized-science direction from today's app-managed orchestration, custody and verification. This change adds no research token, ownership rights, milestone escrow or automatic cross-swarm knowledge transfer.
+- Checked locally on 2026-10-30: `pnpm check`, `pnpm build`, seven research-area classification cases and all three starter briefs' title/goal limits. Browser checks with the existing fixture mode covered swarm selection, the completed-research view, an empty life-sciences filter, and selecting the post-quantum brief without creating or funding a swarm. A 375-pixel iframe verified the stacked mobile layout and selection scrolling to the observatory. Vite allows the exact `terminal.local` host for managed preview; no wildcard host allowance is used. Production wallet approvals and payments were not exercised in these UI checks.
 
 ## How it works
 
@@ -95,3 +103,4 @@ A third-party app on the Tempo gateway (https://gateway.tempo-dev.workers.dev): 
 - `pnpm check` type-checks the Worker and the page. `pnpm build` builds both. `pnpm exec wrangler dev -c dist/swarms/wrangler.json` runs the build, where CORS preflights behave as deployed.
 - Deploy: `pnpm db:migrate`, then `pnpm deploy`. Set `SWARMS_SECRET` with `wrangler secret put`. The Worker reaches the gateway over the public internet (`global_fetch_strictly_public`), as a third party would.
 - No code comments. Record decisions with their evidence here.
+
