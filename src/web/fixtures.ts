@@ -1,5 +1,5 @@
 import * as Answer from '../shared/Answer.ts'
-import type { Budget, BudgetRequested, Budgeted, Config, Contributed, Contribution, Currency, Detail, Entry, Kind, Note, Pledge, Pledged, Requested, Round, Status, Summary, Token } from '../shared/Api.ts'
+import type { Budget, BudgetRequested, Budgeted, Config, Contributed, Contribution, Currency, Detail, Entry, Kind, Note, Pledge, Pledged, Requested, Researcher, Round, Status, Summary, Token } from '../shared/Api.ts'
 import { decimal, units } from '../shared/Memo.ts'
 
 type Line = readonly [Kind, string, (string | null)?]
@@ -447,7 +447,16 @@ function summary(swarm: Live): Summary {
 }
 
 function detail(swarm: Live): Detail {
-  return { ...summary(swarm), budgets: swarm.budgets, contributions: swarm.contributions, feed: swarm.feed.slice(-200), hands: swarm.hands, history: swarm.history, notes: swarm.notes, pledges: swarm.pledges }
+  return { ...summary(swarm), budgets: swarm.budgets, contributions: swarm.contributions, feed: swarm.feed.slice(-200), hands: swarm.hands, history: swarm.history, notes: swarm.notes, pledges: swarm.pledges, researchers: demoTeam(swarm) }
+}
+
+function demoTeam(swarm: Live): Researcher[] {
+  const names = swarm.id === 'bench-coders' ? ['swe-lite-a', 'rust-subset', 'cost-analysis'] : ['baseline', 'experiment', 'review']
+  return swarm.history.flatMap((round) => names.slice(0, Math.max(0, (round.status === 'running' ? swarm.workers : swarm.parallel) - 1)).map((name, index): Researcher => {
+    const completed = round.status === 'completed' || (swarm.id === 'bench-coders' && index === 0)
+    const state = completed ? 'completed' : round.status === 'failed' ? 'failed' : round.status === 'cancelled' ? 'interrupted' : 'running'
+    return { id: `demo:${round.n}:${index}`, parent: null, round: round.n, name, task: index === 0 ? 'Establish the baseline and report reproducible measurements.' : index === 1 ? 'Test the strongest alternative under matching conditions.' : 'Compare costs and check the evidence.', state, action: completed ? 'Measurements delivered to the lead' : index === 1 ? 'Running the next experiment' : 'Comparing results with the baseline', output: completed ? 'Baseline measurements collected. Commands, conditions and results are included in the round report.' : null, updatedAt: completed ? round.endedAt ?? round.startedAt : Date.now() - 3000, events: 8 + index, toolsCompleted: completed ? 6 : 2 + index, lastSequence: 1 }
+  }))
 }
 
 export function config(): Promise<Config> {
@@ -559,3 +568,4 @@ export async function allow(key: string, budget: string): Promise<Budgeted> {
   settle(swarm)
   return delay({ budget: allowed, swarm: summary(swarm) }, 600)
 }
+

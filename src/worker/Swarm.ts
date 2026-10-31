@@ -1,7 +1,8 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { Address } from 'viem'
 import { keccak256, stringToHex } from 'viem'
-import type { Currency, Entry, Hand, Kind, Live, Note, Round, Token } from '../shared/Api.ts'
+import type { Currency, Entry, Hand, Kind, Live, Note, Researcher, Round, Token } from '../shared/Api.ts'
+import { advance, researchId } from '../shared/Research.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Budget from './Budget.ts'
@@ -41,7 +42,7 @@ export type Budgeted = {
   token: Token
 }
 
-export type View = { feed: Entry[]; hands: Hand[]; left: string | null; rounds: Round[]; steered: string[] }
+export type View = { feed: Entry[]; hands: Hand[]; left: string | null; researchers: Researcher[]; rounds: Round[]; steered: string[] }
 
 type Current = { backing: Store.Backing; kind: 'pledge'; token: string } | { kind: 'pool'; token: string }
 
@@ -52,6 +53,7 @@ type Call = { detail: string | null; kind: Kind; text: string }
 type Guest = { label: string; name: string }
 
 const schema = [
+  'CREATE TABLE IF NOT EXISTS researchers (id TEXT NOT NULL, round INTEGER NOT NULL, snapshot TEXT NOT NULL, PRIMARY KEY (id, round))',
   'CREATE TABLE IF NOT EXISTS feed (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, round INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, detail TEXT)',
   "CREATE TABLE IF NOT EXISTS rounds (n INTEGER PRIMARY KEY, turn TEXT NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, status TEXT NOT NULL, message TEXT, spent_before TEXT NOT NULL, spent TEXT NOT NULL DEFAULT '0')",
   'CREATE TABLE IF NOT EXISTS steered (note TEXT PRIMARY KEY, at INTEGER NOT NULL)',
@@ -157,6 +159,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return {
       feed,
       hands: this.kv.get<Hand[]>('hands') ?? [],
+      researchers: sql.exec<{ snapshot: string }>('SELECT snapshot FROM researchers ORDER BY round, id').toArray().map((row) => JSON.parse(row.snapshot) as Researcher),
       left: this.kv.get<string>('left') ?? null,
       rounds: this.rounds(),
       steered: this.steered(),
@@ -927,6 +930,21 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!outer) return false
     if (outer.source === undefined) return outer.type === 'result' && event.request_id === turn
 
+    if (outer.source === 'subagent' && outer.update) {
+      const round = this.kv.get<number>('round') ?? 0
+      const scope = outer.root_session_id ?? this.kv.get<string>('agent') ?? 'session'
+      const id = researchId(outer.update, scope)
+      if (!id) return false
+      const stored = this.ctx.storage.sql.exec<{ snapshot: string }>('SELECT snapshot FROM researchers WHERE id = ? ORDER BY round DESC LIMIT 1', id).toArray()[0]
+      const previous = stored ? JSON.parse(stored.snapshot) as Researcher : undefined
+      const next = advance(previous, outer.update, { scope, round, at: Date.now(), sequence: event.seq })
+      if (next && next !== previous) {
+        this.ctx.storage.sql.exec('INSERT INTO researchers (id, round, snapshot) VALUES (?, ?, ?) ON CONFLICT(id, round) DO UPDATE SET snapshot = excluded.snapshot', id, next.round, JSON.stringify(next))
+        if (next.state !== previous?.state || !previous) this.log('status', `${next.name}: ${next.state}`, next.action)
+      }
+      return false
+    }
+
     const inner = outer.event
     const payload = inner?.payload ?? {}
     if (inner?.type === 'tool.call') {
@@ -1184,3 +1202,4 @@ function per(period: number) {
 function percent(share: number) {
   return `${Math.round(share * 1000) / 10}%`
 }
+

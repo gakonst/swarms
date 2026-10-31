@@ -4,7 +4,7 @@ import { decimal, maxNote, memo, units } from '../shared/Memo.ts'
 import * as Api from './api.ts'
 import { mach, short, symbols } from './format.ts'
 import { message } from './hooks.ts'
-import { Amount, code, disclosure, NoteField, pledge, steps as pledging, Tokens, valid, WalletLine } from './Pledge.tsx'
+import { Amount, code, disclosure, NoteField, pledge, steps as pledging, Tokens, valid } from './Pledge.tsx'
 import * as Wallet from './wallet.ts'
 
 export type Mode = 'send' | 'budget' | 'pledge'
@@ -121,7 +121,7 @@ export function Box(props: { config: Config | undefined; note: string; noteRef: 
     }
   }
 
-  const heading = props.swarm.status === 'paused' ? 'Help this research continue' : props.swarm.status === 'funding' ? 'Fund the first research round' : props.swarm.status === 'done' ? 'This research run is complete' : 'Fund this research'
+  const heading = props.swarm.status === 'paused' ? 'Refuel this quest' : props.swarm.status === 'funding' ? 'Start the adventure' : props.swarm.status === 'done' ? 'Quest complete' : 'Fuel the next discovery'
   const action = mode === 'send' ? `Send ${valid(amount, props.config, least) ? mach(decimal(units(amount))) : ''} ${symbol}` : mode === 'budget' ? `Approve ${valid(amount, props.config, least) ? mach(decimal(units(amount))) : ''} ${symbol} a day` : `Pledge ${valid(amount, props.config, least) ? mach(decimal(units(amount))) : ''} ${symbol}`
 
   return (
@@ -130,6 +130,8 @@ export function Box(props: { config: Config | undefined; note: string; noteRef: 
       {props.swarm.status === 'done' && <p className="fine">It takes no more money. What it did not spend went back: pledges through their channels, and the pool to everyone who sent or was pulled, in proportion.</p>}
       {props.swarm.status !== 'done' && (
         <>
+          <Amount config={props.config} label={mode === 'budget' ? 'Per day' : 'Amount'} least={least ?? smallest} onChange={setAmount} suffix={mode === 'budget' ? `${symbol} a day` : symbol} value={amount} />
+          <details className="game-details"><summary>Funding options</summary>
           <div className="modes" role="tablist">
             {modes.map(([key, label]) => (
               <button aria-selected={mode === key} className={mode === key ? 'mode mode-on' : 'mode'} disabled={busy} key={key} onClick={() => choose(key)} role="tab" type="button">
@@ -153,9 +155,8 @@ export function Box(props: { config: Config | undefined; note: string; noteRef: 
             </p>
           )}
           <Tokens config={props.config} onChange={setToken} value={token} {...(mode === 'pledge' ? {} : { only: 'pool' as const })} />
-          <Amount config={props.config} label={mode === 'budget' ? 'Per day' : 'Amount'} least={least ?? smallest} onChange={setAmount} suffix={mode === 'budget' ? `${symbol} a day` : symbol} value={amount} />
           <NoteField hint="Steers the swarm in proportion to the money behind it. The same text backs an existing note." onChange={props.onNote} value={props.note} />
-          <WalletLine amount={amount} config={props.config} token={token} />
+          </details>
           <button className="btn btn-high btn-wide" disabled={!ready} onClick={() => void submit()} type="button">
             {state.step ? working[state.step] : state.short ? 'Try again' : action}
           </button>
@@ -182,7 +183,8 @@ export function Box(props: { config: Config | undefined; note: string; noteRef: 
               )}
             </p>
           )}
-          <p className="fine">{told(mode, valid(amount, props.config, least) ? mach(decimal(units(amount))) : '', token, props.config, text.length > 0)}</p>
+          <p className="fine">{mode === 'budget' ? `Up to ${amount} ${symbol} per day for ${props.config?.budget.days ?? 30} days. Revoke in Tempo Wallet.` : mode === 'pledge' ? 'Fixed budget. No automatic top-ups.' : 'One-time contribution. Unused funds return when the quest ends.'}</p>
+          <details className="game-details"><summary>Wallet permissions</summary><p>{told(mode, valid(amount, props.config, least) ? mach(decimal(units(amount))) : '', token, props.config, text.length > 0)}</p></details>
         </>
       )}
     </div>

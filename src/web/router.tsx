@@ -11,7 +11,10 @@ export function usePath() {
 }
 
 export function href(path: string) {
-  return fixture ? `${path}?fixture` : path
+  if (!fixture) return path
+  const url = new URL(path, location.origin)
+  url.searchParams.set('fixture', '')
+  return `${url.pathname}${url.search}${url.hash}`
 }
 
 export function navigate(path: string, options: { replace?: boolean } = {}) {
@@ -36,3 +39,4 @@ export function Link(props: { children: ReactNode; className?: string; to: strin
     </a>
   )
 }
+

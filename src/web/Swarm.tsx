@@ -7,11 +7,12 @@ import { Budgets, Contributions, Pledges } from './Backing.tsx'
 import { Connect } from './Connect.tsx'
 import { Box } from './Contribute.tsx'
 import { ago, duration, mach, percent, short, usd } from './format.ts'
-import { type Draft, useLive, useMedia, useNow, usePoll } from './hooks.ts'
+import { type Draft, useLive, useNow, usePoll } from './hooks.ts'
 import { Machines } from './Machines.tsx'
+import { Mission } from './Mission.tsx'
 import { Markdown } from './Markdown.tsx'
 import { Link } from './router.tsx'
-import { Bar, Constellation, Status } from './Visual.tsx'
+import { Bar, Status } from './Visual.tsx'
 
 function merge(previous: Entry[], next: readonly Entry[]) {
   const known = new Set(previous.map((entry) => entry.seq))
@@ -20,24 +21,18 @@ function merge(previous: Entry[], next: readonly Entry[]) {
   return [...previous, ...fresh].sort((a, b) => a.seq - b.seq).slice(-500)
 }
 
-const banners = {
-  done: 'Research complete. These are the swarm’s reported findings, open to independent review.',
-  funding: 'No money behind it yet. The first transfer, daily budget or pledge starts round 1.',
-  paused: 'Out of money, so the swarm is paused. A transfer, a budget or a pledge resumes it, and it resumes on its own when a budget allows its next pull.',
-} as const
 
 const rounds = { cancelled: 'Cancelled', completed: 'Completed', failed: 'Failed', running: 'Running' } as const satisfies Record<Round['status'], string>
 
 
-export function Swarm(props: { config: Config | undefined; id: string; onTitle: (title: string | undefined) => void }) {
+export function Swarm(props: { config: Config | undefined; id: string }) {
   const [detail, reload] = usePoll(() => Api.swarm(props.id), 5000, props.id)
   const [entries, setEntries] = useState<Entry[]>([])
   const [note, setNote] = useState('')
   const last = useRef(0)
   const box = useRef<HTMLDivElement>(null)
-  const wide = useMedia('(min-width: 600px)')
+  const [view, setView] = useState<'mission' | 'findings' | 'fund'>(() => new URLSearchParams(location.search).get('view') === 'fund' ? 'fund' : 'mission')
   const loaded = detail.data !== undefined
-  const onTitle = props.onTitle
   const draft = useLive(props.id, detail.data?.status === 'running')
 
   useEffect(() => {
@@ -54,11 +49,8 @@ export function Swarm(props: { config: Config | undefined; id: string; onTitle: 
   }, [entries])
 
   useEffect(() => {
-    onTitle(detail.data?.title)
     if (detail.data) document.title = `${detail.data.title} · Swarms`
-  }, [detail.data?.title, onTitle])
-
-  useEffect(() => () => onTitle(undefined), [onTitle])
+  }, [detail.data?.title])
 
   useEffect(() => {
     if (!loaded) return
@@ -94,87 +86,32 @@ export function Swarm(props: { config: Config | undefined; id: string; onTitle: 
   const live = swarm.status === 'running'
   const back = (text: string) => {
     setNote(text)
+    setView('fund')
     box.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     setTimeout(() => document.getElementById('amount')?.focus({ preventScroll: true }), 400)
   }
 
   return (
-    <article className="page swarm" data-status={swarm.status}>
-      <section className="grid swarm-top">
-        <div className="swarm-intro">
-          <Meta swarm={swarm} />
-          <h1 className="display">{swarm.title}</h1>
-          <p className="goal">{swarm.goal}</p>
-          {swarm.status !== 'running' && <p className="banner">{banners[swarm.status]}</p>}
-          <section className="answer-block">
-            <h2 className="answer-head">
-              {swarm.status === 'done' ? 'Research findings' : 'Latest findings'}
-              {swarm.answer && <span>Round {swarm.answer.round}</span>}
-            </h2>
-            <Latest draft={draft} swarm={swarm} />
-          </section>
-          <div className="tile tile-wide">
-            <Constellation machines={swarm.hands.filter((hand) => hand.connected).map((hand) => hand.name)} swarm={swarm} wide={wide} />
-            <p className="tile-caption">
-              <span>+ lead agent</span>
-              <span>+ explorer at work</span>
-              <span>− room for another</span>
-              <span>■ machine</span>
-            </p>
-          </div>
+    <article className="page swarm game-swarm" data-status={swarm.status}>
+      <div className="quest-title"><div><Meta swarm={swarm} /><h1>{swarm.title}</h1></div><span className="quest-mode">{Api.fixture ? 'DEMO QUEST' : 'LIVE QUEST'}</span></div>
+      <nav aria-label="Quest view" className="quest-tabs">
+        <button aria-pressed={view === 'mission'} onClick={() => setView('mission')} type="button">The expedition</button>
+        <button aria-pressed={view === 'findings'} onClick={() => setView('findings')} type="button">Findings</button>
+        {swarm.status !== 'done' && <button aria-pressed={view === 'fund'} className="quest-fund-tab" onClick={() => setView('fund')} type="button">Add fuel +</button>}
+      </nav>
+      <div hidden={view !== 'mission'}>
+        <Mission entries={entries} swarm={swarm} />
+        <div className="mission-extras">
+          <details className="game-details"><summary>The research question</summary><p>{swarm.goal}</p></details>
+          <details className="game-details"><summary>Activity log</summary><Feed entries={entries} live={live} /></details>
+          <details className="game-details"><summary>Machines · {swarm.hands.filter((hand) => hand.connected).length} connected</summary><Machines hands={swarm.hands} live={live} /><Connect swarm={swarm} /></details>
+          <details className="game-details"><summary>Research rounds</summary><History draft={draft} history={swarm.history} /></details>
+          <details className="game-details"><summary>Community notes</summary><Notes notes={swarm.notes} onBack={back} done={swarm.status === 'done'} /></details>
+          <details className="game-details"><summary>Funding record</summary><Ledger config={props.config} swarm={swarm} /><Budgets budgets={swarm.budgets} config={props.config} /><Contributions config={props.config} contributions={swarm.contributions} /><Pledges config={props.config} pledges={swarm.pledges} /></details>
         </div>
-        <aside className="swarm-side">
-          <Ledger config={props.config} swarm={swarm} />
-          <Box config={props.config} note={note} noteRef={box} onDone={reload} onNote={setNote} swarm={swarm} />
-          <Connect swarm={swarm} />
-        </aside>
-      </section>
-
-      <section className="block">
-        <h2 className="block-head">
-          <span className="index">[1]</span> Machines
-          <span className="block-count">{swarm.hands.filter((hand) => hand.connected).length} connected</span>
-        </h2>
-        <Machines hands={swarm.hands} live={live} />
-      </section>
-
-      <section className="grid block">
-        <div className="col-main">
-          <h2 className="block-head">
-            <span className="index">[2]</span> Live feed
-          </h2>
-          <Feed entries={entries} live={live} />
-        </div>
-        <div className="col-side">
-          <h2 className="block-head">
-            <span className="index">[3]</span> Notes
-          </h2>
-          <Notes notes={swarm.notes} onBack={back} done={swarm.status === 'done'} />
-        </div>
-      </section>
-
-      <section className="grid block">
-        <div className="col-main">
-          <h2 className="block-head">
-            <span className="index">[4]</span> Rounds
-          </h2>
-          <History draft={draft} history={swarm.history} />
-        </div>
-        <div className="col-side backing">
-          <h2 className="block-head">
-            <span className="index">[5]</span> Backing
-            <span className="block-count">{usd(swarm.raised)} in</span>
-          </h2>
-          <h3 className="backing-head">
-            Daily budgets{Number(swarm.daily) > 0 && <span>{usd(swarm.daily)} a day</span>}
-          </h3>
-          <Budgets budgets={swarm.budgets} config={props.config} />
-          <h3 className="backing-head">Transfers</h3>
-          <Contributions config={props.config} contributions={swarm.contributions} />
-          <h3 className="backing-head">Pledges</h3>
-          <Pledges config={props.config} pledges={swarm.pledges} />
-        </div>
-      </section>
+      </div>
+      <section className="quest-findings" hidden={view !== 'findings'}><Latest draft={draft} swarm={swarm} /></section>
+      <section className="quest-funding" hidden={view !== 'fund'}><Box config={props.config} note={note} noteRef={box} onDone={reload} onNote={setNote} swarm={swarm} /></section>
     </article>
   )
 }

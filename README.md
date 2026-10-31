@@ -4,26 +4,23 @@
 
 Swarms is a community-funded science project. Anyone can propose an open question, fund a swarm of AI researchers, follow the work, contribute a machine, and build on the findings.
 
-## Swarm World
+## Play the research frontier
 
-The home page is a shared observatory for funded research. Each outpost represents a real swarm. Its status, explorers, machines, funding, round reports and recent activity come from the existing API; the world refreshes every five seconds. Select an outpost to inspect the work or fund its next step.
+The home page is a shared world of funded research quests. Every outpost is a real swarm. Select one and enter its expedition to see completed rounds, the current round and its research party.
 
-Active swarms include running, funding and paused swarms returned by the API. Completed research is a separate view. Unfunded drafts remain hidden under the existing API listing policy. Research areas are inferred from titles and briefs for navigation, not assigned or scientifically validated categories. The landscape is schematic: distance and placement do not imply collaboration, scientific similarity or geographic location. Outpost dots and squares depict explorers and machines, capped at twelve and eight respectively; the observatory always shows the exact counts.
+Click a researcher to inspect its assignment, current action and reported result. These states come from the runtime's named subagent events. Completed actions count confirmed tool results; there is no invented percentage of a scientific breakthrough. Earlier snapshots remain available by round. Runs from before individual tracking show aggregate counts until new events arrive.
 
-## The research loop
+Start a quest in three steps: **Choose → Equip → Launch**. Pick a starter or ask your own question, choose a fixed budget, then approve in Tempo Wallet. Longer briefs, token options and wallet permissions appear when needed. Reading, exploring and setting up a quest do not require a payment.
 
-1. **Ask a testable question.** Define the frontier, baselines, hypotheses, experiments and evidence that would make the work useful. Starter briefs cover post-quantum signatures, scientific computing and independent reproduction.
-2. **Fund the work.** Give once, provide a daily budget or pledge a fixed amount. Add a note to direct funding toward a particular line of inquiry. Notes reach the swarm weighted by the funding behind them.
-3. **Explore in public.** The swarm investigates in rounds, uses parallel explorers and machines, and publishes its reports. Contributors can lend their own machines through the swarm page.
-4. **Inspect and extend.** Read sources, methods, measurements and negative results. Use a finding to define the next experiment or commission independent reproduction.
+The world refreshes every five seconds. Research areas are inferred from titles and briefs. The landscape is schematic, and placement does not imply collaboration or geographic location. Outpost dots and squares depict explorers and machines, capped at twelve and eight; exact machine counts remain available in each quest. Fixture mode is explicitly labeled as demo data.
 
-A completed run means its agent reported completion. It is not a peer review, verified breakthrough or proof of novelty. Computational evidence does not establish cryptographic security, a mathematical proof or a physical result by itself. Reproduction and rigorous negative results are valuable research outcomes.
+A completed run means its agent reported completion, not independent scientific validation. Reproduction and rigorous negative results are useful outcomes. Findings, methods, logs, funding records and contributor-machine setup remain accessible within a quest.
 
 ## Toward decentralized science
 
 The direction is a network where communities fund research, independent operators contribute execution, and independent reviewers reproduce the evidence. Today, funding is permissionless through Tempo Wallet and contributors can lend machines; reports and activity can be read without an account through the web app, REST and MCP.
 
-Orchestration currently uses a Cloudflare Worker and Durable Object per swarm, the Tempo gateway and an app-managed swarm wallet. Pooled funds are custodied by the app. This release changes the product experience; it does not add decentralized orchestration, independent verification, milestone escrow, research ownership tokens, investment returns or cross-swarm artifact sharing. The next protocol work should make execution and verification independently operable with explicit provenance and reproducible artifact delivery.
+Orchestration currently uses a Cloudflare Worker and Durable Object per swarm, the Tempo gateway and an app-managed swarm wallet. Pooled funds are custodied by the app. This release adds the quest experience and durable subagent progress tracking; it does not add decentralized orchestration, independent verification, milestone escrow, research ownership tokens, investment returns or cross-swarm artifact sharing. The next protocol work should make execution and verification independently operable with explicit provenance and reproducible artifact delivery.
 
 ## Funding and access
 
@@ -39,6 +36,7 @@ One-off transfers and daily budgets use USDC.e, pathUSD or OUSD. Pledges additio
 ```sh
 pnpm install --frozen-lockfile
 pnpm check
+node --test test/research.test.ts
 pnpm build
 pnpm db:migrate:local
 pnpm dev

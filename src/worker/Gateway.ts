@@ -27,6 +27,8 @@ export type Event = {
     event?: { payload?: Record<string, unknown>; type?: string }
     source?: string
     type?: string
+    root_session_id?: string
+    update?: unknown
   }
   request_id?: string
   seq: number
@@ -156,3 +158,4 @@ export function hand(env: Cloudflare.Env, key: string, name: string) {
 export function detach(env: Cloudflare.Env, key: string, name: string) {
   return send<{ disconnected: boolean }>(env, `/v1/hands/${encodeURIComponent(name)}`, { key, method: 'DELETE' })
 }
+

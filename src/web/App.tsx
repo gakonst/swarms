@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import { fixture } from './api.ts'
@@ -36,38 +36,18 @@ function WalletButton(props: { config: Config | undefined }) {
   )
 }
 
-function Header(props: { config: Config | undefined; crumb: string | undefined; path: string }) {
+function Header(props: { config: Config | undefined; path: string }) {
   return (
-    <header className="header">
-      <nav className="header-nav">
-        <Link className={props.path === '/' ? 'nav-link nav-on' : 'nav-link'} to="/">
-          <span className="index">[1]</span> Swarm World
-        </Link>
-        <Link className={props.path === '/new' ? 'nav-link nav-on' : 'nav-link'} to="/new">
-          <span className="index">[N]</span> Fund a new question
-        </Link>
-        <Link className={props.path === '/docs' ? 'nav-link nav-on' : 'nav-link'} to="/docs">
-          <span className="index">[D]</span> API and MCP
-        </Link>
-      </nav>
+    <header className="header game-header">
       <p className="brand">
         <Link className="wordmark" to="/">
           Swarms
         </Link>
-        {props.crumb && (
-          <>
-            <span className="crumb-slash">/</span>
-            <span className="crumb">{props.crumb}</span>
-          </>
-        )}
       </p>
       <div className="header-end">
-        {props.path !== '/new' && (
-          <Link className="btn btn-low header-new" to="/new">
-            New
-          </Link>
-        )}
-        <WalletButton config={props.config} />
+        <Link className={props.path === '/' ? 'game-nav game-nav-on' : 'game-nav'} to="/">World</Link>
+        <Link className={props.path === '/new' ? 'game-nav game-nav-on' : 'game-nav'} to="/new">New quest</Link>
+        {props.path.startsWith('/s/') && <WalletButton config={props.config} />}
       </div>
     </header>
   )
@@ -75,16 +55,16 @@ function Header(props: { config: Config | undefined; crumb: string | undefined; 
 
 function Footer(props: { config: Config | undefined }) {
   return (
-    <footer className="footer">
+    <footer className="footer game-footer">
       <p>
-        Community-funded research. Open questions, public findings. Powered by the{' '}
+        Open science. Powered by{' '}
         <a href={props.config?.gateway ?? 'https://gateway.tempo-dev.workers.dev'} rel="noreferrer" target="_blank">
-          Tempo gateway
+          Tempo
         </a>
         .
       </p>
       <p>
-        <Link to="/docs">API and MCP</Link> · <a href="/openapi.json">openapi.json</a>
+        <Link to="/docs">For developers</Link>
       </p>
       {fixture && <p className="tag tag-on">Fixture data</p>}
     </footer>
@@ -94,8 +74,6 @@ function Footer(props: { config: Config | undefined }) {
 export function App() {
   const path = usePath()
   const config = useConfig()
-  const [crumb, setCrumb] = useState<string>()
-  const onTitle = useCallback((title: string | undefined) => setCrumb(title), [])
   const swarm = /^\/s\/([^/]+)\/?$/.exec(path)?.[1]
 
   useEffect(() => {
@@ -115,7 +93,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Header config={config} crumb={swarm ? crumb : path === '/new' ? 'New' : path === '/docs' ? 'Docs' : undefined} path={path} />
+      <Header config={config} path={path} />
       <main>
         {path === '/' ? (
           <Home />
@@ -124,7 +102,7 @@ export function App() {
         ) : path === '/docs' ? (
           <Docs config={config} />
         ) : swarm ? (
-          <Swarm config={config} id={decodeURIComponent(swarm)} key={swarm} onTitle={onTitle} />
+          <Swarm config={config} id={decodeURIComponent(swarm)} key={swarm} />
         ) : (
           <section className="page missing">
             <h1 className="display">Nothing here</h1>

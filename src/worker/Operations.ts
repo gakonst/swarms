@@ -327,6 +327,7 @@ export async function detail(env: Cloudflare.Env, input: Input<'swarm'>): Promis
     budgets,
     contributions,
     feed: view.feed,
+    researchers: view.researchers,
     hands: view.hands,
     history: view.rounds,
     notes,
@@ -365,6 +366,7 @@ export async function get(env: Cloudflare.Env, input: Input<'swarm'>): Promise<P
     notes,
     pledges,
     running: running(view.rounds),
+    researchers: view.researchers,
   })
 }
 
@@ -956,3 +958,4 @@ function excerpt(entry: Entry, terms: readonly string[], size = 240) {
   const marked = text.slice(start, start + size).replace(pattern, (found) => `«${found}»`)
   return `${start > 0 ? '…' : ''}${marked}${start + size < text.length ? '…' : ''}`
 }
+

@@ -155,6 +155,20 @@ const schemas = {
     terms: { description: 'The words searched for.', items: string, type: 'array' },
   }),
   Hand: object({ connected: { type: 'boolean' }, name: string }),
+  Researcher: object({
+    id: string,
+    parent: nullable(string),
+    round: integer,
+    name: string,
+    task: string,
+    state: { enum: ['pending', 'running', 'completed', 'failed', 'interrupted', 'closing', 'closed'], type: 'string' },
+    action: nullable(string),
+    output: nullable(string),
+    updatedAt: time,
+    events: integer,
+    toolsCompleted: integer,
+    lastSequence: integer,
+  }, 'Observed subagent progress, preserved from the runtime event stream.'),
   Issued: object(
     {
       cli: { description: "Run on the machine to lend it: nc hand '<url>' --token <token>.", type: 'string' },
@@ -203,6 +217,7 @@ const schemas = {
         notes: { items: ref('Note'), type: 'array' },
         pledges: { items: ref('Pledge'), type: 'array' },
         running: nullable(ref('Running')),
+        researchers: { items: ref('Researcher'), type: 'array' },
       }),
     ],
   },
@@ -548,3 +563,4 @@ export function document(origin: string) {
     servers: [{ url: origin }],
   }
 }
+
