@@ -6,10 +6,17 @@ export const symbols = { mach: 'MACH', ousd: 'OUSD', pathusd: 'pathUSD', usdce: 
 
 export function mach(value: string) {
   const atomics = units(value)
-  const [whole = '0', fraction = ''] = decimal(atomics).split('.')
-  const significant = fraction.replace(/0+$/, '').length
-  const digits = atomics > 0n && atomics < 100n ? 6 : Math.min(4, Math.max(2, significant))
-  return `${Number(whole).toLocaleString('en-US')}.${fraction.slice(0, digits)}`
+  const sign = atomics < 0n ? '-' : ''
+  const size = atomics < 0n ? -atomics : atomics
+  if (size >= 995_000n || size === 0n) {
+    const cents = (size + 5_000n) / 10_000n
+    return `${sign}${(cents / 100n).toLocaleString('en-US')}.${String(cents % 100n).padStart(2, '0')}`
+  }
+  const step = 10n ** BigInt(Math.max(0, String(size).length - 2))
+  const rounded = ((size + step / 2n) / step) * step
+  const fraction = decimal(rounded).split('.')[1] ?? ''
+  const digits = Math.max(2, fraction.replace(/0+$/, '').length)
+  return `${sign}0.${fraction.slice(0, digits)}`
 }
 
 export function usd(value: string) {
@@ -58,6 +65,10 @@ export function clock(at: number) {
 
 export function minute(at: number) {
   return new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: zone() })
+}
+
+export function stamp(at: number) {
+  return new Date(at).toLocaleString('en-GB', { day: 'numeric', hour: '2-digit', minute: '2-digit', month: 'short', timeZone: zone(), year: 'numeric' })
 }
 
 function zone() {
