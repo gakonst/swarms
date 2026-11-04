@@ -36,7 +36,7 @@ export async function query(
   input: { kind: Hit['kind'] | undefined; limit: number; swarm: string | undefined; terms: string[] },
 ): Promise<Hit[]> {
   const kind = input.kind && stored(input.kind)
-  const filters = [...(input.swarm ? ['search.swarm = ?'] : []), ...(kind ? ['search.kind = ?'] : [])]
+  const filters = [...(input.swarm ? ['search.swarm = ?'] : ['s.hidden = 0']), ...(kind ? ['search.kind = ?'] : [])]
   const { results } = await env.DB.prepare(
     `select search.swarm as swarm, search.kind as kind, search.ref as ref,
       snippet(search, 4, '«', '»', '…', 40) as snippet, s.title as title, s.status as status, r.ended_at as at
