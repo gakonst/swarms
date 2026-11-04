@@ -476,7 +476,7 @@ export function Transcript(props: {
 
   return (
     <section aria-label="Transcript" className="transcript" data-live={onAir}>
-      <header className="transcript-bar">
+      <header className="transcript-bar" hidden={!speakers.length && !props.people}>
         {speakers.length > 0 && (
           <nav aria-label="Who to show" className="transcript-who">
             {['all', agent, ...speakers].map((name) => (
@@ -516,13 +516,9 @@ export function Transcript(props: {
             if ('step' in row) return [name, <Tool key={rowKey(row)} step={row.step} />]
             return [name, <Beat entry={row.entry} key={rowKey(row)} onFund={swarm.status === 'done' ? undefined : () => props.onFund('')} times={repeats.get(row.entry)} />]
           })}
-          {swarm.status !== 'done' && swarm.status !== 'running' && !streaming.length && (
+          {(stood.mood === 'money' || stood.mood === 'new') && !streaming.length && (
             <li className="timeline-state" data-mood={stood.mood}>
-              {stood.action || stood.mood === 'money' ? (
-                <button onClick={() => props.onFund('')} type="button">{stood.line} <b>Fund →</b></button>
-              ) : (
-                <p>{stood.line}</p>
-              )}
+              <button onClick={() => props.onFund('')} type="button">{stood.line} <b>Fund →</b></button>
             </li>
           )}
           {streaming.map((item) => (

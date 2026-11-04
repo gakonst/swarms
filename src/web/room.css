@@ -850,3 +850,4 @@ button.said-backed:not(:disabled):hover { background:#2f5f37; }
 .transcript-empty > .transcript-start { width:min(560px,100%); padding:40px 24px; border:1px dashed #a5b79c; border-radius:18px; background:#fbfcf9; transition:border-color .2s, background .2s; }
 .transcript-empty > .transcript-start:not(:disabled):hover { border-color:#1a3d2c; background:#f2f7ec; }
 .transcript-empty > .transcript-start b { background:#14301c; font-size:14px; padding:12px 20px; }
+.transcript-bar[hidden] { display:none; }
