@@ -138,13 +138,11 @@ const quickMs = 60_000
 
 const vendorCap = 1_000_000n
 
-const stuckTurns = 3
 const quietMs = 600_000
 const snapshotMs = 60_000
 const snapshotFiles = 2_000
 const snapshotText = 64_000
 
-const idleSpend = 10_000n
 
 const unfundedMs = 15 * 60_000
 
@@ -264,7 +262,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     )
     this.announce(`@${(await Store.account(this.env, input.contributor)).handle} pledged ${trim(input.amount)} ${Chain.currencies[input.token].symbol}${input.note ? ` behind "${input.note}"` : ''}.`)
     const row = await this.found(input.swarm)
-    this.kv.delete('resting')
     if (row) await this.upfront(row, input.id, input.token, BigInt(Memo.units(input.amount)))
     if (input.noteId) await this.steer(input.swarm, input.noteId, `pledged ${trim(input.amount)} ${Chain.currencies[input.token].symbol}`)
     if (!this.kv.get<string>('turn')) await this.ctx.storage.setAlarm(Date.now())
@@ -273,7 +270,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async contributed(input: Contributed) {
     this.marked += 1
     this.kv.put('id', input.swarm)
-    this.kv.delete('resting')
     this.kv.delete('exhausted:pool')
     this.log(
       'funds',
@@ -288,7 +284,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async budgeted(input: Budgeted) {
     this.marked += 1
     this.kv.put('id', input.swarm)
-    this.kv.delete('resting')
     this.log(
       'funds',
       `${short(input.contributor)} set a budget of ${trim(input.amount)} ${Chain.currencies[input.token].symbol} ${per(input.period)}${input.note ? ' with a note' : ''}`,
@@ -614,7 +609,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async advance(row: Store.Row) {
-    if (this.kv.get<number>('resting')) return null
     const worked = this.kv.get<number>('n') ?? 0
     await this.fund(row)
     const money = await this.refresh(row)
@@ -783,25 +777,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const failures = status === 'completed' ? 0 : (this.kv.get<number>('failures') ?? 0) + 1
     this.kv.put('failures', failures)
     if (status === 'completed') this.kv.delete('wanted')
-    const acted = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE at >= ? AND kind IN ('tool', 'machine')", started).one().n
     const stored = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE at >= ? AND kind = 'tool' AND ((text || coalesce(detail, '')) LIKE '%kv_set%' OR (text || coalesce(detail, '')) LIKE '%bucket_put%' OR (text || coalesce(detail, '')) LIKE '%git_create%')", started).one().n
     if (stored > 0 || !this.kv.get<number>('published')) await this.expose(row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
-    const idle = status === 'completed' && !commits.length && Date.now() - started < quickMs && spent < idleSpend
-    const streak = idle ? (this.kv.get<number>('stuck') ?? 0) + 1 : 0
-    this.kv.put('stuck', streak)
-    if (status === 'completed' && (acted === 0 || streak >= stuckTurns)) {
-      this.kv.put('resting', Date.now())
-      this.kv.put('stuck', 0)
-      await this.pause(
-        row,
-        'paused',
-        acted === 0
-          ? `Resting: the agent found nothing more worth doing. ${Answer.cash(Number(Memo.decimal(money.left)))} is kept for later; a note or new money wakes it.`
-          : `Resting: the agent's last ${stuckTurns} updates produced nothing. ${Answer.cash(Number(Memo.decimal(money.left)))} is kept for later; a note or new money wakes it.`,
-        'idle',
-      )
-      return null
-    }
     const wanted = BigInt(this.kv.get<string>('wanted') ?? '0')
     if (status !== 'completed' && (money.left < Store.reserve || wanted > money.biggest)) {
       this.kv.put('failures', 0)
@@ -1452,11 +1429,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async reopen(row: Store.Row) {
     this.kv.delete('refunded')
     this.kv.delete('refundAt')
-    this.kv.put('resting', Date.now())
-    this.kv.put('paused', 'Resting: it spends nothing until a note or new money wakes it.')
-    this.kv.put('why', 'idle')
-    await Store.update(this.env, row.id, { status: 'paused', why: 'idle' })
-    this.log('status', 'Open again: it rests until a note or new money wakes it, and its agent carries on from where it stopped.')
+    this.log('status', 'Open again: its agent carries on from where it stopped while it has money.')
   }
 
   async done(row: Store.Row, reason: string) {
@@ -1679,7 +1652,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async steer(swarm: string, noteId: string, what: string): Promise<Note | undefined> {
-    this.kv.delete('resting')
     const row = await this.found(swarm)
     const agent = this.kv.get<string>('agent')
     const turn = this.kv.get<string>('turn')
