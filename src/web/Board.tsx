@@ -23,9 +23,10 @@ const flows: readonly Flow[] = [
     frames: [
       { name: 'Open swarms', url: '/join?fixture' },
       { name: 'Tapped open', note: 'tap again to go in', steps: [{ click: '.tiles-swarm li:nth-child(2) .tile-swarm' }], url: '/join?fixture' },
-      { name: 'Live now', steps: [{ click: '.world-filters .chip:nth-child(2)' }], url: '/join?fixture' },
-      { name: 'Resting', steps: [{ click: '.world-filters .chip:nth-child(3)' }], url: '/join?fixture' },
-      { name: 'Needs fuel', steps: [{ click: '.world-filters .chip:nth-child(4)' }], url: '/join?fixture' },
+      { name: 'Running', url: '/join?fixture&filter=running' },
+      { name: 'Resting', url: '/join?fixture&filter=resting' },
+      { name: 'Not started', url: '/join?fixture&filter=waiting' },
+      { name: 'Needs money', url: '/join?fixture&filter=money' },
       { name: 'A long list', url: '/join?fixture&scene=many' },
       { name: 'A long list, scrolled', note: 'scrolled', steps: [{ scroll: '.tiles-swarm' }], url: '/join?fixture&scene=many' },
       { name: 'Loading', url: '/join?fixture&scene=wait' },
