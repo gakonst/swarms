@@ -43,7 +43,7 @@ function document(origin: string, path: string, title: string, description: stri
   const url = `${origin}${path}`
   const image = `${origin}/xframe-card.jpg?v=2`
   const hosted = request !== undefined && !request.searchParams.has('xframes-content')
-  const tags = `<meta charset="utf-8">
+  const tags = `<meta charset="utf-8"><link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>${attribute(title)}</title>
 <meta name="description" content="${attribute(description)}">
