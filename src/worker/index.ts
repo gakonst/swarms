@@ -207,5 +207,11 @@ app.all('/api/*', () => Problem.json({ code: 'not_found', detail: 'No such route
 
 app.route('/', Rest.app)
 
+app.get('*', (c) => {
+  const accept = c.req.header('accept') ?? ''
+  if (accept !== '' && !/text\/html|\*\/\*/.test(accept)) return c.notFound()
+  return Page.lost(c.req.raw, c.env)
+})
+
 export default app
 
