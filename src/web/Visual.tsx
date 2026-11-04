@@ -40,12 +40,12 @@ type Stood = Pick<Detail, 'raised' | 'reason' | 'status' | 'updatedAt' | 'why' |
 
 export function standing(swarm: Stood, now: number): Standing {
   if (swarm.status === 'done') return { action: null, label: 'Finished', line: 'Finished. Its result stays here for anyone to read.', mood: 'done' }
-  if (swarm.status === 'running') return { action: null, label: 'Working', line: swarm.working ? `On it for ${duration(now - swarm.working.since)}.` : 'Starting up.', mood: 'live' }
+  if (swarm.status === 'running') return { action: null, label: 'Running', line: swarm.working ? `On it for ${duration(now - swarm.working.since)}.` : 'Starting up.', mood: 'live' }
   const said = swarm.reason ? Answer.local(Answer.spoken(swarm.reason) ?? '', swarm.updatedAt, minute) : ''
   if (swarm.status === 'funding' && Number(swarm.raised) <= 0) return { action: 'Fund $2 to start it', label: 'Not started', line: 'Nobody has funded this yet.', mood: 'new' }
   if (swarm.why === 'idle') return { action: null, label: 'Resting', line: said || 'Resting: a note or new money wakes it.', mood: 'resting' }
   if (swarm.why === 'rest') return { action: null, label: 'Stopped after errors', line: said || 'Stopped after errors. New money or a note restarts it.', mood: 'errors' }
-  if (swarm.status === 'funding') return { action: 'Add $2 to start it', label: 'Waiting to start', line: said || 'Its funds cannot pay for a first step yet.', mood: 'money' }
+  if (swarm.status === 'funding') return { action: 'Add $2 to start it', label: 'Not started', line: said || 'Its funds cannot pay for a first step yet.', mood: 'money' }
   return { action: 'Add $2 to wake it', label: 'Needs money', line: said || 'Out of money. Adding money wakes it.', mood: 'money' }
 }
 
