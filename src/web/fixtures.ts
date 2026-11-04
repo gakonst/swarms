@@ -1,15 +1,16 @@
 import * as Answer from '../shared/Answer.ts'
-import type { Account, Artifact, Code, Budget, BudgetRequested, Budgeted, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Pledge, Pledged, Posted, Requested, Room, Said, Status, Summary, Token, Update, Way } from '../shared/Api.ts'
+import type { Account, Artifact, Code, Budget, BudgetRequested, Budgeted, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Pledge, Pledged, Posted, Requested, Room, Said, Status, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
+import { usd } from './format.ts'
 import { pace, scene, visitor } from './stage.ts'
 
 type Line = readonly [Kind, string, (string | null)?, string?]
 
 type Backing = { amount: string; contributor: `0x${string}`; note: string }
 
-type Live = Omit<Detail, 'answer' | 'reason' | 'updates' | 'why' | 'working'> & { updates: Update[]; chat: Said[]; cursor: number; flicker: readonly string[]; next: number; script: readonly Line[]; since: number | null; steered: Set<string>; steers: Backing[] }
+type Live = Omit<Detail, 'answer' | 'reason' | 'updates' | 'why' | 'working'> & { updates: Update[]; chat: Said[]; cursor: number; flicker: readonly string[]; next: number; resting: boolean; script: readonly Line[]; since: number | null; steered: Set<string>; steers: Backing[] }
 
 const minute = 60_000
 
@@ -61,6 +62,7 @@ function build(input: {
   gifts?: readonly (readonly [number, string, Token, number, string | null, Contribution['kind']])[]
   pledges: readonly (readonly [number, string, number, string | null, Currency?])[]
   problem?: string | undefined
+  resting?: boolean
   script?: readonly Line[]
   since?: number
   spent: string
@@ -133,6 +135,7 @@ function build(input: {
     pledges,
     pool: '0',
     problem: input.problem ?? null,
+    resting: input.resting ?? false,
     raised: '0',
     remaining: '0',
     wallet,
@@ -378,22 +381,23 @@ const fixtures: Live[] = [
     updates: [
       [1380, 'Indexed 1,000,000 blocks into the bucket (14 GiB of receipts).', '0.512000'],
       [1290, 'Classified 48,113 candidate bundles; 61% DEX arbitrage, 23% liquidations, 16% sandwiches.', '0.630000'],
-      [1100, "Final report.\n\n1. Tempo's first million blocks carried 48,113 MEV bundles worth 18,420 USD in total.\n2. Arbitrage between the stablecoin DEX and outside venues is 61% of it and mostly harmless: it keeps pegs tight.\n3. Sandwiches are 16% of bundles but 38% of value, concentrated in 4 searchers.\n4. Payment lanes left no room for sandwiches on transfers; every sandwich hit a DEX swap with slippage above 0.5%.\n\nData, notebooks and the classifier are in the bucket under mev/.\nSTATUS: done", '0.806120'],
+      [1100, "Final report.\n\n1. Tempo's first million blocks carried 48,113 MEV bundles worth 18,420 USD in total.\n2. Arbitrage between the stablecoin DEX and outside venues is 61% of it and mostly harmless: it keeps pegs tight.\n3. Sandwiches are 16% of bundles but 38% of value, concentrated in 4 searchers.\n4. Payment lanes left no room for sandwiches on transfers; every sandwich hit a DEX swap with slippage above 0.5%.\n\nData, notebooks and the classifier are in the bucket under mev/ and in the repository.", '0.806120'],
     ],
-    code: { app: 'swarm-06cf5d7c8f92', clone: 'https://gateway.tempo-dev.workers.dev/p/0x975937feafc6869a260c176854dda8764a78e122/swarm-06cf5d7c8f92/git/solve-p-np.git', name: 'solve-p-np', owner: '0x975937feafc6869a260c176854dda8764a78e122' },
+    code: { app: 'swarm-mev-map', clone: 'https://gateway.tempo-dev.workers.dev/p/0x975937feafc6869a260c176854dda8764a78e122/swarm-mev-map/git/mev-map.git', name: 'mev-map', owner: '0x975937feafc6869a260c176854dda8764a78e122' },
     id: 'mev-map',
     lines: [
       ['error', 'The agent stopped with an error after spending $0.40.', 'The classifier ran out of memory on a 2 GiB machine.'],
       ['message', 'Final report written. Everything the goal asked for is answered.'],
-      ['status', 'Done. The agent reports the goal is met. Every channel closes and returns what it did not spend.'],
+      ['status', 'Resting: the agent found nothing worth spending on, so the swarm stopped asking it and spends nothing. $0.052 is kept for later; a note or new money wakes it.'],
     ],
     pledges: [
       [5, '1.000000', 1430, 'Separate sandwiches from arbitrage'],
       [8, '0.500000', 1300, null],
       [1, '0.500000', 1100, 'Separate sandwiches from arbitrage'],
     ],
+    resting: true,
     spent: '1.948120',
-    status: 'done',
+    status: 'paused',
     steered: ['Separate sandwiches from arbitrage'],
     title: "Map the MEV in Tempo's first million blocks",
   }),
@@ -411,15 +415,21 @@ function steady<T>(value: T, ms = 160) {
 }
 
 const reasons = {
+  idle: 'Resting: the agent found nothing worth spending on, so the swarm stopped asking it and spends nothing. $0.052 is kept for later; a note or new money wakes it.',
   costly: "Waiting for money: the agent's next model call holds $0.2147, more than the $0.2083 any one contribution can pay at once. A contribution or budget pull that can cover it starts it again.",
   money: 'Waiting for money: $0.0038 is payable now, less than one model call holds. New money keeps it going.',
   rest: 'The agent hit 3 errors in a row, so the swarm stopped to rest. New money restarts it, and so does the next budget pull at 16:37 UTC.',
 } as const
 
+function why(swarm: Live): Why | null {
+  if (swarm.status === 'funding') return 'unfunded'
+  if (swarm.status !== 'paused') return null
+  return (['costly', 'rest'] as const).find((key) => scene.has(key)) ?? (swarm.resting ? 'idle' : 'money')
+}
+
 function reason(swarm: Live) {
-  const picked = (['costly', 'rest'] as const).find((key) => scene.has(key)) ?? 'money'
-  if (swarm.status === 'paused') return reasons[picked]
-  return null
+  const picked = why(swarm)
+  return picked && picked !== 'unfunded' ? reasons[picked] : null
 }
 
 function find(key: string) {
@@ -462,7 +472,7 @@ function detail(swarm: Live): Detail {
     notes: swarm.notes,
     pledges: swarm.pledges,
     reason: reason(swarm),
-    why: reason(swarm) ? ((['costly', 'rest'] as const).find((key) => scene.has(key)) ?? (swarm.status === 'funding' ? 'unfunded' : 'money')) : null,
+    why: reason(swarm) ? why(swarm) : null,
     updates: swarm.updates,
     working: swarm.since === null ? null : { since: swarm.since },
   }
@@ -612,7 +622,7 @@ export async function confirm(key: string, pledge: string): Promise<Pledged> {
 
 function begin(swarm: Live) {
   if (swarm.status !== 'funding' && swarm.status !== 'paused') return
-  push(swarm, 'status', `${swarm.updates.length ? 'Back at work' : 'Started working'} with $${Number(swarm.remaining)} to spend.`, null, Date.now())
+  push(swarm, 'status', `${swarm.updates.length ? 'Back at work' : 'Started working'} with ${usd(swarm.remaining)} to spend.`, null, Date.now())
   swarm.status = 'running'
   swarm.since = Date.now()
   if (swarm.script.length === 0) swarm.script = translation
@@ -735,6 +745,63 @@ const shelves: Record<string, Artifact[]> = {
   'json-terabyte': shelf([['throughput', 'Parser throughput', 'GiB/s by machine size.', 'dashboard', 'page', throughput, 6]]),
 }
 
+type Change = { additions: number; deletions: number; oldPath: string | null; patch: string; path: string; state: string | null }
+
+const tree: Record<string, Record<string, string>> = {
+  'mev-map': {
+    'README.md': "# MEV in Tempo's first million blocks\n\nWhich strategies exist, how much they extract, and who pays for it.\n\n| strategy | bundles | value (USD) |\n|---|---:|---:|\n| DEX arbitrage | 29,349 | 8,105 |\n| Liquidations | 11,066 | 3,316 |\n| Sandwiches | 7,698 | 6,999 |\n\nSee `report.md` for the write-up and `classify/` for the classifier.\n",
+    'classify/bundles.py': 'import json\nimport sys\n\nKINDS = ("arbitrage", "liquidation", "sandwich")\n\n\ndef classify(bundle):\n    swaps = [call for call in bundle["calls"] if call["kind"] == "swap"]\n    if len(swaps) >= 2 and swaps[0]["sender"] == swaps[-1]["sender"] and bundle["victim"]:\n        return "sandwich"\n    if any(call["kind"] == "liquidate" for call in bundle["calls"]):\n        return "liquidation"\n    return "arbitrage"\n\n\nif __name__ == "__main__":\n    for line in sys.stdin:\n        bundle = json.loads(line)\n        print(bundle["hash"], classify(bundle))\n',
+    'classify/test_bundles.py': 'from bundles import classify\n\n\ndef test_sandwich():\n    calls = [{"kind": "swap", "sender": "a"}, {"kind": "swap", "sender": "b"}, {"kind": "swap", "sender": "a"}]\n    assert classify({"calls": calls, "victim": "b"}) == "sandwich"\n',
+    'index/blocks.sql': 'create table bundles (\n  hash text primary key,\n  block integer not null,\n  kind text,\n  value_usd real\n);\n',
+    'report.md': "# Final report\n\n1. 48,113 MEV bundles worth 18,420 USD in total.\n2. Arbitrage is 61% of bundles and mostly harmless: it keeps pegs tight.\n3. Sandwiches are 16% of bundles but 38% of value, from 4 searchers.\n4. Payment lanes left no room for sandwiches on transfers.\n",
+  },
+}
+
+const pushes: Record<string, readonly (readonly [string, number, readonly string[]])[]> = {
+  'mev-map': [
+    ['Write the final report', 1100, ['report.md', 'README.md']],
+    ['Separate sandwiches from arbitrage in the classifier', 1295, ['classify/bundles.py', 'classify/test_bundles.py']],
+    ['Classify 48,113 candidate bundles', 1300, ['classify/bundles.py']],
+    ['Index the first million blocks', 1385, ['index/blocks.sql', 'README.md']],
+  ],
+}
+
+function commits(key: string) {
+  return (pushes[key] ?? []).map(([message, minutes, paths], index) => ({
+    author: { email: null, name: 'agent' },
+    date: new Date(at(minutes)).toISOString(),
+    message,
+    parents: [],
+    paths,
+    sha: ['a', 'b', 'c', 'd', 'e'].map((part) => id(`${key}:${index}:${part}`)).join(''),
+  }))
+}
+
+function added(path: string, text: string): Change {
+  const lines = text.replace(/\n$/, '').split('\n')
+  return { additions: lines.length, deletions: 0, oldPath: null, patch: `@@ -0,0 +1,${lines.length} @@\n${lines.map((line) => `+${line}`).join('\n')}\n`, path, state: 'A' }
+}
+
+export function git(url: string): Promise<unknown> {
+  const parsed = new URL(url, 'http://fixture')
+  const key = decodeURIComponent(/^\/api\/swarms\/([^/]+)\/git\//.exec(parsed.pathname)?.[1] ?? '')
+  const files = tree[key]
+  if (!files) return Promise.reject(fail(404, 'not_found', 'This swarm has no repository.'))
+  const log = commits(key)
+  const ref = parsed.searchParams.get('ref') ?? 'main'
+  const commit = ref === 'main' ? log[0] : log.find((item) => item.sha === ref)
+  const read = parsed.pathname.split('/').at(-1)
+  if (read === 'log') return delay({ commits: log.map(({ paths: _paths, ...item }) => item), cursor: null })
+  if (!commit) return Promise.reject(fail(404, 'not_found', 'No commit has this ref.'))
+  if (read === 'files') return delay({ files: Object.keys(files).sort().map((path) => ({ path, type: 'blob' })) })
+  if (read === 'read') {
+    const path = parsed.searchParams.get('path') ?? ''
+    const text = files[path]
+    return text === undefined ? Promise.reject(fail(404, 'not_found', 'No file has this path.')) : delay({ path, size: text.length, text })
+  }
+  return delay({ files: commit.paths.map((path) => added(path, files[path] ?? '')) })
+}
+
 export function artifacts(key: string) {
   return find(key).then(() => delay({ artifacts: shelves[key] ?? [] }))
 }
@@ -766,7 +833,7 @@ const talk: Record<string, readonly (readonly [number | null, string, number, st
     [null, "Update: Final report. Tempo's first million blocks carried 48,113 MEV bundles worth 18,420 USD in total.", 1100],
     [5, 'Sandwiches at 38% of value from 4 searchers is the headline.', 1095],
     [1, '@5 and none of them on transfers. Payment lanes did their job.', 1092],
-    [null, 'Done. The agent reports the goal is met. What the swarm did not spend goes back to its backers.', 1090],
+    [null, 'The agent is resting after its report. A note or new money wakes it.', 1090],
   ],
 }
 
@@ -900,7 +967,7 @@ export async function say(key: string, input: { steer?: string; text: string }, 
     const note = Mention.idea(text)
     if (note.length < 3 || note.length > maxNote) throw fail(400, 'invalid_request', 'Say what the swarm should do after @swarm, in at most 280 characters.')
     if (!input.steer) throw fail(400, 'invalid_request', '@swarm steers the swarm with money: say how much of your backing goes behind it.')
-    if (units(input.steer) > units(self.available)) throw fail(409, 'insufficient_balance', `You have $${self.available} of backing not yet behind a note. Put new money behind this idea instead.`)
+    if (units(input.steer) > units(self.available)) throw fail(409, 'insufficient_balance', `You have ${usd(self.available)} of backing not yet behind a note. Put new money behind this idea instead.`)
     swarm.steers.push({ amount: decimal(units(input.steer)), contributor: who, note })
     swarm.steered.add(note)
     settle(swarm)
