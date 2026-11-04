@@ -88,6 +88,15 @@ function dollars(amount: string) {
   return `$${mach(decimal(units(amount)))}`
 }
 
+export function terms(mode: Mode, token: Currency, amount: string, known: boolean, config: Config | undefined) {
+  const paid = known ? `Paid in ${symbols[token]}` : 'Paid in the first of OUSD, USDC.e, pathUSD or MACH your wallet holds enough of'
+  const capped = valid(amount, config, '0.000001') ? dollars(amount) : 'the amount'
+  const approve = 'Tempo Wallet opens to approve it.'
+  if (mode === 'budget') return `${paid}, charged now and again every ${Math.round((config?.budget.period ?? 2_592_000) / 86_400)} days for up to ${config?.budget.days ?? 365} days, until you revoke the key in Tempo Wallet. ${approve}`
+  if (known && token === 'mach') return `${paid}: a key capped at ${capped} moves it into a payment channel for this swarm now, and what the swarm does not spend comes back. The key may also spend up to $0.10 of a stablecoin on network fees. ${approve}`
+  return `${paid}, sent once to the swarm's own wallet. ${approve}`
+}
+
 export function Fuel(props: {
   action?: ((label: string) => string) | undefined
   config: Config | undefined
@@ -167,7 +176,7 @@ export function Fuel(props: {
           <button aria-checked={amount === value} disabled={busy} key={value} onClick={() => setAmount(value)} role="radio" type="button">${value}</button>
         ))}
       </div>
-      {!ok && amount.trim() !== '' && least && <p className="fuel-least">At least ${mach(least)}</p>}
+      {least && <p className="fuel-least" data-bad={!ok && amount.trim() !== ''}>Minimum ${mach(least)}</p>}
       <div className="fuel-seg" role="radiogroup">
         {([['once', 'One time'], ['budget', 'Monthly']] as const).map(([key, name]) => (
           <button aria-checked={(key === 'budget') === (mode === 'budget')} disabled={busy} key={key} onClick={() => { setMode(key === 'budget' ? 'budget' : 'send'); if (flow.at !== 'busy') setFlow(idle) }} role="radio" type="button">{name}</button>
@@ -183,6 +192,7 @@ export function Fuel(props: {
           That is less than {dollars(amount)}.
         </Alert>
       )}
+      <p className="fuel-terms">{terms(mode, token, amount, balance !== undefined, props.config)}</p>
       <button className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
         {flow.at === 'busy' ? working[flow.step] : flow.at === 'failed' && flow.short ? 'Try again' : (props.action ?? ((value: string) => value))(label)}
       </button>

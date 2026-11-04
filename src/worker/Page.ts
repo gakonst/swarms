@@ -13,7 +13,7 @@ const firstFeed = 30
 
 const firstChat = 30
 
-const listed = new Set(['/', '/join', '/new', '/about', '/docs'])
+const listed = new Set(['/', '/join', '/new', '/about', '/docs', '/board'])
 
 export function rendered(path: string) {
   return listed.has(path) || /^\/s\/[^/]+(\/code)?\/?$/.test(path)
@@ -99,6 +99,7 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   }
   if (path === '/about') return { data, head: { ...head, title: 'About · Swarms' }, status: 200, whole: true }
   if (path === '/docs') return { data, head: { ...head, title: 'API and MCP · Swarms' }, status: 200, whole: true }
+  if (!rendered(path)) return { data, head: { ...head, title: 'Not found · Swarms' }, status: 404, whole: false }
   const [, raw = '', browsing] = /^\/s\/([^/]+)(\/code)?$/.exec(path) ?? []
   const id = decodeURIComponent(raw)
   const [detail, room, code] = await Promise.all([
@@ -138,6 +139,10 @@ function meta(head: Head, url: URL) {
   return tags.join('')
 }
 
+export async function lost(request: Request, env: Cloudflare.Env) {
+  return (await draw(request, env)).response
+}
+
 export function page(request: Request, env: Cloudflare.Env) {
   const cookie = request.headers.get('cookie')
   return Edge.page(request, `${mobile(request) ? 'm' : 'd'}|${zone(cookie) ?? ''}`, (given) => draw(given, env))
@@ -150,7 +155,7 @@ function mobile(request: Request) {
 async function draw(request: Request, env: Cloudflare.Env) {
   const url = new URL(request.url)
   const html = await shell(env, url.origin)
-  if (url.searchParams.has('fixture') || url.searchParams.has('scene')) return { response: new Response(html.replace('</head>', '<title>Swarms</title></head>'), { headers: { 'cache-control': 'no-store', 'content-type': 'text/html; charset=utf-8' } }), whole: Promise.resolve(false) }
+  if (url.searchParams.has('fixture') || url.searchParams.has('scene') || url.pathname === '/board') return { response: new Response(html.replace('</head>', '<title>Swarms</title></head>'), { headers: { 'cache-control': 'no-store', 'content-type': 'text/html; charset=utf-8' }, status: rendered(url.pathname) ? 200 : 404 }), whole: Promise.resolve(false) }
   const [before = '', after = ''] = html.split('<div id="root"></div>')
   const encoder = new TextEncoder()
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
@@ -187,6 +192,6 @@ async function draw(request: Request, env: Cloudflare.Env) {
     return false
   })
   const id = /^\/s\/([^/]+)/.exec(url.pathname)?.[1]
-  const status = id ? ((await Store.exists(env, decodeURIComponent(id)).catch(() => true)) ? 200 : 404) : 200
+  const status = !rendered(url.pathname) ? 404 : id ? ((await Store.exists(env, decodeURIComponent(id)).catch(() => true)) ? 200 : 404) : 200
   return { response: new Response(readable, { headers: { 'cache-control': 'private, no-cache', 'content-type': 'text/html; charset=utf-8', link: '</fonts/ParadigmSerif-BetaRegular.woff2>; rel=preload; as=font; crossorigin' }, status }), whole }
 }

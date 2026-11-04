@@ -1,5 +1,6 @@
 import type { Overview, Summary } from '../shared/Api.ts'
 import { briefInstruction, open } from '../shared/ResearchBrief.ts'
+import * as Status from '../shared/Status.ts'
 
 const headers = {
   'cache-control': 'public, max-age=15',
@@ -126,9 +127,11 @@ const wallet = `<section class="view center" data-view="approve" hidden>
 export function start(origin: string, swarms: readonly Summary[] = [], request?: URL) {
   const title = 'Start a breakthrough, or be part of one'
   const description = 'Fund research an AI does in the open. Start one, or join one already running.'
-  const ideas = open(swarms).slice(0, 4)
-  const live = swarms.filter((item) => item.status !== 'done').sort((a, b) => Number(b.status === 'running') - Number(a.status === 'running') || b.updatedAt - a.updatedAt)
-  const running = live.filter((item) => item.status === 'running').length
+  const free = open(swarms)
+  const ideas = free.slice(0, 4)
+  const latest = Math.max(0, ...swarms.map((item) => item.updatedAt))
+  const live = Status.ranked(swarms.filter((item) => item.status !== 'done'), latest)
+  const counted = Status.count(swarms)
   const peekIdeas = ideas.slice(0, 4).map((item) => `<span class="chip"><i class="mark-idea"></i><b>${attribute(item.label)}</b></span>`).join('')
   const peekSwarms = live.slice(0, 4).map((item) => `<span class="chip"><i class="dot" data-status="${item.status}"></i><b>${attribute(item.title)}</b><em>${dollars(item.raised)}</em></span>`).join('')
   const rows = ideas
@@ -136,16 +139,16 @@ export function start(origin: string, swarms: readonly Summary[] = [], request?:
     .join('')
   const joins = live
     .slice(0, 6)
-    .map((item) => `<li><a class="row-item" href="/x/s/${encodeURIComponent(item.id)}"><i class="dot" data-status="${item.status}"></i><span>${attribute(item.title)}<small>${item.status === 'running' ? 'Live' : item.status === 'paused' ? 'Paused' : 'Not started'} · ${backers(item.contributors)}</small></span><em>${dollars(item.raised)}</em></a></li>`)
+    .map((item) => `<li><a class="row-item" href="/x/s/${encodeURIComponent(item.id)}"><i class="dot" data-status="${item.status}"></i><span>${attribute(item.title)}<small>${Status.word(item)} · ${backers(item.contributors)}</small></span><em>${dollars(item.raised)}</em></a></li>`)
     .join('')
   const content = `<section class="view doors" data-view="home">
     <button class="door door-start" data-open="start" type="button">
-      <span class="door-kicker">${ideas.length} ideas waiting</span>
+      <span class="door-kicker">${Status.ideas(free.length)}</span>
       <span class="door-title">Start a breakthrough <i>→</i></span>
       <span class="door-peek">${peekIdeas}</span>
     </button>
     <button class="door door-join" data-open="join" type="button">
-      <span class="door-kicker">${running ? `<i class="live"></i>${running} live now` : `${live.length} open`}</span>
+      <span class="door-kicker">${counted.running ? '<i class="live"></i>' : ''}${counted.text}</span>
       <span class="door-title">Be part of the future <i>→</i></span>
       <span class="door-peek">${peekSwarms || '<span class="chip">Nothing yet. Be the first.</span>'}</span>
     </button>
@@ -159,7 +162,7 @@ export function start(origin: string, swarms: readonly Summary[] = [], request?:
   </section>
   <section class="view" data-view="join" hidden>
     <header class="top"><button class="back" data-back type="button">←</button><h1>Be part of the future</h1></header>
-    ${joins ? `<ol class="list scroll">${joins}</ol>` : '<button class="empty" data-open="start" type="button">No swarms yet. <b>Start one →</b></button>'}
+    ${joins ? `<ol class="list scroll">${joins}</ol>` : '<button class="empty" data-open="start" type="button">No swarms yet. <b>Start a swarm →</b></button>'}
   </section>
   ${wallet}`
   return document(origin, '/x', title, description, content, { briefInstruction, ideas, kind: 'home', url: `${origin}/x` }, 200, request)
@@ -219,7 +222,7 @@ export function swarm(origin: string, value: Overview, request?: URL) {
 export function lost(origin: string, request?: URL) {
   const content = `<section class="view center" data-view="lost">
     <h2>This swarm drifted off.</h2>
-    <div class="row"><a class="go" href="/x">Start one</a><a class="ghost" href="/x?view=join">Join one</a></div>
+    <div class="row"><a class="go" href="/x?view=start">Start a swarm</a><a class="ghost" href="/x?view=join">Join a swarm</a></div>
   </section>`
   return document(origin, '/x', 'Swarms', 'Fund research an AI does in the open.', content, { kind: 'lost', url: `${origin}/x` }, 404, request)
 }
@@ -236,6 +239,7 @@ const styles = `
 *{box-sizing:border-box}html,body{height:100%;margin:0}
 body{background:#f6f8f2;color:#161616;font:15px/1.4 Georgia,'Times New Roman',serif;overflow:hidden;-webkit-font-smoothing:antialiased}
 button,input{font:inherit;color:inherit}a{color:inherit}
+:focus-visible{outline:2px solid #1a3d2c;outline-offset:2px}.door-join:focus-visible,.door-join :focus-visible,.go:focus-visible{outline-color:#6d8e52}
 .app{position:relative;height:100dvh;padding:16px;display:flex}
 .view{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;animation:in .18s ease-out}
 .view[hidden]{display:none}
@@ -421,9 +425,9 @@ if(frame.kind==='home'&&(demo||query.has('demo'))){
   const sample=[['running','Benchmark every open-weight coding model','9.04'],['running','Parse a terabyte of JSON in under a minute','4.20'],['paused','A field guide to DEX routing','2.75'],['funding','Speedrun nanoGPT on a T4','0.00']];
   const esc=text=>text.replace(/&/g,'&amp;').replace(/</g,'&lt;');
   document.querySelector('.door-join .door-peek').innerHTML=sample.map(([status,title,raised])=>'<span class="chip"><i class="dot" data-status="'+status+'"></i><b>'+esc(title)+'</b><em>$'+raised+'</em></span>').join('');
-  document.querySelector('.door-join .door-kicker').innerHTML='<i class="live"></i>2 live now';
+  document.querySelector('.door-join .door-kicker').innerHTML='<i class="live"></i>2 running';
   const join=document.querySelector('[data-view=join]');join.querySelector('.empty,.list')?.remove();
-  join.insertAdjacentHTML('beforeend','<ol class="list scroll">'+sample.map(([status,title,raised])=>'<li><a class="row-item" href="#"><i class="dot" data-status="'+status+'"></i><span>'+esc(title)+'<small>'+(status==='running'?'Live':status==='paused'?'Paused':'Not started')+' · '+(3+title.length%7)+' backers</small></span><em>$'+raised+'</em></a></li>').join('')+'</ol>');
+  join.insertAdjacentHTML('beforeend','<ol class="list scroll">'+sample.map(([status,title,raised])=>'<li><a class="row-item" href="#"><i class="dot" data-status="'+status+'"></i><span>'+esc(title)+'<small>'+(status==='running'?'Running':status==='paused'?'Resting':'Not started')+' · '+(3+title.length%7)+' backers</small></span><em>$'+raised+'</em></a></li>').join('')+'</ol>');
 }
 if(frame.kind==='home'){
   const custom=document.getElementById('custom'),ideas=[...document.querySelectorAll('[data-idea]')],go=document.querySelector('[data-view=start] [data-go]');

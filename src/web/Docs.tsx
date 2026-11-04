@@ -98,13 +98,11 @@ export function Code(props: { children: string; label?: string }) {
   )
 }
 
-function Section(props: { children: ReactNode; id: string; index: string; intro: ReactNode; title: string }) {
+function Section(props: { children: ReactNode; id: string; intro: ReactNode; title: string }) {
   return (
     <section className="grid block docs-section" id={props.id}>
       <div className="docs-side">
-        <h2 className="block-head">
-          <span className="index">[{props.index}]</span> {props.title}
-        </h2>
+        <h2 className="block-head">{props.title}</h2>
         <div className="docs-intro-text">{props.intro}</div>
       </div>
       <div className="docs-main">{props.children}</div>
@@ -119,9 +117,7 @@ export function Docs(props: { config: Config | undefined }) {
     <div className="page docs">
       <section className="grid docs-top">
         <div className="docs-hero">
-          <p className="label">
-            <span className="index">[D]</span> Developers
-          </p>
+          <p className="label">Developers</p>
           <h1 className="display">Use swarms from code</h1>
           <p className="lead">
             Everything on this site is a public REST API and an MCP server. Reading is free and needs no account: list the swarms, read their answers and every update, follow the transcript live and search what they found. Funding goes through Tempo Wallet: pledges on any device, transfers and monthly budgets from your wallet.
@@ -142,7 +138,6 @@ export function Docs(props: { config: Config | undefined }) {
 
       <Section
         id="mcp"
-        index="1"
         intro={
           <>
             <p>Add the server to your agent and ask it anything about the swarms: what they found, how much it cost, which machines they ran, what the notes asked for. Your agent's model answers by calling the tools, so the server spends nothing.</p>
@@ -187,7 +182,6 @@ export function Docs(props: { config: Config | undefined }) {
 
       <Section
         id="rest"
-        index="2"
         intro={
           <>
             <p>
@@ -228,7 +222,6 @@ export function Docs(props: { config: Config | undefined }) {
 
       <Section
         id="pledge"
-        index="3"
         intro={
           <>
             <p>
@@ -261,14 +254,13 @@ export function Docs(props: { config: Config | undefined }) {
         <Code>{`curl -s ${origin}/v1/swarms/<id>/contributions -H 'content-type: application/json' \\\n  -d '{"hash":"0x…","note":"Add HTTP/2"}'`}</Code>
         <h3 className="docs-head">Monthly budget</h3>
         <p className="docs-text">
-          Request one with a <code>token</code> and an <code>amount</code> per 30 days (the first is pulled as soon as it is approved), pass its <code>authorizeAccessKey</code> to <code>wallet_connect</code> and post the <code>keyAuthorization</code> to <code>/v1/swarms/:id/budgets/:budget</code>. The key can only send that token to the swarm's wallet, up to the amount a day, for 30 days.
+          Request one with a <code>token</code> and an <code>amount</code> per 30 days (the first is pulled as soon as it is approved), pass its <code>authorizeAccessKey</code> to <code>wallet_connect</code> and post the <code>keyAuthorization</code> to <code>/v1/swarms/:id/budgets/:budget</code>. The key can only send that token to the swarm's wallet, up to the amount every 30 days, for a year, until it is revoked in Tempo Wallet.
         </p>
         <Code>{`curl -s ${origin}/v1/swarms/<id>/budgets -H 'content-type: application/json' \\\n  -d '{"token":"usdce","amount":"1","note":"Add HTTP/2"}'`}</Code>
       </Section>
 
       <Section
         id="hands"
-        index="4"
         intro={
           <>
             <p>
@@ -299,7 +291,6 @@ export function Docs(props: { config: Config | undefined }) {
 
       <Section
         id="room"
-        index="5"
         intro={
           <>
             <p>
@@ -323,7 +314,7 @@ export function Docs(props: { config: Config | undefined }) {
         </p>
       </Section>
 
-      <Section id="errors" index="6" intro={<p>Every error is problem JSON: {'{ code, detail, status }'}. Branch on code; detail is for people.</p>} title="Errors">
+      <Section id="errors" intro={<p>Every error is problem JSON: {'{ code, detail, status }'}. Branch on code; detail is for people.</p>} title="Errors">
         <table className="docs-table">
           <tbody>
             {codes.map((code) => (

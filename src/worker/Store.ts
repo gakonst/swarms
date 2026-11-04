@@ -152,7 +152,7 @@ export function summary(row: Row): Summary {
 
 export async function list(env: Cloudflare.Env, status?: Summary['status']) {
   const { results } = await env.DB.prepare(
-    `select * from (${totals}) where (raised > 0 or daily > 0)${status ? ' and status = ?' : ''} order by updated_at desc limit 100`,
+    `select * from (${totals}) where hidden = 0 and (raised > 0 or daily > 0)${status ? ' and status = ?' : ''} order by updated_at desc limit 100`,
   )
     .bind(...(status ? [status] : []))
     .all<Row>()
