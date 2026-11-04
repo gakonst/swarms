@@ -72,13 +72,14 @@ export function New(props: { config: Config | undefined }) {
                         <label className="tile-edit-label" htmlFor={`brief-${item.id}`}>The brief, yours to edit</label>
                         <textarea id={`brief-${item.id}`} maxLength={2000} onChange={(event) => setGoal(event.target.value)} rows={6} value={goal} />
                         <button className="btn btn-high quest-next" disabled={goal.trim().length < 10} onClick={() => setStage(1)} type="button">Next <span aria-hidden="true">→</span></button>
+                        {goal.trim().length < 10 && <span className="tile-why">The brief needs at least 10 characters.</span>}
                       </span>
                     </div>
                   )}
                 </li>
               )
             })}
-            {free.length > 6 && <li><button className="tile-swarm tile-quiet" onClick={() => { setPage(page + 1); setPeek(undefined) }} type="button"><i className="tile-mark" data-tone="more" /><span className="tile-title">More ideas</span><span className="tile-raised">↻</span></button></li>}
+            {free.length > 6 && <li><button className="tile-swarm tile-more-ideas" onClick={() => { setPage(page + 1); setPeek(undefined) }} type="button"><i className="tile-mark" data-tone="more" /><span className="tile-title">More ideas</span><span className="tile-raised">↻</span></button></li>}
             <li data-open={peek === 'own'}>
               {peek === 'own' ? (
                 <div className="tile-swarm tile-own">
@@ -86,7 +87,8 @@ export function New(props: { config: Config | undefined }) {
                   <label className="tile-title" htmlFor="question">Your own idea</label>
                   <span className="tile-more">
                     <textarea autoFocus id="question" maxLength={1000} onChange={(event) => { setQuestion(event.target.value); setTitle(''); setGoal(''); setProblem(undefined) }} placeholder="What should we crack?" rows={3} value={question} />
-                    <button className="btn btn-high quest-next" disabled={!questionReady} type="submit">Next <span aria-hidden="true">→</span></button>
+                    <button aria-describedby={questionReady ? undefined : 'question-why'} className="btn btn-high quest-next" disabled={!questionReady} type="submit">Next <span aria-hidden="true">→</span></button>
+                    {!questionReady && <span className="tile-why" id="question-why">{question.trim().length === 0 ? 'Say what to crack in at least 10 characters.' : `${10 - question.trim().length} more character${10 - question.trim().length === 1 ? '' : 's'} to go.`}</span>}
                   </span>
                 </div>
               ) : (

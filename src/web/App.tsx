@@ -79,12 +79,12 @@ function WalletButton(props: { config: Config | undefined }) {
     <button
       className="btn btn-medium wallet"
       onClick={() => {
-        if (props.config) Wallet.connect(props.config).then(() => setError(undefined), (reason: unknown) => setError(message(reason)))
+        if (props.config) Wallet.signIn(props.config).then(() => setError(undefined), (reason: unknown) => setError(message(reason)))
       }}
-      title={error ?? 'Connect Tempo Wallet'}
+      title={error ?? 'Sign in with Tempo Wallet to post in rooms and see your balance'}
       type="button"
     >
-      Connect
+      Sign in
     </button>
   )
 }
@@ -114,7 +114,7 @@ export function App() {
   const code = /^\/s\/([^/]+)\/code\/?$/.exec(path)?.[1]
 
   useEffect(() => {
-    if (!swarm && !code) document.title = path === '/new' ? 'Start a breakthrough · Swarms' : path === '/join' ? 'Be part of the future · Swarms' : path === '/about' ? 'About · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : 'Swarms · Fund breakthroughs'
+    if (!swarm && !code && path !== '/board') document.title = path === '/new' ? 'Start a breakthrough · Swarms' : path === '/join' ? 'Be part of the future · Swarms' : path === '/about' ? 'About · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/' ? 'Swarms · Fund breakthroughs' : 'Not found · Swarms'
   }, [path, swarm, code])
 
   useEffect(() => {
@@ -158,8 +158,8 @@ export function App() {
           <Swarm config={config} id={decodeURIComponent(swarm)} key={swarm} />
         ) : (
           <Lost title="Nothing out here.">
-            <Link className="lost-row" to="/join">Join one <span aria-hidden="true">→</span></Link>
-            <Link className="lost-row" to="/new">Start one <span aria-hidden="true">→</span></Link>
+            <Link className="lost-row" to="/new">Start a swarm <span aria-hidden="true">→</span></Link>
+            <Link className="lost-row" to="/join">Join a swarm <span aria-hidden="true">→</span></Link>
           </Lost>
         )}
         </Suspense>
