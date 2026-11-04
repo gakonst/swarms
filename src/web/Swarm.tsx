@@ -158,8 +158,8 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
     return detail.error ? (
       <Lost title={/no swarm/i.test(detail.error) ? 'This swarm drifted off.' : "Can't reach Swarms."}>
         {!/no swarm/i.test(detail.error) && <button className="lost-row" onClick={() => location.reload()} type="button">Try again <span aria-hidden="true">↻</span></button>}
-        <Link className="lost-row" to="/join">Join one <span aria-hidden="true">→</span></Link>
-        <Link className="lost-row" to="/new">Start one <span aria-hidden="true">→</span></Link>
+        <Link className="lost-row" to="/new">Start a swarm <span aria-hidden="true">→</span></Link>
+        <Link className="lost-row" to="/join">Join a swarm <span aria-hidden="true">→</span></Link>
       </Lost>
     ) : (
       <section className="page lost" aria-busy="true"><span className="lost-orbit" aria-hidden="true"><i /><i /><i /></span></section>
