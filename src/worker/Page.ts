@@ -1,12 +1,17 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { render } from '#ssr'
 import type { Boot, Face } from '../shared/Boot.ts'
+import * as Edge from './Edge.ts'
 import * as Operations from './Operations.ts'
 import * as Store from './Store.ts'
 
 const store = new AsyncLocalStorage<Boot>()
 
 globalThis.__swarmsServer = { boot: () => store.getStore() }
+
+const firstFeed = 30
+
+const firstChat = 30
 
 const listed = new Set(['/', '/join', '/new', '/about', '/docs'])
 
@@ -80,20 +85,20 @@ function within<T>(work: Promise<T>, ms: number) {
 
 type Head = { description: string; image: string; player?: string; title: string }
 
-async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<string, unknown>; head: Head; status: number }> {
+async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
   const path = url.pathname.replace(/\/$/, '') || '/'
   const head: Head = { description: 'Fund research breakthroughs. Start or back AI research swarms, watch them work live and steer them together.', image: `${url.origin}/xframe-card.jpg?v=2`, title: 'Swarms · Fund breakthroughs' }
   const data: Record<string, unknown> = {}
   if (path === '/' || path === '/join' || path === '/new') {
     const list = await within(Operations.list(env, {}), 1500)
-    if (list?.ok) data['swarms'] = list.value
+    if (list?.ok) data['swarms'] = Operations.listed(list.value)
     if (path === '/join') head.title = 'Be part of the future · Swarms'
     if (path === '/new') head.title = 'Start a breakthrough · Swarms'
     head.player = `${url.origin}/x${path === '/join' ? '?view=join' : path === '/new' ? '?view=start' : ''}`
-    return { data, head, status: 200 }
+    return { data, head, status: 200, whole: !!list?.ok }
   }
-  if (path === '/about') return { data, head: { ...head, title: 'About · Swarms' }, status: 200 }
-  if (path === '/docs') return { data, head: { ...head, title: 'API and MCP · Swarms' }, status: 200 }
+  if (path === '/about') return { data, head: { ...head, title: 'About · Swarms' }, status: 200, whole: true }
+  if (path === '/docs') return { data, head: { ...head, title: 'API and MCP · Swarms' }, status: 200, whole: true }
   const [, raw = '', browsing] = /^\/s\/([^/]+)(\/code)?$/.exec(path) ?? []
   const id = decodeURIComponent(raw)
   const [detail, room, code] = await Promise.all([
@@ -101,19 +106,20 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
     browsing ? undefined : within(Operations.room(env, { swarm: id }), 2500),
     browsing ? within(Operations.code(env, { swarm: id }), 2500) : undefined,
   ])
-  if (!detail) return { data, head, status: 200 }
+  if (!detail) return { data, head, status: 200, whole: false }
   if (!detail.ok) {
     data[`!${id}`] = detail.detail
-    return { data, head: { ...head, title: 'Not found · Swarms' }, status: detail.status === 404 ? 404 : 200 }
+    return { data, head: { ...head, title: 'Not found · Swarms' }, status: detail.status === 404 ? 404 : 200, whole: false }
   }
-  data[id] = detail.value
-  if (room?.ok) data[`room:${id}`] = room.value
+  data[id] = { ...detail.value, feed: browsing ? [] : detail.value.feed.slice(-firstFeed), updates: detail.value.updates.filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) }
+  if (room?.ok) data[`room:${id}`] = { ...room.value, messages: room.value.messages.slice(-firstChat) }
   if (code?.ok && code.value.snapshot) data[`code:${id}`] = code.value.snapshot
   const latest = detail.value.answer?.text
   return {
     data,
     head: { description: (latest ?? detail.value.goal).replace(/\s+/g, ' ').slice(0, 200), image: head.image, player: `${url.origin}/x/s/${encodeURIComponent(id)}`, title: `${browsing ? 'Code · ' : ''}${detail.value.title} · Swarms` },
     status: 200,
+    whole: browsing ? !!code?.ok : !!room?.ok,
   }
 }
 
@@ -132,10 +138,19 @@ function meta(head: Head, url: URL) {
   return tags.join('')
 }
 
-export async function page(request: Request, env: Cloudflare.Env) {
+export function page(request: Request, env: Cloudflare.Env) {
+  const cookie = request.headers.get('cookie')
+  return Edge.page(request, `${mobile(request) ? 'm' : 'd'}|${zone(cookie) ?? ''}`, (given) => draw(given, env))
+}
+
+function mobile(request: Request) {
+  return /Mobi|Android|iPhone|iPad/i.test(request.headers.get('user-agent') ?? '')
+}
+
+async function draw(request: Request, env: Cloudflare.Env) {
   const url = new URL(request.url)
   const html = await shell(env, url.origin)
-  if (url.searchParams.has('fixture') || url.searchParams.has('scene')) return new Response(html.replace('</head>', '<title>Swarms</title></head>'), { headers: { 'cache-control': 'no-store', 'content-type': 'text/html; charset=utf-8' } })
+  if (url.searchParams.has('fixture') || url.searchParams.has('scene')) return { response: new Response(html.replace('</head>', '<title>Swarms</title></head>'), { headers: { 'cache-control': 'no-store', 'content-type': 'text/html; charset=utf-8' } }), whole: Promise.resolve(false) }
   const [before = '', after = ''] = html.split('<div id="root"></div>')
   const encoder = new TextEncoder()
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
@@ -148,8 +163,8 @@ export async function page(request: Request, env: Cloudflare.Env) {
   void writer.write(encoder.encode(opening + hinted.map((file) => `<link rel="modulepreload" crossorigin href="/${file}">`).join('')))
 
   const work = (async () => {
-    const { data, head, status } = await gathering
-    const boot: Boot = { config: Operations.config(env), data, face: face(request.headers.get('cookie')), mobile: /Mobi|Android|iPhone|iPad/i.test(request.headers.get('user-agent') ?? ''), now: Date.now(), url: url.href, zone: zone(request.headers.get('cookie')) }
+    const { data, head, whole } = await gathering
+    const boot: Boot = { config: Operations.config(env), data, face: face(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), url: url.href, zone: zone(request.headers.get('cookie')) }
     await writer.write(encoder.encode(`<title>${escape(head.title)}</title><meta name="description" content="${escape(head.description)}">${meta(head, url)}${closing}<div id="root">`))
     try {
       const stream = await store.run(boot, () => render(request.signal))
@@ -161,13 +176,17 @@ export async function page(request: Request, env: Cloudflare.Env) {
       }
     } catch (error) {
       console.error('Server render failed', error)
+      return false
     }
     await writer.write(encoder.encode(`</div><script>window.__SWARMS_BOOT__=${json(boot)}</script>${after}`))
     await writer.close()
-    return status
+    return whole
   })()
-  work.catch(() => writer.abort().catch(() => {}))
+  const whole = work.catch(() => {
+    void writer.abort().catch(() => {})
+    return false
+  })
   const id = /^\/s\/([^/]+)/.exec(url.pathname)?.[1]
   const status = id ? ((await Store.exists(env, decodeURIComponent(id)).catch(() => true)) ? 200 : 404) : 200
-  return new Response(readable, { headers: { 'cache-control': 'private, no-cache', 'content-type': 'text/html; charset=utf-8', link: '</fonts/ParadigmSerif-BetaRegular.woff2>; rel=preload; as=font; crossorigin' }, status })
+  return { response: new Response(readable, { headers: { 'cache-control': 'private, no-cache', 'content-type': 'text/html; charset=utf-8', link: '</fonts/ParadigmSerif-BetaRegular.woff2>; rel=preload; as=font; crossorigin' }, status }), whole }
 }

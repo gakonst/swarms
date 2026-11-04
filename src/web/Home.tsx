@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { ago, usd } from './format.ts'
@@ -28,10 +29,6 @@ const fits: Record<Filter, (swarm: Summary) => boolean> = {
   resting: (swarm) => swarm.status !== 'running' && fueled(swarm),
 }
 
-function gist(text: string) {
-  return text.split('\n').map((line) => line.replace(/[#*_`>|]/g, '').trim()).find((line) => line.length > 20 && !/^[-: ]+$/.test(line)) ?? ''
-}
-
 function sorted(swarms: readonly Summary[] | undefined) {
   return [...(swarms ?? [])].sort((a, b) => order[a.status] - order[b.status] || b.createdAt - a.createdAt)
 }
@@ -48,7 +45,7 @@ function Tile(props: { onPick: () => void; open: boolean; swarm: Summary }) {
         {props.open && (
           <span className="tile-more">
             <span className="tile-goal">{swarm.goal}</span>
-            {swarm.answer && gist(swarm.answer.text) && <span className="tile-answer">{gist(swarm.answer.text)}</span>}
+            {swarm.answer && Answer.gist(swarm.answer.text) && <span className="tile-answer">{Answer.gist(swarm.answer.text)}</span>}
             <span className="tile-facts">
               <span><b>{usd(swarm.remaining)}</b> left</span>
               <span><b>{swarm.contributors}</b> backer{swarm.contributors === 1 ? '' : 's'}</span>

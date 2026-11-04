@@ -139,7 +139,8 @@ export function usePoll<T>(load: () => Promise<T>, ms: number | ((data: T | unde
     const wait = (data: T | undefined) => (typeof pace.current === 'number' ? pace.current : pace.current(data))
     if (warm.current) {
       warm.current = false
-      timer = setTimeout(() => void run(), wait(held.current.data))
+      const pace = wait(held.current.data)
+      timer = setTimeout(() => void run(), Math.min(pace, Math.max(0, pace - (Date.now() - (boot()?.now ?? Date.now())))))
     } else void run()
     return () => {
       alive = false

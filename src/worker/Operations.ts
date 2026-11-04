@@ -364,6 +364,10 @@ export async function list(env: Cloudflare.Env, input: Input<'list'>): Promise<P
   return Problem.ok({ swarms: await Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row))) })
 }
 
+export function listed(value: { swarms: Summary[] }) {
+  return { swarms: value.swarms.map((swarm) => (swarm.answer ? { ...swarm, answer: { ...swarm.answer, text: Answer.lead(swarm.answer.text) } } : swarm)) }
+}
+
 export async function create(env: Cloudflare.Env, input: Input<'create'>): Promise<Problem.Result<Summary>> {
   const parsed = parse(schema.create, input)
   if (!parsed.ok) return parsed

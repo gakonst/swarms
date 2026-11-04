@@ -30,3 +30,21 @@ export function excerpt(text: string, length = 220) {
     .join(' ')
   return plain.length > length ? plain.slice(0, length - 1).trimEnd() + '…' : plain
 }
+
+function plain(line: string) {
+  return line.replace(/[#*_`>|]/g, '').trim()
+}
+
+function telling(line: string) {
+  return line.length > 20 && !/^[-: ]+$/.test(line)
+}
+
+export function gist(text: string) {
+  return text.split('\n').map(plain).find(telling) ?? ''
+}
+
+export function lead(text: string) {
+  const lines = text.split('\n')
+  const found = lines.findIndex((line) => telling(plain(line)))
+  return found < 0 ? '' : lines.slice(0, found + 1).join('\n')
+}

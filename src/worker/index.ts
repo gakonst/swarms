@@ -48,18 +48,22 @@ app.get('*', async (c, next) => {
   return Page.page(c.req.raw, c.env)
 })
 
-app.get('/x', async (c) => {
-  const listed = await Operations.list(c.env, {}).catch(() => undefined)
-  return XFrames.start(new URL(c.req.url).origin, listed?.ok ? listed.value.swarms : [], new URL(c.req.url))
-})
+app.get('/x', (c) =>
+  Edge.page(c.req.raw, '', async (request) => {
+    const listed = await Operations.list(c.env, {}).catch(() => undefined)
+    return { response: XFrames.start(new URL(request.url).origin, listed?.ok ? listed.value.swarms : [], new URL(request.url)), whole: Promise.resolve(!!listed?.ok) }
+  }),
+)
 
 app.get('/x/card.svg', (c) => XFrames.card(c.req.query('title') ?? 'Fund a research swarm'))
 
-app.get('/x/s/:id', async (c) => {
-  const result = await Operations.get(c.env, { swarm: c.req.param('id') })
-  const url = new URL(c.req.url)
-  return result.ok ? XFrames.swarm(url.origin, result.value, url) : result.status === 404 ? XFrames.lost(url.origin, url) : Problem.json(result)
-})
+app.get('/x/s/:id', (c) =>
+  Edge.page(c.req.raw, '', async (request) => {
+    const result = await Operations.get(c.env, { swarm: c.req.param('id') })
+    const url = new URL(request.url)
+    return { response: result.ok ? XFrames.swarm(url.origin, result.value, url) : result.status === 404 ? XFrames.lost(url.origin, url) : Problem.json(result), whole: Promise.resolve(result.ok) }
+  }),
+)
 
 app.get('/a/:id/:slug', (c) => c.redirect(`${new URL(c.req.url).pathname}/`, 301))
 
@@ -85,7 +89,10 @@ app.get('/api/me', async (c) => Problem.respond(await Operations.account(c.env, 
 
 app.post('/api/me', async (c) => Problem.respond(await Operations.rename(c.env, await Rest.body(c.req.raw), await Sessions.who(c.env, c.req.raw))))
 
-app.get('/api/swarms', async (c) => Problem.respond(await Operations.list(c.env, {})))
+app.get('/api/swarms', async (c) => {
+  const listed = await Operations.list(c.env, {})
+  return Problem.respond(listed.ok ? Problem.ok(Operations.listed(listed.value)) : listed)
+})
 
 app.post('/api/swarms', async (c) => Problem.respond(await Operations.create(c.env, await Rest.body(c.req.raw)), 201))
 
