@@ -13,6 +13,8 @@ import { clock, usd } from './format.ts'
 import { agent, type Live, message, speaker, type Stream, useWallet } from './hooks.ts'
 import * as Wallet from './wallet.ts'
 import { Markdown } from './Markdown.tsx'
+import { key, named, trouble } from '../shared/Trail.ts'
+import { useStanding } from './Visual.tsx'
 
 const palette = ['#3f7d4e', '#8a5a2b', '#3d6a8f', '#8c3f5e', '#6b6a1f', '#5b4b8a', '#a0522d', '#2f7f7a']
 
@@ -34,26 +36,87 @@ function now(stream: Stream | undefined) {
   return undefined
 }
 
-const Beat = pure(function Beat(props: { entry: Entry; head: boolean; times?: number | undefined }) {
+type Step = { at: number; entry: Entry; failed: boolean; label: string; output: Entry | null }
+
+const Who = (props: { who: string | null }) => {
+  const who = speaker(props.who)
+  return <li className="beat-head"><span className="beat-who" style={{ color: hue(who) }}>{who === agent ? 'Agent' : props.who}</span></li>
+}
+
+function Chevron() {
+  return <span aria-hidden="true" className="beat-chevron">›</span>
+}
+
+const Tool = pure(function Tool(props: { step: Step }) {
+  const [open, setOpen] = useState(false)
+  const step = props.step
+  const input = step.entry.detail && step.entry.detail !== step.entry.text ? step.entry.detail : null
+  const said = step.output?.detail ?? null
+  const status = step.output && step.output.kind === 'output' ? step.output.text.replace(/^.*? output/, '').replace(/^ · /, '') : ''
+  return (
+    <li className="beat beat-step" data-failed={step.failed} data-fresh={step.entry.seq === 0} data-open={open} title={clock(step.at)}>
+      <button aria-expanded={open} className="beat-step-row" onClick={() => setOpen(!open)} type="button">
+        <Chevron />
+        <span className="beat-step-name">{step.label}</span>
+        {step.failed ? <span className="beat-step-bad">failed</span> : status && <span className="beat-step-note">{status}</span>}
+      </button>
+      {open && (
+        <div className="beat-detail">
+          <pre>{step.entry.text.startsWith('$ ') ? step.entry.text : input ?? step.entry.text}</pre>
+          {said && <pre className="beat-detail-out">{said}</pre>}
+        </div>
+      )}
+    </li>
+  )
+})
+
+const Steps = pure(function Steps(props: { steps: readonly Step[] }) {
+  const [open, setOpen] = useState(false)
+  const failed = props.steps.filter((step) => step.failed).length
+  const last = props.steps.at(-1)
+  return (
+    <li className="beat beat-steps" data-open={open}>
+      <button aria-expanded={open} className="beat-step-row beat-steps-row" onClick={() => setOpen(!open)} type="button">
+        <Chevron />
+        <span className="beat-step-name">{props.steps.length} steps</span>
+        {failed > 0 && <span className="beat-step-bad">{failed} failed</span>}
+        {!open && last && <span className="beat-step-note">last: {last.label}</span>}
+      </button>
+      {open && <ol className="beat-steps-list">{props.steps.map((step) => <Tool key={key(step.entry)} step={step} />)}</ol>}
+    </li>
+  )
+})
+
+const Beat = pure(function Beat(props: { entry: Entry; onFund: (() => void) | undefined; times?: number | undefined }) {
   const [open, setOpen] = useState(false)
   const entry = props.entry
-  const who = speaker(entry.who)
   const detail = entry.detail && entry.detail !== entry.text ? entry.detail : null
-  const quiet = entry.kind === 'tool' || entry.kind === 'output'
   const aside = entry.kind === 'status' || entry.kind === 'funds' || entry.kind === 'machine' || entry.kind === 'steer'
-  const long = entry.kind === 'message' ? entry.text.length > 700 || entry.text.split('\n').length > 10 : entry.kind === 'thinking' ? entry.text.length > 180 : !!detail
+  const problem = entry.kind === 'error' ? trouble(entry) : null
+  const text = problem ? problem.text : aside ? (Answer.spoken(entry.text) ?? entry.text) : entry.text
+  const long = entry.kind === 'message' ? entry.text.length > 700 || entry.text.split('\n').length > 10 : entry.kind === 'thinking' ? entry.text.length > 180 : !!detail || (!!problem && text !== entry.text)
   const toggle = long ? () => setOpen(!open) : undefined
   return (
     <li className="beat" data-fresh={entry.seq === 0} data-kind={entry.kind} data-open={open} data-more={long} onClick={toggle} title={clock(entry.at)}>
-      {props.head && !aside && (
-        <span className="beat-who" style={{ color: hue(who) }}>{who === agent ? 'Agent' : entry.who}</span>
-      )}
       {entry.kind === 'message' ? (
         <div className="beat-say"><Markdown text={Answer.unround(entry.text)} /></div>
       ) : (
-        <p className="beat-text">{quiet && <span aria-hidden="true" className="beat-mark">›</span>}{entry.text}{props.times && <span className="beat-times"> ×{props.times}</span>}</p>
+        <p className="beat-text">
+          {problem && long && <Chevron />}
+          {text}
+          {props.times && <span className="beat-times"> · {props.times} times</span>}
+          {problem?.money && props.onFund && (
+            <button className="beat-fund" onClick={(event) => { event.stopPropagation(); props.onFund?.() }} type="button">Fund →</button>
+          )}
+        </p>
       )}
-      {(quiet || entry.kind === 'error') && open && detail && <pre className="beat-detail">{detail}</pre>}
+      {problem && open && (
+        <details className="beat-raw" onClick={(event) => event.stopPropagation()} open>
+          <summary>What the system said</summary>
+          <pre>{[entry.text, detail].filter(Boolean).join('\n\n')}</pre>
+        </details>
+      )}
+      {!problem && entry.kind === 'output' && open && detail && <pre className="beat-detail">{detail}</pre>}
     </li>
   )
 })
@@ -66,6 +129,83 @@ const Voice = pure(function Voice(props: { item: Said; name: string; onBack: ((n
     </li>
   )
 })
+
+function failure(text: string) {
+  return /^[a-z][a-z0-9_]* failed$/.test(text)
+}
+
+function settled(text: string) {
+  const said = Answer.spoken(text)
+  return said === null || /^(Out of money|Stopped after|Resting|Not started|Open again)/.test(said)
+}
+
+type Row = { at: number; entry: Entry } | { at: number; step: Step } | { at: number; steps: Step[] } | { at: number; said: Said } | { at: number; backed: Backed }
+
+function fold(entries: readonly Entry[]): Row[] {
+  const rows: Row[] = []
+  const open = new Map<string, Step>()
+  for (const entry of entries) {
+    const who = entry.who ?? ''
+    if (entry.kind === 'tool') {
+      const step: Step = { at: entry.at, entry, failed: false, label: named(entry), output: null }
+      open.set(who, step)
+      rows.push({ at: entry.at, step })
+      continue
+    }
+    const pending = open.get(who)
+    const result = entry.kind === 'output' && / output( · .*)?$/.test(entry.text)
+    const broke = entry.kind === 'error' && failure(entry.text)
+    if (pending && !pending.output && (result || broke)) {
+      pending.output = entry
+      pending.failed = broke || / · exit /.test(entry.text)
+      open.delete(who)
+      continue
+    }
+    if (result) {
+      rows.push({ at: entry.at, step: { at: entry.at, entry, failed: false, label: entry.text, output: null } })
+      continue
+    }
+    if (entry.kind !== 'thinking') open.delete(who)
+    rows.push({ at: entry.at, entry })
+  }
+  return rows
+}
+
+function grouped(rows: readonly Row[]): Row[] {
+  const out: Row[] = []
+  let run: Step[] = []
+  const flush = () => {
+    if (run.length >= 3) out.push({ at: run[0]?.at ?? 0, steps: run })
+    else for (const step of run) out.push({ at: step.at, step })
+    run = []
+  }
+  for (const row of rows) {
+    if ('step' in row && (run.length === 0 || run[0]?.entry.who === row.step.entry.who)) {
+      run.push(row.step)
+      continue
+    }
+    flush()
+    if ('step' in row) run.push(row.step)
+    else out.push(row)
+  }
+  flush()
+  return out
+}
+
+function voiced(row: Row | undefined) {
+  if (!row) return undefined
+  if ('steps' in row) return speaker(row.steps[0]?.entry.who ?? null)
+  if ('step' in row) return speaker(row.step.entry.who)
+  if ('entry' in row) return ['status', 'funds', 'machine', 'steer'].includes(row.entry.kind) ? undefined : speaker(row.entry.who)
+  return undefined
+}
+
+function rowKey(row: Row) {
+  if ('steps' in row) return `g${key(row.steps[0]?.entry ?? { event: null, kind: 'tool', seq: 0 })}`
+  if ('step' in row) return key(row.step.entry)
+  if ('entry' in row) return key(row.entry)
+  return ''
+}
 
 type Backed = { amount: string; at: number; id: string; monthly: boolean; note: string | null; who: string }
 
@@ -143,19 +283,21 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
   if (!wallet.session)
     return (
       <div className="say say-gate">
-        <button
-          className="say-cta"
-          disabled={!!busy || !props.config}
-          onClick={() => {
-            if (!props.config) return
-            setBusy('Approve in Tempo Wallet…')
-            void Wallet.signIn(props.config).catch((reason: unknown) => setError(message(reason))).finally(() => setBusy(undefined))
-          }}
-          type="button"
-        >
-          <span>Steer the agent</span>
-          <b>{busy ?? 'Sign in →'}</b>
-        </button>
+        <div className="room-cta">
+          <button
+            className="room-cta-main"
+            disabled={!!busy || !props.config}
+            onClick={() => {
+              if (!props.config) return
+              setBusy('Approve in Tempo Wallet…')
+              void Wallet.signIn(props.config).catch((reason: unknown) => setError(message(reason))).finally(() => setBusy(undefined))
+            }}
+            type="button"
+          >
+            {busy ?? 'Sign in to steer the agent'}
+          </button>
+          <button className="room-cta-side" onClick={() => props.onFund()} type="button">Fund to steer</button>
+        </div>
         {error && <Alert title={explain(error).title} tone="bad">{explain(error).detail}</Alert>}
       </div>
     )
@@ -235,25 +377,29 @@ export function Transcript(props: {
     const counts = new Map<Entry, number>()
     let burst = new Map<string, Entry>()
     for (const entry of props.entries) {
-      if (entry.kind === 'funds' || (entry.kind === 'status' && /^Round \d+ /.test(entry.text)) || (who !== 'all' && speaker(entry.who) !== who)) continue
-      if (entry.kind !== 'error') burst = new Map()
-      const first = entry.kind === 'error' ? burst.get(entry.text) : undefined
+      if (entry.kind === 'funds' || (who !== 'all' && speaker(entry.who) !== who)) continue
+      if (entry.kind === 'status' && settled(entry.text)) continue
+      const tool = entry.kind === 'error' && failure(entry.text)
+      if (entry.kind !== 'error' || tool) burst = new Map()
+      const said = entry.kind === 'error' && !tool ? trouble(entry).text : undefined
+      const first = said ? burst.get(said) : undefined
       if (first) {
         counts.set(first, (counts.get(first) ?? 1) + 1)
         continue
       }
-      if (entry.kind === 'error') burst.set(entry.text, entry)
+      if (said) burst.set(said, entry)
       kept.push(entry)
     }
     return [kept, counts] as const
   }, [props.entries, who])
+  const stood = useStanding(swarm)
   const streaming = Object.entries(props.live.streams)
     .map(([name, stream]) => ({ name, now: now(stream), stream }))
     .filter((item) => item.now && streamed && (who === 'all' || who === item.name))
     .sort((a, b) => (a.name === agent ? -1 : b.name === agent ? 1 : b.stream.at - a.stream.at))
   const voices = useMemo(() => (who === 'all' ? props.said.filter((item) => item.author && Mention.steers(item.text)) : []), [props.said, who])
   const funded = useMemo(() => (who === 'all' ? backings(swarm) : []), [swarm, who])
-  const rows = useMemo(() => [...shown.map((entry) => ({ at: entry.at, entry })), ...voices.map((said) => ({ at: said.at, said })), ...funded.map((backed) => ({ at: backed.at, backed }))].sort((a, b) => a.at - b.at), [shown, voices, funded])
+  const rows = useMemo(() => grouped([...fold(shown), ...voices.map((said) => ({ at: said.at, said })), ...funded.map((backed) => ({ at: backed.at, backed }))].sort((a, b) => a.at - b.at)), [shown, voices, funded])
   const last = shown.at(-1)
   const first = shown.find((entry) => entry.seq > 0)
 
@@ -310,13 +456,21 @@ export function Transcript(props: {
     })
   }
 
-  if (!props.entries.length && !working)
+  const unfunded = Number(swarm.raised) <= 0 && !working && !shown.some((entry) => entry.kind !== 'status')
+  if ((!props.entries.length && !working) || unfunded)
     return (
       <section aria-label="Transcript" className="transcript transcript-empty">
-        <button className="transcript-start" disabled={!props.onEmpty} onClick={props.onEmpty} type="button">
-          <h2>Nothing yet.</h2>
-          {props.onEmpty && <b>Fund →</b>}
-        </button>
+        {props.tray ? (
+          <div className="tray" role="dialog" aria-label="Fund">
+            <button aria-label="Close" className="tray-x" onClick={props.onClose} type="button">×</button>
+            {props.tray}
+          </div>
+        ) : (
+          <button className="transcript-start" disabled={!props.onEmpty} onClick={props.onEmpty} type="button">
+            <h2>{unfunded ? 'Nobody has funded this yet.' : 'Nothing yet.'}</h2>
+            {props.onEmpty && <b>{unfunded ? 'Fund $2 to start the agent →' : 'Fund →'}</b>}
+          </button>
+        )}
       </section>
     )
 
@@ -354,13 +508,23 @@ export function Transcript(props: {
           )}
           {shown.length === 0 && !streaming.length && <li className="timeline-empty">{onAir ? 'Tuning in…' : 'Nothing here yet.'}</li>}
           {rows.map((row, index) => {
-            const before = rows[index - 1]
             if ('backed' in row) return <Funded item={row.backed} onBack={swarm.status === 'done' ? undefined : props.onFund} key={row.backed.id} name={props.handles.get(row.backed.who) ?? Mention.handle(row.backed.who)} />
             if ('said' in row) return <Voice item={row.said} onBack={swarm.status === 'done' ? undefined : props.onFund} key={`m${row.said.id}`} name={props.handles.get(row.said.author ?? '') ?? Mention.handle(row.said.author ?? '')} />
-            const entry = row.entry
-            const head = !before || !('entry' in before) || speaker(before.entry.who) !== speaker(entry.who) || ['status', 'funds', 'machine', 'steer'].includes(before.entry.kind)
-            return <Beat entry={entry} head={head} times={repeats.get(entry)} key={entry.event === null ? `s${entry.seq}` : `e${entry.event}${entry.kind}`} />
+            const head = voiced(row) !== undefined && voiced(row) !== voiced(rows[index - 1])
+            const name = head ? <Who key={`w${rowKey(row)}`} who={'steps' in row ? (row.steps[0]?.entry.who ?? null) : 'step' in row ? row.step.entry.who : row.entry.who} /> : null
+            if ('steps' in row) return [name, <Steps key={rowKey(row)} steps={row.steps} />]
+            if ('step' in row) return [name, <Tool key={rowKey(row)} step={row.step} />]
+            return [name, <Beat entry={row.entry} key={rowKey(row)} onFund={swarm.status === 'done' ? undefined : () => props.onFund('')} times={repeats.get(row.entry)} />]
           })}
+          {swarm.status !== 'done' && swarm.status !== 'running' && !streaming.length && (
+            <li className="timeline-state" data-mood={stood.mood}>
+              {stood.action || stood.mood === 'money' ? (
+                <button onClick={() => props.onFund('')} type="button">{stood.line} <b>Fund →</b></button>
+              ) : (
+                <p>{stood.line}</p>
+              )}
+            </li>
+          )}
           {streaming.map((item) => (
             <li className="beat beat-now" data-kind={item.now?.kind === 'text' ? 'message' : item.now?.kind === 'input' ? 'tool' : 'thinking'} key={item.name}>
               <span className="beat-who" style={{ color: hue(item.name) }}>{item.name === agent ? 'Agent' : item.name}</span>

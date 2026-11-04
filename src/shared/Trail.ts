@@ -152,6 +152,123 @@ export function memory(): Buffers {
   }
 }
 
+function args(detail: string | null): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(detail ?? '')
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function base(path: string) {
+  const trimmed = path.replace(/^['"]|['"]$/g, '').replace(/\/+$/, '')
+  const parts = trimmed.split('/').filter(Boolean)
+  return parts.length > 2 ? parts.slice(-2).join('/') : trimmed
+}
+
+export function command(line: string) {
+  const hops = line.replace(/\s+on [\w.-]+$/, '').split(/\s*(?:&&|\|\||;)\s*/).map((part) => part.trim()).filter((part) => part && !/^(cd|export|set|source|\.)\s/.test(part))
+  const main = hops.find((part) => !/^(mkdir|echo|true)\b/.test(part)) ?? hops[0] ?? ''
+  const piped = main.split(/\s+\|\s+/)[0] ?? main
+  const words = piped.split(/\s+/).filter(Boolean)
+  const head = (words[0] ?? '').replace(/^.*\//, '')
+  const rest = words.slice(1).filter((word) => !word.startsWith('-'))
+  const target = rest.at(-1)
+  const wrote = /(?:^|\s)(?:>|>>|tee)\s*([^\s|&;]+)/.exec(main)?.[1]
+  if (wrote && !wrote.startsWith('/dev/')) return `Wrote ${base(wrote)}`
+  if (!head) return 'Ran a command'
+  if (['cat', 'head', 'tail', 'less', 'bat', 'wc'].includes(head)) return target ? `Read ${base(target)}` : 'Read a file'
+  if (head === 'sed' && words.includes('-n')) return target ? `Read ${base(target)}` : 'Read a file'
+  if (['ls', 'find', 'tree'].includes(head)) return target ? `Listed ${base(target)}` : 'Listed files'
+  if (['grep', 'rg', 'ag'].includes(head)) return rest[0] ? `Searched for ${clip(rest[0].replace(/^['"]|['"]$/g, ''), 40)}` : 'Searched the files'
+  if (['curl', 'wget'].includes(head)) {
+    const url = words.find((word) => /^['"]?https?:\/\//.test(word))
+    return url ? `Downloaded from ${new URL(url.replace(/^['"]|['"]$/g, '')).host}` : 'Downloaded a file'
+  }
+  if (head === 'mkdir') return target ? `Made ${base(target)}` : 'Made a folder'
+  if (['pip', 'pip3', 'apt', 'apt-get', 'brew', 'uv'].includes(head) && words.includes('install')) return 'Installed packages'
+  if (['npm', 'pnpm', 'yarn', 'bun'].includes(head) && rest[0] === 'install') return 'Installed packages'
+  if (['python', 'python3', 'node', 'deno', 'bash', 'sh', 'ruby'].includes(head)) {
+    if (rest[0] === 'm' || words[1] === '-m') return `Ran ${words[2] ?? head}`
+    return rest[0] && !words.includes('-c') && !words.includes('-e') ? `Ran ${base(rest[0])}` : `Ran ${head}`
+  }
+  if (['git', 'cargo', 'go', 'npm', 'pnpm', 'yarn', 'make', 'docker', 'uv'].includes(head)) return `Ran ${head}${rest[0] ? ` ${clip(rest[0], 24)}` : ''}`
+  return `Ran ${clip(head, 30)}`
+}
+
+function script(code: string) {
+  const ran = /(?:cmd|command)\s*:\s*(["'`])((?:\\.|(?!\1).)*)\1/.exec(code)?.[2]
+  const path = /file_path\s*:\s*(["'`])((?:\\.|(?!\1).)*)\1/.exec(code)?.[2]
+  const used = [...code.matchAll(/tools\.(?:mcp__gateway__)?(\w+)\s*\(/g)].map((found) => found[1] ?? '')
+  const first = used[0]
+  if (first === 'Write' && path) return `Wrote ${base(path)}`
+  if (first === 'Edit' && path) return `Edited ${base(path)}`
+  if (first === 'Read' && path) return `Read ${base(path)}`
+  if ((first === 'exec_command' || first === 'Bash' || first === 'compute_exec') && ran) return command(ran)
+  if (first === 'spawn_agent') return 'Started subagents'
+  if (first === 'wait_agent') return 'Waited on subagents'
+  const names = [...new Set(used.filter((name) => !['text', 'image'].includes(name)))]
+  if (names.length) return `Called ${names.slice(0, 2).join(', ')}${names.length > 2 ? '…' : ''}`
+  return 'Ran a script'
+}
+
+export function named(entry: Pick<Entry, 'detail' | 'text'>) {
+  const text = entry.text
+  if (text.startsWith('$ ')) return command(text.slice(2))
+  if (text.startsWith('Ran a script:')) return script(entry.detail ?? text.slice(13))
+  const called = /^Called (\w+)/.exec(text)?.[1]
+  if (!called) return text
+  const input = args(entry.detail)
+  const pick = (...keys: string[]) => keys.map((name) => input[name]).find((value) => typeof value === 'string' && value) as string | undefined
+  const where = pick('key', 'path', 'name', 'file')
+  if (called === 'bucket_put') return where ? `Saved ${base(where)} to the bucket` : 'Saved a file to the bucket'
+  if (called === 'bucket_get') return where ? `Read ${base(where)} from the bucket` : 'Read a file from the bucket'
+  if (called === 'kv_set') return where ? `Saved ${clip(where, 40)}` : 'Saved a value'
+  if (called === 'kv_get' || called === 'kv_list') return where ? `Read ${clip(where, 40)}` : 'Read saved values'
+  if (called === 'git_commit') return pick('message') ? `Committed: ${clip(pick('message')?.split('\n')[0] ?? '', 60)}` : 'Committed code'
+  if (called === 'git_create') return where ? `Created the repository ${where}` : 'Created a repository'
+  if (called === 'fetch') {
+    const url = pick('url')
+    try {
+      return url ? `Fetched ${new URL(url).host}` : 'Fetched a page'
+    } catch {
+      return 'Fetched a page'
+    }
+  }
+  if (called === 'web__run' || called === 'web_search' || called === 'search') return pick('query', 'q') ? `Searched the web for ${clip(pick('query', 'q') ?? '', 50)}` : 'Searched the web'
+  if (called === 'compute_exec') return pick('command', 'cmd') ? `${command(pick('command', 'cmd') ?? '')} on a machine` : 'Ran a command on a machine'
+  if (called === 'compute_read') return where ? `Read ${base(where)} on a machine` : 'Read a file on a machine'
+  if (called === 'compute_write') return where ? `Wrote ${base(where)} on a machine` : 'Wrote a file on a machine'
+  if (called === 'compute_renew') return 'Kept a machine running'
+  if (called === 'compute_list') return 'Listed its machines'
+  if (called === 'compute_spawn') return 'Started a process on a machine'
+  if (called === 'submit_result') return 'Handed in its result'
+  if (called === 'browser_create') return 'Opened a browser'
+  if (called.startsWith('browser_')) return `Used the browser: ${called.slice(8).replace(/_/g, ' ')}`
+  return text
+}
+
+export type Trouble = { money: boolean; text: string }
+
+export function trouble(entry: Pick<Entry, 'detail' | 'text'>): Trouble {
+  const all = `${entry.text}\n${entry.detail ?? ''}`
+  const spent = /after spending \$(\d+(?:\.\d+)?)/.exec(entry.text)?.[1]
+  const tail = spent ? ` It had spent ${spentCash(Number(spent))}.` : ''
+  if (/\b402\b|limit_reached|refused to pay|spent for now|cannot pay this much/i.test(all)) return { money: true, text: `Ran out of money for this step.${tail}` }
+  if (/\b429\b|reservations|busy/i.test(all)) return { money: false, text: 'Waited for earlier payments to clear, then carried on.' }
+  if (/did not answer within/i.test(all)) return { money: false, text: `The payment service was slow to answer, so the step stopped.${tail}` }
+  if (/never opened on Tempo|Could not open .*channel/i.test(entry.text)) return { money: false, text: 'A payment channel did not open; the next payment tries again.' }
+  if (/HTTP 5\d\d|unavailable|overloaded|timed? ?out/i.test(all) && /model call|run failed|stopped with an error/i.test(entry.text)) return { money: false, text: `The model service was unavailable, so the step stopped.${tail}` }
+  if (/^A model call failed/.test(entry.text)) return { money: false, text: 'A model call failed.' }
+  if (/^The run failed/.test(entry.text) || /stopped with an error/.test(entry.text)) return { money: false, text: `The agent's turn stopped on an error.${tail}` }
+  return { money: false, text: entry.text.replace(/\$(\d+\.\d{3,})/g, (_, value: string) => spentCash(Number(value))) }
+}
+
+function spentCash(value: number) {
+  return value >= 0.1 ? `$${value.toFixed(2)}` : `$${Number(value.toPrecision(2))}`
+}
+
 export function key(entry: Pick<Entry, 'event' | 'kind' | 'seq'>) {
   return typeof entry.event === 'number' ? `e${entry.event}${entry.kind}` : `s${entry.seq}`
 }

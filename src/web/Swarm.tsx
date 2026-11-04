@@ -1,4 +1,4 @@
-import { lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { type KeyboardEvent as Press, lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import * as Memo from '../shared/Memo.ts'
 import type { Config, Detail, Entry, Me, Member, Note, Said } from '../shared/Api.ts'
@@ -16,7 +16,7 @@ import { Markdown } from './Markdown.tsx'
 import { Room } from './Room.tsx'
 import { Link } from './router.tsx'
 import { Transcript } from './Transcript.tsx'
-import { Bar, Energy, Status } from './Visual.tsx'
+import { Dot, Energy } from './Visual.tsx'
 
 let loaded: typeof import('./Code.tsx') | undefined
 
@@ -79,6 +79,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const [tab, setTab] = useTab()
   const [unread, setUnread] = useState(0)
   const [result, setResult] = useState(false)
+  const [titled, setTitled] = useState(false)
   const [prefill] = useState(() => asked())
   const [draft, setDraft] = useState({ at: 0, text: '' })
   const [chat, setChat] = useState<{ handles: ReadonlyMap<string, string>; me: Me | null; members: readonly Member[]; online: readonly string[]; said: readonly Said[]; watching: number }>({ handles: new Map(), me: null, members: [], online: [], said: [], watching: 0 })
@@ -172,48 +173,51 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const choose = (next: Tab) => {
     setTab(next)
   }
-  const room = <Room config={props.config} onBack={back} onMessages={heard} onSteered={reload} onUnread={setUnread} swarm={swarm} visible={wide || shown === 'room'} />
+  const room = <Room config={props.config} onBack={back} onMessages={heard} onSteered={reload} onTranscript={() => setTab('transcript')} onUnread={setUnread} swarm={swarm} visible={wide || shown === 'room'} />
   const labels: Record<Tab, ReactNode> = {
     about: 'About',
-    code: swarm.code && !phone ? `Code · ${swarm.code.name}` : 'Code',
-    machines: connected ? `Machines · ${connected}` : 'Machines',
+    code: 'Code',
+    machines: <>Machines{connected > 0 && <span className="tab-count tab-quiet">{connected}</span>}</>,
     room: <>Room<Presence members={chat.members} online={chat.online} watching={chat.watching} />{unread > 0 && <span className="tab-count">{unread}</span>}</>,
     transcript: 'Transcript',
   }
+  const strip = tabs.filter((item) => item !== 'room' || !wide)
+  const arrows = (event: Press<HTMLElement>) => {
+    const at = strip.indexOf(shown)
+    const next = event.key === 'ArrowRight' ? strip[(at + 1) % strip.length] : event.key === 'ArrowLeft' ? strip[(at + strip.length - 1) % strip.length] : event.key === 'Home' ? strip[0] : event.key === 'End' ? strip.at(-1) : undefined
+    if (!next) return
+    event.preventDefault()
+    const list = event.currentTarget
+    setTab(next)
+    requestAnimationFrame(() => list.querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)?.focus())
+  }
+  const tablist = (className: string) => (
+    <nav aria-label="Swarm" className={className} onKeyDown={arrows} role="tablist">
+      {strip.map((item) => (
+        <button aria-controls={`panel-${item}`} aria-selected={shown === item} data-tab={item} id={`tab-${item}`} key={item} onClick={() => setTab(item)} role="tab" tabIndex={shown === item ? 0 : -1} type="button" {...warm(item)}>
+          {labels[item]}
+        </button>
+      ))}
+    </nav>
+  )
 
   return (
     <article className="page swarm room-page" data-status={swarm.status}>
       <header className="swarm-head">
         <div className="swarm-title">
           <Link aria-label="All swarms" className="swarm-home" to="/join">←</Link>
-          <i aria-label={swarm.status} className="tile-dot" data-status={swarm.status} title={working(swarm)} />
-          <h1 title={swarm.title}>{swarm.title}</h1>
+          <Dot swarm={swarm} />
+          <h1 data-open={titled} onClick={() => setTitled(!titled)} title={swarm.title}>{swarm.title}</h1>
           {swarm.status === 'done' && swarm.answer && <button className="btn btn-high swarm-back" onClick={() => setResult(true)} type="button">Result</button>}
         </div>
         <Energy onFund={swarm.status === 'done' ? undefined : () => back(note)} swarm={swarm} />
-        {!phone && (
-          <nav aria-label="Swarm" className="room-tabs" role="tablist">
-            {tabs.filter((item) => item !== 'room' || !wide).map((item) => (
-              <button aria-controls={`panel-${item}`} aria-selected={shown === item} key={item} onClick={() => setTab(item)} role="tab" type="button" {...warm(item)}>
-                {labels[item]}
-              </button>
-            ))}
-          </nav>
-        )}
+        {!phone && tablist('room-tabs')}
       </header>
       {result && <Result onClose={() => setResult(false)} swarm={swarm} />}
       <div className="room-layout">
         <section className="room-main">
-          {phone && (
-            <nav aria-label="Swarm" className="phone-views" role="tablist">
-              {(['transcript', 'room', 'code', 'machines'] as const).map((item) => (
-                <button aria-selected={shown === item} key={item} onClick={() => setTab(item)} role="tab" type="button" {...warm(item)}>
-                  {labels[item]}
-                </button>
-              ))}
-            </nav>
-          )}
-          <div className="room-panel" data-tab={shown} hidden={shown !== 'transcript'} id="panel-transcript" role="tabpanel">
+          {phone && tablist('phone-views')}
+          <div aria-labelledby="tab-transcript" className="room-panel" data-tab={shown} hidden={shown !== 'transcript'} id="panel-transcript" role="tabpanel">
             <Transcript
               config={props.config}
               draft={draft}
@@ -233,19 +237,14 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
                 setChat((previous) => ({ ...previous, said: [...previous.said.filter((item) => item.id !== said.id), said] }))
                 reload()
               }}
-              people={!phone}
+              people={!phone && !wide}
               said={chat.said}
               swarm={swarm}
               tray={funding && swarm.status !== 'done' ? fund : undefined}
             />
           </div>
-          {!wide && (
-            <div className="room-panel" data-tab="room" hidden={shown !== 'room'} id="panel-room" role="tabpanel">
-              {room}
-            </div>
-          )}
           {shown !== 'transcript' && shown !== 'room' && (
-            <div className="room-panel room-page-panel" data-tab={shown} id={`panel-${shown}`} role="tabpanel">
+            <div aria-labelledby={`tab-${shown}`} className="room-panel room-page-panel" data-tab={shown} id={`panel-${shown}`} role="tabpanel">
               {shown === 'code' && <Repository config={props.config} swarm={swarm} />}
               {shown === 'machines' && (
                 <>
@@ -253,21 +252,13 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
                   <Connect swarm={swarm} />
                 </>
               )}
-              {shown === 'about' && (
-                <>
-                  <section className="panel-section">
-                    <h2 className="panel-head">The question</h2>
-                    <p className="about-goal">{swarm.goal}</p>
-                  </section>
-                  <nav className="lost-actions about-more">
-                    <Link className="lost-row" to="/about">How swarms work <span aria-hidden="true">→</span></Link>
-                  </nav>
-                </>
-              )}
+              {shown === 'about' && <About config={props.config} swarm={swarm} />}
             </div>
           )}
         </section>
-        {wide && <aside className="room-side">{room}</aside>}
+        <aside aria-labelledby={wide ? undefined : 'tab-room'} className="room-side" data-docked={!wide} hidden={!wide && shown !== 'room'} id="panel-room" role={wide ? undefined : 'tabpanel'}>
+          {room}
+        </aside>
       </div>
     </article>
   )
@@ -277,8 +268,45 @@ function highest(entries: readonly Entry[]) {
   return entries.reduce((most, entry) => Math.max(most, entry.seq), 0)
 }
 
-function working(swarm: Detail) {
-  return swarm.status === 'running' ? 'Live' : swarm.status === 'done' ? 'Finished' : swarm.status === 'funding' ? 'Not started' : 'Paused'
+function About(props: { config: Config | undefined; swarm: Detail }) {
+  const swarm = props.swarm
+  const created = new Date(swarm.createdAt)
+  const clone = swarm.code ? `git clone ${swarm.code.clone} ${swarm.code.name}` : null
+  return (
+    <div className="about-swarm">
+      <section className="panel-section">
+        <h2 className="panel-head">The question</h2>
+        <h3 className="about-title">{swarm.title}</h3>
+        <p className="about-goal">{swarm.goal}</p>
+      </section>
+      <dl className="about-facts">
+        <div><dt>Started</dt><dd><time dateTime={created.toISOString()}>{created.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</time></dd></div>
+        <div><dt>Raised</dt><dd>{Answer.cash(Number(swarm.raised))}</dd></div>
+        <div><dt>Spent</dt><dd>{Answer.cash(Number(swarm.spent))}</dd></div>
+        <div><dt>Backers</dt><dd>{swarm.contributors}</dd></div>
+        {swarm.wallet && (
+          <div className="about-wide">
+            <dt>Its wallet</dt>
+            <dd>{props.config ? <a href={`${props.config.explorer}/address/${swarm.wallet}`} rel="noreferrer" target="_blank">{short(swarm.wallet)} ↗</a> : short(swarm.wallet)}</dd>
+          </div>
+        )}
+        {swarm.code && clone && (
+          <div className="about-wide">
+            <dt>Code</dt>
+            <dd>
+              <span>{swarm.code.name}</span>
+              <code className="about-clone">{clone}</code>
+            </dd>
+          </div>
+        )}
+      </dl>
+      <nav className="lost-actions about-more">
+        <a className="lost-row" href={`/v1/swarms/${swarm.id}`} rel="noreferrer" target="_blank">Its data as JSON <span aria-hidden="true">↗</span></a>
+        <Link className="lost-row" to="/docs">Use it from code or MCP <span aria-hidden="true">→</span></Link>
+        <Link className="lost-row" to="/about">How swarms work <span aria-hidden="true">→</span></Link>
+      </nav>
+    </div>
+  )
 }
 
 function Result(props: { onClose: () => void; swarm: Detail }) {
