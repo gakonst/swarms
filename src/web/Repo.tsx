@@ -1,12 +1,12 @@
 import { PatchDiff } from '@pierre/diffs/react'
 import { FileTree, useFileTree } from '@pierre/trees/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import type { Config, Detail } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { type Change, Clone, type Commit, local, patch, prefetch, read, seed as keepSnapshot, peek, unified, Viewer, warm } from './Code.tsx'
-import { ago, usd } from './format.ts'
-import { message, useNow, usePoll } from './hooks.ts'
+import { ago, short, stamp } from './format.ts'
+import { message, useMedia, useNow, usePoll } from './hooks.ts'
 import { Link } from './router.tsx'
 import { Status } from './Visual.tsx'
 
@@ -64,17 +64,22 @@ function Tree(props: { changes: readonly Change[]; onSelect: (path: string) => v
     model.setGitStatus(marks)
   }, [model, marks])
 
-  return <FileTree className="repo-tree" model={model} />
+  return <FileTree className="repo-tree" model={model} style={{ '--repo-tree-rows': Math.min(props.paths.length, 10) } as CSSProperties} />
+}
+
+function author(name: string) {
+  return /^0x[0-9a-f]{40}$/i.test(name) ? short(name) : name
 }
 
 function Changes(props: { changes: readonly Change[] }) {
+  const narrow = useMedia('(max-width: 799px)')
   const shown = props.changes
   if (!shown.length) return <p className="empty">No files changed.</p>
   return (
     <div className="code-diff">
       {shown.map((change) =>
         change.patch ? (
-          <PatchDiff className="code-view" key={change.path} options={unified} patch={patch(change)} />
+          <PatchDiff className="code-view" key={change.path} options={narrow ? { ...unified, overflow: 'wrap' } : unified} patch={patch(change)} />
         ) : (
           <p className="fine" key={change.path}>
             {change.path}: {mark(change)}, +{change.additions} −{change.deletions}
@@ -103,7 +108,7 @@ function Timeline(props: {
               <span className="repo-commit-title">{title(commit)}</span>
               <span className="repo-commit-meta">
                 <code>{commit.sha.slice(0, 7)}</code>
-                {commit.author?.name && <span>{commit.author.name}</span>}
+                {commit.author?.name && <span title={commit.author.name}>{author(commit.author.name)}</span>}
                 {commit.date && <span>{ago(Date.parse(commit.date), now)}</span>}
               </span>
             </button>
@@ -255,8 +260,8 @@ function Browser(props: { base: string; detail: Detail; live: boolean }) {
             <h2>{commit ? title(commit) : ref.slice(0, 7)}</h2>
             <p className="fine">
               <code>{ref.slice(0, 7)}</code>
-              {commit?.author?.name && <> · {commit.author.name}</>}
-              {commit?.date && <> · {new Date(commit.date).toLocaleString()}</>}
+              {commit?.author?.name && <> · <span title={commit.author.name}>{author(commit.author.name)}</span></>}
+              {commit?.date && <> · {stamp(Date.parse(commit.date))}</>}
               {pinned ? (
                 <>
                   {' '}

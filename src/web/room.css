@@ -742,3 +742,25 @@ button.energy:focus-visible { outline:2px solid #3f7d4e; outline-offset:2px; }
 .code-clone { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid #eef2ea; background:#fbfcf9; }
 .code-clone code { flex:1; min-width:0; overflow-x:auto; font:12px var(--mono); color:var(--grey-800); white-space:nowrap; scrollbar-width:none; user-select:all; }
 .repo-page .code-clone, section > .code-clone { margin:0 0 12px; border:1px solid #e3e9dd; border-radius:10px; }
+
+@media (min-width:800px) and (max-width:1099px) {
+  .repo { grid-template-columns:minmax(200px,240px) minmax(0,1fr); align-items:start; }
+  .repo-side { position:sticky; top:var(--space-3); }
+  .repo-log { grid-column:1 / -1; }
+  .repo-log .repo-commits { max-height:none; }
+}
+@media (max-width:799px) {
+  .repo { gap:var(--space-3); }
+  .repo-tree { height:min(260px,calc(var(--repo-tree-rows,6) * 30px + 64px)); }
+  .repo-head { padding:12px; }
+  .repo-head h2 { font-size:19px; line-height:1.3; }
+  .repo-tabs { align-self:stretch; width:100%; }
+  .repo-tabs button { flex:0 1 auto; min-width:0; }
+  .repo-body { min-height:160px; max-height:none; overflow:visible; padding:12px 8px; }
+  .repo-commits { max-height:none; }
+}
+@media (pointer:coarse) {
+  .repo-tabs button { min-height:40px; }
+  .repo-head .btn-minimal { min-height:40px; }
+  .repo-commits li > button:not(.btn) { padding:12px 8px; }
+}

@@ -5,7 +5,7 @@ import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 import type { Code as Repo, Pushed, Snapshot } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { ago, usd } from './format.ts'
-import { message, useMedia } from './hooks.ts'
+import { message, useMedia, useNow } from './hooks.ts'
 import { Link } from './router.tsx'
 
 export type Commit = { author?: { email: string | null; name: string | null }; date: string | null; message: string; parents?: string[]; sha: string }
@@ -25,6 +25,7 @@ const settled = new Map<string, unknown>()
 const fixed = /[?&]ref=[0-9a-f]{40}(&|$)/
 
 async function fetched<value>(url: string): Promise<value> {
+  if (Api.fixture) return import('./fixtures.ts').then((fixtures) => fixtures.git(url) as Promise<value>)
   const response = await fetch(url)
   const data = (await response.json().catch(() => undefined)) as (value & { detail?: string }) | undefined
   if (!response.ok || !data) throw new Error(data?.detail ?? `The gateway answered ${response.status}.`)
@@ -147,7 +148,7 @@ export function patch(change: Change) {
   if (/^(diff --git|---) /m.test(change.patch.split('\n')[0] ?? '')) return change.patch
   const before = change.state === 'A' ? '/dev/null' : `a/${change.oldPath ?? change.path}`
   const after = change.state === 'D' ? '/dev/null' : `b/${change.path}`
-  return `--- ${before}\n+++ ${after}\n${change.patch}`
+  return `diff --git a/${change.oldPath ?? change.path} b/${change.path}\n--- ${before}\n+++ ${after}\n${change.patch}`
 }
 
 function Changes(props: { base: string; from: string | null; to: string }) {
@@ -228,6 +229,7 @@ export function Code(props: { gateway: string; repo: Repo; swarm: string; update
   })
   const [path, setPath] = useState<string>()
   const [open, setOpen] = useState<number>()
+  const now = useNow(30_000)
 
   useEffect(() => {
     let alive = true
@@ -284,7 +286,7 @@ export function Code(props: { gateway: string; repo: Repo; swarm: string; update
         <header className="repo-card-head">
           <span className="code-glyph" aria-hidden="true">{'</>'}</span>
           <b>{props.repo.name}</b>
-          <span className="repo-card-meta">{commits.length === 1 ? '1 commit' : `${commits.length} commits`} · {state.files.length} files · {head.date ? ago(Date.parse(head.date)) : head.sha.slice(0, 7)}</span>
+          <span className="repo-card-meta">{commits.length === 1 ? '1 commit' : `${commits.length} commits`} · {state.files.length} files · {head.date ? ago(Date.parse(head.date), now) : head.sha.slice(0, 7)}</span>
           <Link className="repo-card-open" to={browser}>Full browser →</Link>
         </header>
         <Clone repo={props.repo} />
@@ -312,7 +314,7 @@ export function Code(props: { gateway: string; repo: Repo; swarm: string; update
                   <i aria-hidden="true" className="machine-glyph" data-state={open === update.at ? 'on' : 'idle'}>±</i>
                   <span className="tile-title">{single?.message.split('\n')[0] ?? `${update.commits.length} commits`}</span>
                   <span className="tile-raised">{usd(update.spent)}</span>
-                  <span className="machine-sub">{update.commits.map((sha) => sha.slice(0, 7)).join(' ')} · {ago(update.at)}</span>
+                  <span className="machine-sub">{update.commits.map((sha) => sha.slice(0, 7)).join(' ')} · {ago(update.at, now)}</span>
                 </button>
                 {open === update.at && <div className="machine-open code-open"><Diffs base={base} commits={commits} update={update} /></div>}
               </li>
