@@ -89,7 +89,9 @@ export type Pay = {
   secret: string
 }
 
-export type Paid = { authorization: string; topUp?: string } | { feeToken: Address } | { code: string; detail: string; retry?: number; status: 401 | 402 | 429 }
+export type Paid = { authorization: string; topUp?: string } | { feeToken: Address } | Budget | { code: string; detail: string; retry?: number; status: 401 | 402 | 429 }
+
+type Budget = { daily: string; raised: string; spent: string; usd: string }
 
 type Source = { currency: Address; id: string; label: string; row: Store.Allowance | null }
 
@@ -973,6 +975,16 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       }
       await new Promise((resolve) => setTimeout(resolve, 750))
     }
+  }
+
+  async budget(secret: string, app: string | undefined): Promise<Paid> {
+    const known = this.kv.get<string>('secret')
+    if (!known || !same(known, secret)) return { code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 }
+    const row = await Store.find(this.env, this.kv.get<string>('id') ?? '')
+    if (!row) return { code: 'unauthorized', detail: 'No swarm has this id.', status: 401 }
+    if (app !== undefined && app !== Gateway.app(row.id)) return { code: 'unauthorized', detail: 'This payer pays only for its own swarm.', status: 401 }
+    const summary = Store.summary(row)
+    return { daily: summary.daily, raised: summary.raised, spent: summary.spent, usd: summary.remaining }
   }
 
   pay(input: Pay): Promise<Paid> {

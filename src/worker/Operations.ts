@@ -826,6 +826,10 @@ export async function pledge(env: Cloudflare.Env, input: Input<'pledge'>): Promi
 export async function pay(env: Cloudflare.Env, swarm: string, authorization: string, input: Record<string, unknown>): Promise<Paid> {
   const secret = /^Bearer (.+)$/.exec(authorization)?.[1]
   const challenge = input['challenge']
+  if (secret && input['operation'] === 'budget') {
+    if (!(await Store.exists(env, swarm))) return { code: 'unauthorized', detail: 'No swarm has this id.', status: 401 }
+    return stub(env, swarm).budget(secret, typeof input['app'] === 'string' ? input['app'] : undefined)
+  }
   if (!secret || !(typeof challenge === 'string' || (Array.isArray(challenge) && challenge.every((value) => typeof value === 'string'))))
     return { code: 'unauthorized', detail: 'Send the payer secret as a bearer token, and the challenge.', status: 401 }
   if (!(await Store.exists(env, swarm))) return { code: 'unauthorized', detail: 'No swarm has this id.', status: 401 }

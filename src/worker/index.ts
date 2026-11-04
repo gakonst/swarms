@@ -196,7 +196,7 @@ app.post('/api/swarms/:id/pledges/:pledge', async (c) =>
 
 app.post('/api/swarms/:id/pay', async (c) => {
   const paid = await Operations.pay(c.env, c.req.param('id'), c.req.header('authorization') ?? '', await Rest.body(c.req.raw))
-  if ('authorization' in paid || 'feeToken' in paid) return c.json(paid)
+  if ('authorization' in paid || 'feeToken' in paid || 'usd' in paid) return c.json(paid)
   return Response.json(
     { code: paid.code, detail: paid.detail, status: paid.status },
     { headers: paid.retry ? { 'retry-after': String(paid.retry) } : {}, status: paid.status },
