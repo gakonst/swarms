@@ -18,6 +18,10 @@ export function tint(address: string) {
   return `hsl(${value % 360} 38% 36%)`
 }
 
+function arrived(text: string) {
+  return /^@[\w-]+ (pledged|sent|set a budget|funded)\b/.test(text) || /^New artifact:/.test(text)
+}
+
 function merge(list: readonly Said[], more: readonly Said[]) {
   if (!more.length) return list
   const byId = new Map(list.map((item) => [item.id, item]))
@@ -64,6 +68,7 @@ export const Room = memo(function Room(props: {
   onBack: (note: string) => void
   onMessages?: (messages: readonly Said[], me: Me | null, members: readonly Member[], online: readonly string[], watching: number) => void
   onSteered: () => void
+  onTranscript?: () => void
   onUnread: (count: number) => void
   swarm: Detail
   visible: boolean
@@ -333,25 +338,24 @@ export const Room = memo(function Room(props: {
   if (!token && wallet.pending) gate = <div aria-busy="true" className="room-gate room-gate-wait" />
   else if (!token)
     gate = (
-      <div className="room-gate">
-        <p className="room-gate-title">Fund it to talk and steer with <span className="mention" data-swarm="true">@swarm</span>.</p>
-        <div className="room-gate-actions">
-          <button className="btn btn-high" disabled={!props.config || signing} onClick={() => void signIn()} type="button">
-            {signing ? 'Approve in Tempo Wallet…' : 'Sign in'}
-          </button>
-          {!done && <button className="btn btn-low" onClick={() => props.onBack('')} type="button">Fund →</button>}
+      <div className="room-gate room-gate-one">
+        <div className="room-cta">
+          <button className="room-cta-main" disabled={!props.config || signing} onClick={() => void signIn()} type="button">{signing ? 'Approve in Tempo Wallet…' : 'Sign in to chat'}</button>
+          {!done && <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund to steer</button>}
         </div>
       </div>
     )
   else if (me && !me.member)
     gate = (
-      <div className="room-gate">
-        <p className="room-gate-title">
-          Hi <b>@{me.handle}</b>. {done ? "It's finished, so the room is read only." : 'Fund it to join in.'}
-        </p>
-        <div className="room-gate-actions">
-          {!done && <button className="btn btn-high" onClick={() => props.onBack('')} type="button">Fund →</button>}
-        </div>
+      <div className="room-gate room-gate-one">
+        {done ? (
+          <p className="room-gate-title">It's finished, so the room is read only.</p>
+        ) : (
+          <div className="room-cta">
+            <button className="room-cta-main" onClick={() => props.onBack('')} type="button">Fund $2 to steer</button>
+            <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund →</button>
+          </div>
+        )}
       </div>
     )
 
@@ -373,19 +377,32 @@ export const Room = memo(function Room(props: {
           </li>
         )}
         {!loaded && <li className="room-empty">{failed ? `Could not load the room. ${failed}` : 'Opening the room…'}</li>}
-        {loaded && !messages.length && <li className="room-empty">Quiet so far. Be the first to say hi.</li>}
+        {loaded && !messages.some((item) => !item.artifact && (item.author || item.text.startsWith('Update: ') || arrived(item.text))) && <li className="room-empty">Quiet so far. Be the first to say hi.</li>}
         {messages.map((item, index) => {
           const author = item.author
           if (item.artifact) return null
-          if (!author)
+          if (!author) {
+            const update = item.text.startsWith('Update: ')
+            if (update)
+              return (
+                <li className="said said-update" key={item.id}>
+                  <button disabled={!props.onTranscript} onClick={props.onTranscript} type="button">
+                    <span className="said-update-tag">Agent update</span>
+                    <span className="said-update-text">{Answer.excerpt(item.text.slice(8), 160)}</span>
+                    <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
+                  </button>
+                </li>
+              )
+            if (!arrived(item.text)) return null
             return (
               <li className="said said-system" key={item.id}>
                 <p>
-                  <Words handles={handles} me={myNames} text={item.text.startsWith('Update: ') ? `Update: ${Answer.unround(item.text.slice(8))}` : item.text} />
+                  <Words handles={handles} me={myNames} text={Answer.amounts(item.text)} />
                   <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
                 </p>
               </li>
             )
+          }
           const previous = messages[index - 1]
           const follow = previous?.author === author && item.at - previous.at < 5 * 60_000 && !item.steer && !previous.steer
           const handle = handleOf(author)

@@ -23,6 +23,7 @@ export type Summary = {
   title: string
   updatedAt: number
   wallet: `0x${string}` | null
+  why: Why | null
 }
 
 export type Pledge = {

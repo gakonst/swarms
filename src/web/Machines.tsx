@@ -33,13 +33,15 @@ function Row(props: { machine: Machine; now: number; onPick: () => void; open: b
   const state = machine.connected ? 'on' : machine.ended ? 'off' : 'idle'
   const up = machine.started ? (machine.ended ?? (machine.connected ? props.now : machine.started)) - machine.started : 0
   const runs = machine.commands.length
+  const status = machine.connected ? 'Online' : machine.ended ? 'Stopped' : 'Offline'
+  const earned = machine.kind === 'hand' && machine.charged && Number(machine.charged) > 0 ? `earned ${usd(machine.charged)}` : null
   return (
     <li data-open={props.open}>
       <button aria-expanded={props.open} className="tile-swarm machine-row" onClick={props.onPick} type="button">
         <i aria-hidden="true" className="machine-glyph" data-kind={machine.kind} data-state={state}>{machine.kind === 'browser' ? '◎' : machine.kind === 'hand' ? '⌂' : '▣'}</i>
         <span className="tile-title">{machine.name}</span>
-        <span className="tile-raised">{machine.charged ? usd(machine.charged) : runs ? `${runs} run${runs === 1 ? '' : 's'}` : ''}</span>
-        <span className="machine-sub">{summary(machine)}</span>
+        <span className="tile-raised machine-state" data-state={state}>{status}</span>
+        <span className="machine-sub">{[summary(machine), machine.kind === 'hand' ? (machine.price ?? 'free') : null, earned, runs ? `${runs} command${runs === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')}</span>
       </button>
       {props.open && (
         <div className="machine-open">
@@ -66,7 +68,10 @@ export function Machines(props: { entries: readonly Entry[]; hands: readonly Han
   const machines = useMemo(() => fleet(props.entries, props.hands, lent.data?.hands ?? ([] as Lent[])), [props.entries, props.hands, lent.data])
   const [picked, setPicked] = useState<string>()
 
-  if (!machines.length) return <p className="machine-none">{props.live ? 'No machines yet. They appear when the agent starts one or a backer lends one.' : 'No machines.'}</p>
+  if (!machines.length)
+    return (
+      <p className="machine-none">No machines yet. The agent starts them as it needs them, and anyone can lend one below.</p>
+    )
 
   return (
     <ol className="tiles-swarm machines-list">

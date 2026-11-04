@@ -458,6 +458,7 @@ function summary(swarm: Live): Summary {
     title: swarm.title,
     updatedAt: swarm.updatedAt,
     wallet: swarm.wallet,
+    why: reason(swarm) ? why(swarm) : null,
   }
 }
 

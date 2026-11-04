@@ -371,14 +371,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const repo = this.kv.get<string>('repo')
     const owner = this.kv.get<string>('owner')
     const turns = this.turns()
+    const paused = this.kv.get<string>('paused')
     return {
       code: id && repo && owner ? { app: Gateway.app(id), clone: `${this.env.GATEWAY_URL}/p/${owner}/${Gateway.app(id)}/git/${repo}.git`, name: repo, owner } : null,
       feed,
       hands: this.kv.get<Hand[]>('hands') ?? [],
       left: this.kv.get<string>('left') ?? null,
-      reason: this.kv.get<string>('paused') ?? null,
+      reason: paused ? (Answer.spoken(paused) ?? 'Out of money. Adding money wakes it.') : null,
       stamp,
-      why: this.kv.get<string>('paused') ? (this.kv.get<Why>('why') ?? 'money') : null,
+      why: paused ? known(this.kv.get<string>('why')) : null,
       steered: this.steered(),
       ended: turns.flatMap((turn) => (turn.endedAt === null ? [] : [{ endedAt: turn.endedAt, n: turn.n }])),
       updates: shape.texts === false ? updates(turns).map((update) => ({ ...update, text: '' })) : updates(turns),
@@ -621,7 +622,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         row,
         worked ? 'paused' : 'funding',
         worked || money.row.contributors
-          ? `Waiting for money: ${dollars(money.left)} is payable now, less than one model call holds.${wake ? ` The next budget pull or resting contribution is at ${clock(wake)} UTC.` : ' New money keeps it going.'}`
+          ? broke(money.left, wake)
           : undefined,
       )
       return wake
@@ -629,7 +630,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const wanted = BigInt(this.kv.get<string>('wanted') ?? '0')
     if (wanted > money.biggest) {
       const wake = await this.wake(row.id)
-      await this.pause(row, worked ? 'paused' : 'funding', costly(wanted, money.biggest), 'costly')
+      await this.pause(row, worked ? 'paused' : 'funding', costly(wanted), 'costly')
       return wake
     }
     const repo = await this.repo(row)
@@ -676,9 +677,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const note of notes)
       this.ctx.storage.sql.exec('INSERT OR IGNORE INTO steered (note, at) VALUES (?, ?)', note.id, now)
     this.touch()
-    await Store.update(this.env, row.id, { rounds: n, status: 'running' })
-    this.log('status', resumed ? `${worked ? 'Back at work' : 'Started working'} with ${dollars(money.left)} to spend.` : `Told the agent to keep going, with ${dollars(money.left)} left.`, text)
-    if (resumed) this.announce(`${worked ? 'Back at work' : 'Started working'} with ${dollars(money.left)} to spend.`)
+    await Store.update(this.env, row.id, { rounds: n, status: 'running', why: null })
+    this.log('status', resumed ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
+    if (resumed) this.announce(`${worked ? 'Back at work' : 'Started working'}.`)
     return now + followMs
   }
 
@@ -793,8 +794,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         row,
         'paused',
         acted === 0
-          ? `Resting: the agent found nothing worth spending on, so the swarm stopped asking it and spends nothing. ${dollars(money.left)} is kept for later; a note or new money wakes it.`
-          : `Resting: the agent's last ${stuckTurns} updates came within a minute each and produced nothing, so the swarm stopped asking it. ${dollars(money.left)} is kept for later; a note or new money wakes it.`,
+          ? `Resting: the agent found nothing more worth doing. ${Answer.cash(Number(Memo.decimal(money.left)))} is kept for later; a note or new money wakes it.`
+          : `Resting: the agent's last ${stuckTurns} updates produced nothing. ${Answer.cash(Number(Memo.decimal(money.left)))} is kept for later; a note or new money wakes it.`,
         'idle',
       )
       return null
@@ -807,8 +808,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         row,
         'paused',
         wanted > money.biggest
-          ? costly(wanted, money.biggest)
-          : `Waiting for money: the next request needed more than the ${dollars(money.left)} the contributions can pay now.${wake ? ` The next budget pull or resting contribution is at ${clock(wake)} UTC.` : ' New money keeps it going.'}`,
+          ? costly(wanted)
+          : broke(money.left, wake),
         wanted > money.biggest ? 'costly' : 'money',
       )
       return wake
@@ -816,7 +817,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (failures >= maxFailures) {
       this.kv.put('failures', 0)
       const wake = await this.wake(row.id)
-      await this.pause(row, 'paused', `The agent hit ${failures} errors in a row, so the swarm stopped to rest. New money restarts it${wake ? `, and so does the next budget pull at ${clock(wake)} UTC` : ''}.`, 'rest')
+      await this.pause(row, 'paused', `Stopped after ${failures} errors in a row. New money or a note restarts it.${wake ? ` More comes in at ${clock(wake)} UTC.` : ''}`, 'rest')
       return wake
     }
     return status === 'completed' ? Math.max(Date.now(), started + quickMs) : Date.now() + settleMs
@@ -1422,8 +1423,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const text =
       reason ??
       (status === 'funding'
-        ? 'Waiting for its first contribution, budget or pledge.'
-        : 'Waiting for money: a contribution, budget or pledge keeps it going.')
+        ? 'Not started: nobody has funded it yet.'
+        : 'Out of money. Adding money wakes it.')
     if (this.kv.get<number>('since')) {
       this.kv.delete('since')
       if (why === 'idle' || why === 'rest') await this.sweep(row)
@@ -1432,7 +1433,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (row.status === status && this.kv.get<string>('paused') === text && this.kv.get<Why>('why') === why) return
     this.kv.put('paused', text)
     this.kv.put('why', why)
-    await Store.update(this.env, row.id, { status })
+    await Store.update(this.env, row.id, { status, why })
     this.log('status', text)
   }
 
@@ -1442,8 +1443,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.put('resting', Date.now())
     this.kv.put('paused', 'Resting: it spends nothing until a note or new money wakes it.')
     this.kv.put('why', 'idle')
-    await Store.update(this.env, row.id, { status: 'paused' })
-    this.log('status', 'Open again: a swarm is never done, so it rests until a note or new money wakes it, and its agent carries on from where it stopped.')
+    await Store.update(this.env, row.id, { status: 'paused', why: 'idle' })
+    this.log('status', 'Open again: it rests until a note or new money wakes it, and its agent carries on from where it stopped.')
   }
 
   async done(row: Store.Row, reason: string) {
@@ -2056,8 +2057,18 @@ function slug(title: string) {
   )
 }
 
-function costly(wanted: bigint, biggest: bigint) {
-  return `Waiting for money: the agent's next model call holds ${dollars(wanted)}, more than the ${dollars(biggest)} any one contribution can pay at once. A contribution or budget pull that can cover it starts it again.`
+function costly(wanted: bigint) {
+  return `Out of money for its next step: it needs about ${Answer.cash(Number(Memo.decimal(wanted)))} at once, more than any one backer's funds can pay. Adding money wakes it.`
+}
+
+function broke(left: bigint, wake: number | null) {
+  return `Out of money: ${Answer.cash(Number(Memo.decimal(left)))} left, less than its next step needs. Adding money wakes it.${wake ? ` More comes in at ${clock(wake)} UTC.` : ''}`
+}
+
+const whys = ['unfunded', 'money', 'costly', 'rest', 'idle'] as const satisfies readonly Why[]
+
+function known(why: string | undefined): Why {
+  return (whys as readonly string[]).includes(why ?? '') ? (why as Why) : 'money'
 }
 
 function brief(row: Store.Row, notes: Note[]) {

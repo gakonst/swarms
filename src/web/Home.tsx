@@ -28,7 +28,7 @@ const aliases: Record<string, Filter> = { fuel: 'money', live: 'running' }
 const fits: Record<Filter, (swarm: Summary) => boolean> = {
   money: (swarm) => Status.word(swarm) === 'Needs money',
   open: (swarm) => swarm.status !== 'done',
-  resting: (swarm) => Status.word(swarm) === 'Resting',
+  resting: (swarm) => Status.word(swarm) === 'Resting' || Status.word(swarm) === 'Stopped after errors',
   running: (swarm) => swarm.status === 'running',
   waiting: (swarm) => Status.word(swarm) === 'Not started',
 }

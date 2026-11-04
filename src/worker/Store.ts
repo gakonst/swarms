@@ -26,6 +26,7 @@ export type Row = {
   title: string
   updated_at: number
   wallet: `0x${string}` | null
+  why: Summary['why']
 }
 
 export type Backing = {
@@ -83,7 +84,7 @@ export type Allowance = {
 }
 
 export type Fields = Partial<
-  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'status'>
+  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'status' | 'why'>
 >
 
 export type Changes = Partial<
@@ -147,6 +148,7 @@ export function summary(row: Row): Summary {
     title: row.title,
     updatedAt: row.updated_at,
     wallet: row.wallet,
+    why: row.status === 'paused' || row.status === 'funding' ? (row.why ?? null) : null,
   }
 }
 

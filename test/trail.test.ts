@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Entry } from '../src/shared/Api.ts'
-import { crew, memory, merge, narrate, redact, step, subagent } from '../src/shared/Trail.ts'
+import { crew, memory, merge, named, narrate, redact, step, subagent, trouble } from '../src/shared/Trail.ts'
 
 function entry(input: Partial<Entry>): Entry {
   return { at: 1000, detail: null, event: null, kind: 'tool', seq: 0, text: '', who: null, ...input }
@@ -60,7 +60,30 @@ test('secrets in clone URLs and JWTs are redacted', () => {
 })
 
 test('a failed model call says why', () => {
-  const error = `Responses HTTPS request was rejected with HTTP 429: {"error":{"message":"The agent's payer refused to pay (429 busy): try again shortly.","type":"api_error"}}`
-  assert.equal(step('model.call.failed', { error })?.text, "A model call failed: The agent's payer refused to pay (429 busy): try again shortly.")
+  const error = `Responses HTTPS request was rejected with HTTP 429: {"error":{"message":"The payer refused to pay (429 busy): try again shortly.","type":"api_error"}}`
+  assert.equal(step('model.call.failed', { error })?.text, "A model call failed: The payer refused to pay (429 busy): try again shortly.")
   assert.equal(step('model.call.failed', { error: 'timeout' })?.text, 'A model call failed.')
+})
+
+test('a tool step is named by what it did', () => {
+  assert.equal(named({ detail: null, text: '$ cd /work && pytest -q tests' }), 'Ran pytest')
+  assert.equal(named({ detail: null, text: '$ cat README.md' }), 'Read README.md')
+  assert.equal(named({ detail: null, text: '$ python3 bench/run.py --n 4 on gpu-box-7a1c' }), 'Ran bench/run.py')
+  assert.equal(named({ detail: null, text: '$ python -m swebench.harness.run_evaluation --run_id q' }), 'Ran swebench.harness.run_evaluation')
+  assert.equal(named({ detail: null, text: "$ printf 'x' > ljmd/systems.py" }), 'Wrote ljmd/systems.py')
+  assert.equal(named({ detail: null, text: '$ curl -fsSL -o p.gz https://deb.debian.org/debian/Packages.gz' }), 'Downloaded from deb.debian.org')
+  assert.equal(named({ detail: 'await tools.Write({ file_path: "/workspace/ljmd/systems.py", content: "x" })', text: 'Ran a script: await tools.Write({' }), 'Wrote ljmd/systems.py')
+  assert.equal(named({ detail: 'const r = await tools.exec_command({cmd:"cd /w && cargo test"})', text: 'Ran a script: const r' }), 'Ran cargo test')
+  assert.equal(named({ detail: '{"key":"results/leaderboard.json","body":"{}"}', text: 'Called bucket_put' }), 'Saved results/leaderboard.json to the bucket')
+  assert.equal(named({ detail: JSON.stringify({ message: 'Add tests\n\nMore' }), text: 'Called git_commit' }), 'Committed: Add tests')
+  assert.equal(named({ detail: null, text: 'Called mystery_tool' }), 'Called mystery_tool')
+})
+
+test('payer and protocol errors read as one plain sentence', () => {
+  assert.deepEqual(trouble({ detail: '{"error":"Responses HTTPS request was rejected with HTTP 402: {\"error\":{\"message\":\"The payer refused to pay (402 limit_reached)\"}}"}', text: 'A model call failed.' }), { money: true, text: 'Ran out of money for this step.' })
+  assert.deepEqual(trouble({ detail: 'durable operation previously failed: HTTP 402', text: 'The agent stopped with an error after spending $0.046926.' }), { money: true, text: 'Ran out of money for this step. It had spent $0.047.' })
+  assert.equal(trouble({ detail: '{"error":"Responses HTTPS request was rejected with HTTP 503: cannot"}', text: 'A model call failed.' }).text, 'The model service was unavailable, so the step stopped.')
+  assert.equal(trouble({ detail: '{"status":"failed"}', text: 'The run failed.' }).text, "The agent's turn stopped on an error.")
+  assert.equal(trouble({ detail: null, text: "The channel for 0x364e…7c19's pledge never opened on Tempo, so the next payment opens another." }).text, 'A payment channel did not open; the next payment tries again.')
+  assert.equal(trouble({ detail: '429 busy', text: 'A model call failed.' }).money, false)
 })
