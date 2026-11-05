@@ -1228,6 +1228,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async refresh(row: Store.Row): Promise<Money> {
     await this.sponsorships(row)
+    await this.revive(row)
     const [sources, hands, balances] = await Promise.all([
       this.sources(row, true),
       Gateway.hands(this.env, row.id),
@@ -1237,7 +1238,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     let biggest = 0n
     let pooled = 0n
     for (const source of sources) {
-      const channel = this.kv.get<Payer.Channel>(`channel:${source.id}`)
+      const channel = source.row ? await this.channel(source) : this.kv.get<Payer.Channel>(`channel:${source.id}`)
       const spent = BigInt(this.kv.get<string>('spent:' + source.id) ?? channel?.signed ?? '0')
       const inside = channel?.confirmed ? Payer.max(BigInt(channel.deposit) - spent, 0n) : 0n
       const room: Room | undefined = source.row
@@ -1287,6 +1288,21 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       pool_spent: Number(this.used('pool') + this.handsUsed()),
     })
     return { biggest, left, row: (await this.found(row.id)) ?? row }
+  }
+
+  async revive(row: Store.Row) {
+    if (row.status === 'done') return
+    for (const key of await Store.drained(this.env, row.id)) {
+      const source = held(key)
+      const channel = await this.channel(source)
+      if (!channel || channel.sponsored) continue
+      const chain = await Payer.state(this.env, channel.id).catch(() => undefined)
+      if (!chain || chain.deposit === 0n || chain.closeRequestedAt !== 0) continue
+      const inside = Payer.max(Payer.min(BigInt(channel.deposit), chain.deposit) - BigInt(this.kv.get<string>('spent:' + source.id) ?? channel.signed), 0n)
+      if (inside < perCall) continue
+      await Store.change(this.env, key.id, { status: 'active' })
+      this.log('funds', `${capital(source.label)} still holds ${trim(Memo.decimal(inside))} MACH in its channel, so the swarm spends it again.`)
+    }
   }
 
   async sponsorships(row: Store.Row) {
