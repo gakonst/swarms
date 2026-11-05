@@ -98,7 +98,7 @@ export function sponsorship(env: Cloudflare.Env) {
 }
 
 export function sponsor(env: Cloudflare.Env, swarm: string, body: { descriptor: unknown; transaction?: string }) {
-  return send<Sponsored>(env, '/api/keys/sponsors', { app: app(swarm), body })
+  return send<Sponsored>(env, '/api/keys/sponsors', { app: app(swarm), body: { ...body, passThrough: true } })
 }
 
 export function sponsors(env: Cloudflare.Env, swarm: string) {
