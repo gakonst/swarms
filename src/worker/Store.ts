@@ -440,6 +440,15 @@ export async function keys(env: Cloudflare.Env, swarm: string) {
   return results
 }
 
+export async function drained(env: Cloudflare.Env, swarm: string) {
+  const { results } = await env.DB.prepare(
+    "select * from budgets where swarm = ? and status = 'spent' and token = 'mach' order by created_at",
+  )
+    .bind(swarm)
+    .all<Allowance>()
+  return results
+}
+
 export async function end(env: Cloudflare.Env, swarm: string) {
   await env.DB.prepare(
     "update budgets set status = 'ended', next_at = null, updated_at = ? where swarm = ? and status = 'active'",
