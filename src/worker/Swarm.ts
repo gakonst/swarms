@@ -1839,6 +1839,27 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     })
   }
 
+  async subagents(swarm: string): Promise<Gateway.Result<Gateway.Subagent[]>> {
+    const agent = this.kv.get<string>('agent')
+    if (!agent) return { ok: true, value: [] }
+    const listed = await Gateway.subagents(this.env, swarm, agent)
+    return listed.ok ? { ok: true, value: listed.value.agents } : listed
+  }
+
+  async direct(swarm: string, input: { branch: number; said: string | null; usd: number; wake: string | null }): Promise<Gateway.Result<Gateway.Subagent>> {
+    const agent = this.kv.get<string>('agent')
+    if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
+    const set = await Gateway.budget(this.env, swarm, agent, input.branch, input.usd)
+    if (!set.ok) return set
+
+    if (input.wake) await Gateway.tell(this.env, swarm, agent, input.branch, input.wake)
+    if (input.said) {
+      this.log('funds', input.said)
+      this.announce(input.said)
+    }
+    return { ok: true, value: set.value.agent }
+  }
+
   async btw(input: { address: Address; prompt: string; swarm: string }): Promise<Gateway.Result<string>> {
     this.kv.put('id', input.swarm)
     const agent = this.kv.get<string>('agent')

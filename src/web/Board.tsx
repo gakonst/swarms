@@ -130,6 +130,17 @@ const flows: readonly Flow[] = [
   },
   {
     frames: [
+      { name: 'Branches', note: 'budgets, funders, subagents under each', url: swarm('bench-coders', '&scene=in#branches') },
+      { name: 'Signed out, opened', steps: [{ wait: 600 }, { click: '.branch:nth-child(1) .branch-row' }], url: swarm('bench-coders', '#branches') },
+      { name: 'Funding a branch', steps: [{ wait: 600 }, { click: '.branch:nth-child(2) .branch-row' }], url: swarm('bench-coders', '&scene=in#branches') },
+      { name: 'Out of budget, funded again', steps: [{ wait: 600 }, { click: '.branch:nth-child(3) .branch-row' }, { click: '.branch-go' }, { wait: 1500 }], url: swarm('bench-coders', '&scene=in#branches') },
+      { name: 'No branches yet', url: swarm('speedrun-t4', '&scene=in#branches') },
+    ],
+    id: 'branches',
+    title: 'Branches',
+  },
+  {
+    frames: [
       { name: 'From the head', note: 'card rises from below', steps: [{ click: 'button.energy' }], url: swarm('bench-coders', '&scene=in') },
       { name: 'From the composer', steps: [{ click: '.say-fund' }], url: swarm('bench-coders', '&scene=in') },
       { name: 'Monthly', steps: [{ click: 'button.energy' }, { click: '.tray .fuel > .fuel-seg:nth-of-type(3) button:nth-child(2)' }], url: swarm('bench-coders', '&scene=in') },

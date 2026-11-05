@@ -33,6 +33,27 @@ export type Seat = { address: `0x${string}`; handle: string; left: string | null
 
 export type Roster = { admins: `0x${string}`[]; memberBudget: string | null; seats: Seat[]; steering: Steering; team: `0x${string}` | null }
 
+export type BranchState = 'pending' | 'running' | 'completed' | 'interrupted' | 'failed' | 'closing' | 'closed'
+
+export type Funder = { address: `0x${string}`; amount: string; handle: string }
+
+export type Branch = {
+  budget: string | null
+  error: string | null
+  funded: string
+  funders: Funder[]
+  id: number
+  left: string | null
+  parent: number | null
+  role: string
+  spent: string | null
+  starved: boolean
+  state: BranchState
+  task: string
+}
+
+export type Branches = { branches: Branch[]; steering: Steering }
+
 export type Pledge = {
   amount: string
   at: number

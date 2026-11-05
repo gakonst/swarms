@@ -334,6 +334,25 @@ const schemas = {
   Exchange: object({ answer: string, question: string }),
   Seat: object({ address: string, handle: string, left: nullable(string), limit: nullable(string), role: string, spent: string }),
   Roster: object({ admins: { items: string, type: 'array' }, memberBudget: nullable(string), seats: { items: ref('Seat'), type: 'array' }, steering: string, team: nullable(string) }),
+  Funder: object({ address: string, amount: string, handle: string }),
+  Branch: object(
+    {
+      budget: nullable({ ...string, description: 'The most this subagent and the subagents under it may spend together, in USD; null while it shares the swarm\'s money with no budget of its own.' }),
+      error: nullable({ ...string, description: 'Why it failed, when it failed for another reason than its budget.' }),
+      funded: { ...string, description: 'What backers put behind it, net of what they moved away.' },
+      funders: { items: ref('Funder'), type: 'array' },
+      id: { ...integer, description: 'The subagent id the gateway gives it, which fund and move take.' },
+      left: nullable({ ...string, description: 'Its budget less what it spent; null without a budget.' }),
+      parent: nullable({ ...integer, description: 'The subagent that started it; null for a branch the agent started itself, which backers fund.' }),
+      role: string,
+      spent: nullable({ ...string, description: 'What it and the subagents under it spent since it got a budget; null without one.' }),
+      starved: { description: 'True when it stopped because its budget was spent; funding it starts it again.', type: 'boolean' },
+      state: { enum: ['pending', 'running', 'completed', 'interrupted', 'failed', 'closing', 'closed'], type: 'string' },
+      task: string,
+    },
+    "One of the swarm agent's subagents. A branch is one the agent started itself, with the subagents under it.",
+  ),
+  Branches: object({ branches: { items: ref('Branch'), type: 'array' }, steering: string }),
   Said: object(
     {
       at: time,
@@ -613,6 +632,38 @@ export function document(origin: string) {
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.btw.omit({ swarm: true })) } }, required: true },
           responses: { ...ok(ref('Exchange'), 'The question and its answer.'), ...failures(400, 401, 403, 404, 409, 429, 502) },
           summary: 'Ask a side question',
+        },
+      },
+      '/v1/swarms/{id}/branches': {
+        get: {
+          description:
+            "The swarm agent's subagents, as the gateway runs them: each with its role, task, state, budget (the most it and the subagents under it may spend together), what it spent since it got one, and what backers put behind it and who. A branch is a subagent the agent started itself (parent null); backers fund branches and move their money between them.",
+          operationId: 'listBranches',
+          parameters: [swarm],
+          responses: { ...ok(ref('Branches'), 'Every subagent, branches first in the order the agent started them.'), ...failures(404, 502) },
+          summary: 'Branches',
+        },
+      },
+      '/v1/swarms/{id}/branches/{branch}/fund': {
+        post: {
+          description:
+            "As a signed-in backer with a username (Authorization: Bearer <token> from /v1/auth), puts some of your backing not yet behind a note or branch behind one branch, or, when only the swarm's team steers it, some of the swarm's money within your team budget. The branch's budget becomes what it had when first funded (nothing for one that had no budget of its own) plus everything put behind it, and the gateway refuses its paid requests past it; a branch its budget had stopped starts again. To put new money behind a branch, fund the swarm first.",
+          operationId: 'fundBranch',
+          parameters: [swarm, parameter('branch', 'path', integer, 'The branch id from listBranches.')],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.fund.omit({ branch: true, swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Branch'), 'The branch with its new budget.'), ...failures(400, 401, 403, 404, 409, 502) },
+          summary: 'Fund a branch',
+        },
+      },
+      '/v1/swarms/{id}/branches/{branch}/move': {
+        post: {
+          description:
+            "As a signed-in backer, moves money you put behind one branch, which it has not spent, behind another: the first branch's budget falls and the other's rises by amount.",
+          operationId: 'moveFunding',
+          parameters: [swarm, parameter('branch', 'path', integer, 'The branch to take the money from.')],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.move.omit({ branch: true, swarm: true })) } }, required: true },
+          responses: { ...ok({ items: ref('Branch'), type: 'array' }, 'Both branches after the move, the one it left first.'), ...failures(400, 401, 403, 404, 409, 502) },
+          summary: 'Move funding between branches',
         },
       },
       '/v1/swarms/{id}/chat/live': {

@@ -34,6 +34,16 @@ export type Sponsored = { available: string; channel: `0x${string}`; closing: bo
 
 export type Sponsorship = { least: string; operator: `0x${string}`; signer: `0x${string}` }
 
+export type Subagent = {
+  agent_id: number
+  budget_usd?: number
+  parent_agent_id: number | null
+  role: string
+  spent_usd?: number
+  status: { error?: string; state: string }
+  task: string
+}
+
 type Init = { app?: string; body?: unknown; key?: string; method?: string }
 
 export function app(swarm: string) {
@@ -160,6 +170,18 @@ export function prompt(env: Cloudflare.Env, swarm: string, agent: string, input:
 
 export function side(env: Cloudflare.Env, swarm: string, agent: string, question: string) {
   return send<{ text: string; usage?: { estimated_cost?: { total_usd?: number } } }>(env, `/v1/agents/${agent}/side_question`, { app: app(swarm), body: { question } })
+}
+
+export function subagents(env: Cloudflare.Env, swarm: string, agent: string) {
+  return send<{ agents: Subagent[] }>(env, `/v1/agents/${agent}/subagents`, { app: app(swarm) })
+}
+
+export function budget(env: Cloudflare.Env, swarm: string, agent: string, subagent: number, usd: number | null) {
+  return send<{ agent: Subagent }>(env, `/v1/agents/${agent}/subagents/${subagent}/budget`, { app: app(swarm), body: { budget_usd: usd } })
+}
+
+export function tell(env: Cloudflare.Env, swarm: string, agent: string, subagent: number, message: string) {
+  return send<{ disposition: string }>(env, `/v1/agents/${agent}/subagents/${subagent}/messages`, { app: app(swarm), body: { message, priority: 'deferred' } })
 }
 
 export function turn(env: Cloudflare.Env, swarm: string, agent: string, turn: string) {

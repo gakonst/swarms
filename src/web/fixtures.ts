@@ -1,5 +1,5 @@
 import * as Answer from '../shared/Answer.ts'
-import type { Account, Artifact, Code, Budget, BudgetRequested, Budgeted, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Pledge, Pledged, Posted, Requested, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Code, Budget, BudgetRequested, Budgeted, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Pledge, Pledged, Posted, Requested, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -924,6 +924,7 @@ function members(swarm: Live): Member[] {
   for (const gift of swarm.contributions) if (gift.kind !== 'pledge') add(gift.contributor, units(gift.amount), gift.note ? units(gift.amount) : 0n, gift.kind === 'transfer' ? 'transfer' : 'budget', gift.at)
   for (const budget of swarm.budgets) if (budget.contributor) add(budget.contributor, 0n, 0n, 'budget', budget.at)
   for (const steer of swarm.steers) if (found.has(steer.contributor)) add(steer.contributor, 0n, units(steer.amount), undefined, Date.now())
+  for (const put of planted.get(swarm.id) ?? []) if (found.has(put.contributor)) add(put.contributor, 0n, put.amount, undefined, Date.now())
   return [...found].sort((a, b) => a[1].since - b[1].since).map(([address, item]) => ({
     address,
     available: decimal(item.backed > item.steered ? item.backed - item.steered : 0n),
@@ -1090,3 +1091,92 @@ export async function unseat(key: string, member: string, who: `0x${string}` | u
   return delay(next, 250)
 }
 
+
+type Sprout = readonly [number, number | null, string, string, Branch['state'], string | null, string | null]
+
+const sprouts: readonly Sprout[] = [
+  [1, null, 'rust-subset', 'Write 50 small Rust tasks with hidden tests (parsing, lifetimes, async) and run every shortlisted model against them.', 'running', null, null],
+  [2, 1, 'parser-tasks', 'Write the 18 parsing tasks and their hidden tests.', 'completed', null, null],
+  [3, null, 'swe-bench-lite', 'Run SWE-bench Lite on four machines, 75 tasks per model, and record the solve rate and the cost of each solved task.', 'running', '2.000000', '1.420000'],
+  [4, 3, 'machine-2', 'Run tasks 76 to 150 on the second machine.', 'running', '0.600000', '0.310000'],
+  [5, null, 'latency-probe', 'Measure time to first token and tokens per second for each model through the gateway.', 'failed', '0.500000', '0.500000'],
+]
+
+const planted = new Map<string, { amount: bigint; branch: number; contributor: `0x${string}` }[]>()
+
+const woken = new Set<string>()
+
+function grown(swarm: Live): Branch[] {
+  if (swarm.status === 'funding') return []
+  const puts = planted.get(swarm.id) ?? []
+  return sprouts.map(([id, parent, role, task, state, budget, spent]) => {
+    const mine = puts.filter((put) => put.branch === id)
+    const funded = mine.reduce((sum, put) => sum + put.amount, 0n)
+    const total = mine.length ? (budget === null ? 0n : units(budget)) + funded : budget === null ? null : units(budget)
+    const used = spent === null ? (total === null ? null : 0n) : units(spent)
+    const awake = woken.has(`${swarm.id}:${id}`)
+    const starved = state === 'failed' && !awake && total !== null && used !== null && used >= total
+    const shares = new Map<`0x${string}`, bigint>()
+    for (const put of mine) shares.set(put.contributor, (shares.get(put.contributor) ?? 0n) + put.amount)
+    return {
+      budget: total === null ? null : decimal(total),
+      error: null,
+      funded: decimal(funded > 0n ? funded : 0n),
+      funders: [...shares].filter(([, amount]) => amount > 0n).sort((a, b) => (b[1] > a[1] ? 1 : -1)).map(([address, amount]) => ({ address, amount: decimal(amount), handle: called(address) })),
+      id,
+      left: total === null || used === null ? null : decimal(total > used ? total - used : 0n),
+      parent,
+      role,
+      spent: used === null ? null : decimal(used),
+      starved,
+      state: awake && state === 'failed' ? 'running' : state,
+      task,
+    }
+  })
+}
+
+export async function branches(key: string): Promise<Branches> {
+  const swarm = seed(await find(key))
+  return delay({ branches: grown(swarm), steering: swarm.steering })
+}
+
+function directing(swarm: Live, key: string, who: `0x${string}` | undefined) {
+  if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo Wallet to direct a swarm's money.")
+  if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
+  const seated = swarm.steering === 'team' ? rosters.get(key)?.seats.find((found) => found.address === who.toLowerCase()) : undefined
+  if (swarm.steering === 'team' && !seated) throw fail(403, 'not_member', "Only this swarm's team directs its money.")
+  return seated
+}
+
+export async function fund(key: string, branch: number, input: { amount: string }, who: `0x${string}` | undefined): Promise<Branch> {
+  const swarm = seed(await find(key))
+  const seated = directing(swarm, key, who)
+  const target = grown(swarm).find((found) => found.id === branch && found.parent === null)
+  if (!target) throw fail(404, 'not_found', `This swarm has no branch ${branch}.`)
+  const self = me(swarm, who)
+  const amount = units(input.amount)
+  if (!seated && (!self?.member || amount > units(self.available)))
+    throw fail(409, 'insufficient_balance', `You have ${usd(self?.available ?? '0')} of backing not yet behind a note or branch. Put new money behind this branch instead.`)
+  planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), { amount, branch, contributor: who as `0x${string}` }])
+  if (target.starved) woken.add(`${swarm.id}:${branch}`)
+  const after = grown(swarm).find((found) => found.id === branch) as Branch
+  push(swarm, 'funds', `${Mention.at(called(who as string))} put ${usd(decimal(amount))} behind ${after.role} (branch ${branch}), whose budget is now ${usd(after.budget ?? '0')}.`, null, Date.now())
+  return delay(after, 300)
+}
+
+export async function move(key: string, branch: number, input: { amount: string; to: number }, who: `0x${string}` | undefined): Promise<Branch[]> {
+  const swarm = seed(await find(key))
+  directing(swarm, key, who)
+  const list = grown(swarm)
+  const source = list.find((found) => found.id === branch && found.parent === null)
+  const target = list.find((found) => found.id === input.to && found.parent === null)
+  if (!source || !target || source.id === target.id) throw fail(404, 'not_found', 'Move money between two branches.')
+  const amount = units(input.amount)
+  const mine = units(source.funders.find((funder) => funder.address === who?.toLowerCase())?.amount ?? '0')
+  if (amount > mine) throw fail(409, 'insufficient_balance', `You put less than ${usd(decimal(amount))} behind ${source.role}.`)
+  if (source.left === null || amount > units(source.left)) throw fail(409, 'insufficient_balance', `${source.role} has ${usd(source.left ?? '0')} of its budget left.`)
+  const contributor = (who as string).toLowerCase() as `0x${string}`
+  planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), { amount: -amount, branch, contributor }, { amount, branch: input.to, contributor }])
+  const after = grown(swarm)
+  return delay([after.find((found) => found.id === branch) as Branch, after.find((found) => found.id === input.to) as Branch], 300)
+}
