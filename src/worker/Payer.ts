@@ -1,5 +1,7 @@
 import { Challenge, Credential } from 'mppx'
 import { createJsonChannelStore, Mppx, tempo } from 'mppx/client'
+import { Session } from 'mppx/tempo'
+import { Hex as OxHex } from 'ox'
 import { SignatureEnvelope } from 'ox/tempo'
 import { encodeFunctionData, isAddressEqual } from 'viem'
 import type { Account, Address, Hex } from 'viem'
@@ -8,7 +10,7 @@ import { prepareTransactionRequest, readContract, sendRawTransactionSync, signTr
 import { Transaction } from 'viem/tempo'
 import * as Chain from './Chain.ts'
 
-export type Channel = { at: number; confirmed: boolean; deposit: string; descriptor: unknown; id: Hex; signed: string }
+export type Channel = { at: number; confirmed: boolean; deposit: string; descriptor: unknown; id: Hex; signed: string; sponsored?: true }
 
 export type Snapshot = {
   acceptedCumulative: string
@@ -153,6 +155,24 @@ export async function requestClose(env: Cloudflare.Env, channel: Channel, accoun
   const receipt = await sendRawTransactionSync(client, { serializedTransaction: serialized })
   if (receipt.status !== 'success') throw new Error('requestClose reverted')
   return receipt.transactionHash
+}
+
+export async function sponsored(env: Cloudflare.Env, account: Account, input: { deposit: bigint; operator: Address; signer: Address; token: Address }) {
+  const client = Chain.client(env)
+  const salt = OxHex.random(32)
+  const prepared = await prepareTransactionRequest(client, {
+    account,
+    calls: [{ data: encodeFunctionData({ abi: Session.Precompile.escrowAbi, args: [Chain.recipient, input.operator, input.token, input.deposit, salt, input.signer], functionName: 'open' }), to: Chain.escrow }],
+    feePayer: true,
+    nonceKey: 'expiring',
+  } as never)
+  const transaction = await signTransaction(client, prepared as never)
+  const expiringNonceHash = Session.Precompile.Channel.computeExpiringNonceHash(
+    Session.Precompile.Channel.transactionForExpiringNonceHash({ feePayer: true, transaction: Transaction.deserialize(transaction) as never }),
+    { sender: account.address },
+  )
+  const descriptor = { authorizedSigner: input.signer, expiringNonceHash, operator: input.operator, payee: Chain.recipient, payer: account.address, salt, token: input.token }
+  return { descriptor, id: Session.Precompile.Channel.computeId({ ...descriptor, chainId: Chain.chain.id, escrow: Chain.escrow }), transaction }
 }
 
 export function opened(kv: SyncKvStorage, id: string) {
