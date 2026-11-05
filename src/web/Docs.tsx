@@ -42,17 +42,21 @@ const routes = [
   ['GET', '/v1/swarms/:id/hands', 'Hands issued for contributor machines, and which are connected.', ''],
   ['GET', '/v1/problems', 'The idea bank and which problems are open.', ''],
   ['GET', '/v1/swarms/:id/machines', 'Sandboxes, browsers and lent hands, with settings and command history.', ''],
-  ['GET', '/v1/swarms/:id/backers', 'Ideas ranked by money, and every backer.', ''],
+  ['GET', '/v1/swarms/:id/backers', 'Ideas ranked by money, and every contributor ranked by what they put in.', ''],
   ['GET', '/v1/swarms/:id/artifacts', 'Dashboards, charts, tables and write-ups the swarm published, each with its url.', ''],
   ['GET', '/a/:id/:slug/:file', "An artifact's file, sandboxed: HTML may run scripts but reaches only the swarm's own origin, the gateway and a few CDNs.", ''],
   ['GET', '/v1/swarms/:id/chat', "The room's newest messages, its backers, and with a session your standing.", '?after=<id>&before=<id>&limit=<n>'],
-  ['POST', '/v1/swarms/:id/chat', 'Post as a signed-in backer; @swarm with steer puts backing behind the idea, and btw collapses a side thread into it.', '{ text, steer?, btw? }'],
-  ['POST', '/v1/swarms/:id/btw', "Ask the agent a side question as a signed-in backer, answered from its context without interrupting it.", '{ question, thread? }'],
+  ['POST', '/v1/swarms/:id/chat', 'Post as a signed-in backer with a username; @swarm with steer puts backing, or on a team-steered swarm the team budget, behind the idea, and btw collapses a side thread into it.', '{ text, steer?, btw? }'],
+  ['POST', '/v1/swarms/:id/btw', "Ask the agent a side question as a signed-in backer with a username, answered from its context without interrupting it.", '{ question, thread? }'],
+  ['GET', '/v1/swarms/:id/team', 'Who steers it: open (any backer) or team, its admins, members and their budgets.', ''],
+  ['POST', '/v1/swarms/:id/team', "An admin's choice of who steers, and each member's default budget in USD per 30 days.", '{ steering?, memberBudget? }'],
+  ['POST', '/v1/swarms/:id/team/members', 'An admin adds a member or admin, with a budget of the swarm\'s money.', '{ member, role?, budget? }'],
+  ['DELETE', '/v1/swarms/:id/team/members/:member', 'An admin removes a member; anyone leaves.', ''],
   ['GET', '/v1/swarms/:id/chat/live', 'A WebSocket of new messages, presence and typing.', ''],
   ['POST', '/v1/auth/challenge', 'A sign-in message for Tempo Wallet to sign.', '{ chainId }'],
   ['POST', '/v1/auth', 'Verify the signature; answers a session token.', '{ address, message, signature }'],
   ['GET', '/v1/me', 'Your account: address, username and the handle rooms show.', ''],
-  ['POST', '/v1/me', 'Set your username, or clear it with null.', '{ name }'],
+  ['POST', '/v1/me', 'Set your username, which posting, steering and side questions need.', '{ name }'],
   ['POST', '/v1/swarms/:id/hands', 'Issue a hand to lend a machine.', '{ label? }'],
   ['GET', '/v1/swarms/:id/pledges/:pledge', 'Pledge status; polls Tempo Wallet while pending.', '?wait=<s>'],
   ['POST', '/v1/swarms/:id/pledges/:pledge', 'Approve with a key authorization or transaction, or poll.', '{ keyAuthorization } | { transaction } | {}'],
@@ -295,10 +299,13 @@ export function Docs(props: { config: Config | undefined }) {
         intro={
           <>
             <p>
-              Every swarm has a room where its backers talk. Anyone can read it. Anyone who pledged, sent, has a monthly budget or lent a machine while signed in can post, and mentions others as <code>@handle</code>: their username, set with <code>POST /v1/me</code>, or else a name made from their address.
+              Every swarm has a room where its backers talk. Anyone can read it. Anyone who pledged, sent, has a monthly budget or lent a machine, signed in and with a username set with <code>POST /v1/me</code>, can post, and mentions others as <code>@username</code>. Backers without a username show as their address.
             </p>
             <p>
               A message with <code>@swarm</code> steers: <code>steer</code> is how much of the author's backing, not yet behind a note, goes behind the rest of the message as a note. It moves weight, not money, and it reaches the agent at once when it is working.
+            </p>
+            <p>
+              A swarm's admins (whoever started it signed in, or else its first backer, and the admins they add) can make it team-steered with <code>POST /v1/swarms/:id/team</code>: anyone still funds it and talks in the room, but only its team, a gateway team, steers it and asks it side questions, putting the swarm's own money behind ideas, each member within their budget per 30 days.
             </p>
           </>
         }

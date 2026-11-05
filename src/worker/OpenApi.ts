@@ -332,6 +332,8 @@ const schemas = {
   ),
   Posted: object({ me: ref('Me'), message: ref('Said') }),
   Exchange: object({ answer: string, question: string }),
+  Seat: object({ address: string, handle: string, left: nullable(string), limit: nullable(string), role: string, spent: string }),
+  Roster: object({ admins: { items: string, type: 'array' }, memberBudget: nullable(string), seats: { items: ref('Seat'), type: 'array' }, steering: string, team: nullable(string) }),
   Said: object(
     {
       at: time,
@@ -563,6 +565,43 @@ export function document(origin: string) {
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.say.omit({ swarm: true })) } }, required: true },
           responses: { ...ok(ref('Posted'), 'The message and the author\'s standing after it.', '201'), ...failures(400, 401, 403, 404, 409) },
           summary: 'Post to the room',
+        },
+      },
+      '/v1/swarms/{id}/team': {
+        get: {
+          description:
+            "Who steers the swarm. steering open: any backer steers with their own money, as @swarm in the room. steering team: only the members of the swarm's gateway team (tempoxyz/gateway Teams) steer it, with the swarm's money, each within their budget (limit, USD per 30 days; null is no limit), and only they ask it side questions; anyone still funds it and talks in its room. admins choose; until the swarm has a team, its admin is whoever started it signed in, or else its first backer.",
+          operationId: 'getTeam',
+          parameters: [swarm],
+          responses: { ...ok(ref('Roster'), "The swarm's steering policy and team."), ...failures(404, 502) },
+          summary: 'Who steers',
+        },
+        post: {
+          description: "As a signed-in admin, sets steering to open or team and the team's default member budget. The first change creates the swarm's gateway team with the caller as its admin.",
+          operationId: 'setSteering',
+          parameters: [swarm],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.steering.omit({ swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Roster'), 'The roster after the change.'), ...failures(400, 401, 403, 404, 409, 502) },
+          summary: 'Choose who steers',
+        },
+      },
+      '/v1/swarms/{id}/team/members': {
+        post: {
+          description: "As a signed-in admin, adds a wallet to the swarm's team, as a member who steers or an admin who also manages, with an optional budget of the swarm's money per 30 days; adding it again changes its role and budget.",
+          operationId: 'addSteerer',
+          parameters: [swarm],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.seat.omit({ swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Roster'), 'The roster after the change.', '201'), ...failures(400, 401, 403, 404, 409, 502) },
+          summary: 'Add a steerer',
+        },
+      },
+      '/v1/swarms/{id}/team/members/{member}': {
+        delete: {
+          description: "Removes a wallet from the swarm's team: an admin removes anyone, a member leaves. The last admin stays.",
+          operationId: 'removeSteerer',
+          parameters: [swarm, parameter('member', 'path', string, 'The wallet to remove.')],
+          responses: { ...ok(ref('Roster'), 'The roster after the change.'), ...failures(400, 401, 403, 404, 409, 502) },
+          summary: 'Remove a steerer',
         },
       },
       '/v1/swarms/{id}/btw': {

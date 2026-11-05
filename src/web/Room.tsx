@@ -8,6 +8,8 @@ import * as Api from './api.ts'
 import { percent, usd, minute } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
 import { code } from './Pledge.tsx'
+import { seated, Steering, useRoster } from './Steering.tsx'
+import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 
 const ways = { budget: 'daily budget', machine: 'machine', pledge: 'pledge', transfer: 'transfer' } as const satisfies Record<Way, string>
@@ -19,7 +21,7 @@ export function tint(address: string) {
 }
 
 function arrived(text: string) {
-  return /^@[\w-]+ (pledged|sent|set a budget|funded)\b/.test(text) || /^New artifact:/.test(text)
+  return /^(@[\w-]+|0x[0-9a-f]{4}…[0-9a-f]{4}) (pledged|sent|set a budget|funded)\b/.test(text) || /^New artifact:/.test(text)
 }
 
 function merge(list: readonly Said[], more: readonly Said[]) {
@@ -33,7 +35,7 @@ function merge(list: readonly Said[], more: readonly Said[]) {
 export function Avatar(props: { address: string; handle: string; size?: 'small' }) {
   return (
     <span aria-hidden className="avatar" data-size={props.size} style={{ background: tint(props.address) }}>
-      {props.handle.charAt(0).toUpperCase()}
+      {props.handle.startsWith('0x') ? '·' : props.handle.charAt(0).toUpperCase()}
     </span>
   )
 }
@@ -65,6 +67,7 @@ function Backed(props: { onBack: ((note: string) => void) | undefined; steer: No
 
 export const Room = memo(function Room(props: {
   config: Config | undefined
+  onArtifact: (slug: string) => void
   onBack: (note: string) => void
   onMessages?: (messages: readonly Said[], me: Me | null, members: readonly Member[], online: readonly string[], watching: number) => void
   onSteered: () => void
@@ -204,15 +207,19 @@ export const Room = memo(function Room(props: {
   }, [])
 
   const called = new Map(members.map((member) => [member.address, member.handle]))
-  const handleOf = (address: string) => called.get(address as `0x${string}`) ?? Mention.handle(address)
+  const handleOf = (address: string) => called.get(address as `0x${string}`) ?? Mention.short(address)
   const handles = new Set(members.flatMap((member) => [member.handle, Mention.handle(member.address)]))
   const myNames = new Set(me ? [me.handle, Mention.handle(me.address)] : [])
-  const mine = me?.member ? me : undefined
+  const roster = useRoster(id, props.swarm.steering)
+  const team = props.swarm.steering === 'team'
+  const seat = seated(roster, me?.address)
+  const unnamed = !!token && !!wallet.account && !wallet.account.name
+  const mine = me && (me.member || seat) && !unnamed ? me : undefined
   const query = mine && !closed ? /(^|\s)@([a-z0-9_-]*)$/i.exec(text.slice(0, caret)) : null
   const options = query
     ? [
-        { handle: 'swarm', hint: done ? 'done, it takes no more steering' : 'steer it with your backing' },
-        ...members.map((member) => ({ handle: member.handle, hint: member.address === me?.address ? 'you' : `${usd(member.backed)} in` })),
+        { handle: 'swarm', hint: team ? (seat ? 'steer it from your team budget' : 'only its team steers it') : 'steer it with your backing' },
+        ...members.filter((member) => !member.handle.startsWith('0x')).map((member) => ({ handle: member.handle, hint: member.address === me?.address ? 'you' : `${usd(member.backed)} in` })),
       ]
         .filter((option) => option.handle.startsWith((query[2] ?? '').toLowerCase()))
         .slice(0, 6)
@@ -260,6 +267,7 @@ export const Room = memo(function Room(props: {
       setCaret(0)
       if (amount) props.onSteered()
     } catch (error) {
+      if (code(error) === 'username_required') void Wallet.identify()
       setProblem({ short: code(error) === 'insufficient_balance', text: reason(error) })
     } finally {
       setSending(false)
@@ -271,6 +279,7 @@ export const Room = memo(function Room(props: {
     if (!body || sending || !mine) return
     if (Mention.steers(body)) {
       if (done) return setProblem({ text: 'This swarm is done, so @swarm no longer steers it.' })
+      if (team && !seat) return setProblem({ text: "Only this swarm's team steers it. Ask one of its admins here to add you." })
       if (idea.length < 3) return setProblem({ text: 'Say what the swarm should do after @swarm.' })
       if (idea.length > maxNote) return setProblem({ text: `Keep the idea to ${maxNote} characters; it becomes a note the agent keeps reading.` })
       setProblem(undefined)
@@ -345,14 +354,20 @@ export const Room = memo(function Room(props: {
         </div>
       </div>
     )
-  else if (me && !me.member)
+  else if (unnamed)
+    gate = (
+      <div className="room-gate room-gate-one">
+        <Username why="Pick a username to talk here. People see it beside everything you say and steer." />
+      </div>
+    )
+  else if (me && !mine)
     gate = (
       <div className="room-gate room-gate-one">
         {done ? (
           <p className="room-gate-title">It's finished, so the room is read only.</p>
         ) : (
           <div className="room-cta">
-            <button className="room-cta-main" onClick={() => props.onBack('')} type="button">Fund $2 to steer</button>
+            <button className="room-cta-main" onClick={() => props.onBack('')} type="button">{team ? 'Fund it to talk here' : 'Fund $2 to steer'}</button>
             <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund →</button>
           </div>
         )}
@@ -361,6 +376,7 @@ export const Room = memo(function Room(props: {
 
   return (
     <section aria-label="The swarm's room" className="room">
+      <Steering onChange={props.onSteered} swarm={props.swarm} />
       <ol
         aria-live="polite"
         className="room-list"
@@ -377,10 +393,19 @@ export const Room = memo(function Room(props: {
           </li>
         )}
         {!loaded && <li className="room-empty">{failed ? `Could not load the room. ${failed}` : 'Opening the room…'}</li>}
-        {loaded && !messages.some((item) => !item.artifact && (item.author || item.text.startsWith('Update: ') || arrived(item.text))) && <li className="room-empty">Quiet so far. Be the first to say hi.</li>}
+        {loaded && !messages.some((item) => item.artifact || item.author || item.text.startsWith('Update: ') || arrived(item.text)) && <li className="room-empty">Quiet so far. Be the first to say hi.</li>}
         {messages.map((item, index) => {
           const author = item.author
-          if (item.artifact) return null
+          const shown = item.artifact
+          if (shown)
+            return (
+              <li className="said said-system" data-artifact="true" key={item.id}>
+                <button className="said-link" onClick={() => props.onArtifact(shown.slug)} type="button">
+                  <Words handles={handles} me={myNames} text={item.text} /> <span aria-hidden="true">→</span>
+                  <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
+                </button>
+              </li>
+            )
           if (!author) {
             const update = item.text.startsWith('Update: ')
             if (update)
@@ -413,7 +438,7 @@ export const Room = memo(function Room(props: {
                 {!follow && (
                   <p className="said-head">
                     <button className="said-who" disabled={!mine} onClick={() => mention(handle)} style={{ color: tint(author) }} type="button">
-                      @{handle}
+                      {Mention.at(handle)}
                     </button>
                     {author === me?.address && <span className="tag">you</span>}
                     <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
@@ -445,7 +470,7 @@ export const Room = memo(function Room(props: {
         )}
       </ol>
       <footer className="room-foot">
-        <p className="room-typing">{typers.length ? `@${typers.slice(0, 2).join(', @')} ${typers.length === 1 ? 'is' : 'are'} typing…` : ''}</p>
+        <p className="room-typing">{typers.length ? `${typers.slice(0, 2).map(Mention.at).join(', ')} ${typers.length === 1 ? 'is' : 'are'} typing…` : ''}</p>
         {gate}
         {mine && (
           <div className="composer">

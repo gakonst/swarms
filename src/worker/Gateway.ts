@@ -109,15 +109,45 @@ export function unsponsor(env: Cloudflare.Env, swarm: string, channel: string) {
   return send<{ closed: boolean; tx: string | null }>(env, `/api/keys/sponsors/${channel}`, { app: app(swarm), method: 'DELETE' })
 }
 
+export type Teammate = { budget: number | string | null; limit: number | string | null; member: `0x${string}`; role: 'admin' | 'member' }
+
+export function team(env: Cloudflare.Env, name: string) {
+  return send<{ address: `0x${string}` }>(env, '/v1/teams/create', { body: { name } })
+}
+
+export function teammates(env: Cloudflare.Env, team: string) {
+  return send<{ memberBudget: number | string | null; members: Teammate[] }>(env, '/v1/teams/members', { body: { team } })
+}
+
+export function enlist(env: Cloudflare.Env, team: string, input: { budget?: number | null; member: string; role: 'admin' | 'member' }) {
+  return send<unknown>(env, '/v1/teams/add', { body: { ...input, team } })
+}
+
+export function dismiss(env: Cloudflare.Env, team: string, member: string) {
+  return send<{ removed: boolean }>(env, '/v1/teams/remove', { body: { member, team } })
+}
+
+export function allowance(env: Cloudflare.Env, team: string, memberBudget: number | null) {
+  return send<unknown>(env, '/v1/teams/update', { body: { memberBudget, team } })
+}
+
 export function revoke(env: Cloudflare.Env, key: string) {
   return send<unknown>(env, '/api/keys/revoke', { body: {}, key })
 }
 
-export function agent(env: Cloudflare.Env, swarm: string, input: { name: string; payer: { secret: string; url: string } }) {
+export function agent(env: Cloudflare.Env, swarm: string, input: { name: string; payer: { secret: string; url: string }; persona?: string }) {
   return send<{ id: string }>(env, '/v1/agents', {
     app: app(swarm),
-    body: { name: input.name, payer: input.payer },
+    body: { name: input.name, payer: input.payer, ...(input.persona ? { persona: input.persona } : {}) },
   })
+}
+
+export function persona(env: Cloudflare.Env, input: { description: string; instructions: string; name: string }) {
+  return send<unknown>(env, '/v1/personas/set', { body: input })
+}
+
+export function restyle(env: Cloudflare.Env, swarm: string, agent: string, persona: string) {
+  return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { persona }, method: 'PATCH' })
 }
 
 export function repay(env: Cloudflare.Env, swarm: string, agent: string, payer: { secret: string; url: string }) {

@@ -42,25 +42,24 @@ export function amounts(text: string) {
   return text.replace(/\$(\d[\d,]*\.\d+)/g, (_, value: string) => cash(Number(value.replace(/,/g, ''))))
 }
 
-const wakes = /\s*(?:The next budget pull or resting contribution is at|and so does the next budget pull at|, and so does the next budget pull at|More money comes in at) (\d{2}:\d{2}) UTC\.?/
+const broke = (left: string) => `Out of money: ${left} left, and one step can cost up to $0.05. Fund it to keep going.`
 
-function later(text: string) {
-  const at = wakes.exec(text)?.[1]
-  return at ? ` More comes in at ${at} UTC.` : ''
-}
+const costly = (needed: string) => `Paused: its next step needs about ${needed} at once, more than any one backer has left in it. Fund it to keep going.`
 
 export function spoken(text: string): string | null {
   const said = text.trim()
   if (/^Round \d+ (started|completed|failed|cancelled)\b/i.test(said) || /room for \d+ explorers?/i.test(said) || /^Told the agent to keep going\b/.test(said)) return null
   if (/code repository|\$1\.(19|04)\b|repository first/i.test(said) && /^Waiting/i.test(said)) return null
-  const held = /^Waiting for money: the agent's next model call holds \$([\d.]+)/.exec(said)
-  if (held) return `Out of money for its next step: it needs about ${cash(Number(held[1]))} at once, more than any one backer's funds can pay. Adding money wakes it.${later(said)}`
-  const short = /^Waiting for money: (?:the next request needed more than the )?\$([\d.]+)/.exec(said)
-  if (short) return `Out of money: ${cash(Number(short[1]))} left, less than its next step needs. Adding money wakes it.${later(said)}`
-  if (/^Waiting for money\b/.test(said)) return 'Out of money. Adding money wakes it.'
+  const held = /^(?:Waiting for money: the agent's next model call holds|Out of money for its next step: it needs about) \$([\d.]+)/.exec(said)
+  if (held) return costly(cash(Number(held[1])))
+  const short = /^(?:Waiting for money: (?:the next request needed more than the )?|Out of money: )\$([\d.]+)(?: left, less than its next step needs\.|\b)/.exec(said)
+  if (short && !/one step can cost/.test(said)) return broke(cash(Number(short[1])))
+  if (/^Waiting for money\b/.test(said) || /^Out of money\. Adding money wakes it\.$/.test(said)) return 'Out of money. Fund it to keep going.'
+  const stopped = /^Stopped after \d+ errors in a row\. New money or a note restarts it\./.exec(said)
+  if (stopped) return stopped[0]
   if (/^Waiting for its first (funds|contribution)/.test(said) || /^Created\. The first pledge/.test(said)) return 'Not started: nobody has funded it yet.'
   const errors = /^The agent hit (\d+) errors in a row/.exec(said)
-  if (errors) return `Stopped after ${errors[1]} errors in a row. New money or a note restarts it.${later(said)}`
+  if (errors) return `Stopped after ${errors[1]} errors in a row. New money or a note restarts it.`
   const resting = /^Resting: .*?(\$[\d.]+) is kept for later/.exec(said)
   if (resting) return `Resting: the agent found nothing more worth doing. ${amounts(resting[1] ?? '')} is kept for later; a note or new money wakes it.`
   const back = /^(Back at work|Started working) with \$[\d.]+ to spend\./.exec(said)

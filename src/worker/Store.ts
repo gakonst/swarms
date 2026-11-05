@@ -9,6 +9,7 @@ export type Row = {
   answer: string | null
   contributors: number
   created_at: number
+  creator: `0x${string}` | null
   daily: number
   goal: string
   id: string
@@ -23,11 +24,15 @@ export type Row = {
   sealed_wallet: string | null
   spent: number
   status: Summary['status']
+  steering: Steering
+  team: `0x${string}` | null
   title: string
   updated_at: number
   wallet: `0x${string}` | null
   why: Summary['why']
 }
+
+export type Steering = Summary['steering']
 
 export type Backing = {
   amount: string
@@ -84,7 +89,7 @@ export type Allowance = {
 }
 
 export type Fields = Partial<
-  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'status' | 'why'>
+  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'status' | 'steering' | 'team' | 'why'>
 >
 
 export type Changes = Partial<
@@ -145,6 +150,7 @@ export function summary(row: Row): Summary {
     remaining: Memo.decimal(BigInt(row.remaining)),
     spent: Memo.decimal(BigInt(row.spent)),
     status: row.status,
+    steering: row.steering ?? 'open',
     title: row.title,
     updatedAt: row.updated_at,
     wallet: row.wallet,
@@ -208,13 +214,13 @@ export async function repo(env: Cloudflare.Env, id: string) {
 
 export async function insert(
   env: Cloudflare.Env,
-  input: Pick<Row, 'goal' | 'id' | 'problem' | 'title'> & { sealed_wallet: string; wallet: string },
+  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'title'> & { sealed_wallet: string; wallet: string },
 ) {
   const now = Date.now()
   await env.DB.prepare(
-    'insert into swarms (id, title, goal, problem, wallet, sealed_wallet, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)',
+    'insert into swarms (id, title, goal, problem, wallet, sealed_wallet, creator, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
-    .bind(input.id, input.title, input.goal, input.problem, input.wallet, input.sealed_wallet, now, now)
+    .bind(input.id, input.title, input.goal, input.problem, input.wallet, input.sealed_wallet, input.creator, now, now)
     .run().finally(wrote)
 }
 
@@ -578,7 +584,7 @@ const backing = `select contributor, amount, note_id, way, at from (
   select lower(contributor), 0, null, 'machine', created_at from hands where swarm = ?1 and contributor is not null
 )`
 
-const steered = 'coalesce((select sum(cast(amount as integer)) from steers where swarm = ?1 and contributor = b.contributor), 0)'
+const steered = 'coalesce((select sum(cast(amount as integer)) from steers where swarm = ?1 and contributor = b.contributor and budget = 0), 0)'
 
 export async function members(env: Cloudflare.Env, swarm: string): Promise<Member[]> {
   const { results } = await env.DB.prepare(
@@ -595,7 +601,7 @@ export async function members(env: Cloudflare.Env, swarm: string): Promise<Membe
       address: row.address,
       available: Memo.decimal(backed > allocated ? backed - allocated : 0n),
       backed: Memo.decimal(backed),
-      handle: row.name ?? Mention.handle(row.address),
+      handle: row.name ?? Mention.short(row.address),
       since: row.since,
       steered: Memo.decimal(allocated),
       ways: ways.filter((way) => row.ways.split(',').includes(way)),
@@ -606,7 +612,7 @@ export async function members(env: Cloudflare.Env, swarm: string): Promise<Membe
 export async function account(env: Cloudflare.Env, address: `0x${string}`): Promise<Account> {
   const lower = address.toLowerCase() as `0x${string}`
   const row = await env.DB.prepare('select name from names where address = ?').bind(lower).first<{ name: string }>()
-  return { address: lower, handle: row?.name ?? Mention.handle(lower), name: row?.name ?? null }
+  return { address: lower, handle: row?.name ?? Mention.short(lower), name: row?.name ?? null }
 }
 
 export async function rename(env: Cloudflare.Env, address: `0x${string}`, name: string | null) {
@@ -642,6 +648,40 @@ export async function steer(
     .bind(input.swarm, input.contributor.toLowerCase(), input.id, input.note, input.note_id, String(input.amount), Date.now())
     .run().finally(wrote)
   return result.meta.changes > 0
+}
+
+export async function allot(
+  env: Cloudflare.Env,
+  input: { amount: bigint; contributor: string; id: string; limit: bigint | null; note: string; note_id: string; since: number; swarm: string },
+) {
+  const result = await env.DB.prepare(
+    `insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget)
+    select ?3, ?1, ?2, ?4, ?5, ?6, ?7, 1 where ?8 is null or (
+      select coalesce(sum(cast(amount as integer)), 0) from steers where swarm = ?1 and contributor = ?2 and budget = 1 and created_at > ?9
+    ) + cast(?6 as integer) <= cast(?8 as integer)`,
+  )
+    .bind(
+      input.swarm,
+      input.contributor.toLowerCase(),
+      input.id,
+      input.note,
+      input.note_id,
+      String(input.amount),
+      Date.now(),
+      input.limit === null ? null : String(input.limit),
+      input.since,
+    )
+    .run().finally(wrote)
+  return result.meta.changes > 0
+}
+
+export async function allotted(env: Cloudflare.Env, swarm: string, since: number) {
+  const { results } = await env.DB.prepare(
+    'select contributor, sum(cast(amount as integer)) as amount from steers where swarm = ? and budget = 1 and created_at > ? group by contributor',
+  )
+    .bind(swarm, since)
+    .all<{ amount: number; contributor: string }>()
+  return new Map(results.map((row) => [row.contributor, BigInt(row.amount)]))
 }
 
 export async function noteId(note: string) {

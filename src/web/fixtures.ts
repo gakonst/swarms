@@ -1,5 +1,5 @@
 import * as Answer from '../shared/Answer.ts'
-import type { Account, Artifact, Code, Budget, BudgetRequested, Budgeted, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Pledge, Pledged, Posted, Requested, Room, Said, Status, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Code, Budget, BudgetRequested, Budgeted, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Pledge, Pledged, Posted, Requested, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -144,6 +144,7 @@ function build(input: {
     spent: input.spent,
     status: input.status,
     steered: new Set(input.steered ?? []),
+    steering: 'open',
     steers: [],
     title: input.title,
     updatedAt: feed.at(-1)?.at ?? at(input.age),
@@ -234,6 +235,7 @@ const benchmark: readonly Line[] = [
   ['tool', 'Ran a script: const rows = await Promise.all(models.map((model) => score(model)))', 'const rows = await Promise.all(models.map((model) => score(model)))\nconsole.table(rows)'],
   ['output', 'rust-subset finished', 'Kimi K2.7 passes 37 of 50 Rust tasks, DeepSeek V4.1 Flash 33, GLM-5.3 35. DeepSeek is the cheapest per pass at 0.0004 MACH.', 'rust-subset'],
   ['tool', 'Called kv_set', '{"app":"swarm","key":"results/rust-subset","value":{"kimi-k2.7":37,"deepseek-v4.1-flash":33,"glm-5.3":35}}'],
+  ['status', 'Updated the artifact "Coding model leaderboard" (version 3)', 'Solve rate and cost per solved task, live.'],
   ['machine', "A contributor's machine joined the swarm as hand gpu-box-7a1c (tensorbox's 4090)."],
   ['tool', '$ nvidia-smi --query-gpu=name,memory.total --format=csv on gpu-box-7a1c', 'name, memory.total [MiB]\nNVIDIA GeForce RTX 4090, 24564 MiB'],
   ['tool', '$ python -m swebench.harness.run_evaluation --run_id qwen3-coder --max_workers 2 on gpu-box-7a1c', 'Running 75 instances...\n29 resolved, 46 unresolved'],
@@ -283,7 +285,9 @@ const fixtures: Live[] = [
     problem: 'coding-models',
     lines: [
       ['status', 'Told the agent to keep going, with $2.68 left.'],
+      ['status', 'Published the artifact "Coding model leaderboard"', 'Solve rate and cost per solved task, live.\n/a/bench-coders/leaderboard/index.html'],
       ['steer', 'Steered the agent toward "Include Qwen3-Coder and Kimi K2.7 even if they are slow"', '1.55 MACH behind it, 36.5% of everything contributed'],
+      ['status', 'Published the artifact "Solved tasks per dollar"', 'Which model gets the most done for the money.\n/a/bench-coders/solved-per-dollar/chart.svg'],
       ...benchmark,
     ],
     pledges: [
@@ -455,6 +459,7 @@ function summary(swarm: Live): Summary {
     remaining: swarm.remaining,
     spent: swarm.spent,
     status: swarm.status,
+    steering: swarm.steering,
     title: swarm.title,
     updatedAt: swarm.updatedAt,
     wallet: swarm.wallet,
@@ -849,16 +854,17 @@ const remarks = [
 const listeners = new Map<string, Set<(event: Chatter | { type: 'open' | 'closed' }) => void>>()
 
 const names = new Map<string, string>([
+  ...(scene.has('nameless') ? [] : [[visitor, 'ada'] as [string, string]]),
   [people[2], 'mira'],
   [people[4], 'tensorbox'],
 ])
 
 function called(address: string) {
-  return names.get(address.toLowerCase()) ?? Mention.handle(address)
+  return names.get(address.toLowerCase()) ?? Mention.short(address)
 }
 
 function spoken(text: string) {
-  return text.replace(/@(\d)\b/g, (_, index: string) => `@${called(people[Number(index)] ?? visitor)}`)
+  return text.replace(/@(\d)\b/g, (_, index: string) => Mention.at(called(people[Number(index)] ?? visitor)))
 }
 
 function mentions(swarm: Live, text: string) {
@@ -960,15 +966,18 @@ export async function say(key: string, input: { steer?: string; text: string }, 
   if (scene.has('stall')) return new Promise<Posted>(() => {})
   if (scene.has('mute')) return new Promise<Posted>((_, reject) => setTimeout(() => reject(fail(503, 'unavailable', 'The room is not answering right now.')), 600))
   if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to post in a room.')
-  const self = me(swarm, who)
-  if (!self?.member) throw fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a daily budget or a lent machine lets you post in its room.')
+  if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
+  const self = me(swarm, who) as Me
+  const seated = swarm.steering === 'team' ? rosters.get(key)?.seats.find((found) => found.address === who.toLowerCase()) : undefined
+  if (!self?.member && !seated) throw fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a daily budget or a lent machine lets you post in its room.')
   const text = input.text.trim()
+  if (swarm.steering === 'team' && Mention.steers(text) && !seated) throw fail(403, 'not_member', "Only this swarm's team steers it.")
   let steer: Said['steer'] = null
   if (Mention.steers(text)) {
     const note = Mention.idea(text)
     if (note.length < 3 || note.length > maxNote) throw fail(400, 'invalid_request', 'Say what the swarm should do after @swarm, in at most 280 characters.')
     if (!input.steer) throw fail(400, 'invalid_request', '@swarm steers the swarm with money: say how much of your backing goes behind it.')
-    if (units(input.steer) > units(self.available)) throw fail(409, 'insufficient_balance', `You have ${usd(self.available)} of backing not yet behind a note. Put new money behind this idea instead.`)
+    if (seated ? seated.left !== null && units(input.steer) > units(seated.left) : units(input.steer) > units(self.available)) throw fail(409, 'insufficient_balance', `You have ${usd(self.available)} of backing not yet behind a note. Put new money behind this idea instead.`)
     swarm.steers.push({ amount: decimal(units(input.steer)), contributor: who, note })
     swarm.steered.add(note)
     settle(swarm)
@@ -978,13 +987,14 @@ export async function say(key: string, input: { steer?: string; text: string }, 
   const message: Said = { artifact: null, at: Date.now(), author: who, id: (swarm.chat.at(-1)?.id ?? 0) + 1, mentions: mentions(swarm, text), steer, text }
   swarm.chat.push(message)
   tell(key, { message, type: 'said' })
-  return delay({ me: me(swarm, who) ?? { ...self }, message }, 250)
+  return delay({ me: me(swarm, who) as Me, message }, 250)
 }
 
 export async function btw(key: string, input: { question: string; thread: readonly { answer: string; question: string }[] }, who: `0x${string}` | undefined) {
   const swarm = seed(await find(key))
   if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to ask the swarm side questions.')
-  if (!me(swarm, who)?.member) throw fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you ask it side questions.')
+  if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
+  if (!me(swarm, who)?.member && !(swarm.steering === 'team' && rosters.get(key)?.seats.some((found) => found.address === who.toLowerCase()))) throw fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you ask it side questions.')
   const answer = `From what it has done so far on "${swarm.title}": ${input.thread.length ? 'building on your earlier questions, ' : ''}it would answer "${input.question.trim()}" from its last update without stopping its work.`
   return delay({ answer, question: input.question.trim() }, 600)
 }
@@ -1037,3 +1047,46 @@ export function chatter(key: string, listener: (event: Chatter | { type: 'open' 
     typing: () => {},
   }
 }
+
+const rosters = new Map<string, Roster>()
+
+function rostered(key: string, steering: Steering): Roster {
+  return rosters.get(key) ?? { admins: [visitor.toLowerCase() as `0x${string}`], memberBudget: null, seats: [], steering, team: null }
+}
+
+export async function team(key: string): Promise<Roster> {
+  const swarm = seed(await find(key))
+  return delay(rostered(key, swarm.steering))
+}
+
+export async function govern(key: string, input: { memberBudget?: number | null; steering?: Steering }, who: `0x${string}` | undefined): Promise<Roster> {
+  const swarm = seed(await find(key))
+  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to manage who steers a swarm.')
+  const current = rostered(key, swarm.steering)
+  if (!current.admins.includes(who.toLowerCase() as `0x${string}`)) throw fail(403, 'access_denied', "Only this swarm's admins choose who steers it.")
+  if (input.steering) swarm.steering = input.steering
+  const seats = current.seats.length ? current.seats : [{ address: who.toLowerCase() as `0x${string}`, handle: me(swarm, who)?.handle ?? 'you', left: null, limit: null, role: 'admin' as const, spent: '0.000000' }]
+  const next: Roster = { ...current, memberBudget: input.memberBudget === undefined ? current.memberBudget : input.memberBudget === null ? null : decimal(units(String(input.memberBudget))), seats, steering: swarm.steering, team: current.team ?? '0x00000000000000000000000000000000000000aa' }
+  rosters.set(key, next)
+  return delay(next, 250)
+}
+
+export async function seat(key: string, input: { budget?: number | null; member: string; role: 'admin' | 'member' }, who: `0x${string}` | undefined): Promise<Roster> {
+  const current = await govern(key, {}, who)
+  const address = input.member.toLowerCase() as `0x${string}`
+  const limit = input.budget === undefined || input.budget === null ? current.memberBudget : decimal(units(String(input.budget)))
+  const seats = [...current.seats.filter((found) => found.address !== address), { address, handle: called(address), left: limit, limit, role: input.role, spent: '0.000000' }]
+  const next: Roster = { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats }
+  rosters.set(key, next)
+  return delay(next, 250)
+}
+
+export async function unseat(key: string, member: string, who: `0x${string}` | undefined): Promise<Roster> {
+  const current = rosters.get(key)
+  if (!who || !current) throw fail(404, 'not_found', 'This swarm has no team yet.')
+  const seats = current.seats.filter((found) => found.address !== member.toLowerCase())
+  const next: Roster = { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats }
+  rosters.set(key, next)
+  return delay(next, 250)
+}
+
