@@ -9,11 +9,12 @@ export type Code =
   | 'invalid_request'
   | 'not_found'
   | 'not_member'
+  | 'rate_limited'
   | 'unauthorized'
   | 'unavailable'
   | 'upstream_failed'
 
-export type Status = 400 | 401 | 403 | 404 | 405 | 409 | 410 | 502
+export type Status = 400 | 401 | 403 | 404 | 405 | 409 | 410 | 429 | 502
 
 export type Failure = { code: Code; detail: string; status: Status }
 
@@ -26,7 +27,8 @@ export const codes = {
   insufficient_balance: "The wallet holds less of the token than the pledge, so the pledge was dropped, or a steer asks for more than its author's backing not yet behind a note.",
   invalid_request: 'The input failed validation; detail says which field.',
   not_found: 'No swarm, pledge, budget or route has this id, or Tempo has no receipt for the transaction yet.',
-  not_member: "Only the swarm's backers (a pledge, a transfer, a daily budget or a lent machine) post in its room.",
+  not_member: "Only the swarm's backers (a pledge, a transfer, a daily budget or a lent machine) post in its room or ask it side questions.",
+  rate_limited: 'Too many side questions from this backer in the last hour.',
   unauthorized: 'Sign in with Tempo Wallet at /v1/auth and send the session token as Authorization: Bearer <token>.',
   unavailable: 'The swarm could not be saved.',
   upstream_failed: 'The Tempo gateway or Tempo Wallet failed or refused.',

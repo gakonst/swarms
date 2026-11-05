@@ -40,6 +40,7 @@ import type {
   Waited,
 } from '../shared/Api.ts'
 import * as Answer from '../shared/Answer.ts'
+import * as Btw from '../shared/Btw.ts'
 import * as Connect from '../shared/Connect.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Transfer from '../shared/Transfer.ts'
@@ -80,6 +81,12 @@ function units(value: string | number) {
 }
 
 const decimal = z.union([z.string().regex(/^\d+(\.\d{1,6})?$/), z.number().positive()])
+
+const exchanges = z
+  .array(z.object({ answer: z.string().max(Btw.maxAnswer), question: z.string().trim().min(1).max(Btw.maxQuestion) }))
+  .max(Btw.maxThread)
+
+const thread = exchanges.default([]).describe('The earlier side questions and their answers in this /btw thread, oldest first.')
 
 const amount = decimal
   .refine((value) => units(value) >= Store.minSteer, `A pledge is at least ${Memo.decimal(Store.minSteer)}.`)
@@ -220,7 +227,16 @@ export const schema = {
     limit: z.coerce.number().int().min(1).max(200).default(50).describe('At most this many of the newest updates.'),
     swarm: id,
   }),
+  btw: z.object({
+    question: z.string().trim().min(1).max(Btw.maxQuestion).describe('The side question, answered from the agent\'s own conversation without interrupting or steering it.'),
+    swarm: id,
+    thread,
+  }),
   say: z.object({
+    btw: exchanges
+      .min(1)
+      .optional()
+      .describe('With /collapse: the side questions and answers to steer the agent with. The text must be @swarm followed by the collapsed note, "Collapsed /btw: <the first question>".'),
     steer: decimal
       .refine((value) => units(value) >= Mention.smallestSteer, `A steer is at least ${Memo.decimal(Mention.smallestSteer)}.`)
       .refine((value) => units(value) <= 100_000_000n, 'A steer is at most 100.')
@@ -622,6 +638,8 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
 
   const steering = Mention.steers(request.text)
   if (!steering && request.steer !== undefined) return Problem.fail(400, 'invalid_request', 'steer goes with a message that mentions @swarm.')
+  if (request.btw && (!steering || Mention.idea(request.text) !== Btw.note(request.btw)))
+    return Problem.fail(400, 'invalid_request', `A /collapse is @swarm followed by "${Btw.note(request.btw)}".`)
   let steer: { amount: string; note: string; noteId: string } | null = null
   if (steering) {
     const note = Mention.idea(request.text)
@@ -642,7 +660,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
         `You have ${dollars(author.available)} of backing not yet behind a note, less than ${dollars(Memo.decimal(amount))}. Put new money behind this idea instead.`,
       )
     await logged(Search.note(env, row.id, noteId, note))
-    steer = { amount: Memo.decimal(amount), note, noteId }
+    steer = { amount: Memo.decimal(amount), note, noteId, ...(request.btw ? { context: Btw.collapse(request.btw) } : {}) }
   }
 
   const named = Mention.mentioned(request.text)
@@ -654,6 +672,27 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
     text: request.text,
   })
   return Problem.ok({ me: await self(env, steer ? await Store.members(env, row.id) : members, address), message })
+}
+
+export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Address): Promise<Problem.Result<Btw.Exchange>> {
+  const parsed = parse(schema.btw, input)
+  if (!parsed.ok) return parsed
+  const request = parsed.value
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to ask the swarm side questions.')
+  const row = await Store.find(env, request.swarm)
+  if (!row) return missing()
+  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
+  if (!(await Store.members(env, row.id)).some((member) => member.address === address))
+    return Problem.fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you ask it side questions.')
+
+  const answered = await stub(env, row.id).btw({ address, prompt: Btw.ask(request.thread, request.question), swarm: row.id })
+  if (!answered.ok)
+    return answered.status === 429
+      ? Problem.fail(429, 'rate_limited', answered.detail)
+      : answered.status === 409
+        ? Problem.fail(409, 'conflict', answered.detail)
+        : Problem.fail(502, 'upstream_failed', `The gateway did not answer the side question: ${answered.detail}`)
+  return Problem.ok({ answer: answered.value, question: request.question })
 }
 
 export async function chatter(env: Cloudflare.Env, input: Input<'swarm'>, request: Request): Promise<Problem.Result<Response>> {

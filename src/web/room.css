@@ -896,3 +896,11 @@ button.said-backed:not(:disabled):hover { background:#2f5f37; }
 .transcript-empty > .transcript-start:not(:disabled):hover { border-color:#1a3d2c; background:#f2f7ec; }
 .transcript-empty > .transcript-start b { background:#14301c; font-size:14px; padding:12px 20px; }
 .transcript-bar[hidden] { display:none; }
+.btw { display:grid; gap:8px; max-height:40vh; overflow-y:auto; overscroll-behavior:contain; padding:10px 12px; border:1px dashed #c9d4bf; border-radius:14px; background:#fbfcf8; }
+.btw-head { margin:0; font:11.5px/1.5 var(--mono); color:var(--grey-600); }
+.btw-head b { color:#1a3d2c; font-weight:600; }
+.btw-list { display:grid; gap:10px; margin:0; padding:0; list-style:none; }
+.btw-q { margin:0; font:600 14px/1.4 var(--serif); color:var(--black); }
+.btw-a { margin:2px 0 0; font:14px/1.5 var(--serif); color:var(--grey-800); }
+.btw-wait { color:var(--grey-600); font-style:italic; }
+.mention[data-btw='true'] { background:#f1f4ec; color:#1a3d2c; border:1px dashed #a5b79c; }
