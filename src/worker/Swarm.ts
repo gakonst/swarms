@@ -303,6 +303,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       }
       const source = await this.source(row, id)
       if (!source || this.kv.get(`channel:${id}`)) return
+      if (source.row && !source.row.period && (await this.sponsored(row, source))) return
       const init = { body: JSON.stringify({ key: 'probe' }), headers: { 'content-type': 'application/json', 'gateway-app': Gateway.app(row.id) }, method: 'POST' }
       const challenge = await fetch(this.env.GATEWAY_URL + '/v1/kv/get', init)
       const paid = await this.attempt(row, source, { challenge: challenge.headers.get('www-authenticate') ?? '', secret: '' }, [])
@@ -312,6 +313,29 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     } catch (error) {
       this.log('error', 'Charging the new money up front failed; it is charged on the first payment instead.', String(error))
     }
+  }
+
+  async sponsored(row: Store.Row, source: Source) {
+    const terms = await Gateway.sponsorship(this.env)
+    if (!terms) return false
+    const room = await this.room(row, source)
+    if (room.amount < Memo.units(terms.least)) return false
+    const signer = await this.signer(row, source)
+    const opened = await Payer.sponsored(this.env, signer.account, { deposit: room.amount, operator: terms.operator, signer: terms.signer, token: source.currency }).catch((error: unknown) => error as Error)
+    if (opened instanceof Error) {
+      this.log('error', `Could not open ${source.label}'s channel for the gateway, so the swarm pays from it itself.`, opened.message.split('\n')[0] ?? null)
+      return false
+    }
+    const sent = await Gateway.sponsor(this.env, row.id, { descriptor: opened.descriptor, transaction: opened.transaction })
+    const registered = sent.ok || !(await Payer.state(this.env, opened.id).then((state) => state.deposit > 0n).catch(() => false)) ? sent : await Gateway.sponsor(this.env, row.id, { descriptor: opened.descriptor })
+    if (!registered.ok) {
+      this.log('error', `The gateway did not take ${source.label}'s channel, so the swarm pays from it itself.`, registered.detail)
+      return false
+    }
+    this.kv.put(`channel:${source.id}`, { at: Date.now(), confirmed: true, deposit: String(Memo.units(registered.value.deposit)), descriptor: opened.descriptor, id: opened.id, signed: '0', sponsored: true } satisfies Payer.Channel)
+    this.kv.put('spent:' + source.id, String(Memo.units(registered.value.spent)))
+    this.log('funds', `Opened ${source.label}'s channel with ${trim(registered.value.deposit)} MACH for the gateway, which spends it on the swarm's agent directly; what it does not spend goes back to its backer when the swarm is done.`, registered.value.tx ?? null)
+    return true
   }
 
   async hand(swarm: string, name: string): Promise<Gateway.Result<Gateway.Minted>> {
@@ -1007,7 +1031,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
 
     const current = this.kv.get<string>('payer')
-    const open = (await this.sources(row)).filter((source) => (this.kv.get<number>('exhausted:' + source.id) ?? 0) <= Date.now())
+    const open = (await this.sources(row)).filter(
+      (source) => (this.kv.get<number>('exhausted:' + source.id) ?? 0) <= Date.now() && !this.kv.get<Payer.Channel>('channel:' + source.id)?.sponsored,
+    )
     const ordered = [
       ...open.filter((source) => !source.row),
       ...open.filter((source) => source.row && source.id === current),
@@ -1139,7 +1165,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async probe(row: Store.Row, source: Source) {
     const channel = this.kv.get<Payer.Channel>(`channel:${source.id}`)
-    if (!channel?.confirmed) return
+    if (!channel?.confirmed || channel.sponsored) return
     const init = { body: JSON.stringify({ key: 'probe' }), headers: { 'content-type': 'application/json', 'gateway-app': Gateway.app(row.id) }, method: 'POST' }
     const challenge = await fetch(this.env.GATEWAY_URL + '/v1/kv/get', init)
     const offered = Payer.offer(challenge.headers.get('www-authenticate') ?? '', source.currency)
@@ -1201,6 +1227,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async refresh(row: Store.Row): Promise<Money> {
+    await this.sponsorships(row)
     const [sources, hands, balances] = await Promise.all([
       this.sources(row, true),
       Gateway.hands(this.env, row.id),
@@ -1260,6 +1287,20 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       pool_spent: Number(this.used('pool') + this.handsUsed()),
     })
     return { biggest, left, row: (await this.found(row.id)) ?? row }
+  }
+
+  async sponsorships(row: Store.Row) {
+    const channels = [...this.kv.list<Payer.Channel>({ prefix: 'channel:' })].filter(([, channel]) => channel.sponsored)
+    if (!channels.length) return
+    const listed = await Gateway.sponsors(this.env, row.id)
+    if (!listed.ok) return
+    for (const [key, channel] of channels) {
+      const found = listed.value.sponsors.find((item) => item.channel.toLowerCase() === channel.id.toLowerCase())
+      if (!found) continue
+      const id = key.slice('channel:'.length)
+      this.kv.put('spent:' + id, String(Memo.units(found.spent)))
+      if (found.closing || found.endedAt !== null) this.drop(id)
+    }
   }
 
   fund(row: Store.Row) {
@@ -1473,7 +1514,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const left = Payer.max(BigInt(channel.deposit) - BigInt(this.kv.get<string>('spent:' + source.id) ?? channel.signed), 0n)
     const signer = await this.signer(row, source)
     const mppx = await this.client(row, source)
-    const cooperative = !owner(source)
+    const cooperative = !owner(source) && !channel.sponsored
     const challenge = cooperative ? await fetch(this.env.GATEWAY_URL + '/v1/kv/get', init) : undefined
     const authorization = challenge
       ? await (source.row
@@ -1483,6 +1524,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       : undefined
     const closed = authorization ? await fetch(this.env.GATEWAY_URL + '/v1/kv/get', { ...init, headers: { ...init.headers, authorization } }).catch(() => undefined) : undefined
     const returned = left > 0n ? `the ${dollars(left)} it did not spend` : 'nothing, since it spent its deposit in full'
+    if (channel.sponsored) {
+      const ended = await Gateway.unsponsor(this.env, row.id, channel.id)
+      if ((ended.ok && ended.value.closed) || (!ended.ok && ended.status === 404)) {
+        this.drop(source.id)
+        this.log('funds', `The gateway closed the channel of ${source.label}, keeping what the swarm spent and returning ${returned}.`, ended.ok ? ended.value.tx : null)
+        return true
+      }
+    }
     if (!source.row) this.kv.put(source.id === 'pool' ? 'closing' : 'closing:' + source.id, channel.id)
     if (closed?.ok) {
       this.drop(source.id)

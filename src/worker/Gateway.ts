@@ -30,6 +30,10 @@ export type Minted = { command: string; short: string; tab?: string; token: stri
 
 export type Commit = { date?: string | null; message: string; parents?: string[]; sha: string }
 
+export type Sponsored = { available: string; channel: `0x${string}`; closing: boolean; deposit: string; endedAt: number | null; settled: string; spent: string; tx?: string }
+
+export type Sponsorship = { least: string; operator: `0x${string}`; signer: `0x${string}` }
+
 type Init = { app?: string; body?: unknown; key?: string; method?: string }
 
 export function app(swarm: string) {
@@ -76,6 +80,33 @@ export function wallet(env: Cloudflare.Env) {
     if (!value && operator === known) operator = undefined
   })
   return known
+}
+
+let sponsoring: Promise<Sponsorship | undefined> | undefined
+
+export function sponsorship(env: Cloudflare.Env) {
+  const known = (sponsoring ??= Promise.all([
+    send<{ accessKey: `0x${string}` }>(env, '/api/keys/me'),
+    send<{ sponsors?: { least: string; operator: `0x${string}` } }>(env, '/v1/capabilities'),
+  ]).then(([me, capabilities]) =>
+    me.ok && capabilities.ok && capabilities.value.sponsors ? { least: capabilities.value.sponsors.least, operator: capabilities.value.sponsors.operator, signer: me.value.accessKey } : undefined,
+  ))
+  void known.then((value) => {
+    if (!value && sponsoring === known) sponsoring = undefined
+  })
+  return known
+}
+
+export function sponsor(env: Cloudflare.Env, swarm: string, body: { descriptor: unknown; transaction?: string }) {
+  return send<Sponsored>(env, '/api/keys/sponsors', { app: app(swarm), body })
+}
+
+export function sponsors(env: Cloudflare.Env, swarm: string) {
+  return send<{ sponsors: Sponsored[] }>(env, '/api/keys/sponsors', { app: app(swarm) })
+}
+
+export function unsponsor(env: Cloudflare.Env, swarm: string, channel: string) {
+  return send<{ closed: boolean; tx: string | null }>(env, `/api/keys/sponsors/${channel}`, { app: app(swarm), method: 'DELETE' })
 }
 
 export function revoke(env: Cloudflare.Env, key: string) {
