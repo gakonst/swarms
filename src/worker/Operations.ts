@@ -736,9 +736,13 @@ function unnamed() {
   return Problem.fail(403, 'username_required', 'Pick a username first: POST /v1/me with { name }. People in a swarm talk and steer under the name they chose.')
 }
 
+function reached<value>(call: Promise<Gateway.Result<value>>): Promise<Gateway.Result<value>> {
+  return call.catch((error: unknown) => ({ detail: error instanceof Error ? error.message : String(error), ok: false as const, status: 503 }))
+}
+
 async function directed(env: Cloudflare.Env, row: Store.Row): Promise<Problem.Result<{ list: Branch[]; members: Member[]; money: Awaited<ReturnType<typeof Store.funds>> }>> {
-  const [found, money, members] = await Promise.all([stub(env, row.id).subagents(row.id), Store.funds(env, row.id), Store.members(env, row.id)])
-  if (!found.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not list the swarm's subagents: ${found.detail}`)
+  const [found, money, members] = await Promise.all([reached(stub(env, row.id).subagents(row.id)), Store.funds(env, row.id), Store.members(env, row.id)])
+  if (!found.ok) return Problem.fail(502, 'upstream_failed', `Could not list the swarm's subagents: ${found.detail}`)
   return Problem.ok({ list: found.value.map((agent) => branched(agent, money, members)), members, money })
 }
 
@@ -836,12 +840,12 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
   await Store.base(env, row.id, target.id, target.budget === null ? 0n : Memo.units(target.budget))
   const money = await Store.funds(env, row.id)
   const total = backed(money, target.id)
-  const set = await stub(env, row.id).direct(row.id, {
+  const set = await reached(stub(env, row.id).direct(row.id, {
     branch: target.id,
     said: `${Mention.at(account.handle)} put ${dollars(Memo.decimal(amount))} behind ${target.role} (branch ${target.id}), whose budget is now ${dollars(Memo.decimal(total))}.`,
     usd: Number(total) / 1_000_000,
     wake: target.starved ? `Backers raised your budget to ${dollars(Memo.decimal(total))}. Carry on with your task.` : null,
-  })
+  }))
   if (!set.ok) {
     await Store.unsteer(env, [identity])
     return Problem.fail(502, 'upstream_failed', `The gateway did not raise the branch's budget, so nothing was put behind it: ${set.detail}`)
@@ -874,18 +878,18 @@ export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: 
 
   await Store.base(env, row.id, target.id, target.budget === null ? 0n : Memo.units(target.budget))
   const money = await Store.funds(env, row.id)
-  const lowered = await stub(env, row.id).direct(row.id, { branch: source.id, said: null, usd: Number(backed(money, source.id)) / 1_000_000, wake: null })
+  const lowered = await reached(stub(env, row.id).direct(row.id, { branch: source.id, said: null, usd: Number(backed(money, source.id)) / 1_000_000, wake: null }))
   const raised = lowered.ok
-    ? await stub(env, row.id).direct(row.id, {
+    ? await reached(stub(env, row.id).direct(row.id, {
         branch: target.id,
         said: `${Mention.at(account.handle)} moved ${dollars(Memo.decimal(amount))} from ${source.role} (branch ${source.id}) to ${target.role} (branch ${target.id}).`,
         usd: Number(backed(money, target.id)) / 1_000_000,
         wake: target.starved ? `Backers raised your budget to ${dollars(Memo.decimal(backed(money, target.id)))}. Carry on with your task.` : null,
-      })
+      }))
     : lowered
   if (!raised.ok) {
     await Store.unsteer(env, ids)
-    if (lowered.ok) await stub(env, row.id).direct(row.id, { branch: source.id, said: null, usd: Number(backed(await Store.funds(env, row.id), source.id)) / 1_000_000, wake: null })
+    if (lowered.ok) await reached(stub(env, row.id).direct(row.id, { branch: source.id, said: null, usd: Number(backed(await Store.funds(env, row.id), source.id)) / 1_000_000, wake: null }))
     return Problem.fail(502, 'upstream_failed', `The gateway did not move the budget, so nothing moved: ${raised.detail}`)
   }
   const members = await Store.members(env, row.id)
