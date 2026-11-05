@@ -6,6 +6,7 @@ import { Mppx, tempo } from 'mppx/client'
 import type { Artifact, Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Said, Shown, Snapshot, Steer, Terms, Token, Update, Working } from '../shared/Api.ts'
 import { type Buffers, type Crew, clip, crew, memory, narrate, redact, subagent } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
+import * as Btw from '../shared/Btw.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
@@ -70,7 +71,7 @@ export type Stamp = { quiet: boolean; version: string }
 export type Spoken = {
   author: Address
   mentions: Address[]
-  steer: { amount: string; note: string; noteId: string } | null
+  steer: { amount: string; context?: string; note: string; noteId: string } | null
   swarm: string
   text: string
 }
@@ -127,6 +128,8 @@ const followMs = 2_000
 const refreshMs = 10_000
 
 const healMs = 5 * 60_000
+
+const hourMs = 3_600_000
 
 const retryMs = 30_000
 
@@ -666,7 +669,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     else this.kv.delete('seen')
     const fresh = this.kv.get<boolean>('fresh')
     const told = new Set(this.steered())
-    const text = fresh ? brief(money.row, notes) : next(notes.filter((note) => !told.has(note.id)))
+    const text = fresh ? brief(money.row, this.tell(notes)) : next(this.tell(notes.filter((note) => !told.has(note.id))))
     const sent = await Gateway.prompt(this.env, row.id, agent, { prompt: text, steer: false })
     if (!sent.ok) {
       this.log('error', 'The gateway did not take the next message for the agent.', sent.detail)
@@ -694,8 +697,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       String(money.row.spent),
       base,
     )
-    for (const note of notes)
+    for (const note of notes) {
       this.ctx.storage.sql.exec('INSERT OR IGNORE INTO steered (note, at) VALUES (?, ?)', note.id, now)
+      this.kv.delete('collapse:' + note.id)
+    }
     this.touch()
     await Store.update(this.env, row.id, { rounds: n, status: 'running', why: null })
     this.log('status', resumed ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
@@ -1726,12 +1731,13 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const note = (await this.notes(row)).find((found) => found.id === noteId)
     if (!note) return undefined
     const sent = await Gateway.prompt(this.env, swarm, agent, {
-      prompt: note.note,
+      prompt: this.tell([note])[0]?.note ?? note.note,
       steer: true,
     })
     if (!sent.ok) return undefined
 
     this.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at) VALUES (?, ?)', note.id, Date.now())
+    this.kv.delete('collapse:' + note.id)
     this.touch()
     this.log(
       'steer',
@@ -1782,6 +1788,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.marked += 1
     this.kv.put('id', input.swarm)
     let steer: Steer | null = null
+    if (input.steer?.context) this.kv.put('collapse:' + input.steer.noteId, [...(this.kv.get<string[]>('collapse:' + input.steer.noteId) ?? []), input.steer.context])
     if (input.steer) {
       const spent = Memo.units(input.steer.amount)
       const sent = await this.steer(input.swarm, input.steer.noteId, `put ${dollars(spent)} of their backing, from the swarm's room,`)
@@ -1798,6 +1805,33 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       }
     }
     return this.speak(input.author, input.text, input.mentions, steer)
+  }
+
+  tell(notes: Note[]): Note[] {
+    return notes.map((note) => {
+      const collapsed = this.kv.get<string[]>('collapse:' + note.id)
+      return collapsed?.length ? { ...note, note: collapsed.join('\n\n') } : note
+    })
+  }
+
+  async btw(input: { address: Address; prompt: string; swarm: string }): Promise<Gateway.Result<string>> {
+    this.kv.put('id', input.swarm)
+    const agent = this.kv.get<string>('agent')
+    if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
+    const now = Date.now()
+    const key = 'btw:' + input.address.toLowerCase()
+    const recent = (this.kv.get<number[]>(key) ?? []).filter((at) => at > now - hourMs)
+    const oldest = recent[0]
+    if (recent.length >= Btw.perHour && oldest !== undefined)
+      return { detail: `At most ${Btw.perHour} side questions an hour; the next one opens at ${clock(oldest + hourMs)} UTC.`, ok: false, status: 429 }
+    this.kv.put(key, [...recent, now])
+
+    const answered = await Gateway.side(this.env, input.swarm, agent, input.prompt)
+    if (!answered.ok) {
+      this.kv.put(key, recent)
+      return answered
+    }
+    return { ok: true, value: answered.value.text }
   }
 
   announce(text: string, artifact: Shown | null = null) {

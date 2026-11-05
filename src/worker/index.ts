@@ -167,6 +167,10 @@ app.post('/api/swarms/:id/chat', async (c) =>
   ),
 )
 
+app.post('/api/swarms/:id/btw', async (c) =>
+  Problem.respond(await Operations.btw(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
+)
+
 app.get('/api/swarms/:id/chat/live', async (c) => Rest.socket(await Operations.chatter(c.env, { swarm: c.req.param('id') }, c.req.raw)))
 
 app.get('/v1/swarms/:id/chat/live', async (c) => Rest.socket(await Operations.chatter(c.env, { swarm: c.req.param('id') }, c.req.raw)))

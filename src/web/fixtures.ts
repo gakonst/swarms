@@ -981,6 +981,14 @@ export async function say(key: string, input: { steer?: string; text: string }, 
   return delay({ me: me(swarm, who) ?? { ...self }, message }, 250)
 }
 
+export async function btw(key: string, input: { question: string; thread: readonly { answer: string; question: string }[] }, who: `0x${string}` | undefined) {
+  const swarm = seed(await find(key))
+  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to ask the swarm side questions.')
+  if (!me(swarm, who)?.member) throw fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you ask it side questions.')
+  const answer = `From what it has done so far on "${swarm.title}": ${input.thread.length ? 'building on your earlier questions, ' : ''}it would answer "${input.question.trim()}" from its last update without stopping its work.`
+  return delay({ answer, question: input.question.trim() }, 600)
+}
+
 export function chatter(key: string, listener: (event: Chatter | { type: 'open' | 'closed' }) => void) {
   let alive = true
   let timer: ReturnType<typeof setTimeout> | undefined

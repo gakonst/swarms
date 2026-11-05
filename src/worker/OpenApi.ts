@@ -331,6 +331,7 @@ const schemas = {
     "A backer of the swarm, who may post in its room. A lent machine counts when its hand was issued to a signed-in caller.",
   ),
   Posted: object({ me: ref('Me'), message: ref('Said') }),
+  Exchange: object({ answer: string, question: string }),
   Said: object(
     {
       at: time,
@@ -562,6 +563,17 @@ export function document(origin: string) {
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.say.omit({ swarm: true })) } }, required: true },
           responses: { ...ok(ref('Posted'), 'The message and the author\'s standing after it.', '201'), ...failures(400, 401, 403, 404, 409) },
           summary: 'Post to the room',
+        },
+      },
+      '/v1/swarms/{id}/btw': {
+        post: {
+          description:
+            "Asks the swarm's agent a side question as the signed-in backer (Authorization: Bearer <token> from /v1/auth): the gateway answers it from the agent's own conversation, without tools and without interrupting or steering the running turn, as the nanocode CLI's /btw does. Send the thread's earlier questions and answers as thread, oldest first, to keep a side conversation. The answer is paid from the swarm's money, and a backer asks at most 20 an hour. To steer the agent with the thread, post @swarm Collapsed /btw: <the first question> to the room with btw set to the thread and steer to the money behind it.",
+          operationId: 'askBtw',
+          parameters: [swarm],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.btw.omit({ swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Exchange'), 'The question and its answer.'), ...failures(400, 401, 403, 404, 409, 429, 502) },
+          summary: 'Ask a side question',
         },
       },
       '/v1/swarms/{id}/chat/live': {

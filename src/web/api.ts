@@ -1,4 +1,5 @@
 import type { Account, Artifact, BudgetRequested, Budgeted, Chatter, Config, Contributed, Currency, Detail, Entry, Issued, Lent, Live, Pledged, Posted, Problem, Requested, Room, Snapshot, Summary, Token } from '../shared/Api.ts'
+import type * as Btw from '../shared/Btw.ts'
 import { seeded } from './boot.ts'
 import { visitor } from './stage.ts'
 
@@ -171,8 +172,12 @@ export function room(id: string, query: { after?: number; before?: number } = {}
   return fixture ? staged((fixtures) => fixtures.room(id, query, bearer ? visitor : undefined)) : request<Room>(`${path(id)}/chat?${search}`)
 }
 
-export function say(id: string, input: { steer?: string; text: string }) {
+export function say(id: string, input: { btw?: readonly Btw.Exchange[]; steer?: string; text: string }) {
   return fixture ? staged((fixtures) => fixtures.say(id, input, bearer ? visitor : undefined)) : request<Posted>(`${path(id)}/chat`, input)
+}
+
+export function btw(id: string, input: { question: string; thread: readonly Btw.Exchange[] }) {
+  return fixture ? staged((fixtures) => fixtures.btw(id, input, bearer ? visitor : undefined)) : request<Btw.Exchange>(`${path(id)}/btw`, input)
 }
 
 export type Line = { close: () => void; hello: () => void; typing: () => void }

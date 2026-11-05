@@ -128,6 +128,10 @@ export function prompt(env: Cloudflare.Env, swarm: string, agent: string, input:
   return send<{ request_id: string; status: string }>(env, `/v1/agents/${agent}/turns`, { app: app(swarm), body: input })
 }
 
+export function side(env: Cloudflare.Env, swarm: string, agent: string, question: string) {
+  return send<{ text: string; usage?: { estimated_cost?: { total_usd?: number } } }>(env, `/v1/agents/${agent}/side_question`, { app: app(swarm), body: { question } })
+}
+
 export function turn(env: Cloudflare.Env, swarm: string, agent: string, turn: string) {
   return send<Report>(env, `/v1/agents/${agent}/turns/${turn}`, { app: app(swarm) })
 }
