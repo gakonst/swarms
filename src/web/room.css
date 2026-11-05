@@ -980,3 +980,50 @@ button.said-backed:not(:disabled):hover { background:#2f5f37; }
   .shelved-peek { height:160px; }
   .steering { margin:8px 6px 0; }
 }
+
+.branches { display:grid; gap:12px; max-width:760px; }
+.branches-head { display:grid; gap:4px; }
+.branches-total { margin:0; font-size:17px; color:#3f4d3b; }
+.branches-total b { font:600 22px var(--mono); color:var(--black); letter-spacing:-.02em; }
+.branches-how { margin:0; max-width:62ch; font-size:13.5px; line-height:1.45; color:var(--grey-600); }
+.branches-list { display:grid; padding:0; border:1px solid #e3e9dd; border-radius:14px; background:#fbfcf9; list-style:none; overflow:hidden; }
+.branch + .branch { border-top:1px solid #e3e9dd; }
+.branch[data-open='true'] { background:#f2f7ec; }
+.branch-row { display:grid; gap:6px; width:100%; padding:12px 14px 11px; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.branch-row:hover { background:#f6f9f2; }
+.branch-top { display:flex; align-items:baseline; justify-content:space-between; gap:10px; min-width:0; }
+.branch-role { min-width:0; font:600 15px var(--mono); color:var(--black); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.branch-state { flex-shrink:0; padding:1px 8px; border-radius:10px; background:#e8eee1; font:10.5px var(--mono); color:#1a3d2c; }
+.branch[data-state='running'] .branch-state { background:#1a3d2c; color:var(--white); }
+.branch[data-state='failed'] .branch-state,.branch[data-starved='true'] .branch-state { background:#fbe9e4; color:#9a3a22; }
+.branch-task { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:13.5px; line-height:1.4; color:#3f4d3b; }
+.branch[data-open='true'] .branch-task { display:block; }
+.branch-money { display:grid; gap:4px; }
+.branch-bar { height:4px; overflow:hidden; border-radius:2px; background:#e8eee1; }
+.branch-bar i { display:block; height:100%; border-radius:2px; background:#1a3d2c; }
+.branch[data-starved='true'] .branch-bar i { background:#c4552f; }
+.branch-figures,.branch-pool { font:11px var(--mono); color:var(--grey-600); font-variant-numeric:tabular-nums; }
+.branch-figures b { color:var(--black); font-weight:600; }
+.branch-funders { font:11px var(--mono); color:#1a3d2c; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.branch-error { font:11px var(--mono); color:#9a3a22; overflow-wrap:anywhere; }
+.branch-plus { justify-self:end; margin-top:-2px; font:11px var(--mono); color:#1a3d2c; opacity:.7; }
+.branch-row:hover .branch-plus { opacity:1; }
+.branch-children { display:grid; gap:2px; margin:-4px 14px 10px 22px; padding:0 0 0 10px; border-left:2px solid #e3e9dd; list-style:none; }
+.branch-children li { display:flex; justify-content:space-between; gap:10px; font:11px var(--mono); color:var(--grey-600); }
+.branch-child-role { color:#3f4d3b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.branch-child-meta { flex-shrink:0; }
+.branch-tray { display:grid; gap:8px; padding:0 14px 14px; }
+.branch-go { flex-shrink:0; height:30px; padding:0 14px; border:0; border-radius:15px; background:#1a3d2c; color:var(--white); font:600 12.5px var(--mono); cursor:pointer; }
+.branch-go:disabled { opacity:.55; cursor:default; }
+.branch-tray > .branch-go { justify-self:start; }
+.branch-note,.branch-done { margin:0; font:11px var(--mono); color:var(--grey-600); }
+.branch-done { color:#1a3d2c; }
+.branch-move { display:flex; flex-wrap:wrap; align-items:center; gap:6px; font:11.5px var(--mono); color:var(--grey-600); }
+.branch-move select { height:30px; max-width:16ch; padding:0 8px; border:1px solid #e3e9dd; border-radius:15px; background:var(--white); color:var(--black); font:12px var(--mono); }
+.branch-move > button { height:30px; padding:0 12px; border:1px solid #1a3d2c; border-radius:15px; background:var(--white); color:#1a3d2c; font:12.5px var(--mono); cursor:pointer; }
+.branch-move > button:disabled { opacity:.5; cursor:default; }
+@media (max-width:799px) {
+  .branch-row { padding:11px 10px 10px; }
+  .branch-tray { padding:0 10px 12px; }
+  .branch-children { margin-left:16px; }
+}

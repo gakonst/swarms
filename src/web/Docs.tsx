@@ -52,6 +52,9 @@ const routes = [
   ['POST', '/v1/swarms/:id/team', "An admin's choice of who steers, and each member's default budget in USD per 30 days.", '{ steering?, memberBudget? }'],
   ['POST', '/v1/swarms/:id/team/members', 'An admin adds a member or admin, with a budget of the swarm\'s money.', '{ member, role?, budget? }'],
   ['DELETE', '/v1/swarms/:id/team/members/:member', 'An admin removes a member; anyone leaves.', ''],
+  ['GET', '/v1/swarms/:id/branches', "The agent's subagents: each branch's role, task, state, budget, what it spent, and who put money behind it.", ''],
+  ['POST', '/v1/swarms/:id/branches/:branch/fund', 'Put backing (or, team-steered, the team budget) behind one branch; it becomes the budget the gateway holds that branch to.', '{ amount }'],
+  ['POST', '/v1/swarms/:id/branches/:branch/move', 'Move what you put behind a branch, and it has not spent, to another branch.', '{ amount, to }'],
   ['GET', '/v1/swarms/:id/chat/live', 'A WebSocket of new messages, presence and typing.', ''],
   ['POST', '/v1/auth/challenge', 'A sign-in message for Tempo Wallet to sign.', '{ chainId }'],
   ['POST', '/v1/auth', 'Verify the signature; answers a session token.', '{ address, message, signature }'],
@@ -306,6 +309,9 @@ export function Docs(props: { config: Config | undefined }) {
             </p>
             <p>
               A swarm's admins (whoever started it signed in, or else its first backer, and the admins they add) can make it team-steered with <code>POST /v1/swarms/:id/team</code>: anyone still funds it and talks in the room, but only its team, a gateway team, steers it and asks it side questions, putting the swarm's own money behind ideas, each member within their budget per 30 days.
+            </p>
+            <p>
+              Each subagent the agent starts is a branch, with the subagents under it. <code>POST /v1/swarms/:id/branches/:branch/fund</code> puts backing behind one branch, which becomes its budget: the gateway refuses that branch's paid requests once it is spent, and funding a branch it stopped starts it again. <code>/move</code> moves what you put behind a branch, and it has not spent, to another, so backers can fund the part of a swarm they believe in and take money away from a part that stalls.
             </p>
           </>
         }

@@ -6,6 +6,7 @@ import { merge } from '../shared/Trail.ts'
 import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
 import { Artifacts } from './Artifacts.tsx'
+import { Branches } from './Branches.tsx'
 import { Connect } from './Connect.tsx'
 import { Contributors } from './Contributors.tsx'
 import { asked, Fund } from './Contribute.tsx'
@@ -41,7 +42,7 @@ const Code = lazy(() => load().then((module) => ({ default: module.Code })))
 
 const trails = new Map<string, { entries: readonly Entry[]; seq: number }>()
 
-const tabs = ['transcript', 'room', 'artifacts', 'contributors', 'code', 'machines', 'about'] as const
+const tabs = ['transcript', 'room', 'branches', 'artifacts', 'contributors', 'code', 'machines', 'about'] as const
 
 type Tab = (typeof tabs)[number]
 
@@ -198,6 +199,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const labels: Record<Tab, ReactNode> = {
     about: 'About',
     artifacts: <>Artifacts{shelved > 0 && <span className="tab-count tab-quiet">{shelved}</span>}</>,
+    branches: 'Branches',
     code: 'Code',
     contributors: <>Contributors{backers > 0 && <span className="tab-count tab-quiet">{backers}</span>}</>,
     machines: <>Machines{connected > 0 && <span className="tab-count tab-quiet">{connected}</span>}</>,
@@ -271,6 +273,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
           {shown !== 'transcript' && shown !== 'room' && (
             <div aria-labelledby={`tab-${shown}`} className="room-panel room-page-panel" data-tab={shown} id={`panel-${shown}`} role="tabpanel">
               {shown === 'artifacts' && <Artifacts artifacts={shelf.data?.artifacts} error={shelf.error} onSelect={setArtifact} selected={artifact} working={live} />}
+              {shown === 'branches' && <Branches config={props.config} swarm={swarm} />}
               {shown === 'contributors' && <Contributors me={chat.me} members={chat.members} online={chat.online} />}
               {shown === 'code' && <Repository config={props.config} swarm={swarm} />}
               {shown === 'machines' && (

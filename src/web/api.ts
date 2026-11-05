@@ -1,4 +1,4 @@
-import type { Account, Artifact, BudgetRequested, Budgeted, Chatter, Config, Contributed, Currency, Detail, Entry, Issued, Lent, Live, Pledged, Posted, Problem, Requested, Room, Roster, Snapshot, Steering, Summary, Token } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, BudgetRequested, Budgeted, Chatter, Config, Contributed, Currency, Detail, Entry, Issued, Lent, Live, Pledged, Posted, Problem, Requested, Room, Roster, Snapshot, Steering, Summary, Token } from '../shared/Api.ts'
 import type * as Btw from '../shared/Btw.ts'
 import { seeded } from './boot.ts'
 import { visitor } from './stage.ts'
@@ -190,6 +190,18 @@ export function seat(id: string, input: { budget?: number | null; member: string
 
 export function unseat(id: string, member: string) {
   return fixture ? staged((fixtures) => fixtures.unseat(id, member, bearer ? visitor : undefined)) : request<Roster>(`${path(id)}/team/members/${encodeURIComponent(member)}`, undefined, 'DELETE')
+}
+
+export function branches(id: string) {
+  return fixture ? staged((fixtures) => fixtures.branches(id)) : request<Branches>(`${path(id)}/branches`)
+}
+
+export function fund(id: string, branch: number, input: { amount: string }) {
+  return fixture ? staged((fixtures) => fixtures.fund(id, branch, input, bearer ? visitor : undefined)) : request<Branch>(`${path(id)}/branches/${branch}/fund`, input)
+}
+
+export function move(id: string, branch: number, input: { amount: string; to: number }) {
+  return fixture ? staged((fixtures) => fixtures.move(id, branch, input, bearer ? visitor : undefined)) : request<Branch[]>(`${path(id)}/branches/${branch}/move`, input)
 }
 
 export function btw(id: string, input: { question: string; thread: readonly Btw.Exchange[] }) {
