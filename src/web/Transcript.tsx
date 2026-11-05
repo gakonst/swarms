@@ -1,5 +1,5 @@
 import { memo as pure, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Config, Detail, Entry, Me, Said } from '../shared/Api.ts'
+import type { Artifact, Config, Detail, Entry, Me, Said, Steering } from '../shared/Api.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Mention from '../shared/Mention.ts'
@@ -14,6 +14,8 @@ import { clock, usd } from './format.ts'
 import { agent, type Live, message, speaker, type Stream, useWallet } from './hooks.ts'
 import * as Wallet from './wallet.ts'
 import { Markdown } from './Markdown.tsx'
+import { seated, useRoster } from './Steering.tsx'
+import { Username } from './Username.tsx'
 import { key, named, trouble } from '../shared/Trail.ts'
 import { useStanding } from './Visual.tsx'
 
@@ -122,10 +124,67 @@ const Beat = pure(function Beat(props: { entry: Entry; onFund: (() => void) | un
   )
 })
 
+const shelf = /^(Published|Updated) the artifact "(.+)"(?: \(version (\d+)\))?$/
+
+function shelfOf(entry: Entry) {
+  if (entry.kind !== 'status') return undefined
+  const found = shelf.exec(entry.text)
+  if (!found?.[2]) return undefined
+  const path = /\/a\/[^/\s]+\/([^/\s]+)\//.exec(entry.detail ?? '')
+  return { fresh: found[1] === 'Published', slug: path?.[1], title: found[2], version: found[3] }
+}
+
+function resolve(artifacts: readonly Artifact[] | undefined, made: { slug: string | undefined; title: string }) {
+  return artifacts?.find((item) => item.slug === made.slug || item.title === made.title)
+}
+
+function Peek(props: { artifact: Artifact }) {
+  const artifact = props.artifact
+  const url = /^https?:/.test(artifact.url) || artifact.url.startsWith('/') ? `${artifact.url}?v=${artifact.version}` : artifact.url
+  if (artifact.form === 'image') return <span className="shelved-peek"><img alt="" loading="lazy" src={url} /></span>
+  if (artifact.form !== 'page') return null
+  return (
+    <span className="shelved-peek" data-form="page">
+      <iframe aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" sandbox="allow-scripts" src={url} tabIndex={-1} title={artifact.title} />
+    </span>
+  )
+}
+
+const Shelved = pure(function Shelved(props: { artifact: Artifact | undefined; entry: Entry; latest: boolean; onOpen: (slug: string) => void }) {
+  const found = shelfOf(props.entry)
+  const slug = props.artifact?.slug ?? found?.slug
+  const summary = props.artifact?.summary ?? props.entry.detail?.split('\n').find((line) => line && !line.startsWith('/a/')) ?? null
+  const open = () => slug && props.onOpen(slug)
+  return (
+    <li className="beat beat-artifact" title={clock(props.entry.at)}>
+      <div
+        aria-disabled={!slug}
+        className="shelved"
+        onClick={open}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          open()
+        }}
+        role="button"
+        tabIndex={slug ? 0 : -1}
+      >
+        <span className="shelved-text">
+          <span className="shelved-tag">{found?.fresh ? 'New artifact' : `Updated${found?.version ? ` · v${found.version}` : ''}`}</span>
+          <b>{props.artifact?.title ?? found?.title ?? props.entry.text}</b>
+          {summary && <span className="shelved-summary">{summary}</span>}
+        </span>
+        {props.latest && props.artifact && <Peek artifact={props.artifact} />}
+        <span aria-hidden="true" className="shelved-open">Open →</span>
+      </div>
+    </li>
+  )
+})
+
 const Voice = pure(function Voice(props: { item: Said; name: string; onBack: ((note: string) => void) | undefined }) {
   return (
     <li className="beat beat-voice" title={clock(props.item.at)}>
-      <span className="beat-who">@{props.name}{props.item.steer && <button className="said-backed" disabled={!props.onBack} onClick={() => props.onBack?.(props.item.steer?.note ?? '')} title="Back this idea too" type="button">{usd(props.item.steer.amount)}{props.onBack && <b aria-hidden="true">+</b>}</button>}</span>
+      <span className="beat-who">{Mention.at(props.name)}{props.item.steer && <button className="said-backed" disabled={!props.onBack} onClick={() => props.onBack?.(props.item.steer?.note ?? '')} title="Back this idea too" type="button">{usd(props.item.steer.amount)}{props.onBack && <b aria-hidden="true">+</b>}</button>}</span>
       <p className="beat-say"><span className="mention" data-swarm="true">@swarm</span> {Mention.idea(props.item.text)}</p>
     </li>
   )
@@ -137,7 +196,7 @@ function failure(text: string) {
 
 function settled(text: string) {
   const said = Answer.spoken(text)
-  return said === null || /^(Out of money|Stopped after|Resting|Not started|Open again)/.test(said)
+  return said === null || /^(Out of money|Paused:|Stopped after|Resting|Not started|Open again)/.test(said)
 }
 
 type Row = { at: number; entry: Entry } | { at: number; step: Step } | { at: number; steps: Step[] } | { at: number; said: Said } | { at: number; backed: Backed }
@@ -222,7 +281,7 @@ const Funded = pure(function Funded(props: { item: Backed; name: string; onBack:
   return (
     <li className="beat beat-funded" data-go={!!(props.onBack && props.item.note)} onClick={() => props.item.note && props.onBack?.(props.item.note)} title={props.onBack && props.item.note ? 'Back this idea too' : clock(props.item.at)}>
       <span className="beat-coin" aria-hidden="true">$</span>
-      <span><b>@{props.name}</b> funded {usd(props.item.amount)}{props.item.monthly ? ' a month' : ''}{props.item.note ? <> behind <i>“{props.item.note}”</i></> : null}</span>
+      <span><b>{Mention.at(props.name)}</b> funded {usd(props.item.amount)}{props.item.monthly ? ' a month' : ''}{props.item.note ? <> behind <i>“{props.item.note}”</i></> : null}</span>
     </li>
   )
 })
@@ -249,8 +308,11 @@ function remember(swarm: string, side: Side) {
   else localStorage.removeItem('swarms.btw:' + swarm)
 }
 
-function Composer(props: { config: Config | undefined; draft: { at: number; text: string }; me: Me | null; onFund: (note?: string) => void; onSaid: (said: Said) => void; swarm: string; wallet: `0x${string}` | null }) {
+function Composer(props: { config: Config | undefined; draft: { at: number; text: string }; me: Me | null; onFund: (note?: string) => void; onSaid: (said: Said) => void; steering: Steering; swarm: string; wallet: `0x${string}` | null }) {
   const wallet = useWallet()
+  const roster = useRoster(props.swarm, props.steering)
+  const team = props.steering === 'team'
+  const seat = seated(roster, wallet.session?.address)
   const [text, setText] = useState('')
   const [stake, setStake] = useState<string>('0.5')
   const [busy, setBusy] = useState<string>()
@@ -319,6 +381,15 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
     setError(undefined)
     try {
       const need = units(stake)
+      if (team) {
+        if (!seat) throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
+        setBusy('Sending…')
+        const posted = await Api.say(props.swarm, { ...(collapsing ? { btw: side.thread } : {}), steer: decimal(need), text: `@swarm ${idea}` })
+        props.onSaid(posted.message)
+        setText('')
+        if (collapsing) setSide({ open: false, pending: undefined, thread: [] })
+        return
+      }
       if (!props.wallet) throw new Error('This swarm has no wallet yet.')
       setBusy('Approve in Tempo Wallet…')
       await Wallet.refresh(config).catch(() => {})
@@ -370,6 +441,20 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
       </div>
     )
 
+  if (wallet.account && !wallet.account.name)
+    return (
+      <div className="say say-gate">
+        <Username why="Pick a username to steer the agent and ask it side questions. People see it beside every note you back." />
+      </div>
+    )
+
+  if (team && roster && !seat)
+    return (
+      <div className="say say-gate">
+        <p className="say-team"><b>Only its team steers this swarm.</b> Anyone can fund it and talk in the room; its admins add who steers.</p>
+      </div>
+    )
+
   return (
     <div className="say">
       {side.open && (
@@ -402,7 +487,7 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
             <button aria-checked={stake === value} disabled={!!busy} key={value} onClick={() => setStake(value)} role="radio" type="button">${value === '0.5' ? '0.50' : value}</button>
           ))}
           <label className="say-own">$<input aria-label="Your amount" disabled={!!busy} inputMode="decimal" onChange={(event) => setStake(event.target.value.replace(',', '.').replace('$', ''))} onFocus={(event) => event.target.select()} value={(stakes as readonly string[]).includes(stake) ? '' : stake} placeholder="…" /></label>
-          {busy && <span className="say-note">{busy}</span>}
+          {busy ? <span className="say-note">{busy}</span> : seat && <span className="say-note">from the swarm's money{seat.left === null ? '' : ` · ${usd(seat.left)} of your team budget left`}</span>}
         </div>
       )}
       <form className="say-box" onSubmit={(event) => { event.preventDefault(); submit() }}>
@@ -428,6 +513,7 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
 }
 
 export function Transcript(props: {
+  artifacts: readonly Artifact[] | undefined
   config: Config | undefined
   entries: readonly Entry[]
   handles: ReadonlyMap<string, string>
@@ -436,6 +522,7 @@ export function Transcript(props: {
   draft: { at: number; text: string }
   onClose: () => void
   onEmpty?: (() => void) | undefined
+  onArtifact: (slug: string) => void
   onFund: (note: string) => void
   onEntries: (entries: readonly Entry[]) => void
   onPeople: () => void
@@ -491,6 +578,15 @@ export function Transcript(props: {
   const voices = useMemo(() => (who === 'all' ? props.said.filter((item) => item.author && Mention.steers(item.text)) : []), [props.said, who])
   const funded = useMemo(() => (who === 'all' ? backings(swarm) : []), [swarm, who])
   const rows = useMemo(() => grouped([...fold(shown), ...voices.map((said) => ({ at: said.at, said })), ...funded.map((backed) => ({ at: backed.at, backed }))].sort((a, b) => a.at - b.at)), [shown, voices, funded])
+  const shelved = props.artifacts
+  const latest = useMemo(() => {
+    const found = new Map<string, Entry>()
+    for (const entry of shown) {
+      const made = shelfOf(entry)
+      if (made) found.set(resolve(shelved, made)?.slug ?? made.slug ?? made.title, entry)
+    }
+    return found
+  }, [shown, shelved])
   const last = shown.at(-1)
   const first = shown.find((entry) => entry.seq > 0)
 
@@ -599,12 +695,17 @@ export function Transcript(props: {
           )}
           {shown.length === 0 && !streaming.length && <li className="timeline-empty">{onAir ? 'Tuning in…' : 'Nothing here yet.'}</li>}
           {rows.map((row, index) => {
-            if ('backed' in row) return <Funded item={row.backed} onBack={swarm.status === 'done' ? undefined : props.onFund} key={row.backed.id} name={props.handles.get(row.backed.who) ?? Mention.handle(row.backed.who)} />
-            if ('said' in row) return <Voice item={row.said} onBack={swarm.status === 'done' ? undefined : props.onFund} key={`m${row.said.id}`} name={props.handles.get(row.said.author ?? '') ?? Mention.handle(row.said.author ?? '')} />
+            if ('backed' in row) return <Funded item={row.backed} onBack={swarm.status === 'done' ? undefined : props.onFund} key={row.backed.id} name={props.handles.get(row.backed.who) ?? Mention.short(row.backed.who)} />
+            if ('said' in row) return <Voice item={row.said} onBack={swarm.status === 'done' ? undefined : props.onFund} key={`m${row.said.id}`} name={props.handles.get(row.said.author ?? '') ?? Mention.short(row.said.author ?? '')} />
             const head = voiced(row) !== undefined && voiced(row) !== voiced(rows[index - 1])
             const name = head ? <Who key={`w${rowKey(row)}`} who={'steps' in row ? (row.steps[0]?.entry.who ?? null) : 'step' in row ? row.step.entry.who : row.entry.who} /> : null
             if ('steps' in row) return [name, <Steps key={rowKey(row)} steps={row.steps} />]
             if ('step' in row) return [name, <Tool key={rowKey(row)} step={row.step} />]
+            const made = shelfOf(row.entry)
+            if (made) {
+              const artifact = resolve(shelved, made)
+              return <Shelved artifact={artifact} entry={row.entry} key={rowKey(row)} latest={latest.get(artifact?.slug ?? made.slug ?? made.title) === row.entry} onOpen={props.onArtifact} />
+            }
             return [name, <Beat entry={row.entry} key={rowKey(row)} onFund={swarm.status === 'done' ? undefined : () => props.onFund('')} times={repeats.get(row.entry)} />]
           })}
           {(stood.mood === 'money' || stood.mood === 'new') && !streaming.length && (
@@ -643,7 +744,7 @@ export function Transcript(props: {
           {props.tray}
         </div>
       ) : (
-        swarm.status !== 'done' && <Composer config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} swarm={swarm.id} />
+        swarm.status !== 'done' && <Composer config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} steering={swarm.steering} swarm={swarm.id} />
       )}
     </section>
   )

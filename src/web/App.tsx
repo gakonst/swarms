@@ -71,7 +71,7 @@ function WalletButton(props: { config: Config | undefined }) {
   if (wallet.address)
     return (
       <a className="btn btn-medium wallet" href={props.config ? `${props.config.explorer}/address/${wallet.address}` : undefined} rel="noreferrer" target="_blank" title={wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : 'Your Tempo Wallet'}>
-        <span>{wallet.account ? `@${wallet.account.handle}` : short(wallet.address)}</span>
+        <span>{wallet.account?.name ? `@${wallet.account.name}` : short(wallet.address)}</span>
         {wallet.balance !== undefined && <span className="wallet-balance">{mach(decimal(wallet.balance))} MACH</span>}
       </a>
     )

@@ -8,12 +8,14 @@ import { type Buffers, type Crew, clip, crew, memory, narrate, redact, subagent 
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Memo from '../shared/Memo.ts'
+import * as Mention from '../shared/Mention.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Keys from './Keys.ts'
 import * as Payer from './Payer.ts'
+import * as Persona from './Persona.ts'
 import * as Phase from './Phase.ts'
 import type { Why } from '../shared/Api.ts'
 import * as Seal from './Seal.ts'
@@ -263,7 +265,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       `${short(input.contributor)} pledged ${trim(input.amount)} ${Chain.currencies[input.token].symbol}${input.note ? ' with a note' : ''}`,
       input.note,
     )
-    this.announce(`@${(await Store.account(this.env, input.contributor)).handle} pledged ${trim(input.amount)} ${Chain.currencies[input.token].symbol}${input.note ? ` behind "${input.note}"` : ''}.`)
+    this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} pledged ${trim(input.amount)} ${Chain.currencies[input.token].symbol}${input.note ? ` behind "${input.note}"` : ''}.`)
     const row = await this.found(input.swarm)
     if (row) await this.upfront(row, input.id, input.token, BigInt(Memo.units(input.amount)))
     if (input.noteId) await this.steer(input.swarm, input.noteId, `pledged ${trim(input.amount)} ${Chain.currencies[input.token].symbol}`)
@@ -279,7 +281,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       `${short(input.contributor)} sent ${trim(input.amount)} ${Chain.tokens[input.token].symbol}${input.note ? ' with a note' : ''}`,
       [input.note, input.hash].filter(Boolean).join('\n'),
     )
-    this.announce(`@${(await Store.account(this.env, input.contributor)).handle} sent ${trim(input.amount)} ${Chain.tokens[input.token].symbol}${input.note ? ` behind "${input.note}"` : ''}.`)
+    this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${trim(input.amount)} ${Chain.tokens[input.token].symbol}${input.note ? ` behind "${input.note}"` : ''}.`)
     if (input.noteId) await this.steer(input.swarm, input.noteId, `sent ${trim(input.amount)} ${Chain.tokens[input.token].symbol}`)
     if (!this.kv.get<string>('turn')) await this.ctx.storage.setAlarm(Date.now())
   }
@@ -294,7 +296,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     )
     const row = await this.found(input.swarm)
     if (row) await this.upfront(row, input.id, input.token, BigInt(Memo.units(input.amount)))
-    this.announce(`@${(await Store.account(this.env, input.contributor)).handle} set a budget of ${trim(input.amount)} ${Chain.currencies[input.token].symbol} ${per(input.period)}${input.note ? ` behind "${input.note}"` : ''}.`)
+    this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} set a budget of ${trim(input.amount)} ${Chain.currencies[input.token].symbol} ${per(input.period)}${input.note ? ` behind "${input.note}"` : ''}.`)
     if (!this.kv.get<string>('turn')) await this.ctx.storage.setAlarm(Date.now())
   }
 
@@ -371,9 +373,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (row) await this.expose(row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
       this.kv.delete('exposing')
     }
-    if (!this.kv.get<string>('paused') || this.kv.get<string>('turn') || now - (this.kv.get<number>('healed') ?? 0) < healMs) return
+    const turn = this.kv.get<string>('turn')
+    if ((!this.kv.get<string>('paused') && !turn) || now - (this.kv.get<number>('healed') ?? 0) < healMs) return
     const alarm = await this.ctx.storage.getAlarm()
-    if (alarm !== null && alarm < now + healMs) return
+    if (alarm !== null && (turn || alarm < now + healMs)) return
     this.kv.put('healed', now)
     console.log(JSON.stringify({ alarm, heal: this.kv.get<string>('id') }))
     await this.ctx.storage.setAlarm(now)
@@ -401,7 +404,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       feed,
       hands: this.kv.get<Hand[]>('hands') ?? [],
       left: this.kv.get<string>('left') ?? null,
-      reason: paused ? (Answer.spoken(paused) ?? 'Out of money. Adding money wakes it.') : null,
+      reason: paused ? (Answer.spoken(paused) ?? 'Out of money. Fund it to keep going.') : null,
       stamp,
       why: paused ? known(this.kv.get<string>('why')) : null,
       steered: this.steered(),
@@ -645,7 +648,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         row,
         worked ? 'paused' : 'funding',
         worked || money.row.contributors
-          ? broke(money.left, wake)
+          ? broke(money.left, await this.coming(row.id))
           : undefined,
       )
       return wake
@@ -712,17 +715,21 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const payer = { secret: this.kv.get<string>('secret') ?? '', url: `${this.env.SWARMS_URL}/api/swarms/${row.id}/pay` }
     const known = this.kv.get<string>('agent')
     if (known) {
-      if (this.kv.get<string>('url') === payer.url) return known
+      if (this.kv.get<string>('url') === payer.url) return this.styled(row, known)
       const patched = await Gateway.repay(this.env, row.id, known, payer)
       if (patched.ok) {
         this.kv.put('url', payer.url)
-        return known
+        return this.styled(row, known)
       }
       if (patched.status !== 404) return undefined
       this.kv.delete('agent')
     }
 
-    const created = await Gateway.agent(this.env, row.id, { name: row.title.slice(0, 60), payer })
+    const styled = await Persona.ensure(this.env)
+    const named = { name: row.title.slice(0, 60), payer }
+    let created = await Gateway.agent(this.env, row.id, styled ? { ...named, persona: Persona.name } : named)
+    if (!created.ok && styled && created.status === 409) created = await Gateway.agent(this.env, row.id, named)
+    else if (created.ok && styled) this.kv.put('persona', Persona.name)
     if (!created.ok) {
       this.log('error', 'The gateway did not create the agent.', created.detail)
       return undefined
@@ -733,6 +740,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.put('fresh', true)
     this.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it pays for is paid from the contributions, one at a time.", created.value.id)
     return created.value.id
+  }
+
+  async styled(row: Store.Row, agent: string) {
+    if (this.kv.get<string>('persona') === Persona.name || !(await Persona.ensure(this.env))) return agent
+    const patched = await Gateway.restyle(this.env, row.id, agent, Persona.name)
+    if (patched.ok || patched.status === 409) this.kv.put('persona', Persona.name)
+    if (patched.ok) this.log('status', "Gave the agent the swarm's instructions on artifacts, appended to its system prompt.")
+    else console.error('Giving the agent the swarm persona failed', patched.status, patched.detail)
+    return agent
   }
 
   async follow(row: Store.Row) {
@@ -817,7 +833,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         'paused',
         wanted > money.biggest
           ? costly(wanted)
-          : broke(money.left, wake),
+          : broke(money.left, await this.coming(row.id)),
         wanted > money.biggest ? 'costly' : 'money',
       )
       return wake
@@ -825,7 +841,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (failures >= maxFailures) {
       this.kv.put('failures', 0)
       const wake = await this.wake(row.id)
-      await this.pause(row, 'paused', `Stopped after ${failures} errors in a row. New money or a note restarts it.${wake ? ` More comes in at ${clock(wake)} UTC.` : ''}`, 'rest')
+      await this.pause(row, 'paused', `Stopped after ${failures} errors in a row. New money or a note restarts it.`, 'rest')
       return wake
     }
     return status === 'completed' ? Math.max(Date.now(), started + quickMs) : Date.now() + settleMs
@@ -1231,6 +1247,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return times.length ? Math.min(...times) + 2_000 : null
   }
 
+  async coming(swarm: string): Promise<Coming | null> {
+    const now = Date.now()
+    const next = (await Store.allowances(this.env, swarm))
+      .filter((allowance) => allowance.period > 0 && allowance.next_at !== null && allowance.next_at > now && allowance.next_at < allowance.expires_at && (allowance.detail === null || /^Used up for this period/.test(allowance.detail)))
+      .sort((a, b) => (a.next_at ?? 0) - (b.next_at ?? 0))[0]
+    if (!next?.next_at || !next.contributor) return null
+    return { amount: BigInt(next.amount), at: next.next_at, period: next.period, who: (await Store.account(this.env, next.contributor)).handle }
+  }
+
   async refresh(row: Store.Row): Promise<Money> {
     await this.sponsorships(row)
     await this.revive(row)
@@ -1475,7 +1500,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       reason ??
       (status === 'funding'
         ? 'Not started: nobody has funded it yet.'
-        : 'Out of money. Adding money wakes it.')
+        : 'Out of money. Fund it to keep going.')
     if (this.kv.get<number>('since')) {
       this.kv.delete('since')
       if (why === 'idle' || why === 'rest') await this.sweep(row)
@@ -2140,12 +2165,16 @@ function slug(title: string) {
   )
 }
 
+type Coming = { amount: bigint; at: number; period: number; who: string }
+
 function costly(wanted: bigint) {
-  return `Out of money for its next step: it needs about ${Answer.cash(Number(Memo.decimal(wanted)))} at once, more than any one backer's funds can pay. Adding money wakes it.`
+  return `Paused: its next step needs about ${Answer.cash(Number(Memo.decimal(wanted)))} at once, more than any one backer has left in it. Fund it to keep going.`
 }
 
-function broke(left: bigint, wake: number | null) {
-  return `Out of money: ${Answer.cash(Number(Memo.decimal(left)))} left, less than its next step needs. Adding money wakes it.${wake ? ` More comes in at ${clock(wake)} UTC.` : ''}`
+function broke(left: bigint, coming: Coming | null) {
+  const rest = `${Answer.cash(Number(Memo.decimal(left)))} left, and one step can cost up to ${Answer.cash(Number(Memo.decimal(Store.reserve)))}`
+  if (!coming) return `Out of money: ${rest}. Fund it to keep going.`
+  return `Out of money: ${rest}. ${Mention.at(coming.who)}'s budget of ${Answer.cash(Number(Memo.decimal(coming.amount)))} ${per(coming.period)} pays in again at ${clock(coming.at)} UTC; fund it to keep going sooner.`
 }
 
 const whys = ['unfunded', 'money', 'costly', 'rest', 'idle'] as const satisfies readonly Why[]

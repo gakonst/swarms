@@ -47,7 +47,7 @@ app.post('/v1/me', async (c) => Problem.respond(await Operations.rename(c.env, a
 
 app.get('/v1/swarms', async (c) => Problem.respond(await Operations.list(c.env, c.req.query())))
 
-app.post('/v1/swarms', async (c) => Problem.respond(await Operations.create(c.env, await body(c.req.raw)), 201))
+app.post('/v1/swarms', async (c) => Problem.respond(await Operations.create(c.env, await body(c.req.raw), await Sessions.who(c.env, c.req.raw)), 201))
 
 app.get('/v1/search', async (c) =>
   Problem.respond(await Operations.search(c.env, { ...c.req.query(), query: c.req.query('q') ?? c.req.query('query') })),
@@ -124,6 +124,20 @@ app.post('/v1/swarms/:id/chat', async (c) =>
     await Operations.say(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)),
     201,
   ),
+)
+
+app.get('/v1/swarms/:id/team', async (c) => Problem.respond(await Operations.team(c.env, { swarm: c.req.param('id') })))
+
+app.post('/v1/swarms/:id/team', async (c) =>
+  Problem.respond(await Operations.steer(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
+)
+
+app.post('/v1/swarms/:id/team/members', async (c) =>
+  Problem.respond(await Operations.seat(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), 201),
+)
+
+app.delete('/v1/swarms/:id/team/members/:member', async (c) =>
+  Problem.respond(await Operations.unseat(c.env, { member: c.req.param('member'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
 )
 
 app.post('/v1/swarms/:id/btw', async (c) =>

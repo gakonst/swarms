@@ -5,7 +5,9 @@ import type { Config, Detail, Entry, Me, Member, Note, Said } from '../shared/Ap
 import { merge } from '../shared/Trail.ts'
 import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
+import { Artifacts } from './Artifacts.tsx'
 import { Connect } from './Connect.tsx'
+import { Contributors } from './Contributors.tsx'
 import { asked, Fund } from './Contribute.tsx'
 import { ago, duration, mach, percent, short, usd } from './format.ts'
 import { remembered, useLive, useMedia, usePoll, useStable, useVisible } from './hooks.ts'
@@ -39,9 +41,13 @@ const Code = lazy(() => load().then((module) => ({ default: module.Code })))
 
 const trails = new Map<string, { entries: readonly Entry[]; seq: number }>()
 
-const tabs = ['transcript', 'room', 'code', 'machines', 'about'] as const
+const tabs = ['transcript', 'room', 'artifacts', 'contributors', 'code', 'machines', 'about'] as const
 
 type Tab = (typeof tabs)[number]
+
+function chosen() {
+  return here().searchParams.get('artifact') ?? undefined
+}
 
 
 function subscribe(listener: () => void) {
@@ -85,11 +91,13 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const [chat, setChat] = useState<{ handles: ReadonlyMap<string, string>; me: Me | null; members: readonly Member[]; online: readonly string[]; said: readonly Said[]; watching: number }>({ handles: new Map(), me: null, members: [], online: [], said: [], watching: 0 })
   const heard = useCallback((said: readonly Said[], me: Me | null, members: readonly Member[], online: readonly string[], watching: number) => setChat((previous) => ({ handles: new Map(members.map((member) => [member.address, member.handle])), me, members, online, watching, said: [...said, ...previous.said.filter((item) => !said.some((other) => other.id === item.id) && item.id > (said.at(-1)?.id ?? 0))] })), [])
   const [funding, setFunding] = useState(() => here().searchParams.has('fund'))
+  const [artifact, setArtifact] = useState(chosen)
   const visible = useVisible()
   const wide = useMedia('(min-width: 1100px)')
   const phone = useMedia('(max-width: 799px)')
   const running = detail.data?.status === 'running'
   const loaded = detail.data !== undefined
+  const [shelf] = usePoll(() => Api.artifacts(props.id), running ? 30_000 : 60_000, `artifacts:${props.id}`)
   const stream = useLive(props.id, running && visible, (entry) => setEntries((previous) => merge(previous, [entry])), () => last.current)
   const coded = !!detail.data?.code
   useEffect(() => {
@@ -118,6 +126,13 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   useEffect(() => {
     if (detail.data) document.title = `${detail.data.title} · Swarms`
   }, [detail.data?.title])
+
+  useEffect(() => {
+    const url = new URL(location.href)
+    if (artifact) url.searchParams.set('artifact', artifact)
+    else url.searchParams.delete('artifact')
+    history.replaceState(null, '', url)
+  }, [artifact])
 
   const pace = running ? (stream.pushed ? 15_000 : 2000) : 10_000
   const stamp = `${detail.data?.status}:${detail.data?.updatedAt}`
@@ -173,10 +188,18 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const choose = (next: Tab) => {
     setTab(next)
   }
-  const room = <Room config={props.config} onBack={back} onMessages={heard} onSteered={reload} onTranscript={() => setTab('transcript')} onUnread={setUnread} swarm={swarm} visible={wide || shown === 'room'} />
+  const open = (slug: string) => {
+    setArtifact(slug)
+    setTab('artifacts')
+  }
+  const room = <Room config={props.config} onArtifact={open} onBack={back} onMessages={heard} onSteered={reload} onTranscript={() => setTab('transcript')} onUnread={setUnread} swarm={swarm} visible={wide || shown === 'room'} />
+  const shelved = shelf.data?.artifacts.length ?? 0
+  const backers = chat.members.filter((member) => Number(member.backed) > 0).length
   const labels: Record<Tab, ReactNode> = {
     about: 'About',
+    artifacts: <>Artifacts{shelved > 0 && <span className="tab-count tab-quiet">{shelved}</span>}</>,
     code: 'Code',
+    contributors: <>Contributors{backers > 0 && <span className="tab-count tab-quiet">{backers}</span>}</>,
     machines: <>Machines{connected > 0 && <span className="tab-count tab-quiet">{connected}</span>}</>,
     room: <>Room<Presence members={chat.members} online={chat.online} watching={chat.watching} />{unread > 0 && <span className="tab-count">{unread}</span>}</>,
     transcript: 'Transcript',
@@ -219,6 +242,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
           {phone && tablist('phone-views')}
           <div aria-labelledby="tab-transcript" className="room-panel" data-tab={shown} hidden={shown !== 'transcript'} id="panel-transcript" role="tabpanel">
             <Transcript
+              artifacts={shelf.data?.artifacts}
               config={props.config}
               draft={draft}
               entries={entries}
@@ -228,6 +252,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
               onClose={() => setFunding(false)}
               onEmpty={swarm.status !== 'done' ? () => back(note) : undefined}
               onFund={backNote}
+              onArtifact={open}
               onEntries={(next) => setEntries((previous) => merge(previous, next))}
               onPeople={() => {
                 if (!wide) return setTab('room')
@@ -245,6 +270,8 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
           </div>
           {shown !== 'transcript' && shown !== 'room' && (
             <div aria-labelledby={`tab-${shown}`} className="room-panel room-page-panel" data-tab={shown} id={`panel-${shown}`} role="tabpanel">
+              {shown === 'artifacts' && <Artifacts artifacts={shelf.data?.artifacts} error={shelf.error} onSelect={setArtifact} selected={artifact} working={live} />}
+              {shown === 'contributors' && <Contributors me={chat.me} members={chat.members} online={chat.online} />}
               {shown === 'code' && <Repository config={props.config} swarm={swarm} />}
               {shown === 'machines' && (
                 <>

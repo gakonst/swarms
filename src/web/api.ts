@@ -1,4 +1,4 @@
-import type { Account, Artifact, BudgetRequested, Budgeted, Chatter, Config, Contributed, Currency, Detail, Entry, Issued, Lent, Live, Pledged, Posted, Problem, Requested, Room, Snapshot, Summary, Token } from '../shared/Api.ts'
+import type { Account, Artifact, BudgetRequested, Budgeted, Chatter, Config, Contributed, Currency, Detail, Entry, Issued, Lent, Live, Pledged, Posted, Problem, Requested, Room, Roster, Snapshot, Steering, Summary, Token } from '../shared/Api.ts'
 import type * as Btw from '../shared/Btw.ts'
 import { seeded } from './boot.ts'
 import { visitor } from './stage.ts'
@@ -27,9 +27,9 @@ export function authorize(token: string | undefined) {
   bearer = token
 }
 
-async function request<T>(path: string, body?: unknown): Promise<T> {
+async function request<T>(path: string, body?: unknown, method?: 'DELETE'): Promise<T> {
   const headers: Record<string, string> = bearer ? { authorization: `Bearer ${bearer}` } : {}
-  const response = await fetch(path, body === undefined ? { headers } : { body: JSON.stringify(body), headers: { ...headers, 'content-type': 'application/json' }, method: 'POST' })
+  const response = await fetch(path, method ? { headers, method } : body === undefined ? { headers } : { body: JSON.stringify(body), headers: { ...headers, 'content-type': 'application/json' }, method: 'POST' })
   const data: unknown = await response.json().catch(() => undefined)
   if (response.ok) return data as T
   throw new Failure((data ?? {}) as Partial<Problem>, response.status)
@@ -174,6 +174,22 @@ export function room(id: string, query: { after?: number; before?: number } = {}
 
 export function say(id: string, input: { btw?: readonly Btw.Exchange[]; steer?: string; text: string }) {
   return fixture ? staged((fixtures) => fixtures.say(id, input, bearer ? visitor : undefined)) : request<Posted>(`${path(id)}/chat`, input)
+}
+
+export function team(id: string) {
+  return fixture ? staged((fixtures) => fixtures.team(id)) : request<Roster>(`${path(id)}/team`)
+}
+
+export function steering(id: string, input: { memberBudget?: number | null; steering?: Steering }) {
+  return fixture ? staged((fixtures) => fixtures.govern(id, input, bearer ? visitor : undefined)) : request<Roster>(`${path(id)}/team`, input)
+}
+
+export function seat(id: string, input: { budget?: number | null; member: string; role: 'admin' | 'member' }) {
+  return fixture ? staged((fixtures) => fixtures.seat(id, input, bearer ? visitor : undefined)) : request<Roster>(`${path(id)}/team/members`, input)
+}
+
+export function unseat(id: string, member: string) {
+  return fixture ? staged((fixtures) => fixtures.unseat(id, member, bearer ? visitor : undefined)) : request<Roster>(`${path(id)}/team/members/${encodeURIComponent(member)}`, undefined, 'DELETE')
 }
 
 export function btw(id: string, input: { question: string; thread: readonly Btw.Exchange[] }) {

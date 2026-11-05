@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type {
   Account,
   Answered,
+  Roster,
   Artifact,
   BudgetRequested,
   Budgeted,
@@ -49,12 +50,14 @@ import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Devices from './Devices.ts'
 import * as Edge from './Edge.ts'
+import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Keys from './Keys.ts'
 import * as Problem from './Problem.ts'
 import * as Search from './Search.ts'
 import * as Sessions from './Sessions.ts'
 import * as Store from './Store.ts'
+import * as Team from './Team.ts'
 import type { Snapshot } from './Payer.ts'
 import type { Paid, Stamp, Swarm } from './Swarm.ts'
 import * as Vault from './Vault.ts'
@@ -85,6 +88,14 @@ const decimal = z.union([z.string().regex(/^\d+(\.\d{1,6})?$/), z.number().posit
 const exchanges = z
   .array(z.object({ answer: z.string().max(Btw.maxAnswer), question: z.string().trim().min(1).max(Btw.maxQuestion) }))
   .max(Btw.maxThread)
+
+const wallet = z
+  .string()
+  .trim()
+  .refine((value) => isAddress(value), 'A wallet address, 0x and 40 hex digits.')
+  .transform((value) => value.toLowerCase() as Address)
+
+const allowance = z.number().min(0).max(1_000_000).nullable().describe('USD per 30 days of the swarm\'s money this member may put behind ideas; null means no limit, or the team\'s default.')
 
 const thread = exchanges.default([]).describe('The earlier side questions and their answers in this /btw thread, oldest first.')
 
@@ -163,6 +174,20 @@ export const schema = {
     problem: z.enum(ids).optional().describe('The id of the idea-bank problem this swarm works on, from GET /v1/problems. A problem with an open swarm is not offered again until that swarm finishes.'),
     title: z.string().trim().min(3).max(80).describe('A short name for the swarm.'),
   }),
+  seat: z.object({
+    budget: allowance.optional(),
+    member: wallet.describe('The wallet to let steer the swarm.'),
+    role: z.enum(['admin', 'member']).default('member').describe('An admin also manages who steers.'),
+    swarm: id,
+  }),
+  steering: z
+    .object({
+      memberBudget: allowance.optional(),
+      steering: z.enum(['open', 'team']).optional().describe('open: any backer steers with their own money. team: only the team steers, with the swarm\'s money, each member within their budget.'),
+      swarm: id,
+    })
+    .refine((value) => value.steering !== undefined || value.memberBudget !== undefined, 'Send steering, memberBudget or both.'),
+  unseat: z.object({ member: wallet, swarm: id }),
   hand: z.object({
     label: z
       .string()
@@ -384,12 +409,12 @@ export function listed(value: { swarms: Summary[] }) {
   return { swarms: value.swarms.map((swarm) => (swarm.answer ? { ...swarm, answer: { ...swarm.answer, text: Answer.lead(swarm.answer.text) } } : swarm)) }
 }
 
-export async function create(env: Cloudflare.Env, input: Input<'create'>): Promise<Problem.Result<Summary>> {
+export async function create(env: Cloudflare.Env, input: Input<'create'>, creator?: Address): Promise<Problem.Result<Summary>> {
   const parsed = parse(schema.create, input)
   if (!parsed.ok) return parsed
 
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
-  await Store.insert(env, { ...swarm, problem: parsed.value.problem ?? null, ...(await Vault.create(env.SWARMS_SECRET)) })
+  await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, ...(await Vault.create(env.SWARMS_SECRET)) })
   const [row] = await Promise.all([Store.find(env, swarm.id), logged(Search.swarm(env, swarm))])
   return row ? Problem.ok(Store.summary(row)) : Problem.fail(502, 'unavailable', 'The swarm was not saved.')
 }
@@ -628,15 +653,20 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   if (!parsed.ok) return parsed
   const request = parsed.value
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to post in a room.')
-  const row = await Store.find(env, request.swarm)
+  const [row, account] = await Promise.all([Store.find(env, request.swarm), Store.account(env, address)])
   if (!row) return missing()
+  if (!account.name) return unnamed()
 
   const members = await Store.members(env, row.id)
   const author = members.find((member) => member.address === address)
-  if (!author)
+  const policed = row.steering === 'team'
+  const seat = policed ? await Team.seat(env, row, address).catch(() => undefined) : undefined
+  if (!author && !seat)
     return Problem.fail(403, 'not_member', "Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you post in its room.")
 
   const steering = Mention.steers(request.text)
+  if (steering && policed && !seat)
+    return Problem.fail(403, 'not_member', "Only this swarm's team steers it. Its admins add who may: ask one of them in the room.")
   if (!steering && request.steer !== undefined) return Problem.fail(400, 'invalid_request', 'steer goes with a message that mentions @swarm.')
   if (request.btw && (!steering || Mention.idea(request.text) !== Btw.note(request.btw)))
     return Problem.fail(400, 'invalid_request', `A /collapse is @swarm followed by "${Btw.note(request.btw)}".`)
@@ -649,16 +679,24 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
       return Problem.fail(
         400,
         'invalid_request',
-        `@swarm steers the swarm with money: send steer, how much of your ${dollars(author.available)} not yet behind a note goes behind this idea.`,
+        seat
+          ? `@swarm steers the swarm with its money: send steer, how much of your team budget (${seat.left === null ? 'no limit' : dollars(seat.left) + ' left'}) goes behind this idea.`
+          : `@swarm steers the swarm with money: send steer, how much of your ${dollars(author?.available ?? '0')} not yet behind a note goes behind this idea.`,
       )
     const amount = units(request.steer)
     const noteId = await Store.noteId(note)
-    if (!(await Store.steer(env, { amount, contributor: address, id: identifier(), note, note_id: noteId, swarm: row.id })))
+    const placed = seat
+      ? await Store.allot(env, { amount, contributor: address, id: identifier(), limit: seat.limit === null ? null : Memo.units(seat.limit), note, note_id: noteId, since: Date.now() - Team.period, swarm: row.id })
+      : await Store.steer(env, { amount, contributor: address, id: identifier(), note, note_id: noteId, swarm: row.id })
+    if (!placed)
       return Problem.fail(
         409,
         'insufficient_balance',
-        `You have ${dollars(author.available)} of backing not yet behind a note, less than ${dollars(Memo.decimal(amount))}. Put new money behind this idea instead.`,
+        seat
+          ? `Your team budget has ${dollars(seat.left ?? '0')} left in these 30 days, less than ${dollars(Memo.decimal(amount))}.`
+          : `You have ${dollars(author?.available ?? '0')} of backing not yet behind a note, less than ${dollars(Memo.decimal(amount))}. Put new money behind this idea instead.`,
       )
+    if (seat) Team.forget(row.id)
     await logged(Search.note(env, row.id, noteId, note))
     steer = { amount: Memo.decimal(amount), note, noteId, ...(request.btw ? { context: Btw.collapse(request.btw) } : {}) }
   }
@@ -674,15 +712,22 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   return Problem.ok({ me: await self(env, steer ? await Store.members(env, row.id) : members, address), message })
 }
 
+function unnamed() {
+  return Problem.fail(403, 'username_required', 'Pick a username first: POST /v1/me with { name }. People in a swarm talk and steer under the name they chose.')
+}
+
 export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Address): Promise<Problem.Result<Btw.Exchange>> {
   const parsed = parse(schema.btw, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to ask the swarm side questions.')
-  const row = await Store.find(env, request.swarm)
+  const [row, account] = await Promise.all([Store.find(env, request.swarm), Store.account(env, address)])
   if (!row) return missing()
+  if (!account.name) return unnamed()
   if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
-  if (!(await Store.members(env, row.id)).some((member) => member.address === address))
+  if (row.steering === 'team' && !(await Team.seat(env, row, address).catch(() => undefined)))
+    return Problem.fail(403, 'not_member', "Only this swarm's team asks it side questions, as only its team steers it.")
+  if (row.steering !== 'team' && !(await Store.members(env, row.id)).some((member) => member.address === address))
     return Problem.fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you ask it side questions.')
 
   const answered = await stub(env, row.id).btw({ address, prompt: Btw.ask(request.thread, request.question), swarm: row.id })
@@ -693,6 +738,82 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
         ? Problem.fail(409, 'conflict', answered.detail)
         : Problem.fail(502, 'upstream_failed', `The gateway did not answer the side question: ${answered.detail}`)
   return Problem.ok({ answer: answered.value, question: request.question })
+}
+
+export async function team(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<Roster>> {
+  const parsed = parse(schema.swarm, input)
+  if (!parsed.ok) return parsed
+  const row = await Store.find(env, parsed.value.swarm)
+  if (!row) return missing()
+  return Team.roster(env, row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error)))
+}
+
+async function governed(env: Cloudflare.Env, swarm: string, address: Address | undefined): Promise<Problem.Result<Store.Row>> {
+  if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo Wallet to manage who steers a swarm.")
+  const row = await Store.find(env, swarm)
+  if (!row) return missing()
+  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
+  if (!(await Team.admin(env, row, address).catch(() => false)))
+    return Problem.fail(403, 'access_denied', "Only this swarm's admins choose who steers it: whoever started it signed in, or else its first backer, and the admins they add.")
+  return Problem.ok(row)
+}
+
+export async function steer(env: Cloudflare.Env, input: Input<'steering'>, address?: Address): Promise<Problem.Result<Roster>> {
+  const parsed = parse(schema.steering, input)
+  if (!parsed.ok) return parsed
+  const request = parsed.value
+  const governing = await governed(env, request.swarm, address)
+  if (!governing.ok) return governing
+  const teamed = await Team.ensure(env, governing.value, address as Address)
+  if (!teamed.ok) return teamed
+  const row = teamed.value
+
+  if (request.memberBudget !== undefined) {
+    const set = await Gateway.allowance(env, row.team as string, request.memberBudget)
+    if (!set.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not set the team's budget: ${set.detail}`)
+  }
+  if (request.steering) await Store.update(env, row.id, { steering: request.steering })
+  Team.forget(row.id)
+  const fresh = await Store.find(env, row.id)
+  return Team.roster(env, fresh ?? row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error)))
+}
+
+export async function seat(env: Cloudflare.Env, input: Input<'seat'>, address?: Address): Promise<Problem.Result<Roster>> {
+  const parsed = parse(schema.seat, input)
+  if (!parsed.ok) return parsed
+  const request = parsed.value
+  const governing = await governed(env, request.swarm, address)
+  if (!governing.ok) return governing
+  const teamed = await Team.ensure(env, governing.value, address as Address)
+  if (!teamed.ok) return teamed
+  const row = teamed.value
+
+  const added = await Gateway.enlist(env, row.team as string, { ...(request.budget !== undefined ? { budget: request.budget } : {}), member: request.member, role: request.role })
+  if (!added.ok) return Problem.fail(added.status === 409 ? 409 : 502, added.status === 409 ? 'conflict' : 'upstream_failed', `The gateway did not add ${request.member} to the swarm's team: ${added.detail}`)
+  Team.forget(row.id)
+  return Team.roster(env, row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error)))
+}
+
+export async function unseat(env: Cloudflare.Env, input: Input<'unseat'>, address?: Address): Promise<Problem.Result<Roster>> {
+  const parsed = parse(schema.unseat, input)
+  if (!parsed.ok) return parsed
+  const request = parsed.value
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to leave or manage a swarm\'s team.')
+  const row = await Store.find(env, request.swarm)
+  if (!row) return missing()
+  if (!row.team) return Problem.fail(404, 'not_found', 'This swarm has no team yet.')
+  const roster = await Team.roster(env, row).catch(() => undefined)
+  if (!roster) return Problem.fail(502, 'upstream_failed', "The gateway did not list the swarm's team.")
+  const self = request.member === address.toLowerCase()
+  if (!self && !roster.admins.includes(address.toLowerCase() as Address))
+    return Problem.fail(403, 'access_denied', "Only this swarm's admins remove others from its team; anyone may leave it.")
+  if (roster.admins.length === 1 && roster.admins[0] === request.member)
+    return Problem.fail(409, 'conflict', 'The swarm\'s last admin stays: add another admin first.')
+
+  const removed = await Gateway.dismiss(env, row.team, request.member)
+  if (!removed.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not remove ${request.member}: ${removed.detail}`)
+  Team.forget(row.id)
+  return Team.roster(env, row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error)))
 }
 
 export async function chatter(env: Cloudflare.Env, input: Input<'swarm'>, request: Request): Promise<Problem.Result<Response>> {

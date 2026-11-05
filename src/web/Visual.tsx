@@ -46,7 +46,7 @@ export function standing(swarm: Stood, now: number): Standing {
   if (swarm.why === 'idle') return { action: null, label: 'Resting', line: said || 'Resting: a note or new money wakes it.', mood: 'resting' }
   if (swarm.why === 'rest') return { action: null, label: 'Stopped after errors', line: said || 'Stopped after errors. New money or a note restarts it.', mood: 'errors' }
   if (swarm.status === 'funding') return { action: 'Add $2 to start it', label: 'Not started', line: said || 'Its funds cannot pay for a first step yet.', mood: 'money' }
-  return { action: 'Add $2 to wake it', label: 'Needs money', line: said || 'Out of money. Adding money wakes it.', mood: 'money' }
+  return { action: 'Add $2 to wake it', label: 'Needs money', line: said || 'Out of money. Fund it to keep going.', mood: 'money' }
 }
 
 export function useStanding(swarm: Stood) {

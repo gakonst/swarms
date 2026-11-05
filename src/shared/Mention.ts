@@ -26,6 +26,15 @@ export function handle(address: string) {
   return `${words[Number.parseInt(lower.slice(2, 10), 16) % words.length]}-${lower.slice(-4)}`
 }
 
+export function short(address: string) {
+  const lower = address.toLowerCase()
+  return `${lower.slice(0, 6)}…${lower.slice(-4)}`
+}
+
+export function at(handle: string) {
+  return handle.startsWith('0x') ? handle : `@${handle}`
+}
+
 export function invalid(name: string) {
   const lower = name.toLowerCase()
   if (!shape.test(lower)) return 'A username is 3 to 24 letters, digits, hyphens or underscores, starting with a letter and ending with a letter or digit.'
