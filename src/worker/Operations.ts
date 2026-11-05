@@ -180,13 +180,11 @@ export const schema = {
     role: z.enum(['admin', 'member']).default('member').describe('An admin also manages who steers.'),
     swarm: id,
   }),
-  steering: z
-    .object({
-      memberBudget: allowance.optional(),
-      steering: z.enum(['open', 'team']).optional().describe('open: any backer steers with their own money. team: only the team steers, with the swarm\'s money, each member within their budget.'),
-      swarm: id,
-    })
-    .refine((value) => value.steering !== undefined || value.memberBudget !== undefined, 'Send steering, memberBudget or both.'),
+  steering: z.object({
+    memberBudget: allowance.optional(),
+    steering: z.enum(['open', 'team']).optional().describe('open: any backer steers with their own money. team: only the team steers, with the swarm\'s money, each member within their budget.'),
+    swarm: id,
+  }),
   unseat: z.object({ member: wallet, swarm: id }),
   hand: z.object({
     label: z
@@ -762,6 +760,7 @@ export async function steer(env: Cloudflare.Env, input: Input<'steering'>, addre
   const parsed = parse(schema.steering, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
+  if (request.steering === undefined && request.memberBudget === undefined) return Problem.fail(400, 'invalid_request', 'Send steering, memberBudget or both.')
   const governing = await governed(env, request.swarm, address)
   if (!governing.ok) return governing
   const teamed = await Team.ensure(env, governing.value, address as Address)
