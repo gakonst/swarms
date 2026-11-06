@@ -192,11 +192,6 @@ function failure(text: string) {
   return /^[a-z][a-z0-9_]* failed$/.test(text)
 }
 
-function settled(text: string) {
-  const said = Answer.spoken(text)
-  return said === null || /^(Out of money|Paused:|Stopped after|Resting|Not started|Open again)/.test(said)
-}
-
 type Row = { at: number; entry: Entry } | { at: number; step: Step } | { at: number; steps: Step[] } | { at: number; said: Said } | { at: number; backed: Backed }
 
 function fold(entries: readonly Entry[]): Row[] {
@@ -473,7 +468,7 @@ export function Transcript(props: {
     let burst = new Map<string, Entry>()
     for (const entry of props.entries) {
       if (entry.kind === 'funds' || (who !== 'all' && speaker(entry.who) !== who)) continue
-      if (entry.kind === 'status' && settled(entry.text)) continue
+      if (entry.kind === 'status' && Answer.settled(entry.text)) continue
       const tool = entry.kind === 'error' && failure(entry.text)
       if (entry.kind !== 'error' || tool) burst = new Map()
       const said = entry.kind === 'error' && !tool ? trouble(entry).text : undefined

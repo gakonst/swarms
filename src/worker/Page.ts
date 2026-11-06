@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { render } from '#ssr'
+import * as Answer from '../shared/Answer.ts'
+import type { Entry } from '../shared/Api.ts'
 import type { Boot, Face } from '../shared/Boot.ts'
 import * as Edge from './Edge.ts'
 import * as Operations from './Operations.ts'
@@ -112,7 +114,7 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
     data[`!${id}`] = detail.detail
     return { data, head: { ...head, title: 'Not found · Swarms' }, status: detail.status === 404 ? 404 : 200, whole: false }
   }
-  data[id] = { ...detail.value, feed: browsing ? [] : detail.value.feed.slice(-firstFeed), updates: detail.value.updates.filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) }
+  data[id] = { ...detail.value, feed: browsing ? [] : await shown(env, id, detail.value.feed), updates: detail.value.updates.filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) }
   if (room?.ok) data[`room:${id}`] = { ...room.value, messages: room.value.messages.slice(-firstChat) }
   if (code?.ok && code.value.snapshot) data[`code:${id}`] = code.value.snapshot
   const latest = detail.value.answer?.text
@@ -122,6 +124,15 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
     status: 200,
     whole: browsing ? !!code?.ok : !!room?.ok,
   }
+}
+
+async function shown(env: Cloudflare.Env, id: string, feed: readonly Entry[]) {
+  const visible = (entries: readonly Entry[]) => entries.filter((entry) => !(entry.kind === 'status' && Answer.settled(entry.text)))
+  const kept = visible(feed)
+  const first = feed[0]?.seq ?? 0
+  if (kept.length >= 10 || first <= 1) return kept.slice(-firstFeed)
+  const earlier = await within(Operations.feed(env, { before: first, limit: 200, swarm: id }), 1000)
+  return [...(earlier?.ok ? visible(earlier.value.entries) : []), ...kept].slice(-firstFeed)
 }
 
 function meta(head: Head, url: URL) {

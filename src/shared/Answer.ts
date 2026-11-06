@@ -46,6 +46,11 @@ const broke = (left: string) => `Out of money: ${left} left, and one step can co
 
 const costly = (needed: string) => `Paused: its next step needs about ${needed} at once, more than any one backer has left in it. Fund it to keep going.`
 
+export function settled(text: string) {
+  const said = spoken(text)
+  return said === null || /^(Out of money|Paused:|Stopped after|Resting|Not started|Open again)/.test(said)
+}
+
 export function spoken(text: string): string | null {
   const said = text.trim()
   if (/^Round \d+ (started|completed|failed|cancelled)\b/i.test(said) || /room for \d+ explorers?/i.test(said) || /^Told the agent to keep going\b/.test(said)) return null
