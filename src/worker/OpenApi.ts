@@ -47,8 +47,6 @@ const swarm = parameter('id', 'path', string, 'The swarm id, as in /s/<id>.')
 
 const usd = { description: 'A USD stablecoin amount with 6 decimals, such as "0.250000".', type: 'string' }
 
-const token = { enum: ['ousd', 'pathusd', 'usdce'], type: 'string' }
-
 const currency = { enum: ['mach', 'ousd', 'pathusd', 'usdce'], type: 'string' }
 
 const address = { pattern: '^0x[0-9a-fA-F]{40}$', type: 'string' }
@@ -106,11 +104,17 @@ const schemas = {
   Config: object({
     auth: { description: "Where to sign in with Tempo Wallet: wallet_connect's capabilities.auth url.", type: 'string' },
     chainId: integer,
+    channel: nullable(
+      object(
+        { escrow: address, least: mach, operator: address, recipient: address, signer: address },
+        "What a MACH contribution's channel names: the escrow it opens on, the gateway as payee (recipient) and operator, the swarms' gateway key as signer, and the smallest deposit. null while the gateway offers no sponsored channels.",
+      ),
+    ),
     explorer: string,
     gateway: string,
     reserve: mach,
     rpc: string,
-    tokens: { items: object({ address, id: token, symbol: string }), type: 'array' },
+    tokens: { items: object({ address, id: currency, symbol: string }), type: 'array' },
   }),
   Contributed: object({ contribution: ref('Contribution'), swarm: ref('Summary') }),
   Contribution: object(
@@ -230,7 +234,7 @@ const schemas = {
     status: ref('Status'),
     title: string,
     updatedAt: time,
-    wallet: nullable({ ...address, description: "The swarm's own wallet: send USDC.e, OUSD or pathUSD here, then record the transfer." }),
+    wallet: nullable({ ...address, description: "The swarm's own wallet: send USDC.e, OUSD or pathUSD here, then record the transfer. MACH goes into a channel instead (POST /v1/swarms/{id}/contributions)." }),
   }),
   Room: object({
     me: nullable({ ...ref('Me'), description: 'The signed-in caller, when the request carries a session token.' }),
@@ -325,7 +329,7 @@ export function document(origin: string) {
       schemas,
     },
     info: {
-      description: `Swarms are crowdfunded, long-running AI agents on the Tempo gateway. Backers send USDC.e, OUSD or pathUSD to a swarm's wallet and record the transfer; notes on transfers steer the agent, weighted by the money behind them. Each swarm's backers talk in its room, where an @swarm message puts part of its author's backing behind an idea. Reading needs no account; posting needs a Tempo Wallet session from /v1/auth. Errors are problem JSON with a stable code. The same operations are MCP tools at ${origin}/mcp.`,
+      description: `Swarms are crowdfunded, long-running AI agents on the Tempo gateway. Backers send USDC.e, OUSD or pathUSD to a swarm's wallet, or MACH into a channel the gateway spends for it, and record it by hash; notes on money steer the agent, weighted by the money behind them. Each swarm's backers talk in its room, where an @swarm message puts part of its author's backing behind an idea. Reading needs no account; posting needs a Tempo Wallet session from /v1/auth. Errors are problem JSON with a stable code. The same operations are MCP tools at ${origin}/mcp.`,
       title: 'Swarms',
       version: '1',
     },
@@ -427,7 +431,7 @@ export function document(origin: string) {
       '/v1/swarms/{id}/contributions': {
         post: {
           description:
-            'Counts a transferWithMemo of USDC.e, pathUSD or OUSD from its sender to the swarm\'s wallet. A note counts only when the memo is keccak256("note:<swarm>:<note>"); a counted hash without a note can get one later. 201 when counted, 200 when a note was added.',
+            'Counts money sent to the swarm: with hash, a transferWithMemo of USDC.e, pathUSD or OUSD from its sender to the swarm\'s wallet, or a MACH channel its sender opened for the swarm; with transaction, a MACH channel open signed for a fee payer and not sent, which the gateway sends, paying its fee. A MACH channel pays the gateway (config.channel.recipient), names config.channel.operator as operator and config.channel.signer as signer, holds at least config.channel.least MACH, and its salt is the memo; the gateway spends it for the swarm\'s agent and returns what is left to its payer when it closes. A note counts only when the memo is keccak256("note:<swarm>:<note>"); a counted transfer without a note can get one later. 201 when counted, 200 when a note was added.',
           operationId: 'contribute',
           parameters: [swarm],
           requestBody: {
@@ -439,7 +443,7 @@ export function document(origin: string) {
             ...ok(ref('Contributed'), 'The transfer was counted.', '201'),
             ...failures(400, 404, 409, 502),
           },
-          summary: 'Count a transfer',
+          summary: 'Count money sent',
         },
       },
       '/v1/problems': {

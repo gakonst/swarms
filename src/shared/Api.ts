@@ -107,13 +107,14 @@ export type Snapshot = {
 export type Prepared = {
   amount: string | null
   call: { data: `0x${string}`; to: `0x${string}` } | null
+  channel: Channel | null
   link: string
   memo: `0x${string}`
   memoText: string
   note: string | null
   swarm: string
   symbol: string
-  token: Token
+  token: Currency
   tokenAddress: `0x${string}`
   wallet: `0x${string}`
 }
@@ -160,8 +161,11 @@ export type Config = {
   gateway: string
   reserve: string
   rpc: string
-  tokens: { address: `0x${string}`; id: Token; symbol: string }[]
+  channel: Channel | null
+  tokens: { address: `0x${string}`; id: Currency; symbol: string }[]
 }
+
+export type Channel = { escrow: `0x${string}`; least: string; operator: `0x${string}`; recipient: `0x${string}`; signer: `0x${string}` }
 
 export type Brief = Omit<Update, 'text'> & { excerpt: string }
 

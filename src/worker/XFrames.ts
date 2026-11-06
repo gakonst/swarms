@@ -109,7 +109,7 @@ const wallet = `<section class="view center" data-view="approve" hidden>
     <p class="kicker">Send it with Tempo Wallet</p>
     <p class="code" id="code">$2</p>
     <a class="go wide" id="approve" target="_blank" rel="noreferrer">Open the swarm to pay ↗</a>
-    <p class="hint">You send USDC.e, OUSD or pathUSD to the swarm's wallet from its page.</p>
+    <p class="hint">You send USDC.e, OUSD, pathUSD or MACH from its page.</p>
     <button class="back" data-back type="button">Cancel</button>
   </section>
   <section class="view center" data-view="done" hidden>

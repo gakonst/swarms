@@ -127,7 +127,7 @@ export function create(input: { goal: string; problem?: string; title: string })
   return fixture ? staged((fixtures) => fixtures.create(input)) : request<Summary>('/api/swarms', input)
 }
 
-export function contribute(id: string, input: { hash: string; note?: string }) {
+export function contribute(id: string, input: { hash?: string; note?: string; transaction?: string }) {
   return fixture ? staged((fixtures) => fixtures.contribute(id, input)) : request<Contributed>(`${path(id)}/contributions`, input)
 }
 

@@ -1,5 +1,5 @@
 import * as Answer from '../shared/Answer.ts'
-import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Posted, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Posted, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -16,7 +16,7 @@ const minute = 60_000
 
 const started = Date.now()
 
-export const balances: Record<Token, bigint> = scene.has('broke') ? { ousd: 0n, pathusd: 0n, usdce: 0n } : { ousd: 420_000n, pathusd: 3_000_000n, usdce: 8_750_000n }
+export const balances: Record<Currency, bigint> = scene.has('broke') ? { mach: 0n, ousd: 0n, pathusd: 0n, usdce: 0n } : { mach: 1_250_000n, ousd: 420_000n, pathusd: 3_000_000n, usdce: 8_750_000n }
 
 const wallet = '0x3c93fC3eA108A4E738c10f64c4360d53C9415e5F'
 
@@ -434,6 +434,7 @@ export function config(): Promise<Config> {
   return steady({
     auth: '/v1/auth',
     chainId: 4217,
+    channel: { escrow: '0x4d50500000000000000000000000000000000000', least: '0.050000', operator: '0x4cC7C5c526B16a0137270C48D84f826E16C99965', recipient: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE', signer: '0xa47b45c12b7588b56e3a11fe3e808fc1b72577b2' },
     explorer: 'https://explore.tempo.xyz',
     gateway: 'https://gateway.tempo-dev.workers.dev',
     reserve: '0.050000',
@@ -442,6 +443,7 @@ export function config(): Promise<Config> {
       { address: '0x20c0000000000000000000006a37DA5C996874BE', id: 'ousd', symbol: 'OUSD' },
       { address: '0x20c0000000000000000000000000000000000000', id: 'pathusd', symbol: 'pathUSD' },
       { address: '0x20C000000000000000000000b9537d11c60E8b50', id: 'usdce', symbol: 'USDC.e' },
+      { address: '0x20c000000000000000000000f37de3740ADec032', id: 'mach', symbol: 'MACH' },
     ],
   })
 }
@@ -556,12 +558,14 @@ function begin(swarm: Live) {
 
 export const sent = new Map<string, bigint>()
 
-export async function contribute(key: string, input: { hash: string; note?: string }): Promise<Contributed> {
+export async function contribute(key: string, input: { hash?: string; note?: string; transaction?: string }): Promise<Contributed> {
   const swarm = await find(key)
-  const contribution: Contribution = { amount: decimal(sent.get(input.hash) ?? 250_000n), at: Date.now(), contributor: visitor, hash: input.hash as `0x${string}`, note: input.note?.trim() || null, token: 'usdce' }
+  const hash = (input.hash ?? input.transaction ?? '0x') as `0x${string}`
+  const token = input.transaction ? 'mach' : 'usdce'
+  const contribution: Contribution = { amount: decimal(sent.get(hash) ?? 250_000n), at: Date.now(), contributor: visitor, hash, note: input.note?.trim() || null, token }
   swarm.contributions.push(contribution)
   if (contribution.note) swarm.steered.add(contribution.note)
-  push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} sent ${contribution.amount} USDC.e${contribution.note ? ' with a note' : ''}`, contribution.note, Date.now())
+  push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} sent ${contribution.amount} ${token === 'mach' ? 'MACH' : 'USDC.e'}${contribution.note ? ' with a note' : ''}`, contribution.note, Date.now())
   begin(swarm)
   settle(swarm)
   return delay({ contribution, swarm: summary(swarm) }, 500)

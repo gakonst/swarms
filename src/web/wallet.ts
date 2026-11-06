@@ -1,5 +1,5 @@
 import type { Address, Hex } from 'viem'
-import type { Account, Config, Token } from '../shared/Api.ts'
+import type { Account, Config, Currency, Token } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { fixture } from './api.ts'
 import { boot, type Face, faceCookie, server } from './boot.ts'
@@ -11,7 +11,7 @@ export type State = {
   account: Account | undefined
   address: Address | undefined
   balance: bigint | undefined
-  balances: Partial<Record<Token, bigint>>
+  balances: Partial<Record<Currency, bigint>>
   pending: boolean
   session: Session | undefined
 }
@@ -279,6 +279,25 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
   return receipt.transactionHash
 }
 
+export async function open(config: Config, call: { data: Hex; to: Address }) {
+  if (fixture) {
+    const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])
+    const amount = BigInt('0x' + call.data.slice(202, 266))
+    if (fixtures.balances.mach < amount) throw Object.assign(new Error('Your wallet holds less than this.'), { code: 'insufficient_balance' })
+    const signed = `0x76${Date.now().toString(16).padStart(64, '7')}` as Hex
+    fixtures.sent.set(signed, amount)
+    return signed
+  }
+  const address = await connect(config)
+  const signed = (await (await wallet()).request({
+    method: 'eth_signTransaction',
+    params: [{ calls: [call], feePayer: true, from: address }],
+  } as never)) as Hex | undefined
+  if (!signed) throw new Error('Tempo Wallet returned no transaction.')
+  void refresh(config).catch(() => {})
+  return signed
+}
+
 export async function refresh(config: Config) {
   const address = state.address
   if (!address) return undefined
@@ -289,7 +308,7 @@ export async function refresh(config: Config) {
       ? Promise.resolve(fixtures?.balances[token.id])
       : loaded[1].Actions.token.getBalance(client, { account: address, token: token.address }).then((balance) => balance.amount)
   const entries = await Promise.all(config.tokens.map(async (token) => [token.id, await read(token).catch(() => undefined)] as const))
-  const balances = Object.fromEntries(entries.filter((entry): entry is readonly [Token, bigint] => entry[1] !== undefined)) as Partial<Record<Token, bigint>>
+  const balances = Object.fromEntries(entries.filter((entry): entry is readonly [Currency, bigint] => entry[1] !== undefined)) as Partial<Record<Currency, bigint>>
   const balance = Object.values(balances).reduce((sum, value) => sum + value, 0n)
   if (state.address === address) set({ balance, balances })
   return balance

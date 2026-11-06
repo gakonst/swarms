@@ -34,6 +34,10 @@ export type Minted = { command: string; short: string; tab?: string; token: stri
 
 export type Commit = { date?: string | null; message: string; parents?: string[]; sha: string }
 
+export type Sponsored = { available: string; channel: `0x${string}`; closing: boolean; deposit: string; endedAt: number | null; payer: `0x${string}`; settled: string; spent: string; tx?: string }
+
+export type Sponsorship = { escrow: `0x${string}`; least: string; operator: `0x${string}`; recipient: `0x${string}`; signer: `0x${string}` }
+
 export type Subagent = {
   agent_id: number
   budget_usd?: number
@@ -132,6 +136,32 @@ export function wallet(env: Cloudflare.Env) {
   return known
 }
 
+let sponsoring: { at: number; value: Promise<Sponsorship | undefined> } | undefined
+
+export function sponsorship(env: Cloudflare.Env) {
+  if (sponsoring && Date.now() - sponsoring.at < 600_000) return sponsoring.value
+  const value = Promise.race([
+    Promise.all([
+      send<{ accessKey: `0x${string}` }>(env, '/api/keys/me'),
+      send<{ sponsors?: Omit<Sponsorship, 'signer'> }>(env, '/v1/capabilities'),
+    ]).then(([me, capabilities]) => (me.ok && capabilities.ok && capabilities.value.sponsors ? { ...capabilities.value.sponsors, signer: me.value.accessKey } : undefined)),
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 3000)),
+  ]).catch(() => undefined)
+  const entry = { at: Date.now(), value }
+  sponsoring = entry
+  void value.then((known) => {
+    if (!known && sponsoring === entry) sponsoring = undefined
+  })
+  return value
+}
+
+export function sponsor(env: Cloudflare.Env, swarm: string, body: { descriptor: unknown; transaction?: string }) {
+  return send<Sponsored>(env, '/api/keys/sponsors', { app: app(swarm), body: { ...body, passThrough: false } })
+}
+
+export function sponsors(env: Cloudflare.Env, swarm: string) {
+  return send<{ sponsors: Sponsored[] }>(env, '/api/keys/sponsors', { app: app(swarm) })
+}
 
 export type Teammate = { budget: number | string | null; limit: number | string | null; member: `0x${string}`; role: 'admin' | 'member' }
 

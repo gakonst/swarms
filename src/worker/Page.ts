@@ -184,6 +184,7 @@ async function draw(request: Request, env: Cloudflare.Env) {
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
   const writer = writable.getWriter()
   const gathering = gather(env, url)
+  const configuring = Operations.config(env)
   const top = before.replace(/<title>[^<]*<\/title>/, '').replace('</head>', '§HEAD§</head>')
   const [opening = '', closing = ''] = top.split('§HEAD§')
   const browsing = /^\/s\/[^/]+\/code\/?$/.test(url.pathname)
@@ -192,7 +193,7 @@ async function draw(request: Request, env: Cloudflare.Env) {
 
   const work = (async () => {
     const { data, head, whole } = await gathering
-    const boot: Boot = { config: Operations.config(env), data, face: face(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), url: url.href, zone: zone(request.headers.get('cookie')) }
+    const boot: Boot = { config: await configuring, data, face: face(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), url: url.href, zone: zone(request.headers.get('cookie')) }
     await writer.write(encoder.encode(`<title>${escape(head.title)}</title><meta name="description" content="${escape(head.description)}">${meta(head, url)}${closing}<div id="root">`))
     try {
       const stream = await store.run(boot, () => render(request.signal))

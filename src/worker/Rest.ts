@@ -33,7 +33,7 @@ app.get('/openapi.json', async (c) => c.json((await import('./OpenApi.ts')).docu
 
 app.all('/mcp', async (c) => (await import('./Mcp.ts')).handle(c.req.raw, c.env))
 
-app.get('/v1/config', (c) => c.json(Operations.config(c.env)))
+app.get('/v1/config', async (c) => c.json(await Operations.config(c.env)))
 
 app.get('/v1/me', async (c) => Problem.respond(await Operations.account(c.env, await Sessions.who(c.env, c.req.raw))))
 

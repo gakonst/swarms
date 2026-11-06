@@ -22,6 +22,8 @@ export type Row = {
   rounds: number
   sealed_wallet: string | null
   spent: number
+  sponsor_left: number
+  sponsor_spent: number
   status: Summary['status']
   steering: Steering
   team: `0x${string}` | null
@@ -35,6 +37,7 @@ export type Steering = Summary['steering']
 
 export type Gift = {
   amount: string
+  channel: `0x${string}` | null
   contributor: `0x${string}`
   created_at: number
   id: string
@@ -45,7 +48,7 @@ export type Gift = {
 }
 
 export type Fields = Partial<
-  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'status' | 'steering' | 'team' | 'why'>
+  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'sponsor_left' | 'sponsor_spent' | 'status' | 'steering' | 'team' | 'why'>
 >
 
 export const reserve = 50_000n
@@ -56,8 +59,8 @@ export const perCall = 20_000n
 
 const totals = `select s.*,
   coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) as raised,
-  s.pool_spent + s.spent_before as spent,
-  s.pool_left as remaining,
+  s.pool_spent + s.sponsor_spent + s.spent_before as spent,
+  s.pool_left + s.sponsor_left as remaining,
   (select count(distinct contributor) from contributions where swarm = s.id) as contributors
   from swarms s`
 
@@ -176,11 +179,13 @@ export async function update(env: Cloudflare.Env, id: string, fields: Fields) {
 
 export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>) {
   const result = await env.DB.prepare(
-    "insert or ignore into contributions (id, swarm, kind, budget, contributor, token, amount, note, note_id, created_at) values (?, ?, 'transfer', null, ?, ?, ?, ?, ?, ?)",
+    "insert or ignore into contributions (id, swarm, kind, budget, channel, contributor, token, amount, note, note_id, created_at) values (?, ?, ?, null, ?, ?, ?, ?, ?, ?, ?)",
   )
     .bind(
       input.id.toLowerCase(),
       input.swarm,
+      input.channel ? 'channel' : 'transfer',
+      input.channel?.toLowerCase() ?? null,
       input.contributor.toLowerCase(),
       input.token,
       input.amount,
@@ -194,6 +199,16 @@ export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>)
 
 export async function gift(env: Cloudflare.Env, id: string) {
   return env.DB.prepare('select * from contributions where id = ?').bind(id.toLowerCase()).first<Gift>()
+}
+
+export async function channel(env: Cloudflare.Env, id: string) {
+  return env.DB.prepare('select * from contributions where channel = ?').bind(id.toLowerCase()).first<Gift>()
+}
+
+export async function delivered(env: Cloudflare.Env, channel: string, amount: bigint) {
+  await env.DB.prepare('update contributions set amount = ? where channel = ? and amount != ?')
+    .bind(String(amount), channel.toLowerCase(), String(amount))
+    .run().finally(wrote)
 }
 
 export async function annotate(env: Cloudflare.Env, id: string, input: { note: string; note_id: string }) {

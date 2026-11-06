@@ -3,7 +3,7 @@ import type { Account, Address, Hex } from 'viem'
 import { isAddress, keccak256, stringToHex } from 'viem'
 import { Challenge } from 'mppx'
 import { Mppx, tempo } from 'mppx/client'
-import type { Artifact, Chatter, Code, Entry, Hand, Kind, Live, Note, Said, Shown, Snapshot, Steer, Terms, Token, Update, Working } from '../shared/Api.ts'
+import type { Artifact, Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Said, Shown, Snapshot, Steer, Terms, Token, Update, Working } from '../shared/Api.ts'
 import { type Buffers, type Crew, clip, crew, memory, narrate, redact, subagent } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
@@ -30,7 +30,7 @@ export type Contributed = {
   note: string | null
   noteId: string | null
   swarm: string
-  token: Token
+  token: Currency
 }
 
 export type View = {
@@ -285,13 +285,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.marked += 1
     this.kv.put('id', input.swarm)
     this.kv.delete('exhausted:pool')
+    if (input.token === 'mach') this.kv.put('sponsored', true)
     this.log(
       'funds',
-      `${short(input.contributor)} sent ${trim(input.amount)} ${Chain.tokens[input.token].symbol}${input.note ? ' with a note' : ''}`,
+      `${short(input.contributor)} sent ${trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
       [input.note, input.hash].filter(Boolean).join('\n'),
     )
-    this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${trim(input.amount)} ${Chain.tokens[input.token].symbol}${input.note ? ` behind "${input.note}"` : ''}.`)
-    if (input.noteId) await this.steer(input.swarm, input.noteId, `sent ${trim(input.amount)} ${Chain.tokens[input.token].symbol}`)
+    this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ` behind "${input.note}"` : ''}.`)
+    if (input.noteId) await this.steer(input.swarm, input.noteId, `sent ${trim(input.amount)} ${Chain.symbol(input.token)}`)
     if (!this.kv.get<string>('turn')) await this.ctx.storage.setAlarm(Date.now())
   }
 
@@ -1256,6 +1257,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       biggest = Payer.max(biggest, available)
     }
     this.kv.put('loose', String(balances ? balances.pathusd + balances.usdce - Vault.dust * 2n : 0n))
+    const sponsored = this.kv.get<boolean>('sponsored') ? await this.sponsorships(row) : { biggest: 0n, left: 0n, spent: 0n }
+    left += sponsored.left
+    biggest = Payer.max(biggest, sponsored.biggest)
 
     const connected = hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []
     const previous = new Set((this.kv.get<Hand[]>('hands') ?? []).map((hand) => hand.name))
@@ -1279,9 +1283,40 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.put('hands', connected.map((hand) => ({ connected: true, name: hand.name })))
 
     this.kv.put('left', Memo.decimal(left))
-    const pool = { machines: connected.length, pool_left: Number(pooled), pool_spent: Number(this.used('pool') + this.handsUsed()) }
-    if (Number(row.machines) !== pool.machines || Number(row.pool_left) !== pool.pool_left || Number(row.pool_spent) !== pool.pool_spent) await Store.update(this.env, row.id, pool)
+    const pool = { machines: connected.length, pool_left: Number(pooled), pool_spent: Number(this.used('pool') + this.handsUsed()), sponsor_left: Number(sponsored.left), sponsor_spent: Number(sponsored.spent) }
+    if (
+      Number(row.machines) !== pool.machines ||
+      Number(row.pool_left) !== pool.pool_left ||
+      Number(row.pool_spent) !== pool.pool_spent ||
+      Number(row.sponsor_left) !== pool.sponsor_left ||
+      Number(row.sponsor_spent) !== pool.sponsor_spent
+    )
+      await Store.update(this.env, row.id, pool)
     return { biggest, left, row: (await this.found(row.id)) ?? row }
+  }
+
+  async sponsorships(row: Store.Row) {
+    const listed = await Gateway.sponsors(this.env, row.id)
+    if (!listed.ok) return { biggest: 0n, left: BigInt(row.sponsor_left ?? 0), spent: BigInt(row.sponsor_spent ?? 0) }
+    let biggest = 0n
+    let left = 0n
+    let spent = 0n
+    for (const channel of listed.value.sponsors) {
+      const used = Memo.units(channel.spent)
+      spent += used
+      if (channel.endedAt !== null) {
+        if (this.kv.get<string>('delivered:' + channel.channel) !== String(used)) {
+          await Store.delivered(this.env, channel.channel, used)
+          this.kv.put('delivered:' + channel.channel, String(used))
+        }
+        continue
+      }
+      if (channel.closing) continue
+      const available = Memo.units(channel.available)
+      left += available
+      biggest = Payer.max(biggest, available)
+    }
+    return { biggest, left, spent }
   }
 
   fund(row: Store.Row) {

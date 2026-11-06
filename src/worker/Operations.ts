@@ -1,8 +1,9 @@
 import { waitUntil } from 'cloudflare:workers'
-import { encodeFunctionData, isAddress, parseEventLogs } from 'viem'
+import { decodeFunctionData, encodeFunctionData, isAddress, parseEventLogs } from 'viem'
 import type { Address, Hex } from 'viem'
 import { getTransactionReceipt } from 'viem/actions'
-import { Abis } from 'viem/tempo'
+import { Abis, Transaction } from 'viem/tempo'
+import { Session } from 'mppx/tempo'
 import { z } from 'zod'
 import type {
   Account,
@@ -57,6 +58,7 @@ import type { Paid, Stamp, Swarm } from './Swarm.ts'
 import * as Vault from './Vault.ts'
 import * as Fleet from '../shared/Fleet.ts'
 import * as Brief from '../shared/ResearchBrief.ts'
+import * as Channels from '../shared/Channel.ts'
 import { clip } from '../shared/Trail.ts'
 import { ids } from '../shared/ResearchBrief.ts'
 
@@ -100,6 +102,15 @@ const note = z
   .nullish()
   .describe('Optional steering note, weighted by the money behind it. The same text backs an existing note.')
 
+const transaction = z
+  .string()
+  .regex(/^0x[0-9a-fA-F]+$/)
+  .max(65_536)
+  .optional()
+  .describe(
+    "A MACH contribution not sent yet: a Tempo transaction signed for a fee payer (feePayer true, an expiring nonce) whose one call is the escrow open that swarm_contribute with token mach prepares. The gateway pays its network fee and sends it. Post it within about 10 seconds of signing.",
+  )
+
 function seconds(fallback: number, description: string) {
   return z.coerce.number().int().min(0).max(maxWait).default(fallback).describe(description)
 }
@@ -109,9 +120,11 @@ export const schema = {
     hash: z
       .string()
       .regex(/^0x[0-9a-fA-F]{64}$/)
-      .describe("The hash of a transferWithMemo of USDC.e, pathUSD or OUSD to the swarm's wallet."),
+      .optional()
+      .describe("The hash of a transferWithMemo of USDC.e, pathUSD or OUSD to the swarm's wallet, or of a MACH channel already opened for the swarm."),
     note,
     swarm: id,
+    transaction,
   }),
   transfer: z.object({
     amount: decimal
@@ -122,10 +135,14 @@ export const schema = {
       .string()
       .regex(/^0x[0-9a-fA-F]{64}$/)
       .optional()
-      .describe('The hash of a transfer already sent. With it the transfer is counted instead of prepared.'),
+      .describe('The hash of a transfer or MACH channel open already sent. With it the money is counted instead of prepared.'),
     note,
     swarm: id,
-    token: z.enum(Chain.ids).default('usdce').describe('The stablecoin to send: usdce (USDC.e), pathusd (pathUSD) or ousd (OUSD).'),
+    token: z
+      .enum(['mach', ...Chain.ids])
+      .default('usdce')
+      .describe('What to send: usdce (USDC.e), pathusd (pathUSD), ousd (OUSD), or mach (MACH, which opens a channel the gateway spends for this swarm).'),
+    transaction,
   }),
   create: z.object({
     goal: z
@@ -341,15 +358,20 @@ async function backfill(env: Cloudflare.Env, row: Store.Row, latest: Update | un
   await Store.update(env, row.id, { answer: row.answer })
 }
 
-export function config(env: Cloudflare.Env): Config {
+export async function config(env: Cloudflare.Env): Promise<Config> {
+  const terms = await Gateway.sponsorship(env)
   return {
     auth: Sessions.path,
     chainId: Chain.chain.id,
+    channel: terms ? { escrow: terms.escrow, least: terms.least, operator: terms.operator, recipient: terms.recipient, signer: terms.signer } : null,
     explorer: Chain.chain.blockExplorers.default.url,
     gateway: env.GATEWAY_URL,
     reserve: Memo.decimal(Store.reserve),
     rpc: env.TEMPO_RPC,
-    tokens: Chain.ids.map((id) => ({ address: Chain.tokens[id].address, id, symbol: Chain.tokens[id].symbol })),
+    tokens: [
+      ...Chain.ids.map((id) => ({ address: Chain.tokens[id].address, id, symbol: Chain.tokens[id].symbol })),
+      ...(terms ? [{ address: Chain.mach.address, id: 'mach' as const, symbol: Chain.mach.symbol }] : []),
+    ],
   }
 }
 
@@ -1176,29 +1198,124 @@ export async function transfer(env: Cloudflare.Env, input: Input<'transfer'>, or
   const note = request.note || null
   const amount = request.amount === undefined ? null : units(request.amount)
   const memo = Transfer.memo(row.id, note)
-  const token = Chain.tokens[request.token]
   const query = new URLSearchParams({
-    fund: 'transfer',
+    fund: '',
     token: request.token,
     ...(amount === null ? {} : { amount: Memo.decimal(amount) }),
     ...(note ? { note } : {}),
   })
-  return Problem.ok({
+  const common = {
     amount: amount === null ? null : Memo.decimal(amount),
-    call:
-      amount === null
-        ? null
-        : { data: encodeFunctionData({ abi: Abis.tip20, args: [row.wallet, amount, memo], functionName: 'transferWithMemo' }), to: token.address },
     link: `${origin}/s/${row.id}?${query}`,
     memo,
     memoText: note ? `note:${row.id}:${note}` : `swarm:${row.id}`,
     note,
     swarm: row.id,
+    wallet: row.wallet,
+  }
+  if (request.token === 'mach') {
+    const terms = await Gateway.sponsorship(env)
+    if (!terms) return Problem.fail(502, 'unavailable', unsponsored)
+    if (amount !== null && amount < units(terms.least)) return Problem.fail(400, 'invalid_request', `A MACH contribution opens a channel of at least ${terms.least} MACH.`)
+    const channel = { escrow: terms.escrow, least: terms.least, operator: terms.operator, recipient: terms.recipient, signer: terms.signer }
+    return Problem.ok({ ...common, call: amount === null ? null : Channels.open(channel, row.id, amount, note), channel, symbol: Chain.mach.symbol, token: 'mach', tokenAddress: Chain.mach.address })
+  }
+  const token = Chain.tokens[request.token]
+  return Problem.ok({
+    ...common,
+    call:
+      amount === null
+        ? null
+        : { data: encodeFunctionData({ abi: Abis.tip20, args: [row.wallet, amount, memo], functionName: 'transferWithMemo' }), to: token.address },
+    channel: null,
     symbol: token.symbol,
     token: request.token,
     tokenAddress: token.address,
-    wallet: row.wallet,
   })
+}
+
+const unsponsored = 'MACH reaches a swarm through a channel the gateway spends for it, and the gateway is not offering those channels right now. Send USDC.e, pathUSD or OUSD instead.'
+
+type Opened = { args: { authorizedSigner: Address; channelId: Hex; deposit: bigint; expiringNonceHash: Hex; operator: Address; payee: Address; payer: Address; salt: Hex; token: Address } }
+
+async function channeled(
+  env: Cloudflare.Env,
+  row: Store.Row & { wallet: Address },
+  input: { hash: Hex; opened: Opened } | { transaction: Hex },
+  note: string | null,
+): Promise<Problem.Result<{ contributed: Contributed; created: boolean }>> {
+  const terms = await Gateway.sponsorship(env)
+  if (!terms) return Problem.fail(502, 'unavailable', unsponsored)
+
+  const read = (() => {
+    if ('opened' in input) {
+      const { channelId, deposit, ...descriptor } = input.opened.args
+      return { deposit, descriptor, id: channelId }
+    }
+    const parsed = (() => {
+      try {
+        return Transaction.deserialize(input.transaction as never) as { calls?: readonly { data?: Hex; to?: Address | null }[]; from?: Address }
+      } catch {
+        return undefined
+      }
+    })()
+    const call = parsed?.calls?.length === 1 ? parsed.calls[0] : undefined
+    if (!parsed?.from || !call?.data || !call.to || call.to.toLowerCase() !== terms.escrow.toLowerCase()) return undefined
+    const decoded = (() => {
+      try {
+        return decodeFunctionData({ abi: Session.Precompile.escrowAbi, data: call.data })
+      } catch {
+        return undefined
+      }
+    })()
+    if (decoded?.functionName !== 'open') return undefined
+    const [payee, operator, token, deposit, salt, authorizedSigner] = decoded.args
+    const expiringNonceHash = Session.Precompile.Channel.computeExpiringNonceHash(
+      Session.Precompile.Channel.transactionForExpiringNonceHash({ feePayer: true, transaction: parsed as never }),
+      { sender: parsed.from },
+    )
+    const descriptor = { authorizedSigner, expiringNonceHash, operator, payee, payer: parsed.from, salt, token }
+    return { deposit, descriptor, id: Session.Precompile.Channel.computeId({ ...descriptor, chainId: Chain.chain.id, escrow: Chain.escrow }) }
+  })()
+  if (!read) return Problem.fail(400, 'invalid_request', 'That is not a Tempo transaction whose one call opens a channel on the escrow.')
+
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+  const descriptor = read.descriptor
+  if (!same(descriptor.payee, terms.recipient) || !same(descriptor.operator, terms.operator) || !same(descriptor.token, Chain.mach.address) || !same(descriptor.authorizedSigner, terms.signer))
+    return Problem.fail(
+      400,
+      'invalid_request',
+      `A MACH channel for a swarm pays the gateway ${terms.recipient}, names ${terms.operator} as operator, holds MACH and lets ${terms.signer}, the swarms' gateway key, sign for it.`,
+    )
+  if (!same(descriptor.salt, Transfer.memo(row.id, note)))
+    return Problem.fail(
+      400,
+      'invalid_request',
+      note && same(descriptor.salt, Transfer.memo(row.id))
+        ? "The channel's salt does not commit to this note, so it counts only without one."
+        : `This channel was not opened for this swarm: its salt must be keccak256("swarm:${row.id}"), or keccak256("note:${row.id}:<note>") with a note.`,
+    )
+  if (read.deposit < units(terms.least)) return Problem.fail(400, 'invalid_request', `A MACH contribution opens a channel of at least ${terms.least} MACH.`)
+  if (await Store.channel(env, read.id)) return Problem.fail(409, 'conflict', 'This channel is already counted.')
+
+  const registered = await Gateway.sponsor(env, row.id, { descriptor, ...('transaction' in input ? { transaction: input.transaction } : {}) })
+  if (!registered.ok) {
+    const [status, code] = registered.status === 400 ? ([400, 'invalid_request'] as const) : registered.status === 503 ? ([502, 'unavailable'] as const) : ([502, 'upstream_failed'] as const)
+    return Problem.fail(status, code, `The gateway did not open the channel: ${registered.detail}`)
+  }
+  const hash = (registered.value.tx ?? ('hash' in input ? input.hash : undefined))?.toLowerCase() as Hex | undefined
+  if (!hash) return Problem.fail(502, 'upstream_failed', 'The gateway took the channel but answered no transaction.')
+
+  const noteId = note ? await Store.noteId(note) : null
+  const counted = await Store.give(env, { amount: String(read.deposit), channel: read.id, contributor: descriptor.payer, id: hash, note, note_id: noteId, swarm: row.id, token: 'mach' })
+  if (counted) {
+    await stub(env, row.id).contributed({ amount: Memo.decimal(read.deposit), contributor: descriptor.payer, hash, note, noteId, swarm: row.id, token: 'mach' })
+    if (note && noteId) await logged(Search.note(env, row.id, noteId, note))
+  }
+
+  const [gift, updated] = await Promise.all([Store.gift(env, hash), Store.find(env, row.id)])
+  if (!gift) return Problem.fail(502, 'unavailable', 'The contribution was not saved.')
+  return Problem.ok({ contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) }, created: counted })
 }
 
 export async function pay(env: Cloudflare.Env, swarm: string, authorization: string, input: Record<string, unknown>): Promise<Paid> {
@@ -1236,6 +1353,10 @@ export async function contribute(
   const found = await Store.find(env, request.swarm)
   if (!found) return missing()
   const row = await provisioned(env, found)
+  const text = request.note || null
+  if (request.transaction) return channeled(env, row, { transaction: request.transaction as Hex }, text)
+  if (!request.hash)
+    return Problem.fail(400, 'invalid_request', 'Send hash, the hash of a transfer or of a MACH channel opened for the swarm, or transaction, a MACH channel open signed for a fee payer.')
 
   const receipt = await getTransactionReceipt(Chain.client(env), { hash: request.hash as Hex }).catch(() => undefined)
   if (!receipt) return Problem.fail(404, 'not_found', 'Tempo has no receipt for this transaction yet.')
@@ -1255,14 +1376,18 @@ export async function contribute(
       : []
   })
   const first = transfers[0]
-  if (!first)
+  if (!first) {
+    const opened = parseEventLogs({ abi: Session.Precompile.escrowAbi, eventName: 'ChannelOpened', logs: receipt.logs }).find(
+      (log) => log.address.toLowerCase() === Chain.escrow.toLowerCase() && log.args.payer.toLowerCase() === sender,
+    )
+    if (opened) return channeled(env, row, { hash: request.hash as Hex, opened: opened as Opened }, text)
     return Problem.fail(
       400,
       'invalid_request',
-      `That transaction sends no USDC.e, pathUSD or OUSD from its sender to this swarm's address ${row.wallet}. MACH cannot be sent to a swarm.`,
+      `That transaction sends no USDC.e, pathUSD or OUSD from its sender to this swarm's address ${row.wallet}, and opens no MACH channel for it.`,
     )
+  }
 
-  const text = request.note || null
   const memos = logs.flatMap((log) =>
     log.eventName === 'TransferWithMemo' && log.args.to.toLowerCase() === wallet ? [log.args.memo.toLowerCase()] : [],
   )
@@ -1284,6 +1409,7 @@ export async function contribute(
   } else {
     counted = await Store.give(env, {
       amount: String(total),
+      channel: null,
       contributor: sender as Address,
       id: request.hash as Hex,
       note: text,
