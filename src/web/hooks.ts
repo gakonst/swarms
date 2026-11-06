@@ -200,6 +200,7 @@ export function useLive(id: string, active: boolean, onEntry: (entry: Entry) => 
     setPushed(false)
     const stream = (who: string, change: (stream: Stream) => Stream) => setStreams((previous) => ({ ...previous, [who]: change(previous[who] ?? blank) }))
     return Api.live(id, (event) => {
+      if (cursor.current) setPushed(true)
       if (event.type === 'end' || event.type === 'idle') {
         if (event.type === 'end') setStreams({})
         if (cursor.current) return
@@ -211,7 +212,6 @@ export function useLive(id: string, active: boolean, onEntry: (entry: Entry) => 
       if (event.type === 'start') setSince(event.at)
       if (event.type === 'delta') stream(speaker(event.who), (current) => write(current, event.channel, event.item, event.delta, event.offset))
       if (event.type === 'entry') {
-        if (event.entry.seq > 0) setPushed(true)
         stream(speaker(event.entry.who), (current) => settle(current, event.entry))
         handler.current(event.entry)
       }
@@ -221,7 +221,7 @@ export function useLive(id: string, active: boolean, onEntry: (entry: Entry) => 
     } : undefined)
   }, [active, id])
 
-  return { connected: active && connected, pushed: active && connected && pushed, since, streams }
+  return { connected: active && connected, pushed: active && pushed, since, streams }
 }
 
 export function useNow(ms = 1000, active = true) {

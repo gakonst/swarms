@@ -543,7 +543,7 @@ export function Transcript(props: {
     }
   }, [props.entries.length > 0 || !!working])
 
-  const older = async () => {
+  const older = async (pin = false) => {
     const element = box.current
     if (!element || !first || loading) return
     setLoading(true)
@@ -552,6 +552,7 @@ export function Transcript(props: {
     setLoading(false)
     if (!read) return
     if (read.entries.length < 200) setStart(true)
+    if (pin) return props.onEntries(read.entries)
     follow.current = 'reading'
     props.onEntries(read.entries)
     requestAnimationFrame(() => {
@@ -565,7 +566,7 @@ export function Transcript(props: {
     const key = `${swarm.id}:${who}`
     if (shown.length > 0 || !first || first.seq <= 1 || start || filled.current === key) return
     filled.current = key
-    void older()
+    void older(follow.current === 'live')
   }, [shown.length, first, start, who, swarm.id])
 
   const unfunded = Number(swarm.raised) <= 0 && !working && !shown.some((entry) => entry.kind !== 'status')
