@@ -21,7 +21,7 @@ export function tint(address: string) {
 }
 
 function arrived(text: string) {
-  return /^(@[\w-]+|0x[0-9a-f]{4}…[0-9a-f]{4}) (pledged|sent|set a budget|funded|put|moved)\b/.test(text) || /^New artifact:/.test(text)
+  return /^(@[\w-]+|0x[0-9a-f]{4}…[0-9a-f]{4}) (pledged|sent|set a budget|funded|put|moved|steered|stopped)\b/.test(text) || /^New artifact:/.test(text)
 }
 
 function merge(list: readonly Said[], more: readonly Said[]) {

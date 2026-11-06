@@ -134,10 +134,27 @@ const flows: readonly Flow[] = [
       { name: 'Signed out, opened', steps: [{ wait: 600 }, { click: '.branch:nth-child(1) .branch-row' }], url: swarm('bench-coders', '#branches') },
       { name: 'Funding a branch', steps: [{ wait: 600 }, { click: '.branch:nth-child(2) .branch-row' }], url: swarm('bench-coders', '&scene=in#branches') },
       { name: 'Out of budget, funded again', steps: [{ wait: 600 }, { click: '.branch:nth-child(3) .branch-row' }, { click: '.branch-go' }, { wait: 1500 }], url: swarm('bench-coders', '&scene=in#branches') },
+      { name: 'Steering a branch', note: 'with new money', steps: [{ wait: 600 }, { click: '.branch:nth-child(2) .branch-row' }, { type: ['.branch-say', 'Skip the tasks that need network access; every model fails them.'] }], url: swarm('bench-coders', '&scene=in#branches') },
+      { name: 'Steered', note: 'budget raised', steps: [{ wait: 600 }, { click: '.branch:nth-child(2) .branch-row' }, { type: ['.branch-say', 'Skip the tasks that need network access; every model fails them.'] }, { click: '.branch-go' }, { wait: 3000 }], url: swarm('bench-coders', '&scene=in#branches') },
+      { name: 'Stopped', note: 'unspent goes back', steps: [{ wait: 600 }, { click: '.branch:nth-child(2) .branch-row' }, { click: '.branch-go' }, { wait: 10000 }, { click: '.branch-stop' }, { wait: 5000 }], url: swarm('bench-coders', '&scene=in#branches') },
+      { name: 'Finished, with its result', steps: [{ wait: 600 }, { click: '.branch:nth-child(4) .branch-row' }, { click: '.branch-result summary' }], url: swarm('bench-coders', '&scene=in#branches') },
+      { name: 'Its transcript', note: 'filtered', steps: [{ wait: 600 }, { click: '.branch:nth-child(2) .branch-row' }, { click: '.branch-links button:nth-child(1)' }, { wait: 800 }], url: swarm('bench-coders', '&scene=in#branches') },
       { name: 'No branches yet', url: swarm('speedrun-t4', '&scene=in#branches') },
     ],
     id: 'branches',
     title: 'Branches',
+  },
+  {
+    frames: [
+      { name: 'Signed out', note: 'desktop header', steps: [{ click: '.side-open' }], url: swarm('bench-coders', '') },
+      { name: 'The agent', note: 'from the composer', steps: [{ click: '.say-side' }], url: swarm('bench-coders', '&scene=in') },
+      { name: 'From /btw in the composer', note: 'prefilled', steps: [{ type: ['.say-box textarea', '/btw how close are we?'] }, { click: '.say-box .say-send' }], url: swarm('bench-coders', '&scene=in') },
+      { name: 'Answered', steps: [{ click: '.say-side' }, { type: ['.side-box textarea', 'How close are we to a leaderboard?'] }, { click: '.side-box .say-send' }, { wait: 2500 }], url: swarm('bench-coders', '&scene=in') },
+      { name: 'A branch', note: 'from its card', steps: [{ wait: 600 }, { click: '.branch:nth-child(2) .branch-row' }, { click: '.branch-links button:nth-child(2)' }, { type: ['.side-box textarea', 'Which tasks fail on every model?'] }, { click: '.side-box .say-send' }, { wait: 2500 }], url: swarm('bench-coders', '&scene=in#branches') },
+      { name: 'Asked for an artifact', steps: [{ click: '.say-side' }, { type: ['.side-box textarea', 'How close are we to a leaderboard?'] }, { click: '.side-box .say-send' }, { wait: 2500 }, { click: '.side-buttons button:nth-child(2)' }, { wait: 3000 }], url: swarm('bench-coders', '&scene=in') },
+    ],
+    id: 'side',
+    title: 'On the side',
   },
   {
     frames: [

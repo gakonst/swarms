@@ -154,6 +154,10 @@ app.post('/v1/swarms/:id/branches/:branch/move', async (c) =>
   Problem.respond(await Operations.move(c.env, { ...(await body(c.req.raw)), branch: c.req.param('branch'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
 )
 
+app.post('/v1/swarms/:id/branches/:branch/stop', async (c) =>
+  Problem.respond(await Operations.stop(c.env, { branch: c.req.param('branch'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
+)
+
 app.get('/v1/swarms/:id/pledges', async (c) => Problem.respond(await Operations.pledges(c.env, { swarm: c.req.param('id') })))
 
 app.post('/v1/swarms/:id/pledges', async (c) =>

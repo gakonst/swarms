@@ -5,13 +5,11 @@ import * as Btw from '../shared/Btw.ts'
 import * as Mention from '../shared/Mention.ts'
 import { decimal, units } from '../shared/Memo.ts'
 import { Alert, explain } from './Alert.tsx'
-import { choose, recorded } from './Contribute.tsx'
-import { pledge } from './Pledge.tsx'
-import { memo } from '../shared/Transfer.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { clock, usd } from './format.ts'
 import { agent, type Live, message, speaker, type Stream, useWallet } from './hooks.ts'
+import { payIn } from './money.ts'
 import * as Wallet from './wallet.ts'
 import { Markdown } from './Markdown.tsx'
 import { seated, useRoster } from './Steering.tsx'
@@ -288,27 +286,7 @@ const Funded = pure(function Funded(props: { item: Backed; name: string; onBack:
 
 const stakes = ['0.5', '1', '5'] as const
 
-type Side = { open: boolean; pending: string | undefined; thread: Btw.Exchange[] }
-
-const closed: Side = { open: false, pending: undefined, thread: [] }
-
-function remembered(swarm: string): Side {
-  if (typeof localStorage === 'undefined') return closed
-  try {
-    const stored = JSON.parse(localStorage.getItem('swarms.btw:' + swarm) ?? 'null') as { thread?: Btw.Exchange[] } | null
-    return stored?.thread?.length ? { open: true, pending: undefined, thread: stored.thread } : closed
-  } catch {
-    return closed
-  }
-}
-
-function remember(swarm: string, side: Side) {
-  if (typeof localStorage === 'undefined') return
-  if (side.thread.length) localStorage.setItem('swarms.btw:' + swarm, JSON.stringify({ thread: side.thread }))
-  else localStorage.removeItem('swarms.btw:' + swarm)
-}
-
-function Composer(props: { config: Config | undefined; draft: { at: number; text: string }; me: Me | null; onFund: (note?: string) => void; onSaid: (said: Said) => void; steering: Steering; swarm: string; wallet: `0x${string}` | null }) {
+function Composer(props: { config: Config | undefined; draft: { at: number; text: string }; me: Me | null; onFund: (note?: string) => void; onSaid: (said: Said) => void; onSide: (question: string) => void; steering: Steering; swarm: string; wallet: `0x${string}` | null }) {
   const wallet = useWallet()
   const roster = useRoster(props.swarm, props.steering)
   const team = props.steering === 'team'
@@ -317,8 +295,6 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
   const [stake, setStake] = useState<string>('0.5')
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
-  const [side, setSide] = useState<Side>(closed)
-  const [restored, setRestored] = useState(false)
   const area = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -328,90 +304,38 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
     requestAnimationFrame(() => area.current?.focus())
   }, [props.draft])
 
-  useEffect(() => {
-    setSide(remembered(props.swarm))
-    setRestored(true)
-  }, [props.swarm])
-
-  useEffect(() => {
-    if (restored) remember(props.swarm, side)
-  }, [props.swarm, restored, side])
-
   const ok = /^\d*\.?\d{0,6}$/.test(stake) && stake !== '' && stake !== '.' && units(stake) >= 10_000n
   const command = Btw.command(text)
-  const collapsing = command?.name === 'collapse'
-  const asking = side.open && !command ? text.trim() : command?.name === 'btw' ? command.rest : ''
-  const steering = !asking && !command
-
-  const ask = async (question: string) => {
-    if (side.pending) return
-    setError(undefined)
-    setSide((current) => ({ ...current, open: true, pending: question }))
-    setText('')
-    try {
-      const answered = await Api.btw(props.swarm, { question, thread: side.thread })
-      setSide((current) => ({ open: true, pending: undefined, thread: [...current.thread, answered].slice(-Btw.maxThread) }))
-    } catch (reason) {
-      setSide((current) => ({ ...current, pending: undefined }))
-      setText(question)
-      setError(message(reason))
-    }
-  }
 
   const submit = () => {
-    if (command?.name === 'close') {
-      setSide({ open: false, pending: undefined, thread: [] })
+    if (command) {
+      props.onSide(command.rest)
       setText('')
       return
     }
-    if (command?.name === 'btw' && !command.rest) {
-      setSide((current) => ({ ...current, open: true }))
-      setText('')
-      return
-    }
-    if (asking) return void ask(asking)
     void send()
   }
 
   const send = async () => {
     const config = props.config
-    if (collapsing && !side.thread.length) return setError('There is no /btw thread to collapse yet: ask a side question with /btw first.')
-    const idea = collapsing ? Btw.note(side.thread) : text.trim()
+    const idea = text.trim()
     if (!config || busy || idea.length < 3 || !ok) return
     setError(undefined)
     try {
       const need = units(stake)
       if (team) {
         if (!seat) throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
-        setBusy('Sending…')
-        const posted = await Api.say(props.swarm, { ...(collapsing ? { btw: side.thread } : {}), steer: decimal(need), text: `@swarm ${idea}` })
-        props.onSaid(posted.message)
-        setText('')
-        if (collapsing) setSide({ open: false, pending: undefined, thread: [] })
-        return
-      }
-      if (!props.wallet) throw new Error('This swarm has no wallet yet.')
-      setBusy('Approve in Tempo Wallet…')
-      await Wallet.refresh(config).catch(() => {})
-      const token = choose('send', decimal(need), Wallet.snapshot().balances)
-      if (token === 'mach') await pledge(config, props.swarm, decimal(need), '', 'mach', (step) => setBusy(step === 'approve' ? 'Approve in Tempo Wallet…' : 'Sending…'))
-      else {
-        const hash = await Wallet.send(config, { amount: need, memo: memo(props.swarm, ''), to: props.wallet, token })
-        setBusy('Sending…')
-        await recorded(props.swarm, hash, '')
-      }
+      } else await payIn(config, { id: props.swarm, wallet: props.wallet }, need, setBusy)
       setBusy('Sending…')
-      const posted = await Api.say(props.swarm, { ...(collapsing ? { btw: side.thread } : {}), steer: decimal(need), text: `@swarm ${idea}` })
+      const posted = await Api.say(props.swarm, { steer: decimal(need), text: `@swarm ${idea}` })
       props.onSaid(posted.message)
       setText('')
-      if (collapsing) setSide({ open: false, pending: undefined, thread: [] })
     } catch (reason) {
       setError(message(reason))
     } finally {
       setBusy(undefined)
     }
   }
-
   if (!wallet.session && wallet.pending)
     return (
       <div className="say">
@@ -457,31 +381,8 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
 
   return (
     <div className="say">
-      {side.open && (
-        <section className="btw" aria-label="Side questions">
-          <p className="btw-head">
-            <b>/btw</b> side questions, answered from the agent's own context without interrupting it · <b>/collapse</b> steers it with them · <b>/close</b>
-          </p>
-          {(side.thread.length > 0 || side.pending) && (
-            <ol className="btw-list">
-              {side.thread.map((exchange, index) => (
-                <li key={index}>
-                  <p className="btw-q">{exchange.question}</p>
-                  <div className="btw-a"><Markdown text={exchange.answer} /></div>
-                </li>
-              ))}
-              {side.pending && (
-                <li>
-                  <p className="btw-q">{side.pending}</p>
-                  <p aria-busy="true" className="btw-a btw-wait">Thinking…</p>
-                </li>
-              )}
-            </ol>
-          )}
-        </section>
-      )}
       {error && <Alert title={explain(error).title} tone="bad">{explain(error).detail}</Alert>}
-      {(steering || collapsing) && text.trim() && (
+      {!command && text.trim() && (
         <div className="say-stake" role="radiogroup" aria-label="How much behind it">
           {stakes.map((value) => (
             <button aria-checked={stake === value} disabled={!!busy} key={value} onClick={() => setStake(value)} role="radio" type="button">${value === '0.5' ? '0.50' : value}</button>
@@ -491,7 +392,7 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
         </div>
       )}
       <form className="say-box" onSubmit={(event) => { event.preventDefault(); submit() }}>
-        <span className="mention" data-btw={side.open || !!command ? 'true' : undefined} data-swarm="true">{side.open || !!command ? (collapsing ? '/collapse' : '/btw') : '@swarm'}</span>
+        <span className="mention" data-btw={command ? 'true' : undefined} data-swarm="true">{command ? '/btw' : '@swarm'}</span>
         <textarea
           disabled={!!busy}
           onChange={(event) => setText(event.target.value.replace(/^@swarm\s*/i, ''))}
@@ -501,13 +402,14 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
               submit()
             }
           }}
-          placeholder={side.open ? 'Ask a side question, or /collapse' : 'Steer the agent, or /btw to ask on the side'}
+          placeholder="Steer the agent, with money behind it"
           ref={area}
           rows={1}
           value={text}
         />
-        <button aria-label="Send" className="say-send" disabled={!!busy || !!side.pending || (command ? command.name === 'collapse' && (!ok || !side.thread.length) : asking ? false : text.trim().length < 3 || !ok)} type="submit">↑</button>
+        <button aria-label="Send" className="say-send" disabled={!!busy || (command ? false : text.trim().length < 3 || !ok)} type="submit">↑</button>
       </form>
+      <button className="say-side" onClick={() => props.onSide('')} type="button">Ask on the side <span aria-hidden="true">→</span></button>
     </div>
   )
 }
@@ -531,9 +433,14 @@ export function Transcript(props: {
   said: readonly Said[]
   swarm: Detail
   tray?: ReactNode
+  focus: { at: number; who: string }
+  onSide: (question: string) => void
 }) {
   const swarm = props.swarm
   const [who, setWho] = useState(asked)
+  useEffect(() => {
+    if (props.focus.at) setWho(props.focus.who)
+  }, [props.focus])
   const [loading, setLoading] = useState(false)
   const [start, setStart] = useState(false)
   const box = useRef<HTMLOListElement>(null)
@@ -744,7 +651,7 @@ export function Transcript(props: {
           {props.tray}
         </div>
       ) : (
-        swarm.status !== 'done' && <Composer config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} steering={swarm.steering} swarm={swarm.id} />
+        swarm.status !== 'done' && <Composer config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} onSide={props.onSide} steering={swarm.steering} swarm={swarm.id} />
       )}
     </section>
   )

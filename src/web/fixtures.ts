@@ -962,7 +962,7 @@ export async function room(key: string, query: { after?: number; before?: number
   return delay({ me: me(swarm, who), members: members(swarm), messages, next: messages.at(-1)?.id ?? query.after ?? 0 })
 }
 
-export async function say(key: string, input: { steer?: string; text: string }, who: `0x${string}` | undefined): Promise<Posted> {
+export async function say(key: string, input: { artifact?: boolean; steer?: string; text: string }, who: `0x${string}` | undefined): Promise<Posted> {
   const swarm = seed(await find(key))
   if (scene.has('stall')) return new Promise<Posted>(() => {})
   if (scene.has('mute')) return new Promise<Posted>((_, reject) => setTimeout(() => reject(fail(503, 'unavailable', 'The room is not answering right now.')), 600))
@@ -991,12 +991,13 @@ export async function say(key: string, input: { steer?: string; text: string }, 
   return delay({ me: me(swarm, who) as Me, message }, 250)
 }
 
-export async function btw(key: string, input: { question: string; thread: readonly { answer: string; question: string }[] }, who: `0x${string}` | undefined) {
+export async function btw(key: string, input: { branch?: number; question: string; thread: readonly { answer: string; question: string }[] }, who: `0x${string}` | undefined) {
   const swarm = seed(await find(key))
   if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to ask the swarm side questions.')
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   if (!me(swarm, who)?.member && !(swarm.steering === 'team' && rosters.get(key)?.seats.some((found) => found.address === who.toLowerCase()))) throw fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you ask it side questions.')
-  const answer = `From what it has done so far on "${swarm.title}": ${input.thread.length ? 'building on your earlier questions, ' : ''}it would answer "${input.question.trim()}" from its last update without stopping its work.`
+  const branch = input.branch === undefined ? undefined : grown(swarm).find((found) => found.id === input.branch)
+  const answer = `${branch ? `${branch.role}, from what it has done on its branch` : `From what it has done so far on "${swarm.title}"`}: ${input.thread.length ? 'building on your earlier questions, ' : ''}it would answer "${input.question.trim()}" from its last update without stopping its work.`
   return delay({ answer, question: input.question.trim() }, 600)
 }
 
@@ -1095,16 +1096,24 @@ export async function unseat(key: string, member: string, who: `0x${string}` | u
 type Sprout = readonly [number, number | null, string, string, Branch['state'], string | null, string | null]
 
 const sprouts: readonly Sprout[] = [
-  [1, null, 'rust-subset', 'Write 50 small Rust tasks with hidden tests (parsing, lifetimes, async) and run every shortlisted model against them.', 'running', null, null],
-  [2, 1, 'parser-tasks', 'Write the 18 parsing tasks and their hidden tests.', 'completed', null, null],
+  [1, null, 'rust-subset', 'Write 50 small Rust tasks with hidden tests (parsing, lifetimes, async) and run every shortlisted model against them.', 'running', null, '0.640000'],
+  [2, 1, 'parser-tasks', 'Write the 18 parsing tasks and their hidden tests.', 'completed', null, '0.110000'],
   [3, null, 'swe-bench-lite', 'Run SWE-bench Lite on four machines, 75 tasks per model, and record the solve rate and the cost of each solved task.', 'running', '2.000000', '1.420000'],
   [4, 3, 'machine-2', 'Run tasks 76 to 150 on the second machine.', 'running', '0.600000', '0.310000'],
   [5, null, 'latency-probe', 'Measure time to first token and tokens per second for each model through the gateway.', 'failed', '0.500000', '0.500000'],
+  [6, null, 'license-check', 'Read each shortlisted model\'s license and say which ones a company may use commercially.', 'completed', '0.300000', '0.120000'],
 ]
 
 const planted = new Map<string, { amount: bigint; branch: number; contributor: `0x${string}` }[]>()
 
 const woken = new Set<string>()
+
+const halted = new Set<string>()
+
+const found: Record<number, string> = {
+  2: '18 parsing tasks with hidden tests, in `tasks/parse/`. Two of them (nested generics, raw strings) fail on every model so far.',
+  6: 'Seven of the nine shortlisted models allow commercial use. **Llama 4** needs a separate license above 700M monthly users, and **Command R+** is non-commercial only. Details in `licenses.md`.',
+}
 
 function grown(swarm: Live): Branch[] {
   if (swarm.status === 'funding') return []
@@ -1115,6 +1124,7 @@ function grown(swarm: Live): Branch[] {
     const total = mine.length ? (budget === null ? 0n : units(budget)) + funded : budget === null ? null : units(budget)
     const used = spent === null ? (total === null ? null : 0n) : units(spent)
     const awake = woken.has(`${swarm.id}:${id}`)
+    const stopped = halted.has(`${swarm.id}:${id}`)
     const starved = state === 'failed' && !awake && total !== null && used !== null && used >= total
     const shares = new Map<`0x${string}`, bigint>()
     for (const put of mine) shares.set(put.contributor, (shares.get(put.contributor) ?? 0n) + put.amount)
@@ -1126,11 +1136,13 @@ function grown(swarm: Live): Branch[] {
       id,
       left: total === null || used === null ? null : decimal(total > used ? total - used : 0n),
       parent,
+      result: found[id] ?? null,
       role,
       spent: used === null ? null : decimal(used),
-      starved,
-      state: awake && state === 'failed' ? 'running' : state,
+      starved: starved && !stopped,
+      state: stopped ? 'closed' : awake && state === 'failed' ? 'running' : state,
       task,
+      who: role,
     }
   })
 }
@@ -1148,7 +1160,24 @@ function directing(swarm: Live, key: string, who: `0x${string}` | undefined) {
   return seated
 }
 
-export async function fund(key: string, branch: number, input: { amount: string }, who: `0x${string}` | undefined): Promise<Branch> {
+export async function stop(key: string, branch: number, who: `0x${string}` | undefined): Promise<Branch> {
+  const swarm = seed(await find(key))
+  directing(swarm, key, who)
+  const target = grown(swarm).find((found) => found.id === branch && found.parent === null)
+  if (!target) throw fail(404, 'not_found', `This swarm has no branch ${branch}.`)
+  if (!target.funders.some((funder) => funder.address === who?.toLowerCase()) && !rostered(key, swarm.steering).admins.includes(who?.toLowerCase() as `0x${string}`))
+    throw fail(403, 'access_denied', `Only those who put money behind ${target.role}, or the swarm's admins, stop it.`)
+  halted.add(`${swarm.id}:${branch}`)
+  const left = target.left === null ? 0n : units(target.left)
+  const funded = units(target.funded)
+  const back = left < funded ? left : funded
+  if (back > 0n)
+    planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), ...target.funders.map((funder) => ({ amount: -(back * units(funder.amount)) / funded, branch, contributor: funder.address }))])
+  push(swarm, 'status', `${Mention.at(called(who as string))} stopped ${target.role} (branch ${branch}).`, null, Date.now())
+  return delay(grown(swarm).find((found) => found.id === branch) as Branch, 300)
+}
+
+export async function fund(key: string, branch: number, input: { amount: string; message?: string }, who: `0x${string}` | undefined): Promise<Branch> {
   const swarm = seed(await find(key))
   const seated = directing(swarm, key, who)
   const target = grown(swarm).find((found) => found.id === branch && found.parent === null)
@@ -1160,7 +1189,12 @@ export async function fund(key: string, branch: number, input: { amount: string 
   planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), { amount, branch, contributor: who as `0x${string}` }])
   if (target.starved) woken.add(`${swarm.id}:${branch}`)
   const after = grown(swarm).find((found) => found.id === branch) as Branch
-  push(swarm, 'funds', `${Mention.at(called(who as string))} put ${usd(decimal(amount))} behind ${after.role} (branch ${branch}), whose budget is now ${usd(after.budget ?? '0')}.`, null, Date.now())
+  if (input.message) {
+    const at = Date.now()
+    const seq = (swarm.feed.at(-1)?.seq ?? 0) + 1
+    swarm.feed.push({ at, detail: input.message, event: null, kind: 'steer', seq, text: `${Mention.at(called(who as string))} steered ${after.who} with ${usd(decimal(amount))}: ${input.message.split('\n')[0]?.slice(0, 200)}`, who: after.who })
+    swarm.updatedAt = at
+  } else push(swarm, 'funds', `${Mention.at(called(who as string))} put ${usd(decimal(amount))} behind ${after.role} (branch ${branch}), whose budget is now ${usd(after.budget ?? '0')}.`, null, Date.now())
   return delay(after, 300)
 }
 

@@ -7,6 +7,7 @@ import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
 import { Artifacts } from './Artifacts.tsx'
 import { Branches } from './Branches.tsx'
+import { Side } from './Side.tsx'
 import { Connect } from './Connect.tsx'
 import { Contributors } from './Contributors.tsx'
 import { asked, Fund } from './Contribute.tsx'
@@ -89,6 +90,8 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const [titled, setTitled] = useState(false)
   const [prefill] = useState(() => asked())
   const [draft, setDraft] = useState({ at: 0, text: '' })
+  const [side, setSide] = useState<{ branch: number | null; open: boolean; question: { at: number; text: string } }>({ branch: null, open: false, question: { at: 0, text: '' } })
+  const [focus, setFocus] = useState({ at: 0, who: 'all' })
   const [chat, setChat] = useState<{ handles: ReadonlyMap<string, string>; me: Me | null; members: readonly Member[]; online: readonly string[]; said: readonly Said[]; watching: number }>({ handles: new Map(), me: null, members: [], online: [], said: [], watching: 0 })
   const heard = useCallback((said: readonly Said[], me: Me | null, members: readonly Member[], online: readonly string[], watching: number) => setChat((previous) => ({ handles: new Map(members.map((member) => [member.address, member.handle])), me, members, online, watching, said: [...said, ...previous.said.filter((item) => !said.some((other) => other.id === item.id) && item.id > (said.at(-1)?.id ?? 0))] })), [])
   const [funding, setFunding] = useState(() => here().searchParams.has('fund'))
@@ -169,6 +172,11 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
     setFunding(true)
   })
   const backNote = useStable((text: string) => back(text || note))
+  const ask = useStable((branch: number | null, text?: string) => setSide({ branch, open: true, question: { at: Date.now(), text: text ?? '' } }))
+  const follow = useStable((who: string) => {
+    setFocus({ at: Date.now(), who })
+    setTab('transcript')
+  })
 
   if (!detail.data)
     return detail.error ? (
@@ -237,6 +245,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
         </div>
         <Energy onFund={swarm.status === 'done' ? undefined : () => back(note)} swarm={swarm} />
         {!phone && tablist('room-tabs')}
+        {!phone && <button className="side-open" onClick={() => (side.open ? setSide((current) => ({ ...current, open: false })) : ask(null))} type="button">{side.open ? 'Close the side pane' : 'Ask on the side'}</button>}
       </header>
       {result && <Result onClose={() => setResult(false)} swarm={swarm} />}
       <div className="room-layout">
@@ -248,6 +257,8 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
               config={props.config}
               draft={draft}
               entries={entries}
+              focus={focus}
+              onSide={(question) => ask(null, question)}
               handles={chat.handles}
               live={stream}
               me={chat.me}
@@ -273,7 +284,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
           {shown !== 'transcript' && shown !== 'room' && (
             <div aria-labelledby={`tab-${shown}`} className="room-panel room-page-panel" data-tab={shown} id={`panel-${shown}`} role="tabpanel">
               {shown === 'artifacts' && <Artifacts artifacts={shelf.data?.artifacts} error={shelf.error} onSelect={setArtifact} selected={artifact} working={live} />}
-              {shown === 'branches' && <Branches config={props.config} swarm={swarm} />}
+              {shown === 'branches' && <Branches config={props.config} onAsk={(branch) => ask(branch)} onFollow={follow} onPropose={(text) => back(text)} swarm={swarm} />}
               {shown === 'contributors' && <Contributors me={chat.me} members={chat.members} online={chat.online} />}
               {shown === 'code' && <Repository config={props.config} swarm={swarm} />}
               {shown === 'machines' && (
@@ -290,6 +301,20 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
           {room}
         </aside>
       </div>
+      {side.open && (
+        <Side
+          branch={side.branch}
+          config={props.config}
+          onBranch={(branch) => setSide((current) => ({ ...current, branch }))}
+          onClose={() => setSide((current) => ({ ...current, open: false }))}
+          onSaid={(said) => {
+            setChat((previous) => ({ ...previous, said: [...previous.said.filter((item) => item.id !== said.id), said] }))
+            reload()
+          }}
+          question={side.question}
+          swarm={swarm}
+        />
+      )}
     </article>
   )
 }

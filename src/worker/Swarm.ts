@@ -821,6 +821,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const found = this.ctx.storage.sql
       .exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n)
       .toArray()[0]
+    await this.settled(money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
     const repo = await this.repo(money.row)
     const commits = repo.state === 'ready' ? await this.pushed(row.id, repo.name, found?.base ?? null) : []
     const spent = BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
@@ -1785,7 +1786,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const note = (await this.notes(row)).find((found) => found.id === noteId)
     if (!note) return undefined
     const sent = await Gateway.prompt(this.env, swarm, agent, {
-      prompt: this.tell([note])[0]?.note ?? note.note,
+      prompt: weighed(this.tell([note])[0] ?? note),
       steer: true,
     })
     if (!sent.ok) return undefined
@@ -1871,25 +1872,62 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async subagents(swarm: string): Promise<Gateway.Result<Gateway.Subagent[]>> {
     const agent = this.kv.get<string>('agent')
     if (!agent) return { ok: true, value: [] }
-    const listed = await Gateway.subagents(this.env, swarm, agent)
-    return listed.ok ? { ok: true, value: listed.value.agents } : listed
+    return Gateway.subagents(this.env, swarm, agent)
   }
 
-  async direct(swarm: string, input: { branch: number; said: string | null; usd: number; wake: string | null }): Promise<Gateway.Result<Gateway.Subagent>> {
+  async direct(
+    swarm: string,
+    input: { branch: number; said: string | null; steer?: { note: string; text: string; who: string }; usd: number; wake: string | null },
+  ): Promise<Gateway.Result<Gateway.Subagent>> {
     const agent = this.kv.get<string>('agent')
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
     const set = await Gateway.budget(this.env, swarm, agent, input.branch, input.usd)
     if (!set.ok) return set
 
-    if (input.wake) await Gateway.tell(this.env, swarm, agent, input.branch, input.wake)
+    if (input.steer) {
+      const told = await Gateway.tell(this.env, swarm, agent, input.branch, input.steer.text, 'urgent')
+      if (!told.ok) return told
+      this.log('steer', input.steer.note, input.steer.text, { who: input.steer.who })
+    } else if (input.wake) await Gateway.tell(this.env, swarm, agent, input.branch, input.wake)
     if (input.said) {
-      this.log('funds', input.said)
+      if (!input.steer) this.log('funds', input.said)
       this.announce(input.said)
     }
-    return { ok: true, value: set.value.agent }
+    this.touch()
+    return { ok: true, value: Gateway.subagent(set.value.agent) }
   }
 
-  async btw(input: { address: Address; prompt: string; swarm: string }): Promise<Gateway.Result<string>> {
+  async voice(swarm: string, text: string): Promise<Gateway.Result<true>> {
+    this.kv.put('id', swarm)
+    this.announce(text)
+    return { ok: true, value: true }
+  }
+
+  async halt(swarm: string, branch: number, said: string): Promise<Gateway.Result<Gateway.Subagent[]>> {
+    const agent = this.kv.get<string>('agent')
+    if (!agent) return { detail: 'The swarm has no agent yet.', ok: false, status: 409 }
+    const closed = await Gateway.close(this.env, swarm, agent, branch)
+    if (!closed.ok) return closed
+    this.log('status', said)
+    this.announce(said)
+    this.touch()
+    return { ok: true, value: closed.value.agents.map(Gateway.subagent) }
+  }
+
+  async settled(row: Store.Row) {
+    const agent = this.kv.get<string>('agent')
+    if (!agent) return
+    const listed = await Gateway.subagents(this.env, row.id, agent)
+    if (!listed.ok) return
+    for (const branch of listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed' && found.budget_usd !== undefined)) {
+      const left = Memo.units((branch.budget_usd ?? 0).toFixed(6)) - Memo.units((branch.spent_usd ?? 0).toFixed(6))
+      const returned = await Store.settle(this.env, { branch: branch.agent_id, left: left > 0n ? left : 0n, swarm: row.id })
+      const back = returned.reduce((sum, item) => sum + item.amount, 0n)
+      if (back > 0n) this.announce(`${branch.role} (branch ${branch.agent_id}) closed with ${dollars(back)} of its backers' money unspent, which is theirs to put behind something else again.`)
+    }
+  }
+
+  async btw(input: { address: Address; branch?: number; prompt: string; swarm: string }): Promise<Gateway.Result<string>> {
     this.kv.put('id', input.swarm)
     const agent = this.kv.get<string>('agent')
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
@@ -1901,7 +1939,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       return { detail: `At most ${Btw.perHour} side questions an hour; the next one opens at ${clock(oldest + hourMs)} UTC.`, ok: false, status: 429 }
     this.kv.put(key, [...recent, now])
 
-    const answered = await Gateway.side(this.env, input.swarm, agent, input.prompt)
+    const answered = input.branch === undefined ? await Gateway.side(this.env, input.swarm, agent, input.prompt) : await Gateway.ask(this.env, input.swarm, agent, input.branch, input.prompt)
     if (!answered.ok) {
       this.kv.put(key, recent)
       return answered
@@ -2234,11 +2272,16 @@ function known(why: string | undefined): Why {
 }
 
 function brief(row: Store.Row, notes: Note[]) {
-  return [row.title, row.goal, ...notes.map((note) => note.note)].filter(Boolean).join('\n\n')
+  return [row.title, row.goal, ...notes.map(weighed)].filter(Boolean).join('\n\n')
 }
 
 function next(notes: Note[]) {
-  return ['Keep going.', ...notes.map((note) => note.note)].join('\n\n')
+  return ['Keep going.', ...notes.map(weighed)].join('\n\n')
+}
+
+function weighed(note: Note) {
+  const backers = note.backers === 1 ? '1 backer' : `${note.backers} backers`
+  return `[${dollars(Memo.units(note.weight))} behind this, from ${backers}] ${note.note}`
 }
 
 function updates(turns: readonly Search.Turn[]): Update[] {

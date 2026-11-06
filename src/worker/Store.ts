@@ -738,3 +738,43 @@ export async function noteId(note: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized))
   return Array.from(new Uint8Array(digest).slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
+
+export async function settle(env: Cloudflare.Env, input: { branch: number; left: bigint; swarm: string }) {
+  const claimed = await env.DB.prepare('update branches set settled_at = ? where swarm = ? and branch = ? and settled_at is null')
+    .bind(Date.now(), input.swarm, input.branch)
+    .run()
+    .finally(wrote)
+  if (claimed.meta.changes === 0) return []
+
+  const { results } = await env.DB.prepare(
+    'select contributor, budget, sum(cast(amount as integer)) as amount from steers where swarm = ? and branch = ? group by contributor, budget',
+  )
+    .bind(input.swarm, input.branch)
+    .all<{ amount: number; budget: number; contributor: string }>()
+  const shares = results.filter((row) => row.amount > 0)
+  const total = shares.reduce((sum, row) => sum + BigInt(row.amount), 0n)
+  const back = input.left < total ? input.left : total
+  if (back <= 0n || total === 0n) return []
+
+  const now = Date.now()
+  const returned = shares.flatMap((row) => {
+    const amount = (back * BigInt(row.amount)) / total
+    return amount > 0n ? [{ amount, budget: row.budget, contributor: row.contributor }] : []
+  })
+  await env.DB.batch(
+    returned.map((row) =>
+      env.DB.prepare('insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch) values (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(
+        crypto.randomUUID().replace(/-/g, '').slice(0, 12),
+        input.swarm,
+        row.contributor,
+        `branch ${input.branch}`,
+        `branch:${input.branch}`,
+        String(-row.amount),
+        now,
+        row.budget,
+        input.branch,
+      ),
+    ),
+  ).finally(wrote)
+  return returned
+}

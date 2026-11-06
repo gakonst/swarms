@@ -38,9 +38,21 @@ export type Subagent = {
   agent_id: number
   budget_usd?: number
   parent_agent_id: number | null
+  result?: string
   role: string
   spent_usd?: number
   status: { error?: string; state: string }
+  task: string
+}
+
+type Raw = {
+  agent_id: number
+  budget_usd?: number
+  last_output?: unknown
+  parent_agent_id: number | null
+  role: string
+  spent_usd?: number
+  status: { error?: string; output?: unknown; state: string }
   task: string
 }
 
@@ -172,16 +184,50 @@ export function side(env: Cloudflare.Env, swarm: string, agent: string, question
   return send<{ text: string; usage?: { estimated_cost?: { total_usd?: number } } }>(env, `/v1/agents/${agent}/side_question`, { app: app(swarm), body: { question } })
 }
 
-export function subagents(env: Cloudflare.Env, swarm: string, agent: string) {
-  return send<{ agents: Subagent[] }>(env, `/v1/agents/${agent}/subagents`, { app: app(swarm) })
+export async function subagents(env: Cloudflare.Env, swarm: string, agent: string): Promise<Result<Subagent[]>> {
+  const listed = await send<{ agents: Raw[] }>(env, `/v1/agents/${agent}/subagents`, { app: app(swarm) })
+  if (!listed.ok) return listed
+  return { ok: true, value: listed.value.agents.map(subagent) }
+}
+
+export function subagent(raw: Raw): Subagent {
+  const result = rendered(raw.status.output ?? raw.last_output)
+  return {
+    agent_id: raw.agent_id,
+    ...(raw.budget_usd === undefined ? {} : { budget_usd: raw.budget_usd }),
+    parent_agent_id: raw.parent_agent_id,
+    ...(result ? { result } : {}),
+    role: raw.role,
+    ...(raw.spent_usd === undefined ? {} : { spent_usd: raw.spent_usd }),
+    status: { ...(raw.status.error ? { error: raw.status.error } : {}), state: raw.status.state },
+    task: raw.task,
+  }
+}
+
+function rendered(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value === 'string') return value
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const texts = Object.values(value).filter((item): item is string => typeof item === 'string')
+    if (texts.length && texts.length === Object.keys(value).length) return texts.join('\n\n')
+  }
+  return JSON.stringify(value, null, 2)
 }
 
 export function budget(env: Cloudflare.Env, swarm: string, agent: string, subagent: number, usd: number | null) {
-  return send<{ agent: Subagent }>(env, `/v1/agents/${agent}/subagents/${subagent}/budget`, { app: app(swarm), body: { budget_usd: usd } })
+  return send<{ agent: Raw }>(env, `/v1/agents/${agent}/subagents/${subagent}/budget`, { app: app(swarm), body: { budget_usd: usd } })
 }
 
-export function tell(env: Cloudflare.Env, swarm: string, agent: string, subagent: number, message: string) {
-  return send<{ disposition: string }>(env, `/v1/agents/${agent}/subagents/${subagent}/messages`, { app: app(swarm), body: { message, priority: 'deferred' } })
+export function tell(env: Cloudflare.Env, swarm: string, agent: string, subagent: number, message: string, priority: 'deferred' | 'urgent' = 'deferred') {
+  return send<{ disposition: string }>(env, `/v1/agents/${agent}/subagents/${subagent}/messages`, { app: app(swarm), body: { message, priority } })
+}
+
+export function close(env: Cloudflare.Env, swarm: string, agent: string, subagent: number) {
+  return send<{ agents: Raw[] }>(env, `/v1/agents/${agent}/subagents/${subagent}/close`, { app: app(swarm), method: 'POST' })
+}
+
+export function ask(env: Cloudflare.Env, swarm: string, agent: string, subagent: number, question: string) {
+  return send<{ text: string }>(env, `/v1/agents/${agent}/subagents/${subagent}/side_question`, { app: app(swarm), body: { question } })
 }
 
 export function cancel(env: Cloudflare.Env, swarm: string, agent: string, turn: string) {

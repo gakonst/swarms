@@ -65,6 +65,7 @@ import type { Paid, Stamp, Swarm } from './Swarm.ts'
 import * as Vault from './Vault.ts'
 import * as Fleet from '../shared/Fleet.ts'
 import * as Brief from '../shared/ResearchBrief.ts'
+import { clip } from '../shared/Trail.ts'
 import { ids } from '../shared/ResearchBrief.ts'
 
 export const statuses = ['funding', 'running', 'paused', 'done'] as const satisfies readonly Status[]
@@ -191,12 +192,23 @@ export const schema = {
   }),
   unseat: z.object({ member: wallet, swarm: id }),
   branches: z.object({ swarm: id }),
+  stop: z.object({
+    branch: subagentId.describe('The branch to stop.'),
+    swarm: id,
+  }),
   fund: z.object({
     amount: decimal
       .refine((value) => units(value) >= Mention.smallestSteer, `A branch is funded with at least ${Memo.decimal(Mention.smallestSteer)}.`)
       .refine((value) => units(value) <= 100_000_000n, 'A branch is funded with at most 100.')
       .describe("How many dollars go behind the branch: of the caller's backing not yet behind a note, or of the swarm's money within their team budget when only its team steers."),
     branch: subagentId.describe('The branch, the id of one of the subagents the swarm\'s agent started itself, from GET /v1/swarms/:id/branches.'),
+    message: z
+      .string()
+      .trim()
+      .min(3)
+      .max(60_000)
+      .optional()
+      .describe('Steer the branch with this message as well: it reaches the subagent at once, with the money behind it.'),
     swarm: id,
   }),
   move: z.object({
@@ -273,11 +285,13 @@ export const schema = {
     swarm: id,
   }),
   btw: z.object({
+    branch: subagentId.optional().describe("Ask this branch, a subagent from GET /v1/swarms/:id/branches, instead of the swarm's agent."),
     question: z.string().trim().min(1).max(Btw.maxQuestion).describe('The side question, answered from the agent\'s own conversation without interrupting or steering it.'),
     swarm: id,
     thread,
   }),
   say: z.object({
+    artifact: z.boolean().default(false).describe('With btw: ask the agent for an artifact that shows what the side conversation asked about. The text must then be @swarm followed by "Artifact from /btw: <the first question>".'),
     btw: exchanges
       .min(1)
       .optional()
@@ -688,8 +702,8 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   if (steering && policed && !seat)
     return Problem.fail(403, 'not_member', "Only this swarm's team steers it. Its admins add who may: ask one of them in the room.")
   if (!steering && request.steer !== undefined) return Problem.fail(400, 'invalid_request', 'steer goes with a message that mentions @swarm.')
-  if (request.btw && (!steering || Mention.idea(request.text) !== Btw.note(request.btw)))
-    return Problem.fail(400, 'invalid_request', `A /collapse is @swarm followed by "${Btw.note(request.btw)}".`)
+  if (request.btw && (!steering || Mention.idea(request.text) !== Btw.note(request.btw, request.artifact)))
+    return Problem.fail(400, 'invalid_request', `A /collapse is @swarm followed by "${Btw.note(request.btw, request.artifact)}".`)
   let steer: { amount: string; note: string; noteId: string } | null = null
   if (steering) {
     const note = Mention.idea(request.text)
@@ -718,7 +732,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
       )
     if (seat) Team.forget(row.id)
     await logged(Search.note(env, row.id, noteId, note))
-    steer = { amount: Memo.decimal(amount), note, noteId, ...(request.btw ? { context: Btw.collapse(request.btw) } : {}) }
+    steer = { amount: Memo.decimal(amount), note, noteId, ...(request.btw ? { context: Btw.collapse(request.btw, request.artifact) } : {}) }
   }
 
   const named = Mention.mentioned(request.text)
@@ -743,10 +757,11 @@ function reached<value>(call: Promise<Gateway.Result<value>>): Promise<Gateway.R
 async function directed(env: Cloudflare.Env, row: Store.Row): Promise<Problem.Result<{ list: Branch[]; members: Member[]; money: Awaited<ReturnType<typeof Store.funds>> }>> {
   const [found, money, members] = await Promise.all([reached(stub(env, row.id).subagents(row.id)), Store.funds(env, row.id), Store.members(env, row.id)])
   if (!found.ok) return Problem.fail(502, 'upstream_failed', `Could not list the swarm's subagents: ${found.detail}`)
-  return Problem.ok({ list: found.value.map((agent) => branched(agent, money, members)), members, money })
+  const names = new Map(found.value.map((agent) => [agent.agent_id, found.value.some((other) => other.agent_id !== agent.agent_id && other.role === agent.role) ? `${agent.role} #${agent.agent_id}` : agent.role]))
+  return Problem.ok({ list: found.value.map((agent) => branched(agent, money, members, names.get(agent.agent_id))), members, money })
 }
 
-function branched(agent: Gateway.Subagent, money: Awaited<ReturnType<typeof Store.funds>>, members: readonly Member[]): Branch {
+function branched(agent: Gateway.Subagent, money: Awaited<ReturnType<typeof Store.funds>>, members: readonly Member[], who = agent.role): Branch {
   const shares = money.shares.get(agent.agent_id) ?? new Map<string, bigint>()
   const funded = [...shares.values()].reduce((sum, amount) => sum + amount, 0n)
   const budget = agent.budget_usd === undefined ? null : units(agent.budget_usd)
@@ -768,11 +783,13 @@ function branched(agent: Gateway.Subagent, money: Awaited<ReturnType<typeof Stor
     id: agent.agent_id,
     left: budget === null || spent === null ? null : Memo.decimal(budget > spent ? budget - spent : 0n),
     parent: agent.parent_agent_id,
+    result: agent.result?.slice(0, 4000) ?? null,
     role: agent.role,
     spent: spent === null ? null : Memo.decimal(spent),
     starved,
     state: agent.status.state as Branch['state'],
     task: agent.task.slice(0, 2000),
+    who,
   }
 }
 
@@ -823,7 +840,9 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
 
   const amount = units(request.amount)
   const identity = identifier()
-  const entry = { amount, branch: target.id, contributor: allowed.value.address, id: identity, note: `branch ${target.id}`, note_id: `branch:${target.id}`, swarm: row.id }
+  const message = request.message ?? null
+  const note = message ? clip(message.split('\n')[0] ?? message, Memo.maxNote) : `branch ${target.id}`
+  const entry = { amount, branch: target.id, contributor: allowed.value.address, id: identity, note, note_id: `branch:${target.id}`, swarm: row.id }
   const placed = seat
     ? await Store.allot(env, { ...entry, limit: seat.limit === null ? null : Memo.units(seat.limit), since: Date.now() - Team.period })
     : await Store.steer(env, entry)
@@ -840,9 +859,21 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
   await Store.base(env, row.id, target.id, target.budget === null ? 0n : Memo.units(target.budget))
   const money = await Store.funds(env, row.id)
   const total = backed(money, target.id)
+  const behind = [...(money.shares.get(target.id)?.values() ?? [])].reduce((sum, value) => sum + value, 0n)
   const set = await reached(stub(env, row.id).direct(row.id, {
     branch: target.id,
-    said: `${Mention.at(account.handle)} put ${dollars(Memo.decimal(amount))} behind ${target.role} (branch ${target.id}), whose budget is now ${dollars(Memo.decimal(total))}.`,
+    said: message
+      ? `${Mention.at(account.handle)} steered ${target.role} (branch ${target.id}) with ${dollars(Memo.decimal(amount))}: "${clip(note, 140)}" Its budget is now ${dollars(Memo.decimal(total))}.`
+      : `${Mention.at(account.handle)} put ${dollars(Memo.decimal(amount))} behind ${target.role} (branch ${target.id}), whose budget is now ${dollars(Memo.decimal(total))}.`,
+    ...(message
+      ? {
+          steer: {
+            note: `${Mention.at(account.handle)} steered ${target.who} with ${dollars(Memo.decimal(amount))}: ${clip(note, 200)}`,
+            text: `[${dollars(Memo.decimal(amount))} behind this, from ${Mention.at(account.handle)}; backers have put ${dollars(Memo.decimal(behind))} behind your branch in all, and your budget is now ${dollars(Memo.decimal(total))}] Weigh what backers ask by the money behind it.\n\n${message}`,
+            who: target.who,
+          },
+        }
+      : {}),
     usd: Number(total) / 1_000_000,
     wake: target.starved ? `Backers raised your budget to ${dollars(Memo.decimal(total))}. Carry on with your task.` : null,
   }))
@@ -850,7 +881,36 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
     await Store.unsteer(env, [identity])
     return Problem.fail(502, 'upstream_failed', `The gateway did not raise the branch's budget, so nothing was put behind it: ${set.detail}`)
   }
-  return Problem.ok(branched(set.value, money, await Store.members(env, row.id)))
+  return Problem.ok(branched(set.value, money, await Store.members(env, row.id), target.who))
+}
+
+export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: Address): Promise<Problem.Result<Branch>> {
+  const parsed = parse(schema.stop, input)
+  if (!parsed.ok) return parsed
+  const request = parsed.value
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to stop a branch.')
+  const [row, account] = await Promise.all([Store.find(env, request.swarm), Store.account(env, address)])
+  if (!row) return missing()
+  if (!account.name) return unnamed()
+  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
+
+  const found = await directed(env, row)
+  if (!found.ok) return found
+  const target = found.value.list.find((branch) => branch.id === request.branch && branch.parent === null)
+  if (!target) return Problem.fail(404, 'not_found', `This swarm has no branch ${request.branch}.`)
+  if (target.state === 'closed' || target.state === 'closing') return Problem.fail(409, 'conflict', `${target.role} is already stopped.`)
+  const backer = target.funders.some((funder) => funder.address === address.toLowerCase())
+  if (!backer && !(await Team.admin(env, row, address).catch(() => false)))
+    return Problem.fail(403, 'access_denied', `Only those who put money behind ${target.role}, or the swarm's admins, stop it.`)
+
+  const halted = await reached(stub(env, row.id).halt(row.id, target.id, `${Mention.at(account.handle)} stopped ${target.role} (branch ${target.id}).`))
+  if (!halted.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not stop the branch: ${halted.detail}`)
+  const left = target.left === null ? 0n : Memo.units(target.left)
+  const returned = await Store.settle(env, { branch: target.id, left, swarm: row.id })
+  const back = returned.reduce((sum, item) => sum + item.amount, 0n)
+  if (back > 0n) await reached(stub(env, row.id).voice(row.id, `${dollars(Memo.decimal(back))} that ${target.role} had not spent went back to its backers, to put behind something else.`))
+  const closed = halted.value.find((agent) => agent.agent_id === target.id)
+  return Problem.ok(closed ? branched(closed, await Store.funds(env, row.id), await Store.members(env, row.id), target.who) : { ...target, state: 'closed' })
 }
 
 export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: Address): Promise<Problem.Result<Branch[]>> {
@@ -910,7 +970,7 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
   if (row.steering !== 'team' && !(await Store.members(env, row.id)).some((member) => member.address === address))
     return Problem.fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you ask it side questions.')
 
-  const answered = await stub(env, row.id).btw({ address, prompt: Btw.ask(request.thread, request.question), swarm: row.id })
+  const answered = await stub(env, row.id).btw({ address, ...(request.branch === undefined ? {} : { branch: request.branch }), prompt: Btw.ask(request.thread, request.question), swarm: row.id })
   if (!answered.ok)
     return answered.status === 429
       ? Problem.fail(429, 'rate_limited', answered.detail)

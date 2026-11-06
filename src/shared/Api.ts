@@ -45,11 +45,13 @@ export type Branch = {
   id: number
   left: string | null
   parent: number | null
+  result: string | null
   role: string
   spent: string | null
   starved: boolean
   state: BranchState
   task: string
+  who: string
 }
 
 export type Branches = { branches: Branch[]; steering: Steering }

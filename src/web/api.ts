@@ -172,7 +172,7 @@ export function room(id: string, query: { after?: number; before?: number } = {}
   return fixture ? staged((fixtures) => fixtures.room(id, query, bearer ? visitor : undefined)) : request<Room>(`${path(id)}/chat?${search}`)
 }
 
-export function say(id: string, input: { btw?: readonly Btw.Exchange[]; steer?: string; text: string }) {
+export function say(id: string, input: { artifact?: boolean; btw?: readonly Btw.Exchange[]; steer?: string; text: string }) {
   return fixture ? staged((fixtures) => fixtures.say(id, input, bearer ? visitor : undefined)) : request<Posted>(`${path(id)}/chat`, input)
 }
 
@@ -196,15 +196,19 @@ export function branches(id: string) {
   return fixture ? staged((fixtures) => fixtures.branches(id)) : request<Branches>(`${path(id)}/branches`)
 }
 
-export function fund(id: string, branch: number, input: { amount: string }) {
+export function fund(id: string, branch: number, input: { amount: string; message?: string }) {
   return fixture ? staged((fixtures) => fixtures.fund(id, branch, input, bearer ? visitor : undefined)) : request<Branch>(`${path(id)}/branches/${branch}/fund`, input)
+}
+
+export function stop(id: string, branch: number) {
+  return fixture ? staged((fixtures) => fixtures.stop(id, branch, bearer ? visitor : undefined)) : request<Branch>(`${path(id)}/branches/${branch}/stop`, {})
 }
 
 export function move(id: string, branch: number, input: { amount: string; to: number }) {
   return fixture ? staged((fixtures) => fixtures.move(id, branch, input, bearer ? visitor : undefined)) : request<Branch[]>(`${path(id)}/branches/${branch}/move`, input)
 }
 
-export function btw(id: string, input: { question: string; thread: readonly Btw.Exchange[] }) {
+export function btw(id: string, input: { branch?: number; question: string; thread: readonly Btw.Exchange[] }) {
   return fixture ? staged((fixtures) => fixtures.btw(id, input, bearer ? visitor : undefined)) : request<Btw.Exchange>(`${path(id)}/btw`, input)
 }
 

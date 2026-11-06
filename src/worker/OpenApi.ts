@@ -344,11 +344,13 @@ const schemas = {
       id: { ...integer, description: 'The subagent id the gateway gives it, which fund and move take.' },
       left: nullable({ ...string, description: 'Its budget less what it spent; null without a budget.' }),
       parent: nullable({ ...integer, description: 'The subagent that started it; null for a branch the agent started itself, which backers fund.' }),
+      result: nullable({ ...string, description: 'What it submitted when it finished, at most 4,000 characters.' }),
       role: string,
       spent: nullable({ ...string, description: 'What it and the subagents under it spent since it got a budget; null without one.' }),
       starved: { description: 'True when it stopped because its budget was spent; funding it starts it again.', type: 'boolean' },
       state: { enum: ['pending', 'running', 'completed', 'interrupted', 'failed', 'closing', 'closed'], type: 'string' },
       task: string,
+      who: { ...string, description: "The name its entries carry in the feed's who, its role, or its role and id when two share a role." },
     },
     "One of the swarm agent's subagents. A branch is one the agent started itself, with the subagents under it.",
   ),
@@ -647,12 +649,12 @@ export function document(origin: string) {
       '/v1/swarms/{id}/branches/{branch}/fund': {
         post: {
           description:
-            "As a signed-in backer with a username (Authorization: Bearer <token> from /v1/auth), puts some of your backing not yet behind a note or branch behind one branch, or, when only the swarm's team steers it, some of the swarm's money within your team budget. The branch's budget becomes what it had when first funded (nothing for one that had no budget of its own) plus everything put behind it, and the gateway refuses its paid requests past it; a branch its budget had stopped starts again. To put new money behind a branch, fund the swarm first.",
+            "As a signed-in backer with a username (Authorization: Bearer <token> from /v1/auth), puts some of your backing not yet behind a note or branch behind one branch, or, when only the swarm's team steers it, some of the swarm's money within your team budget. The branch's budget becomes what it had when first funded (nothing for one that had no budget of its own) plus everything put behind it, and the gateway refuses its paid requests past it; a branch its budget had stopped starts again. With message, it also steers the branch: the message reaches the subagent at once, saying how much is behind it. To put new money behind a branch, fund the swarm first.",
           operationId: 'fundBranch',
           parameters: [swarm, parameter('branch', 'path', integer, 'The branch id from listBranches.')],
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.fund.omit({ branch: true, swarm: true })) } }, required: true },
           responses: { ...ok(ref('Branch'), 'The branch with its new budget.'), ...failures(400, 401, 403, 404, 409, 502) },
-          summary: 'Fund a branch',
+          summary: 'Fund or steer a branch',
         },
       },
       '/v1/swarms/{id}/branches/{branch}/move': {
@@ -664,6 +666,16 @@ export function document(origin: string) {
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.move.omit({ branch: true, swarm: true })) } }, required: true },
           responses: { ...ok({ items: ref('Branch'), type: 'array' }, 'Both branches after the move, the one it left first.'), ...failures(400, 401, 403, 404, 409, 502) },
           summary: 'Move funding between branches',
+        },
+      },
+      '/v1/swarms/{id}/branches/{branch}/stop': {
+        post: {
+          description:
+            "As a signed-in backer of the branch, or an admin of the swarm, stops a branch: its subagent closes, and what backers put behind it that it had not spent goes back to their available backing, in proportion to what each put in.",
+          operationId: 'stopBranch',
+          parameters: [swarm, parameter('branch', 'path', integer, 'The branch to stop.')],
+          responses: { ...ok(ref('Branch'), 'The stopped branch.'), ...failures(401, 403, 404, 409, 502) },
+          summary: 'Stop a branch',
         },
       },
       '/v1/swarms/{id}/chat/live': {
