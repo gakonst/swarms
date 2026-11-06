@@ -23,6 +23,36 @@ async function load() {
   return { Mach, provider: Provider.create({ adapter: tempoWallet(), mpp: false }) }
 }
 
+let known: Config | undefined
+
+const keyDays = 30
+
+const keyLimit = 100_000_000n
+
+const transferWithMemo = '0x95777d59'
+
+let keyless = false
+
+function encoded(config: Config) {
+  const stable = config.tokens.filter((token) => token.id !== 'mach')
+  return {
+    expiry: Math.floor(Date.now() / 1000) + keyDays * 86_400,
+    limits: stable.map((token) => ({ limit: `0x${keyLimit.toString(16)}`, token: token.address })),
+    scopes: stable.map((token) => ({ address: token.address, selector: transferWithMemo })),
+  }
+}
+
+async function keyed(config: Config, calls: readonly { data: Hex; to: Address }[]) {
+  if (!state.session || keyless) return
+  const provider = await wallet()
+  const status = await provider.getAccessKeyStatus({ calls }).catch(() => 'missing' as const)
+  if (status !== 'missing' && status !== 'expired') return
+  await provider.request({ method: 'wallet_authorizeAccessKey', params: [encoded(config)] } as never).catch((error: unknown) => {
+    keyless = true
+    if (!declined(error)) console.warn('Tempo Wallet did not authorize an access key', error)
+  })
+}
+
 const chain = () => Promise.all([import('viem'), import('viem/tempo'), import('viem/tempo/chains')])
 
 const kept = 'swarms.session'
@@ -138,7 +168,12 @@ function asked() {
   return new Promise((resolve) => setTimeout(resolve, 1200 * pace))
 }
 
+function declined(error: unknown) {
+  return (error as { code?: number } | undefined)?.code === 4001 || /reject|declin|denied|cancel/i.test(String((error as Error | undefined)?.message ?? error))
+}
+
 export async function restore(config: Config) {
+  known = config
   if (!checked) {
     checked = true
     if (state.session) {
@@ -158,13 +193,14 @@ export async function restore(config: Config) {
 }
 
 export async function connect(config: Config) {
+  known = config
   if (fixture) {
     if (!state.address) set({ address: visitor })
     return state.address ?? visitor
   }
   const provider = await wallet()
-  const known = (await provider.request({ method: 'eth_accounts' }).catch(() => [] as readonly Address[]))[0]
-  const address = known ?? (await provider.request({ method: 'eth_requestAccounts' }))[0]
+  const listed = (await provider.request({ method: 'eth_accounts' }).catch(() => [] as readonly Address[]))[0]
+  const address = listed ?? (await provider.request({ method: 'eth_requestAccounts' }))[0]
   if (!address) throw new Error('Tempo Wallet returned no account.')
   if (address.toLowerCase() === state.address?.toLowerCase()) return state.address
   const switched = !!state.session && state.session.address.toLowerCase() !== address.toLowerCase()
@@ -197,10 +233,16 @@ export async function signIn(config: Config) {
     void identify()
     return session
   }
-  const result = (await (await wallet()).request({
-    method: 'wallet_connect',
-    params: [{ capabilities: { auth: { returnToken: true, url: config.auth } }, chainId: config.chainId }],
-  } as never)) as { accounts: readonly { address: Address; capabilities?: { auth?: { token?: string } } }[] }
+  known = config
+  const provider = await wallet()
+  const connect = (capabilities: Record<string, unknown>) =>
+    provider.request({ method: 'wallet_connect', params: [{ capabilities: { auth: { returnToken: true, url: config.auth }, ...capabilities }, chainId: config.chainId }] } as never) as Promise<{
+      accounts: readonly { address: Address; capabilities?: { auth?: { token?: string } } }[]
+    }>
+  const result = await connect({ authorizeAccessKey: encoded(config) }).catch((error: unknown) => {
+    if (declined(error)) throw error
+    return connect({})
+  })
   const account = result.accounts[0]
   const token = account?.capabilities?.auth?.token
   if (!account || !token) throw new Error('Tempo Wallet returned no session.')
@@ -271,15 +313,11 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
   const token = config.tokens.find((item) => item.id === input.token)
   if (!token) throw new Error('That token is not offered.')
   const [{ encodeFunctionData }, { Abis }] = await chain()
+  const calls = [{ data: encodeFunctionData({ abi: Abis.tip20, args: [input.to, input.amount, input.memo], functionName: 'transferWithMemo' }), to: token.address }]
+  await keyed(config, calls)
   const receipt = (await (await wallet()).request({
     method: 'eth_sendTransactionSync',
-    params: [
-      {
-        calls: [{ data: encodeFunctionData({ abi: Abis.tip20, args: [input.to, input.amount, input.memo], functionName: 'transferWithMemo' }), to: token.address }],
-        feeToken: token.address,
-        from: address,
-      },
-    ],
+    params: [{ calls, feeToken: token.address, from: address }],
   } as never)) as { status?: string; transactionHash?: Hex }
   if (!receipt.transactionHash) throw new Error('Tempo Wallet returned no transaction.')
   if (receipt.status && receipt.status !== 'success' && receipt.status !== '0x1') throw new Error('The transfer reverted.')
