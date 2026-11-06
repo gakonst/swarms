@@ -441,6 +441,14 @@ export function Transcript(props: {
   useEffect(() => {
     if (props.focus.at) setWho(props.focus.who)
   }, [props.focus])
+  const fetched = useRef(new Set<string>())
+  useEffect(() => {
+    if (who === 'all' || fetched.current.has(who)) return
+    fetched.current.add(who)
+    void Api.feed(props.swarm.id, 0, { before: Number.MAX_SAFE_INTEGER, who })
+      .then((read) => props.onEntries(read.entries))
+      .catch(() => fetched.current.delete(who))
+  }, [who, props.swarm.id])
   const [loading, setLoading] = useState(false)
   const [start, setStart] = useState(false)
   const box = useRef<HTMLOListElement>(null)
@@ -573,7 +581,7 @@ export function Transcript(props: {
       <header className="transcript-bar" hidden={!speakers.length && !props.people}>
         {speakers.length > 0 && (
           <nav aria-label="Who to show" className="transcript-who">
-            {['all', agent, ...speakers].map((name) => (
+            {['all', agent, ...speakers, ...(who === 'all' || who === agent || speakers.includes(who) ? [] : [who])].map((name) => (
               <button aria-pressed={who === name} key={name} onClick={() => setWho(name)} type="button">
                 {name !== 'all' && <i data-live={streamed && !!now(props.live.streams[name])} style={{ background: hue(name) }} />}
                 {name === 'all' ? 'All' : name === agent ? 'Agent' : name}
