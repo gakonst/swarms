@@ -65,16 +65,27 @@ export async function query(
 }
 
 export async function swarm(env: Cloudflare.Env, input: { goal: string; id: string; title: string }) {
-  await env.DB.prepare("insert into search (swarm, kind, ref, title, body) values (?, 'swarm', '', ?, ?)")
-    .bind(input.id, input.title, input.goal)
-    .run()
+  await env.DB.batch(indexed(env, input.id, 'swarm', '', input.title, input.goal))
 }
 
 export async function note(env: Cloudflare.Env, swarm: string, id: string, note: string) {
-  await env.DB.batch([
-    env.DB.prepare("delete from search where swarm = ? and kind = 'note' and ref = ?").bind(swarm, id),
-    env.DB.prepare("insert into search (swarm, kind, ref, title, body) values (?, 'note', ?, '', ?)").bind(swarm, id, note),
-  ])
+  await env.DB.batch([...unindexed(env, swarm, 'note', id), ...indexed(env, swarm, 'note', id, '', note)])
+}
+
+function unindexed(env: Cloudflare.Env, swarm: string, kind: Stored, ref: string) {
+  return [
+    env.DB.prepare('delete from search where rowid = (select row from search_rows where swarm = ?1 and kind = ?2 and ref = ?3)').bind(swarm, kind, ref),
+    env.DB.prepare('delete from search_rows where swarm = ?1 and kind = ?2 and ref = ?3').bind(swarm, kind, ref),
+  ]
+}
+
+function indexed(env: Cloudflare.Env, swarm: string, kind: Stored, ref: string, title: string, body: string) {
+  return [
+    env.DB.prepare('insert into search (swarm, kind, ref, title, body) values (?1, ?2, ?3, ?4, ?5)').bind(swarm, kind, ref, title, body),
+    env.DB.prepare(
+      'insert or replace into search_rows (swarm, kind, ref, row) select swarm, kind, ref, rowid from search where rowid = last_insert_rowid() and swarm = ?1 and kind = ?2 and ref = ?3',
+    ).bind(swarm, kind, ref),
+  ]
 }
 
 export async function report(env: Cloudflare.Env, swarm: string, turn: Turn) {
@@ -111,9 +122,7 @@ function statements(env: Cloudflare.Env, swarm: string, turn: Turn) {
     env.DB.prepare(
       'insert into reports (swarm, round, status, message, started_at, ended_at, spent) values (?, ?, ?, ?, ?, ?, ?) on conflict (swarm, round) do update set status = excluded.status, message = excluded.message, started_at = excluded.started_at, ended_at = excluded.ended_at, spent = excluded.spent',
     ).bind(swarm, turn.n, turn.status, turn.message, turn.startedAt, turn.endedAt, turn.spent),
-    env.DB.prepare("delete from search where swarm = ? and kind = 'report' and ref = ?").bind(swarm, String(turn.n)),
-    ...(turn.message && turn.status === 'completed'
-      ? [env.DB.prepare("insert into search (swarm, kind, ref, title, body) values (?, 'report', ?, '', ?)").bind(swarm, String(turn.n), turn.message)]
-      : []),
+    ...unindexed(env, swarm, 'report', String(turn.n)),
+    ...(turn.message && turn.status === 'completed' ? indexed(env, swarm, 'report', String(turn.n), '', turn.message) : []),
   ]
 }

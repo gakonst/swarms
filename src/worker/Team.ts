@@ -16,11 +16,17 @@ export function forget(swarm: string) {
   held.delete(swarm)
 }
 
-export async function roster(env: Cloudflare.Env, row: Store.Row): Promise<Roster> {
+export function cached(swarm: string) {
+  const known = held.get(swarm)
+  return known && Date.now() - known.at < freshMs ? known.roster : undefined
+}
+
+export async function roster(env: Cloudflare.Env, row: Store.Row, loaded?: readonly Member[]): Promise<Roster> {
   const known = held.get(row.id)
   if (known && Date.now() - known.at < freshMs) return known.roster
 
-  const fallback = row.creator ?? biggest(await Store.members(env, row.id))
+  const members = loaded ? Promise.resolve(loaded) : row.creator && !row.team ? undefined : Store.members(env, row.id)
+  const fallback = row.creator ?? biggest((await members) ?? [])
   if (!row.team) {
     const open: Roster = { admins: fallback ? [fallback.toLowerCase() as Address] : [], memberBudget: null, seats: [], steering: row.steering, team: null }
     held.set(row.id, { at: Date.now(), roster: open })
@@ -29,7 +35,7 @@ export async function roster(env: Cloudflare.Env, row: Store.Row): Promise<Roste
 
   const [listed, operator, used] = await Promise.all([Gateway.teammates(env, row.team), Gateway.wallet(env), Store.allotted(env, row.id, Date.now() - period)])
   if (!listed.ok) throw new Error(`The gateway did not list the swarm's team: ${listed.detail}`)
-  const names = new Map((await Store.members(env, row.id)).map((member) => [member.address, member.handle]))
+  const names = new Map(((await members) ?? []).map((member) => [member.address, member.handle]))
   const seats = listed.value.members
     .filter((mate) => mate.member.toLowerCase() !== operator)
     .map((mate): Seat => {

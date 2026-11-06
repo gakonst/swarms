@@ -187,6 +187,10 @@ export function seen(id: string) {
   return known.has(id)
 }
 
+export function know(ids: readonly string[]) {
+  for (const id of ids) known.add(id)
+}
+
 export async function exists(env: Cloudflare.Env, id: string) {
   if (known.has(id)) return true
   const found = (await fresh(env, (db) => db.prepare('select 1 from swarms where id = ?').bind(id).first())) !== null
@@ -620,14 +624,38 @@ const backing = `select contributor, amount, note_id, way, at from (
 
 const steered = 'coalesce((select sum(cast(amount as integer)) from steers where swarm = ?1 and contributor = b.contributor and budget = 0), 0)'
 
-export async function members(env: Cloudflare.Env, swarm: string): Promise<Member[]> {
-  const { results } = await env.DB.prepare(
+type Backer = { address: `0x${string}`; backed: number; name: string | null; since: number; steered: number; ways: string }
+
+function backers(env: Cloudflare.Env, swarm: string) {
+  return env.DB.prepare(
     `select b.contributor as address, sum(b.amount) as backed, sum(case when b.note_id is not null then b.amount else 0 end) + ${steered} as steered,
       group_concat(distinct b.way) as ways, min(b.at) as since, (select name from names where address = b.contributor) as name
     from (${backing}) b group by b.contributor order by min(b.at)`,
-  )
-    .bind(swarm)
-    .all<{ address: `0x${string}`; backed: number; name: string | null; since: number; steered: number; ways: string }>()
+  ).bind(swarm)
+}
+
+export async function members(env: Cloudflare.Env, swarm: string): Promise<Member[]> {
+  const { results } = await backers(env, swarm).all<Backer>()
+  return membered(results)
+}
+
+export async function backed(env: Cloudflare.Env, id: string) {
+  const [found, listed, weights] = await env.DB.batch<Record<string, unknown>>([env.DB.prepare(totals + ' where s.id = ?').bind(id), backers(env, id), weighing(env, id)])
+  const row = found?.results[0] as Row | undefined
+  if (!row) return undefined
+  known.add(row.id)
+  return { members: membered(listed?.results as Backer[]), notes: (steered: ReadonlySet<string>) => weighed(weights?.results as Weighed[], BigInt(row.raised), steered), row }
+}
+
+export async function rostered(env: Cloudflare.Env, id: string) {
+  const [found, listed] = await env.DB.batch<Record<string, unknown>>([env.DB.prepare(totals + ' where s.id = ?').bind(id), backers(env, id)])
+  const row = found?.results[0] as Row | undefined
+  if (!row) return undefined
+  known.add(row.id)
+  return { members: membered(listed?.results as Backer[]), row }
+}
+
+function membered(results: readonly Backer[]): Member[] {
   return results.map((row) => {
     const backed = BigInt(row.backed)
     const allocated = BigInt(row.steered)
@@ -714,11 +742,16 @@ export async function allot(
 }
 
 export async function funds(env: Cloudflare.Env, swarm: string, agent: string) {
-  const [funded, based] = await env.DB.batch([
+  return (await directing(env, swarm, agent, false)).money
+}
+
+export async function directing(env: Cloudflare.Env, swarm: string, agent: string, listing = true) {
+  const [funded, based, listed] = await env.DB.batch([
     env.DB.prepare(
-      'select branch, contributor, sum(cast(amount as integer)) as amount from steers where swarm = ? and agent = ? and branch is not null group by branch, contributor',
+      "select branch, contributor, sum(cast(amount as integer)) as amount from steers where swarm = ?1 and (agent = ?2 or agent = '' or agent is null) and branch is not null group by branch, contributor",
     ).bind(swarm, agent),
-    env.DB.prepare('select branch, base, settled_at from branches where swarm = ? and agent = ?').bind(swarm, agent),
+    env.DB.prepare("select branch, base, settled_at from branches where swarm = ?1 and (agent = ?2 or agent = '') order by agent = ?2").bind(swarm, agent),
+    ...(listing ? [backers(env, swarm)] : []),
   ])
   const rows = based?.results as { base: string; branch: number; settled_at: number | null }[]
   const bases = new Map(rows.map((row) => [row.branch, BigInt(row.base)]))
@@ -729,7 +762,7 @@ export async function funds(env: Cloudflare.Env, swarm: string, agent: string) {
     branch.set(row.contributor, BigInt(row.amount))
     shares.set(row.branch, branch)
   }
-  return { bases, settled, shares }
+  return { members: listed ? membered(listed.results as Backer[]) : [], money: { bases, settled, shares } }
 }
 
 export async function base(env: Cloudflare.Env, swarm: string, agent: string, branch: number, value: bigint) {

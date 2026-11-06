@@ -207,6 +207,8 @@ const rowMs = 10_000
 
 const stillMs = 2_000
 
+const listingMs = 2_000
+
 export class Swarm extends DurableObject<Cloudflare.Env> {
   stepping: Promise<number | null> | undefined
   paying: Promise<unknown> = Promise.resolve()
@@ -223,6 +225,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   upstream: Upstream | undefined
   holders = new Map<string, { address: Address | undefined; at: number }>()
   beating: ReturnType<typeof setInterval> | undefined
+
+  listing: { agent: string; at: number; pending: boolean; value: Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> } | undefined
 
   constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
     super(ctx, env)
@@ -1455,9 +1459,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.kv.put('available:' + source.id, String(available))
       if (room.amount >= perCall) this.kv.delete('exhausted:' + source.id)
       if (source.row) {
-        const delivered = String(this.delivered(source, channel))
-        await Store.change(this.env, source.id, { delivered, left_now: String(available), pulled: String(this.used(source.id)) })
-        source.row.delivered = delivered
+        const changes = { delivered: String(this.delivered(source, channel)), left_now: String(available), pulled: String(this.used(source.id)) }
+        if (changes.delivered !== String(source.row.delivered) || changes.left_now !== String(source.row.left_now) || changes.pulled !== String(source.row.pulled)) await Store.change(this.env, source.id, changes)
+        source.row.delivered = changes.delivered
       }
       else pooled = available
       if ((this.kv.get<number>('exhausted:' + source.id) ?? 0) > Date.now()) continue
@@ -1489,11 +1493,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.put('hands', connected.map((hand) => ({ connected: true, name: hand.name })))
 
     this.kv.put('left', Memo.decimal(left))
-    await Store.update(this.env, row.id, {
-      machines: connected.length,
-      pool_left: Number(pooled),
-      pool_spent: Number(this.used('pool') + this.handsUsed()),
-    })
+    const pool = { machines: connected.length, pool_left: Number(pooled), pool_spent: Number(this.used('pool') + this.handsUsed()) }
+    if (Number(row.machines) !== pool.machines || Number(row.pool_left) !== pool.pool_left || Number(row.pool_spent) !== pool.pool_spent) await Store.update(this.env, row.id, pool)
     return { biggest, left, row: (await this.found(row.id)) ?? row }
   }
 
@@ -2043,11 +2044,17 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     })
   }
 
-  async subagents(swarm: string): Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> {
+  async subagents(swarm: string, fresh = false): Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> {
     const agent = this.kv.get<string>('agent')
     if (!agent) return { ok: true, value: { agent: null, list: [] } }
-    const listed = await Gateway.subagents(this.env, swarm, agent)
-    return listed.ok ? { ok: true, value: { agent, list: listed.value } } : listed
+    const known = this.listing
+    if (!fresh && known?.agent === agent && (known.pending || Date.now() - known.at < listingMs)) return known.value
+    const value = Gateway.subagents(this.env, swarm, agent).then((listed): Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }> => (listed.ok ? { ok: true, value: { agent, list: listed.value } } : listed))
+    const flight = { agent, at: Date.now(), pending: true, value }
+    this.listing = flight
+    const result = await value.catch((error: unknown) => ({ detail: error instanceof Error ? error.message : String(error), ok: false as const, status: 503 }))
+    if (this.listing === flight) this.listing = result.ok ? { ...flight, at: Date.now(), pending: false } : undefined
+    return result
   }
 
   async direct(

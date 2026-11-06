@@ -438,7 +438,9 @@ export async function list(env: Cloudflare.Env, input: Input<'list'>): Promise<P
   if (!parsed.ok) return parsed
 
   const status = parsed.value.status
-  return Problem.ok({ swarms: await Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row))) })
+  const swarms = await Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row)))
+  Store.know(swarms.map((swarm) => swarm.id))
+  return Problem.ok({ swarms })
 }
 
 export function listed(value: { swarms: Summary[] }) {
@@ -659,12 +661,15 @@ export async function listened(env: Cloudflare.Env, input: Input<'room'>, addres
   const parsed = parse(schema.room, input)
   if (!parsed.ok) return parsed
   const query = parsed.value
-  if (!(await Store.exists(env, query.swarm))) return missing()
+  const seen = Store.seen(query.swarm)
+  const listing = Store.members(env, query.swarm)
+  const chatting = seen ? Promise.resolve(stub(env, query.swarm).chat({ after: query.after, before: query.before, limit: query.limit })) : undefined
+  if (!seen && !(await Store.exists(env, query.swarm))) {
+    listing.catch(() => undefined)
+    return missing()
+  }
 
-  const [{ messages, stamp }, members] = await Promise.all([
-    stub(env, query.swarm).chat({ after: query.after, before: query.before, limit: query.limit }),
-    Store.members(env, query.swarm),
-  ])
+  const [{ messages, stamp }, members] = await Promise.all([chatting ?? stub(env, query.swarm).chat({ after: query.after, before: query.before, limit: query.limit }), listing])
   return Problem.ok({ room: { me: address ? await self(env, members, address) : null, members, messages, next: messages.at(-1)?.id ?? query.after }, stamp })
 }
 
@@ -773,13 +778,13 @@ function reached<value>(call: Promise<Gateway.Result<value>>): Promise<Gateway.R
 
 type Directed = { agent: string | null; list: Branch[]; members: Member[]; money: Awaited<ReturnType<typeof Store.funds>> }
 
-async function directed(env: Cloudflare.Env, row: Store.Row): Promise<Problem.Result<Directed>> {
-  const found = await reached(stub(env, row.id).subagents(row.id))
+async function directed(env: Cloudflare.Env, row: Pick<Store.Row, 'id'>, listing?: Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>>): Promise<Problem.Result<Directed>> {
+  const found = await (listing ?? reached(stub(env, row.id).subagents(row.id)))
   if (!found.ok) return Problem.fail(502, 'upstream_failed', `Could not list the swarm's subagents: ${found.detail}`)
   if (!Array.isArray(found.value.list)) return Problem.fail(502, 'upstream_failed', 'The swarm is starting on new code; try again in a few seconds.')
   const agent = found.value.agent
-  if (agent) await Store.adopt(env, row.id, agent)
-  const [money, members] = await Promise.all([Store.funds(env, row.id, agent ?? ''), Store.members(env, row.id)])
+  if (agent) waitUntil(logged(Store.adopt(env, row.id, agent)))
+  const { members, money } = await Store.directing(env, row.id, agent ?? '')
   const names = new Map<number, string>()
   for (const subagent of [...found.value.list].sort((a, b) => a.agent_id - b.agent_id)) {
     const role = clip(subagent.role.trim() || `subagent ${subagent.agent_id}`, 60)
@@ -855,16 +860,21 @@ const shownPatience = 1500
 export async function branches(env: Cloudflare.Env, input: Input<'branches'>): Promise<Problem.Result<Branches>> {
   const parsed = parse(schema.branches, input)
   if (!parsed.ok) return parsed
-  const row = await Store.find(env, parsed.value.swarm)
-  if (!row) return missing()
+  const id = parsed.value.swarm
+  const finding = Store.find(env, id)
 
   let failed: Problem.Result<never> | undefined
-  const list = await Edge.cached(
+  const listing = Edge.cached(
     env,
-    `branches/${row.id}`,
+    `branches/${id}`,
     shownSeconds,
     async () => {
-      const found = await directed(env, row)
+      const early = Store.seen(id) ? reached(stub(env, id).subagents(id)) : undefined
+      if (!early && !(await finding)) {
+        failed = missing()
+        throw new Error('missing')
+      }
+      const found = await directed(env, { id }, early)
       if (found.ok) return found.value.list
       failed = found
       throw new Error(found.detail)
@@ -872,12 +882,14 @@ export async function branches(env: Cloudflare.Env, input: Input<'branches'>): P
     shownStale,
     shownPatience,
   ).catch(() => undefined)
+  const [row, list] = await Promise.all([finding, listing])
+  if (!row) return missing()
   if (!list) return failed ?? Problem.fail(502, 'upstream_failed', "Could not list the swarm's subagents; try again in a few seconds.")
   return Problem.ok({ branches: list, steering: row.steering })
 }
 
 async function fresh(env: Cloudflare.Env, row: Store.Row, ids: readonly number[], fallback: readonly Branch[]) {
-  const found = await directed(env, row)
+  const found = await directed(env, row, reached(stub(env, row.id).subagents(row.id, true)))
   if (found.ok) Edge.put(env, `branches/${row.id}`, found.value.list, shownStale)
   return ids.map((id, index) => (found.ok ? found.value.list.find((branch) => branch.id === id) : undefined) ?? (fallback[index] as Branch))
 }
@@ -890,7 +902,7 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
   if (!allowed.ok) return allowed
   const { account, row, seat } = allowed.value
 
-  const found = await directed(env, row)
+  const found = await directed(env, row, reached(stub(env, row.id).subagents(row.id, true)))
   if (!found.ok) return found
   const agent = found.value.agent
   if (!agent) return Problem.fail(409, 'conflict', 'The swarm has no agent yet: it starts once money arrives.')
@@ -965,7 +977,7 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
   if (!account.name) return unnamed()
   if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
 
-  const found = await directed(env, row)
+  const found = await directed(env, row, reached(stub(env, row.id).subagents(row.id, true)))
   if (!found.ok) return found
   const agent = found.value.agent
   const target = found.value.list.find((branch) => branch.id === request.branch && branch.parent === null)
@@ -1001,7 +1013,7 @@ export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: 
   if (!allowed.ok) return allowed
   const { account, row } = allowed.value
 
-  const found = await directed(env, row)
+  const found = await directed(env, row, reached(stub(env, row.id).subagents(row.id, true)))
   if (!found.ok) return found
   const agent = found.value.agent
   const source = found.value.list.find((branch) => branch.id === request.branch && branch.parent === null)
@@ -1076,9 +1088,11 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
 export async function team(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<Roster>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
-  const row = await Store.find(env, parsed.value.swarm)
-  if (!row) return missing()
-  return Team.roster(env, row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error)))
+  const held = Team.cached(parsed.value.swarm)
+  if (held) return Problem.ok(held)
+  const found = await Store.rostered(env, parsed.value.swarm)
+  if (!found) return missing()
+  return Team.roster(env, found.row, found.members).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error)))
 }
 
 async function governed(env: Cloudflare.Env, swarm: string, address: Address | undefined): Promise<Problem.Result<Store.Row>> {
@@ -1219,11 +1233,10 @@ const lendingMs = 10_000
 export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ hands: Lent[] }>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
-  if (!(await Store.exists(env, parsed.value.swarm))) return missing()
-
   const cached = lending.get(parsed.value.swarm)
   if (cached && Date.now() - cached.at < lendingMs) return Problem.ok({ hands: cached.hands })
-  const rows = await Hands.list(env, parsed.value.swarm)
+  const [exists, rows] = await Promise.all([Store.exists(env, parsed.value.swarm), Hands.list(env, parsed.value.swarm)])
+  if (!exists) return missing()
   const listed = rows.length ? await stub(env, parsed.value.swarm).lent() : []
   const lent = Hands.lent(await Hands.seen(env, parsed.value.swarm, rows, listed), listed)
   lending.set(parsed.value.swarm, { at: Date.now(), hands: lent })
@@ -1705,9 +1718,12 @@ export async function machines(env: Cloudflare.Env, input: Input<'swarm'>): Prom
 export async function backers(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ backers: Member[]; ideas: Note[] }>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
-  const loaded = await load(env, parsed.value.swarm, { feed: 0, texts: false })
-  if (!loaded) return missing()
-  const { row, view } = loaded
-  const [members, ideas] = await Promise.all([Store.members(env, row.id), Store.notes(env, row.id, BigInt(row.raised), new Set(view.steered))])
+  const id = parsed.value.swarm
+  const viewing = Store.seen(id) ? Promise.resolve(stub(env, id).view({ feed: 0, pushed: true, texts: false })) : undefined
+  const found = await Store.backed(env, id)
+  if (!found) return missing()
+  const view = await (viewing ?? stub(env, id).view({ feed: 0, pushed: true, texts: false }))
+  const members = found.members
+  const ideas = found.notes(new Set(view.steered))
   return Problem.ok({ backers: [...members].sort((a, b) => Number(BigInt(Math.round(Number(b.backed) * 1e6)) - BigInt(Math.round(Number(a.backed) * 1e6)))), ideas })
 }

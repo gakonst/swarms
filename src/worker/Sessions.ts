@@ -13,15 +13,36 @@ function live<value>(row: Stored | null): value | undefined {
   return row && (row.expires_at === null || row.expires_at > Date.now()) ? (JSON.parse(row.value) as value) : undefined
 }
 
+const held = new Map<string, { at: number; row: Stored }>()
+
+const heldMs = 30_000
+
+function hold(key: string, row: Stored | null) {
+  if (!row) return row
+  held.delete(key)
+  held.set(key, { at: Date.now(), row })
+  for (const old of held.keys()) {
+    if (held.size <= 500) break
+    held.delete(old)
+  }
+  return row
+}
+
 export function store(env: Cloudflare.Env) {
   const db = Replica.primary(env).DB
+  const read = (from: D1Database | D1DatabaseSession, key: string) => from.prepare('select value, expires_at from sessions where key = ?').bind(key).first<Stored>()
   return Kv.from({
     delete: async (key: string) => {
+      held.delete(key)
       await db.prepare('delete from sessions where key = ?').bind(key).run()
     },
-    get: async <value>(key: string) =>
-      live<value>(await db.prepare('select value, expires_at from sessions where key = ?').bind(key).first<Stored>()),
+    get: async <value>(key: string) => {
+      const kept = held.get(key)
+      if (kept && Date.now() - kept.at < heldMs) return live<value>(kept.row)
+      return live<value>(hold(key, (await read(db.withSession('first-unconstrained'), key)) ?? (await read(db, key))))
+    },
     set: async (key: string, value: unknown, options?: { ttl?: number | undefined }) => {
+      held.delete(key)
       const now = Date.now()
       await db.batch([
         db.prepare('delete from sessions where expires_at < ?').bind(now),
@@ -32,8 +53,10 @@ export function store(env: Cloudflare.Env) {
         ),
       ])
     },
-    take: async <value>(key: string) =>
-      live<value>(await db.prepare('delete from sessions where key = ? returning value, expires_at').bind(key).first<Stored>()),
+    take: async <value>(key: string) => {
+      held.delete(key)
+      return live<value>(await db.prepare('delete from sessions where key = ? returning value, expires_at').bind(key).first<Stored>())
+    },
   })
 }
 

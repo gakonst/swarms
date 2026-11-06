@@ -4,7 +4,7 @@ export const header = 'x-d1-bookmark'
 
 const primaries = new WeakMap<Cloudflare.Env, Cloudflare.Env>()
 
-const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|hands|answer|updates|search|wait|machines|backers|pledges))?)?$/
+const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|hands|answer|updates|search|wait|machines|backers|pledges|team|branches))?)?$/
 
 const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|s\/[^/]+|s\/[^/]+\/code)$/
 

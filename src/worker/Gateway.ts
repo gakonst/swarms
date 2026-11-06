@@ -1,4 +1,5 @@
 import { redact } from '../shared/Trail.ts'
+import * as Edge from './Edge.ts'
 import * as Timing from './Timing.ts'
 
 export type Result<value> = { ok: true; value: value } | { detail: string; ok: false; status: number }
@@ -101,8 +102,29 @@ export function me(env: Cloudflare.Env) {
 
 let operator: Promise<string | undefined> | undefined
 
+const operatorSeconds = 86_400
+
+async function fingerprint(secret: string) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)))
+  return Array.from(digest.subarray(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 export function wallet(env: Cloudflare.Env) {
-  const known = (operator ??= me(env).then((result) => (result.ok ? result.value.wallet.toLowerCase() : undefined)))
+  const known = (operator ??= fingerprint(env.SWARMS_GATEWAY_KEY)
+    .then((key) =>
+      Edge.cached(
+        env,
+        `operator/${key}`,
+        operatorSeconds,
+        async () => {
+          const result = await me(env)
+          if (!result.ok) throw new Error(result.detail)
+          return result.value.wallet.toLowerCase()
+        },
+        operatorSeconds * 30,
+      ),
+    )
+    .catch(() => me(env).then((result) => (result.ok ? result.value.wallet.toLowerCase() : undefined))))
   void known.then((value) => {
     if (!value && operator === known) operator = undefined
   })
