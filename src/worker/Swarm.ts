@@ -1304,14 +1304,13 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const channel of listed.value.sponsors) {
       const used = Memo.units(channel.spent)
       spent += used
-      if (channel.endedAt !== null) {
+      if (channel.endedAt !== null || channel.closing) {
         if (this.kv.get<string>('delivered:' + channel.channel) !== String(used)) {
           await Store.delivered(this.env, channel.channel, used)
           this.kv.put('delivered:' + channel.channel, String(used))
         }
         continue
       }
-      if (channel.closing) continue
       const available = Memo.units(channel.available)
       left += available
       biggest = Payer.max(biggest, available)
