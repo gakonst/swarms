@@ -776,9 +776,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     let cursor = this.kv.get<number>('cursor') ?? 0
     let ended = false
+    let down = false
     for (let page = 0; page < 5; page++) {
       const read = await Gateway.events(this.env, row.id, agent, cursor)
-      if (!read.ok) break
+      if (!read.ok) {
+        down = read.status >= 500
+        break
+      }
+      if (read.value.events.length) this.kv.delete('unreachable')
       for (const event of read.value.events) ended = this.digest(event, turn) || ended
       cursor = read.value.next_cursor
       this.kv.put('cursor', cursor)
@@ -790,14 +795,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     this.kv.put('checked', now)
     const [report, money] = await Promise.all([Gateway.turn(this.env, row.id, agent, turn), this.refresh(row), this.watch(row), now - (this.kv.get<number>('shelvedAt') ?? 0) >= shelfMs ? this.publish(row.id) : undefined])
-    if (report.ok) this.kv.delete('unreachable')
     if (report.ok && !['queued', 'running'].includes(report.value.status)) return this.finish(row, report.value)
     if (!report.ok && report.status !== 401 && report.status < 500)
       return this.finish(row, { error: report.detail, request_id: turn, status: 'failed' })
-    if (!report.ok && report.status >= 500 && this.unreachable(now)) {
+    if ((down || (!report.ok && report.status >= 500)) && this.unreachable(now)) {
+      const detail = report.ok ? 'its events did not load' : report.detail
       await Gateway.cancel(this.env, row.id, agent, turn).catch(() => undefined)
-      this.abandon(agent, report.detail)
-      return this.finish(row, { error: `The agent's session stopped answering: ${report.detail}`, request_id: turn, status: 'failed' })
+      this.abandon(agent, detail)
+      return this.finish(row, { error: `The agent's session stopped answering: ${detail}`, request_id: turn, status: 'failed' })
     }
     if (money.left < Store.reserve + Store.headroom || BigInt(this.kv.get<string>('loose') ?? '0') >= smallestSwap) await this.fund(money.row)
     return now + followMs
