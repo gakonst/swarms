@@ -33,7 +33,7 @@ export async function list(env: Cloudflare.Env, swarm: string, cached = true): P
     const query: URLSearchParams = new URLSearchParams({ prefix: Shelf.prefix, ...(cursor ? { cursor } : {}) })
     const [response, body]: readonly [Response, { cursor: string | null; entries: Entry[] } | undefined] = await Timing.span(
       'gw.p.kv',
-      fetch(`${env.GATEWAY_URL}/p/${owner}/${Gateway.app(swarm)}/kv?${query}`, { headers: { accept: 'application/json' } }).then(
+      Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/kv?${query}`, { headers: { accept: 'application/json' } }).then(
         async (response) => [response, response.ok ? ((await response.json()) as { cursor: string | null; entries: Entry[] }) : undefined] as const,
       ),
     )
@@ -74,12 +74,12 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
   if (!owner) return text(502, 'The gateway did not say whose artifacts these are.')
 
   const headers = new Headers()
-  for (const header of ['if-none-match', 'range']) {
+  for (const header of ['if-none-match', 'range', 'cf-connecting-ip']) {
     const value = request.headers.get(header)
     if (value) headers.set(header, value)
   }
   const key = [Shelf.prefix + name, ...file.split('/')].map(encodeURIComponent).join('/')
-  const upstream = await fetch(`${env.GATEWAY_URL}/p/${owner}/${Gateway.app(swarm)}/bucket/${key}`, { headers, method: request.method === 'HEAD' ? 'HEAD' : 'GET' })
+  const upstream = await Timing.span('gw.p.bucket', Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/bucket/${key}`, { headers, method: request.method === 'HEAD' ? 'HEAD' : 'GET' }))
   if (upstream.status === 404) return text(404, 'No such artifact file, or it is not public.')
   if (upstream.status === 429) return text(429, 'Too many artifact reads right now. Try again in a minute.')
   if (!upstream.ok && upstream.status !== 304 && upstream.status !== 206) return text(502, `The gateway answered ${upstream.status}.`)

@@ -32,7 +32,7 @@ export async function proxy(env: Cloudflare.Env, context: Pick<ExecutionContext,
   if (!repo || !owner) return Response.json({ code: 'not_found', detail: 'This swarm has no repository yet.', status: 404 }, { status: 404 })
   const [upstream, body] = await Timing.span(
     'gw.p.git',
-    fetch(`${env.GATEWAY_URL}/p/${owner}/${Gateway.app(swarm)}/git/${encodeURIComponent(repo)}/${read}?${query}${forever ? '' : `&at=${Math.floor(Date.now() / 5000)}`}`, { headers: { accept: 'application/json' } }).then(async (response) => [response, await response.arrayBuffer()] as const),
+    Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/git/${encodeURIComponent(repo)}/${read}?${query}${forever ? '' : `&at=${Math.floor(Date.now() / 5000)}`}`, { headers: { accept: 'application/json', ...(request.headers.get('cf-connecting-ip') ? { 'cf-connecting-ip': request.headers.get('cf-connecting-ip') ?? '' } : {}) } }).then(async (response) => [response, await response.arrayBuffer()] as const),
   )
   const response = new Response(body, {
     headers: {

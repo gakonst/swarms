@@ -62,6 +62,11 @@ type Raw = {
 
 type Init = { app?: string; body?: unknown; key?: string; method?: string }
 
+export function call(env: Cloudflare.Env, path: string, init: RequestInit = {}) {
+  const request = new Request(env.GATEWAY_URL + path, init)
+  return 'GATEWAY' in env && env.GATEWAY ? env.GATEWAY.fetch(request) : fetch(request)
+}
+
 export function app(swarm: string) {
   return `swarm-${swarm}`
 }
@@ -73,7 +78,7 @@ async function send<value>(env: Cloudflare.Env, path: string, init: Init = {}): 
 
   const [response, text] = await Timing.span(
     'gw.' + Timing.label(path),
-    fetch(env.GATEWAY_URL + path, {
+    call(env, path, {
       body: init.body === undefined ? null : JSON.stringify(init.body),
       headers,
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
@@ -300,7 +305,7 @@ export function terminate(env: Cloudflare.Env, swarm: string, sandboxId: string)
 }
 
 export function stream(env: Cloudflare.Env, swarm: string, agent: string, after: number, signal: AbortSignal) {
-  return fetch(`${env.GATEWAY_URL}/v1/agents/${agent}/events?after=${after}&live=1`, {
+  return call(env, `/v1/agents/${agent}/events?after=${after}&live=1`, {
     headers: { accept: 'text/event-stream', authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY, 'gateway-app': app(swarm) },
     signal,
   })
@@ -325,7 +330,7 @@ export function detach(env: Cloudflare.Env, swarm: string, name: string) {
 export async function code<value>(env: Cloudflare.Env, owner: string, swarm: string, path: string) {
   return Timing.span(
     'gw.p.git',
-    fetch(`${env.GATEWAY_URL}/p/${owner}/${app(swarm)}/git${path}`, { headers: { accept: 'application/json' } }).then((response) =>
+    call(env, `/p/${owner}/${app(swarm)}/git${path}`, { headers: { accept: 'application/json' } }).then((response) =>
       response.ok ? (response.json() as Promise<value>) : undefined,
     ),
   )

@@ -25,6 +25,7 @@
       "migrations_dir": "migrations"
     }
   ],
+  "services": [{ "binding": "GATEWAY", "service": "gateway" }],
   "durable_objects": {
     "bindings": [{ "name": "SWARMS", "class_name": "Swarm" }]
   },

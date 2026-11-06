@@ -65,9 +65,11 @@ export default defineConfig(({ command }) => {
       preloads(),
       cloudflare({
         ...(process.env['SWARMS_STATE'] ? { persistState: { path: process.env['SWARMS_STATE'] } } : {}),
-        ...(gateway
+        ...(command === 'serve'
           ? {
               config: (config) => {
+                config.services = []
+                if (!gateway) return
                 config.vars = { ...config.vars, GATEWAY_URL: gateway }
                 config.compatibility_flags = (config.compatibility_flags ?? []).filter(
                   (flag) => flag !== 'global_fetch_strictly_public',
