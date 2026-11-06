@@ -135,6 +135,8 @@ const hourMs = 3_600_000
 
 const retryMs = 30_000
 
+const unreachableMs = 15 * 60_000
+
 const maxFailures = 3
 
 const settleMs = 15_000
@@ -677,8 +679,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!sent.ok) {
       this.log('error', 'The gateway did not take the next message for the agent.', sent.detail)
       if (sent.status === 404) this.kv.delete('agent')
+      if (sent.status >= 500 && this.unreachable(Date.now())) this.abandon(agent, sent.detail)
       return Date.now() + retryMs
     }
+    this.kv.delete('unreachable')
 
     Phase.check(Phase.of(this.kv, row.status === 'done'), 'working')
     const now = Date.now()
@@ -709,6 +713,20 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.log('status', resumed ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
     if (resumed) this.announce(`${worked ? 'Back at work' : 'Started working'}.`)
     return now + followMs
+  }
+
+  unreachable(now: number) {
+    const since = this.kv.get<number>('unreachable')
+    if (since === undefined) this.kv.put('unreachable', now)
+    return since !== undefined && now - since >= unreachableMs
+  }
+
+  abandon(agent: string, detail: string) {
+    this.kv.delete('unreachable')
+    this.kv.delete('agent')
+    this.kv.put('cursor', 0)
+    this.kv.put('fresh', true)
+    this.log('error', "The agent's session stopped answering for 15 minutes, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.", `${agent}: ${detail}`)
   }
 
   async lead(row: Store.Row) {
@@ -772,9 +790,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     this.kv.put('checked', now)
     const [report, money] = await Promise.all([Gateway.turn(this.env, row.id, agent, turn), this.refresh(row), this.watch(row), now - (this.kv.get<number>('shelvedAt') ?? 0) >= shelfMs ? this.publish(row.id) : undefined])
+    if (report.ok) this.kv.delete('unreachable')
     if (report.ok && !['queued', 'running'].includes(report.value.status)) return this.finish(row, report.value)
     if (!report.ok && report.status !== 401 && report.status < 500)
       return this.finish(row, { error: report.detail, request_id: turn, status: 'failed' })
+    if (!report.ok && report.status >= 500 && this.unreachable(now)) {
+      await Gateway.cancel(this.env, row.id, agent, turn).catch(() => undefined)
+      this.abandon(agent, report.detail)
+      return this.finish(row, { error: `The agent's session stopped answering: ${report.detail}`, request_id: turn, status: 'failed' })
+    }
     if (money.left < Store.reserve + Store.headroom || BigInt(this.kv.get<string>('loose') ?? '0') >= smallestSwap) await this.fund(money.row)
     return now + followMs
   }
