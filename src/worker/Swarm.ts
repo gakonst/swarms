@@ -2113,6 +2113,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
   }
 
+  paced(address: Address) {
+    const now = Date.now()
+    const key = 'said:' + address.toLowerCase()
+    const recent = (this.kv.get<number[]>(key) ?? []).filter((at) => at > now - minuteMs)
+    if (recent.length >= postsPerMinute) return false
+    this.kv.put(key, [...recent, now])
+    return true
+  }
+
   vouched(address: Address, seals: readonly string[]) {
     const known = new Set(this.kv.get<string[]>('answered:' + address.toLowerCase()) ?? [])
     return seals.every((seal) => known.has(seal))
@@ -2370,6 +2379,10 @@ const holderMs = 300_000
 const typingMs = 2_000
 
 const socketsMost = 500
+
+const minuteMs = 60_000
+
+const postsPerMinute = 10
 
 const backlogSize = 500
 

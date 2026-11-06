@@ -710,6 +710,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   if (!steering && request.steer !== undefined) return Problem.fail(400, 'invalid_request', 'steer goes with a message that mentions @swarm.')
   if (request.btw && (!steering || Mention.idea(request.text) !== Btw.note(request.btw, request.artifact)))
     return Problem.fail(400, 'invalid_request', `A /collapse is @swarm followed by "${Btw.note(request.btw, request.artifact)}".`)
+  if (!(await stub(env, row.id).paced(address))) return Problem.fail(429, 'rate_limited', 'At most 10 messages a minute in a room; wait a moment.')
   if (request.btw && !(await stub(env, row.id).vouched(address, await Promise.all(request.btw.map(Btw.seal)))))
     return Problem.fail(400, 'invalid_request', 'Only questions this swarm answered for you on the side, with its answers as it gave them, can be collapsed into a steer. Ask them again.')
   let steer: { amount: string; note: string; noteId: string } | null = null
