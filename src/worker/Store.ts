@@ -68,6 +68,7 @@ export type Allowance = {
   authorization: string
   contributor: `0x${string}` | null
   created_at: number
+  delivered: string
   detail: string | null
   expires_at: number
   id: string
@@ -95,7 +96,7 @@ export type Fields = Partial<
 export type Changes = Partial<
   Pick<
     Allowance,
-    'detail' | 'left_now' | 'next_at' | 'period_end' | 'published' | 'pulled' | 'pulled_at' | 'status'
+    'delivered' | 'detail' | 'left_now' | 'next_at' | 'period_end' | 'published' | 'pulled' | 'pulled_at' | 'status'
   >
 >
 
@@ -107,26 +108,29 @@ export const minPledge = 250_000n
 
 export const minSteer = 100_000n
 
-export const stock = reserve + headroom * 3n
-
 export const perCall = 20_000n
 
 export const budget = { days: 365, max: 100_000_000n, min: minPledge, period: 2_592_000 } as const
 
+const delivered = "(case when status in ('active', 'spent') then cast(delivered as integer) else min(cast(delivered as integer), cast(pulled as integer)) end)"
+
+const keyed = `(case when period = 0 then min(cast(amount as integer), ${delivered}) else ${delivered} end)`
+
+const used = 'min(cast(amount as integer), cast(spent as integer))'
+
 const totals = `select s.*,
-  coalesce((select sum(cast(amount as integer)) from pledges where swarm = s.id and status != 'pending'), 0)
-    + coalesce((select sum(cast(amount as integer)) from budgets where swarm = s.id and period = 0 and status != 'pending'), 0)
-    + coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id and kind != 'pledge'), 0) as raised,
+  coalesce((select sum(${used}) from pledges where swarm = s.id and status != 'pending'), 0)
+    + coalesce((select sum(${keyed}) from budgets where swarm = s.id and token = 'mach' and status != 'pending'), 0)
+    + coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) as raised,
   coalesce((select sum(cast(spent as integer)) from pledges where swarm = s.id and status != 'pending'), 0)
     + coalesce((select sum(cast(pulled as integer)) from budgets where swarm = s.id and token = 'mach' and status != 'pending'), 0) + s.pool_spent as spent,
-  coalesce((select sum(max(cast(amount as integer) - cast(spent as integer), 0)) from pledges where swarm = s.id and status = 'active'), 0)
-    + coalesce((select sum(max(cast(amount as integer) - cast(pulled as integer), 0)) from budgets where swarm = s.id and period = 0 and status = 'active'), 0) + s.pool_left as remaining,
+  coalesce((select sum(max(${keyed} - cast(pulled as integer), 0)) from budgets where swarm = s.id and token = 'mach' and status in ('active', 'spent')), 0) + s.pool_left as remaining,
   (select count(*) from (
-    select contributor from pledges where swarm = s.id and status != 'pending'
+    select lower(contributor) from pledges where swarm = s.id and status != 'pending' and ${used} > 0
     union select contributor from contributions where swarm = s.id
-    union select contributor from budgets where swarm = s.id and status != 'pending'
+    union select contributor from budgets where swarm = s.id and token = 'mach' and status != 'pending' and contributor is not null and ${keyed} > 0
   )) as contributors,
-  coalesce((select sum(cast(amount as integer) * 86400 / period) from budgets where swarm = s.id and status = 'active' and period > 0), 0) as daily
+  coalesce((select sum(cast(amount as integer) * 86400 / period) from budgets where swarm = s.id and status = 'active' and period > 0 and cast(delivered as integer) > 0), 0) as daily
   from swarms s`
 
 function answer(text: string | null): Answer | null {
@@ -274,6 +278,7 @@ function pledged(legacy: Backing[], held: Allowance[]): Pledge[] {
       amount: Memo.decimal(BigInt(row.amount)),
       at: row.created_at,
       contributor: row.contributor,
+      delivered: Memo.decimal(BigInt(row.amount) < BigInt(row.spent) ? BigInt(row.amount) : BigInt(row.spent)),
       id: row.id,
       note: row.note,
       spent: Memo.decimal(BigInt(row.spent)),
@@ -283,11 +288,18 @@ function pledged(legacy: Backing[], held: Allowance[]): Pledge[] {
   ]
 }
 
+export function arrived(row: Allowance) {
+  if (row.token !== 'mach') return BigInt(row.pulled)
+  const held = row.status === 'active' || row.status === 'spent' ? BigInt(row.delivered) : BigInt(row.delivered) < BigInt(row.pulled) ? BigInt(row.delivered) : BigInt(row.pulled)
+  return row.period === 0 && BigInt(row.amount) < held ? BigInt(row.amount) : held
+}
+
 export function pledge(row: Allowance): Pledge {
   return {
     amount: Memo.decimal(BigInt(row.amount)),
     at: row.created_at,
     contributor: row.contributor ?? '0x',
+    delivered: Memo.decimal(arrived(row)),
     id: row.id,
     note: row.note,
     spent: Memo.decimal(BigInt(row.pulled)),
@@ -397,22 +409,43 @@ export async function allowance(env: Cloudflare.Env, swarm: string, id: string) 
 export async function approve(
   env: Cloudflare.Env,
   id: string,
-  input: { amount: string; contributor: string; key_authorization: string; published: boolean },
+  input: { amount: string; balance?: bigint; contributor: string; key_authorization: string; published: boolean },
 ) {
   const result = await env.DB.prepare(
-    "update budgets set amount = ?, contributor = ?, key_authorization = ?, published = ?, left_now = ?, status = 'active', updated_at = ? where id = ? and status = 'pending'",
+    `update budgets set amount = ?1, contributor = ?2, key_authorization = ?3, published = ?4, left_now = ?1, status = 'active', updated_at = ?5 where id = ?6 and status = 'pending'
+    and (?7 is null or cast(?1 as integer) + (
+      select coalesce(sum(max(cast(b.amount as integer) - cast(b.delivered as integer), 0)), 0) from budgets b where b.contributor = ?2 and b.token = budgets.token and b.period = 0 and b.status = 'active' and b.id != ?6
+    ) <= cast(?7 as integer))`,
   )
     .bind(
       input.amount,
       input.contributor.toLowerCase(),
       input.key_authorization,
       input.published ? 1 : 0,
-      input.amount,
       Date.now(),
       id,
+      input.balance === undefined ? null : String(input.balance),
     )
     .run().finally(wrote)
   return result.meta.changes > 0
+}
+
+export async function committed(env: Cloudflare.Env, contributor: string, token: Currency, except: string) {
+  const row = await env.DB.prepare(
+    "select coalesce(sum(max(cast(amount as integer) - cast(delivered as integer), 0)), 0) as amount from budgets where contributor = ? and token = ? and period = 0 and status = 'active' and id != ?",
+  )
+    .bind(contributor.toLowerCase(), token, except)
+    .first<{ amount: number }>()
+  return BigInt(row?.amount ?? 0)
+}
+
+export async function stash(env: Cloudflare.Env, id: string, keyAuthorization: string) {
+  await env.DB.prepare("update budgets set key_authorization = ?, updated_at = ? where id = ? and status = 'pending'").bind(keyAuthorization, Date.now(), id).run().finally(wrote)
+}
+
+export async function issued(env: Cloudflare.Env, swarm: string) {
+  const { results } = await env.DB.prepare('select id from budgets where swarm = ?').bind(swarm).all<{ id: string }>()
+  return results.map((row) => row.id)
 }
 
 export async function forget(env: Cloudflare.Env, id: string) {
@@ -468,6 +501,7 @@ export function view(row: Allowance, now = Date.now()): Budget {
     amount: Memo.decimal(BigInt(row.amount)),
     at: row.created_at,
     contributor: row.contributor,
+    delivered: Memo.decimal(arrived(row)),
     detail: row.detail,
     expiresAt: row.expires_at,
     id: row.id,
@@ -526,11 +560,11 @@ function weighed(results: Weighed[], raised: bigint, steered: ReadonlySet<string
 function weighing(env: Cloudflare.Env, swarm: string) {
   return env.DB.prepare(
     `select note_id as id, min(note) as note, sum(weight) as weight, count(distinct contributor) as backers from (
-      select note_id, note, cast(amount as integer) as weight, contributor from pledges where swarm = ?1 and status != 'pending' and note_id is not null
+      select note_id, note, ${used} as weight, contributor from pledges where swarm = ?1 and status != 'pending' and note_id is not null and ${used} > 0
       union all
-      select note_id, note, cast(amount as integer) as weight, contributor from budgets where swarm = ?1 and period = 0 and status != 'pending' and note_id is not null
+      select note_id, note, ${keyed} as weight, contributor from budgets where swarm = ?1 and token = 'mach' and status != 'pending' and note_id is not null and ${keyed} > 0
       union all
-      select note_id, note, cast(amount as integer) as weight, contributor from contributions where swarm = ?1 and kind != 'pledge' and note_id is not null
+      select note_id, note, cast(amount as integer) as weight, contributor from contributions where swarm = ?1 and note_id is not null
       union all
       select note_id, note, cast(amount as integer) as weight, contributor from steers where swarm = ?1 and branch is null
     ) group by note_id order by weight desc limit 50`,
@@ -575,11 +609,11 @@ async function tally(env: Cloudflare.Env, id: string): Promise<Ledger | undefine
 }
 
 const backing = `select contributor, amount, note_id, way, at from (
-  select lower(contributor) as contributor, cast(amount as integer) as amount, note_id, 'pledge' as way, created_at as at from pledges where swarm = ?1 and status != 'pending'
+  select lower(contributor) as contributor, ${used} as amount, note_id, 'pledge' as way, created_at as at from pledges where swarm = ?1 and status != 'pending' and ${used} > 0
   union all
-  select contributor, case when period = 0 then cast(amount as integer) else 0 end, case when period = 0 then note_id end, case when period = 0 then 'pledge' else 'budget' end, created_at from budgets where swarm = ?1 and status != 'pending' and contributor is not null
+  select contributor, ${keyed}, note_id, case when period = 0 then 'pledge' else 'budget' end, created_at from budgets where swarm = ?1 and token = 'mach' and status != 'pending' and contributor is not null and ${keyed} > 0
   union all
-  select contributor, case when kind = 'pledge' then 0 else cast(amount as integer) end, case when kind != 'pledge' then note_id end, case kind when 'transfer' then 'transfer' when 'pull' then 'budget' else 'pledge' end, created_at from contributions where swarm = ?1
+  select contributor, cast(amount as integer), note_id, case kind when 'transfer' then 'transfer' when 'pull' then 'budget' else 'pledge' end, created_at from contributions where swarm = ?1
   union all
   select lower(contributor), 0, null, 'machine', created_at from hands where swarm = ?1 and contributor is not null and seen_at is not null
 )`

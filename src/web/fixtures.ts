@@ -75,6 +75,7 @@ function build(input: {
     amount,
     at: at(minutes),
     contributor: people[person] ?? visitor,
+    delivered: amount,
     id: id(`${input.id}:${index}`),
     note,
     spent: '0',
@@ -95,6 +96,7 @@ function build(input: {
     amount,
     at: at(minutes),
     contributor: people[person] ?? visitor,
+    delivered: pulled,
     detail: status === 'waiting' ? 'Used up for this period.' : status === 'revoked' ? 'Revoked in Tempo Wallet.' : null,
     expiresAt: started + 29 * 86_400_000,
     id: id(`${input.id}:budget:${person}`),
@@ -617,7 +619,7 @@ export async function confirm(key: string, pledge: string): Promise<Pledged> {
   if (!request) throw Object.assign(new Error('No pending pledge has this id.'), { code: 'not_found', status: 404 })
   if (units(request.amount) > balances[request.token]) throw Object.assign(new Error('Your wallet holds less than the pledge.'), { code: 'insufficient_balance', status: 409 })
   requested.delete(pledge)
-  const pledged: Pledge = { amount: request.amount, at: Date.now(), contributor: visitor, id: pledge, note: request.note, spent: '0', status: 'active', token: request.token }
+  const pledged: Pledge = { amount: request.amount, at: Date.now(), contributor: visitor, delivered: request.amount, id: pledge, note: request.note, spent: '0', status: 'active', token: request.token }
   swarm.pledges.push(pledged)
   if (request.note) swarm.steered.add(request.note)
   push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} pledged ${request.amount} MACH${request.note ? ` behind "${request.note}"` : ''}.`, null, Date.now())
@@ -659,7 +661,7 @@ export async function allow(key: string, budget: string): Promise<Budgeted> {
   const request = allowances.get(budget)
   if (!request) throw Object.assign(new Error('No pending budget has this id.'), { code: 'not_found', status: 404 })
   allowances.delete(budget)
-  const allowed: Budget = { amount: request.amount, at: Date.now(), contributor: visitor, detail: null, expiresAt: Date.now() + 365 * 86_400_000, id: budget, left: '0.000000', nextAt: null, note: request.note, period: 2_592_000, pulled: request.amount, status: 'active', token: request.token }
+  const allowed: Budget = { amount: request.amount, at: Date.now(), contributor: visitor, delivered: request.amount, detail: null, expiresAt: Date.now() + 365 * 86_400_000, id: budget, left: '0.000000', nextAt: null, note: request.note, period: 2_592_000, pulled: request.amount, status: 'active', token: request.token }
   swarm.budgets.push(allowed)
   push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} set a budget of ${request.amount} ${request.token === 'usdce' ? 'USDC.e' : request.token === 'pathusd' ? 'pathUSD' : 'OUSD'} a day`, request.note, Date.now())
   begin(swarm)

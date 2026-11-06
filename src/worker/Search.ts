@@ -43,9 +43,9 @@ export async function query(
     from search
     join swarms s on s.id = search.swarm
     left join reports r on search.kind = 'report' and r.swarm = search.swarm and r.round = cast(search.ref as integer)
-    where search match ? and (exists (select 1 from pledges p where p.swarm = s.id and p.status != 'pending')
+    where search match ? and (exists (select 1 from pledges p where p.swarm = s.id and p.status != 'pending' and cast(p.spent as integer) > 0)
       or exists (select 1 from contributions c where c.swarm = s.id)
-      or exists (select 1 from budgets b where b.swarm = s.id and b.status = 'active'))${filters.map((filter) => ' and ' + filter).join('')}
+      or exists (select 1 from budgets b where b.swarm = s.id and b.token = 'mach' and b.status != 'pending' and cast(b.delivered as integer) > 0))${filters.map((filter) => ' and ' + filter).join('')}
     order by bm25(search, 0, 0, 0, 2, 1) limit ?`,
   )
     .bind(

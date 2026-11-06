@@ -60,6 +60,7 @@ export type Pledge = {
   amount: string
   at: number
   contributor: `0x${string}`
+  delivered: string
   id: string
   note: string | null
   spent: string
@@ -82,6 +83,7 @@ export type Budget = {
   amount: string
   at: number
   contributor: `0x${string}` | null
+  delivered: string
   detail: string | null
   expiresAt: number
   id: string

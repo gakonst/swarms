@@ -1387,6 +1387,11 @@ export async function contribute(
   const memos = logs.flatMap((log) =>
     log.eventName === 'TransferWithMemo' && log.args.to.toLowerCase() === wallet ? [log.args.memo.toLowerCase()] : [],
   )
+  if (memos.length) {
+    const pulls = new Set((await Store.issued(env, row.id)).map((id) => Keys.memo(row.id, id).toLowerCase()))
+    if (memos.some((memo) => pulls.has(memo)))
+      return Problem.fail(409, 'conflict', "That transaction is the swarm's own pull from a budget or pledge, which the swarm counts itself.")
+  }
   if (text && !memos.includes(Transfer.memo(row.id, text).toLowerCase()))
     return Problem.fail(
       400,
@@ -1546,6 +1551,7 @@ async function poll(env: Cloudflare.Env, input: { pledge: string; swarm: string 
   const [row, key] = await Promise.all([Store.find(env, input.swarm), Store.allowance(env, input.swarm, input.pledge)])
   if (!row || !key || key.period) return Problem.fail(404, 'not_found', 'No pledge has this id.')
   if (key.status !== 'pending') return Problem.ok(pledged(row, key))
+  if (key.key_authorization) return activate(env, row, key, { keyAuthorization: JSON.parse(key.key_authorization) })
   const device = await Devices.find(env, key.id)
   if (!device) return Problem.ok(pending(key, null))
 
@@ -1575,25 +1581,37 @@ async function activate(
   if (typeof approved === 'string') return Problem.fail(400, 'invalid_request', approved)
 
   const symbol = Chain.currencies[key.token].symbol
-  const balance = await Keys.balance(env, approved.contributor, key.token).catch(() => undefined)
-  if (balance !== undefined && balance < approved.limit) {
-    await forget(env, key.id)
-    return Problem.fail(
+  const [balance, held] = await Promise.all([read(() => Keys.balance(env, approved.contributor, key.token)), Store.committed(env, approved.contributor, key.token, key.id)])
+  if (balance === undefined) {
+    if (input.keyAuthorization !== undefined) await Store.stash(env, key.id, JSON.stringify(approved.keyAuthorization))
+    return Problem.fail(502, 'upstream_failed', `Tempo did not answer for the wallet's ${symbol} balance, so the pledge is not approved yet. Approve it again in a moment.`)
+  }
+  const short = (have: bigint, others: bigint) =>
+    Problem.fail(
       409,
       'insufficient_balance',
-      `The wallet holds ${Memo.decimal(balance)} ${symbol}, less than the ${Memo.decimal(approved.limit)} ${symbol} pledge. Add some and pledge again.`,
+      others > 0n
+        ? `The wallet holds ${Memo.decimal(have)} ${symbol}, and its other pledges still hold ${Memo.decimal(others)} ${symbol} of it, less than the ${Memo.decimal(approved.limit)} ${symbol} this pledge needs too. Add some and pledge again.`
+        : `The wallet holds ${Memo.decimal(have)} ${symbol}, less than the ${Memo.decimal(approved.limit)} ${symbol} pledge. Add some and pledge again.`,
     )
+  if (balance < approved.limit + held) {
+    await forget(env, key.id)
+    return short(balance, held)
   }
 
   const activated = await Store.approve(env, key.id, {
     amount: String(approved.limit),
+    balance,
     contributor: approved.contributor,
     key_authorization: JSON.stringify(approved.keyAuthorization),
     published: approved.published,
   })
   if (!activated) {
     const again = await Store.allowance(env, row.id, key.id)
-    return again && again.status !== 'pending' ? Problem.ok(pledged(row, again)) : Problem.fail(409, 'conflict', 'This pledge is already approved.')
+    if (again && again.status !== 'pending') return Problem.ok(pledged(row, again))
+    if (!again) return Problem.fail(409, 'conflict', 'This pledge is already approved.')
+    await forget(env, key.id)
+    return short(balance, await Store.committed(env, approved.contributor, key.token, key.id))
   }
   await Devices.forget(env, key.id)
   await stub(env, row.id).pledged({
@@ -1609,6 +1627,15 @@ async function activate(
 
   const [updated, saved] = await Promise.all([Store.find(env, row.id), Store.allowance(env, row.id, key.id)])
   return Problem.ok(pledged(updated ?? row, saved ?? key))
+}
+
+async function read<T>(get: () => Promise<T>, tries = 3): Promise<T | undefined> {
+  for (let attempt = 1; ; attempt += 1) {
+    const value = await get().then((found) => ({ found }), () => undefined)
+    if (value) return value.found
+    if (attempt >= tries) return undefined
+    await sleep(400, undefined)
+  }
 }
 
 async function forget(env: Cloudflare.Env, pledge: string) {

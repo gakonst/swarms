@@ -269,9 +269,9 @@ type Backed = { amount: string; at: number; id: string; monthly: boolean; note: 
 
 function backings(swarm: Detail): Backed[] {
   return [
-    ...swarm.pledges.map((item) => ({ amount: item.amount, at: item.at, id: `p${item.id}`, monthly: false, note: item.note, who: item.contributor })),
+    ...swarm.pledges.filter((item) => Number(item.delivered) > 0).map((item) => ({ amount: item.delivered, at: item.at, id: `p${item.id}`, monthly: false, note: item.note, who: item.contributor })),
     ...swarm.contributions.filter((item) => item.kind === 'transfer').map((item) => ({ amount: item.amount, at: item.at, id: `c${item.hash}`, monthly: false, note: item.note, who: item.contributor })),
-    ...swarm.budgets.filter((item) => item.contributor).map((item) => ({ amount: item.amount, at: item.at, id: `b${item.id}`, monthly: true, note: item.note, who: item.contributor ?? '' })),
+    ...swarm.budgets.filter((item) => item.contributor && Number(item.delivered) > 0).map((item) => ({ amount: item.amount, at: item.at, id: `b${item.id}`, monthly: true, note: item.note, who: item.contributor ?? '' })),
   ]
 }
 

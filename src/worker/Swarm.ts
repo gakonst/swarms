@@ -185,7 +185,7 @@ const closeWaitMs = 30 * 60_000
 
 const smallestSwap = 10_000n
 
-const smallestPull = 30_000n
+const sentMs = 10 * 60_000
 
 const chunk = 100_000n
 
@@ -291,10 +291,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       `${short(input.contributor)} pledged ${trim(input.amount)} ${Chain.currencies[input.token].symbol}${input.note ? ' with a note' : ''}`,
       input.note,
     )
-    this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} pledged ${trim(input.amount)} ${Chain.currencies[input.token].symbol}${input.note ? ` behind "${input.note}"` : ''}.`)
+    this.kv.put('owed:' + input.id, true)
     const row = await this.found(input.swarm)
     if (row) await this.upfront(row, input.id, input.token, BigInt(Memo.units(input.amount)))
-    if (input.noteId) await this.steer(input.swarm, input.noteId, `pledged ${trim(input.amount)} ${Chain.currencies[input.token].symbol}`)
+    await this.hail(input.swarm)
     if (!this.kv.get<string>('turn')) await this.ctx.storage.setAlarm(Date.now())
   }
 
@@ -320,10 +320,56 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       `${short(input.contributor)} set a budget of ${trim(input.amount)} ${Chain.currencies[input.token].symbol} ${per(input.period)}${input.note ? ' with a note' : ''}`,
       input.note,
     )
+    this.kv.put('owed:' + input.id, true)
     const row = await this.found(input.swarm)
     if (row) await this.upfront(row, input.id, input.token, BigInt(Memo.units(input.amount)))
-    this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} set a budget of ${trim(input.amount)} ${Chain.currencies[input.token].symbol} ${per(input.period)}${input.note ? ` behind "${input.note}"` : ''}.`)
+    await this.hail(input.swarm)
     if (!this.kv.get<string>('turn')) await this.ctx.storage.setAlarm(Date.now())
+  }
+
+  async hail(swarm: string) {
+    for (const [key] of [...this.kv.list({ prefix: 'owed:' })]) {
+      const allowance = await Store.allowance(this.env, swarm, key.slice('owed:'.length))
+      if (!allowance) {
+        this.kv.delete(key)
+        continue
+      }
+      const arrived = Store.arrived(allowance)
+      if (arrived <= 0n) {
+        if (allowance.status !== 'active' && allowance.status !== 'pending') this.kv.delete(key)
+        continue
+      }
+      this.kv.delete(key)
+      const symbol = Chain.currencies[allowance.token].symbol
+      const what = allowance.period
+        ? `set a budget of ${trim(Memo.decimal(BigInt(allowance.amount)))} ${symbol} ${per(allowance.period)}`
+        : `pledged ${trim(Memo.decimal(arrived))} ${symbol}`
+      this.announce(`${Mention.at((await Store.account(this.env, allowance.contributor ?? '0x')).handle)} ${what}${allowance.note ? ` behind "${allowance.note}"` : ''}.`)
+      if (allowance.note_id) await this.steer(swarm, allowance.note_id, what)
+    }
+  }
+
+  delivered(source: Source, channel: Payer.Channel | undefined) {
+    const banked = BigInt(this.kv.get<string>('banked:' + source.id) ?? '0')
+    if (!channel) return banked
+    if (!channel.confirmed) return Payer.max(banked, BigInt(source.row?.delivered ?? '0'))
+    return banked + Payer.max(BigInt(channel.deposit), BigInt(this.kv.get<string>('spent:' + source.id) ?? '0'))
+  }
+
+  async book(source: Source, channel: Payer.Channel | undefined) {
+    if (!source.row) return
+    const delivered = String(this.delivered(source, channel))
+    if (delivered === source.row.delivered) return
+    await Store.change(this.env, source.id, { delivered })
+    source.row.delivered = delivered
+  }
+
+  async deliver(swarm: string) {
+    for (const key of [...(await Store.keys(this.env, swarm)), ...(await Store.drained(this.env, swarm))]) {
+      const source = held(key)
+      await this.book(source, this.kv.get<Payer.Channel>(`channel:${source.id}`))
+    }
+    await this.hail(swarm)
   }
 
   async upfront(row: Store.Row, id: string, token: Currency, amount: bigint) {
@@ -340,6 +386,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       const paid = await this.attempt(row, source, { challenge: challenge.headers.get('www-authenticate') ?? '', secret: '' }, [])
       if (!('authorization' in paid)) return this.log('error', `Could not open ${source.label}'s channel yet.`, 'failed' in paid ? paid.failed : 'The gateway cannot sponsor its network fee now.')
       await fetch(this.env.GATEWAY_URL + '/v1/kv/get', { ...init, headers: { ...init.headers, authorization: paid.authorization } })
+      await this.book(source, await this.channel(source))
       this.log('funds', `Opened ${source.label}'s channel with ${trim(Memo.decimal(BigInt(this.kv.get<Payer.Channel>(`channel:${id}`)?.deposit ?? String(amount))))} MACH, held in the escrow until the swarm spends it.`)
     } catch (error) {
       this.log('error', 'Charging the new money up front failed; it is charged on the first payment instead.', String(error))
@@ -365,6 +412,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
     this.kv.put(`channel:${source.id}`, { at: Date.now(), confirmed: true, deposit: String(Memo.units(registered.value.deposit)), descriptor: opened.descriptor, id: opened.id, signed: '0', sponsored: true } satisfies Payer.Channel)
     this.kv.put('spent:' + source.id, String(Memo.units(registered.value.spent)))
+    await this.book(source, this.kv.get<Payer.Channel>(`channel:${source.id}`))
     this.log('funds', `Opened ${source.label}'s channel with ${trim(registered.value.deposit)} MACH for the gateway, which spends it on the swarm's agent directly; what it does not spend goes back to its backer when the swarm is done.`, registered.value.tx ?? null)
     return true
   }
@@ -392,6 +440,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       const row = await this.found(id)
       if (row?.status === 'done' && (this.kv.get<boolean>('refunded') || this.kv.get<number>('refundAt') === undefined)) await this.reopen(row)
       if (row && (row.status !== 'done' || this.kv.get<number>('refundAt') === undefined)) this.kv.put('open', true)
+    }
+    if (id && !this.kv.get<boolean>('tallied')) {
+      this.kv.put('tallied', true)
+      await this.deliver(id).catch((error: unknown) => console.error('Counting what reached the swarm failed', error))
     }
     if (id && !this.kv.get<number>('published') && now - (this.kv.get<number>('exposing') ?? 0) > 60_000) {
       this.kv.put('exposing', now)
@@ -1387,19 +1439,25 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         : { amount: balances ? Payer.max(Vault.total(balances) - Vault.dust * 3n, 0n) : 0n, resets: null }
       if (!room) continue
       if (room.ended && source.row && inside < perCall) {
+        await this.book(source, channel)
         await this.end(source, room.ended)
         continue
       }
       const available = inside + room.amount
       this.kv.put('available:' + source.id, String(available))
       if (room.amount >= perCall) this.kv.delete('exhausted:' + source.id)
-      if (source.row) await Store.change(this.env, source.id, { left_now: String(available), pulled: String(this.used(source.id)) })
+      if (source.row) {
+        const delivered = String(this.delivered(source, channel))
+        await Store.change(this.env, source.id, { delivered, left_now: String(available), pulled: String(this.used(source.id)) })
+        source.row.delivered = delivered
+      }
       else pooled = available
       if ((this.kv.get<number>('exhausted:' + source.id) ?? 0) > Date.now()) continue
       left += available
       biggest = Payer.max(biggest, available)
     }
     this.kv.put('loose', String(balances ? balances.pathusd + balances.usdce - Vault.dust * 2n : 0n))
+    await this.hail(row.id)
 
     const connected = hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []
     const previous = new Set((this.kv.get<Hand[]>('hands') ?? []).map((hand) => hand.name))
@@ -1436,8 +1494,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const key of await Store.drained(this.env, row.id)) {
       const source = held(key)
       const channel = await this.channel(source)
-      if (!channel || channel.sponsored) continue
+      if (!channel || channel.sponsored) {
+        await this.book(source, channel)
+        continue
+      }
       const chain = await Payer.state(this.env, channel.id).catch(() => undefined)
+      await this.book(source, chain?.deposit === 0n ? undefined : channel)
       if (!chain || chain.deposit === 0n || chain.closeRequestedAt !== 0) continue
       const inside = Payer.max(Payer.min(BigInt(channel.deposit), chain.deposit) - BigInt(this.kv.get<string>('spent:' + source.id) ?? channel.signed), 0n)
       if (inside < perCall) continue
@@ -1471,11 +1533,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async refill(row: Store.Row) {
     if (!row.wallet || !row.sealed_wallet) return
     const owner = await Vault.account(this.env, row)
-    const channel = this.kv.get<Payer.Channel>('channel:pool')
-    const inside = channel ? Payer.max(BigInt(channel.deposit) - BigInt(this.kv.get<string>('spent:pool') ?? channel.signed), 0n) : 0n
     let balances = await Vault.balances(this.env, row.wallet)
-    const have = inside + Vault.total(balances)
-    if ((await this.pull(row, have < Store.stock ? Store.stock - have : 0n)) > 0n) balances = await Vault.balances(this.env, row.wallet)
+    if ((await this.pull(row)) > 0n) balances = await Vault.balances(this.env, row.wallet)
+    await this.hail(row.id)
 
     for (const id of ['pathusd', 'usdce'] as const) {
       const amount = balances[id] - Vault.dust
@@ -1494,9 +1554,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
   }
 
-  async pull(row: Store.Row, need: bigint) {
+  async pull(row: Store.Row) {
     if (!row.wallet) return 0n
     const now = Date.now()
+    let pulled = await this.recover(row)
     const ready: { allowance: Store.Allowance; room: bigint }[] = []
     for (const allowance of await Store.allowances(this.env, row.id)) {
       const label = `${short(allowance.contributor ?? '')}'s ${allowance.period ? 'budget' : 'pledge'}`
@@ -1535,55 +1596,63 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       })
       if (!waiting) ready.push({ allowance, room })
     }
-    if (!ready.length) return 0n
-
-    const due = ready.filter((item) => item.allowance.period > 0)
-    const pledged = ready.filter((item) => !item.allowance.period)
-    const count = need > 0n ? Math.max(1, Math.min(pledged.length, Number(need / smallestPull))) : 0
-    const chosen = [...due, ...pledged.slice(0, count).sort((a, b) => (a.room < b.room ? -1 : a.room > b.room ? 1 : 0))]
-    let wanted = need
-    let pulled = 0n
-    for (const [index, { allowance, room }] of chosen.entries()) {
-      const remaining = BigInt(chosen.length - index)
-      const share = allowance.period > 0 ? room : (wanted + remaining - 1n) / remaining
-      if (share <= 0n) continue
-      const result = await Keys.pull(this.env, allowance, { amount: share, recipient: row.wallet, room })
+    for (const { allowance, room } of ready) {
+      const result = await Keys.pull(this.env, allowance, { amount: room, recipient: row.wallet, room })
       if (!result.ok) {
+        if (result.sent) this.kv.put('sent:' + result.sent.hash, { amount: String(result.sent.amount), at: Date.now(), id: allowance.id })
         await this.refused(allowance, result)
         continue
       }
-      wanted -= result.amount
       pulled += result.amount
-      const budget = allowance.period > 0
-      await Store.give(this.env, {
-        amount: String(result.amount),
-        budget: allowance.id,
-        contributor: allowance.contributor as Address,
-        id: result.hash,
-        kind: budget ? 'pull' : 'pledge',
-        note: budget ? allowance.note : null,
-        note_id: budget ? allowance.note_id : null,
-        swarm: row.id,
-        token: allowance.token as Token,
-      })
-      if (budget && allowance.note && allowance.note_id)
-        await Search.note(this.env, row.id, allowance.note_id, allowance.note).catch((error: unknown) => console.error('Indexing the note failed', error))
-      const left = room - result.amount - result.fee
-      await Store.change(this.env, allowance.id, {
-        detail: null,
-        left_now: String(left),
-        published: 1,
-        pulled: String(BigInt(allowance.pulled) + result.amount),
-        pulled_at: Date.now(),
-      })
-      this.log(
-        'funds',
-        `Pulled ${trim(Memo.decimal(result.amount))} ${Chain.currencies[allowance.token].symbol} from ${short(allowance.contributor ?? '')}'s ${budget ? 'budget' : 'pledge'} (fee ${trim(Memo.decimal(result.fee))}, ${trim(Memo.decimal(left))} left${budget ? ' this period' : ''}).`,
-        result.hash,
-      )
-      if (budget && allowance.note_id && BigInt(allowance.pulled) === 0n)
-        await this.steer(row.id, allowance.note_id, `put a budget of ${trim(Memo.decimal(BigInt(allowance.amount)))} ${Chain.currencies[allowance.token].symbol} ${per(allowance.period)}`)
-      if (wanted <= 0n && chosen.slice(index + 1).every((item) => !item.allowance.period)) break
+      await this.credit(row, allowance, { amount: result.amount, fee: result.fee, hash: result.hash, left: room - result.amount - result.fee })
+    }
+    return pulled
+  }
+
+  async credit(row: Store.Row, allowance: Store.Allowance, result: { amount: bigint; fee: bigint; hash: Hex; left: bigint | null }) {
+    const budget = allowance.period > 0
+    await Store.give(this.env, {
+      amount: String(result.amount),
+      budget: allowance.id,
+      contributor: allowance.contributor as Address,
+      id: result.hash,
+      kind: budget ? 'pull' : 'pledge',
+      note: allowance.note,
+      note_id: allowance.note_id,
+      swarm: row.id,
+      token: allowance.token as Token,
+    })
+    if (budget && allowance.note && allowance.note_id)
+      await Search.note(this.env, row.id, allowance.note_id, allowance.note).catch((error: unknown) => console.error('Indexing the note failed', error))
+    const pulled = String(BigInt(allowance.pulled) + result.amount)
+    await Store.change(this.env, allowance.id, {
+      delivered: pulled,
+      detail: null,
+      ...(result.left === null ? {} : { left_now: String(result.left) }),
+      published: 1,
+      pulled,
+      pulled_at: Date.now(),
+    })
+    allowance.pulled = pulled
+    allowance.delivered = pulled
+    this.log(
+      'funds',
+      `Pulled ${trim(Memo.decimal(result.amount))} ${Chain.currencies[allowance.token].symbol} from ${short(allowance.contributor ?? '')}'s ${budget ? 'budget' : 'pledge'} (fee ${trim(Memo.decimal(result.fee))}${result.left === null ? '' : `, ${trim(Memo.decimal(result.left))} left${budget ? ' this period' : ''}`}).`,
+      result.hash,
+    )
+  }
+
+  async recover(row: Store.Row) {
+    let pulled = 0n
+    for (const [key, sent] of [...this.kv.list<{ amount: string; at: number; id: string }>({ prefix: 'sent:' })]) {
+      const hash = key.slice('sent:'.length) as Hex
+      const landed = await Keys.landed(this.env, hash)
+      if (landed === undefined && Date.now() - sent.at < sentMs) continue
+      this.kv.delete(key)
+      const allowance = landed ? await Store.allowance(this.env, row.id, sent.id) : null
+      if (!landed || !allowance || (await Store.gift(this.env, hash))) continue
+      pulled += BigInt(sent.amount)
+      await this.credit(row, allowance, { amount: BigInt(sent.amount), fee: landed.fee, hash, left: null })
     }
     return pulled
   }

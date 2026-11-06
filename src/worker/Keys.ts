@@ -3,7 +3,7 @@ import type { TxEnvelopeTempo } from 'ox/tempo'
 import { encodeFunctionData, erc20Abi, isAddressEqual, keccak256, stringToHex, toHex } from 'viem'
 import type { Address, Hex } from 'viem'
 import { generatePrivateKey } from 'viem/accounts'
-import { prepareTransactionRequest, readContract, sendRawTransactionSync, signTransaction } from 'viem/actions'
+import { getTransactionReceipt, prepareTransactionRequest, readContract, sendRawTransactionSync, signTransaction } from 'viem/actions'
 import { Abis, Account, Actions, KeyAuthorizationManager, Transaction } from 'viem/tempo'
 import type { Currency } from '../shared/Api.ts'
 import * as Chain from './Chain.ts'
@@ -26,7 +26,7 @@ export type State = { balance: bigint; left: bigint; periodEnd: number | null; p
 
 export type Pulled =
   | { amount: bigint; fee: bigint; hash: Hex; ok: true }
-  | { detail: string; ok: false; reason: 'balance' | 'error' | 'expired' | 'limit' | 'revoked' }
+  | { detail: string; ok: false; reason: 'balance' | 'error' | 'expired' | 'limit' | 'revoked'; sent?: { amount: bigint; hash: Hex } }
 
 const transferWithMemo = '0x95777d59'
 
@@ -243,6 +243,7 @@ export async function pull(
       ...(authorization ? { keyAuthorization: authorization } : {}),
     } as never) as Promise<{ gas: bigint; maxFeePerGas: bigint }>
 
+  let sent: { amount: bigint; hash: Hex } | undefined
   try {
     let amount = input.amount < input.room ? input.amount : input.room
     let prepared = await prepare(amount)
@@ -252,9 +253,9 @@ export async function pull(
       if (amount < smallest) return { detail: 'What is left does not cover a transfer and its fee.', ok: false, reason: 'limit' }
       prepared = await prepare(amount)
     }
-    const receipt = await sendRawTransactionSync(client, {
-      serializedTransaction: await signTransaction(client, prepared as never),
-    })
+    const serializedTransaction = await signTransaction(client, prepared as never)
+    sent = { amount, hash: keccak256(serializedTransaction) }
+    const receipt = await sendRawTransactionSync(client, { serializedTransaction })
     if (receipt.status !== 'success') return { detail: 'The transfer reverted.', ok: false, reason: 'error' }
     return {
       amount,
@@ -269,6 +270,12 @@ export async function pull(
     if (/KeyExpired|ExpiryInPast/i.test(text)) return { detail, ok: false, reason: 'expired' }
     if (/KeyRevoked|revoked|KeyNotFound|CallNotAllowed/i.test(text)) return { detail, ok: false, reason: 'revoked' }
     if (/InsufficientBalance|insufficient/i.test(text)) return { detail, ok: false, reason: 'balance' }
-    return { detail, ok: false, reason: 'error' }
+    return { detail, ok: false, reason: 'error', ...(sent ? { sent } : {}) }
   }
+}
+
+export async function landed(env: Cloudflare.Env, hash: Hex) {
+  const receipt = await getTransactionReceipt(Chain.client(env), { hash }).catch(() => undefined)
+  if (!receipt) return undefined
+  return receipt.status === 'success' ? { fee: (receipt.gasUsed * receipt.effectiveGasPrice + 999_999_999_999n) / 1_000_000_000_000n } : null
 }
