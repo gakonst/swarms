@@ -4,6 +4,9 @@
 /fonts/*
   Cache-Control: public, max-age=2592000
 
+/kit/*
+  Cache-Control: public, max-age=300
+
 /favicon.svg
   Cache-Control: public, max-age=86400
 
