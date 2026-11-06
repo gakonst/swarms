@@ -60,22 +60,38 @@ const escrowAbi = [
   { inputs: [descriptor], name: 'requestClose', outputs: [], stateMutability: 'nonpayable', type: 'function' },
 ] as const
 
-export function offer(challenge: string | readonly string[], currency: Address, recipient: Address = Chain.recipient) {
+function sessions(challenge: string | readonly string[], recipient: Address) {
   const headers = new Headers()
   for (const value of typeof challenge === 'string' ? [challenge] : challenge) headers.append('www-authenticate', value)
-  const response = new Response(null, { headers, status: 402 })
-  const found = Challenge.fromResponseList(response).find((candidate) => {
+  const found = (() => {
+    try {
+      return Challenge.fromResponseList(new Response(null, { headers, status: 402 }))
+    } catch {
+      return []
+    }
+  })()
+  return found.filter((candidate) => {
     const request = candidate.request as { amount?: string; currency?: string; methodDetails?: { chainId?: number }; recipient?: string }
     return (
       candidate.method === 'tempo' &&
       candidate.intent === 'session' &&
       !!request.currency &&
-      isAddressEqual(request.currency as Address, currency) &&
       !!request.recipient &&
       isAddressEqual(request.recipient as Address, recipient) &&
-      request.methodDetails?.chainId === Chain.chain.id &&
-      BigInt(request.amount ?? '0') <= Chain.cap
+      request.methodDetails?.chainId === Chain.chain.id
     )
+  })
+}
+
+export function priced(challenge: string | readonly string[], recipient: Address = Chain.recipient) {
+  const amounts = sessions(challenge, recipient).map((candidate) => BigInt((candidate.request as { amount?: string }).amount ?? '0'))
+  return amounts.length ? amounts.reduce((least, amount) => (amount < least ? amount : least)) : undefined
+}
+
+export function offer(challenge: string | readonly string[], currency: Address, recipient: Address = Chain.recipient) {
+  const found = sessions(challenge, recipient).find((candidate) => {
+    const request = candidate.request as { amount?: string; currency?: string }
+    return isAddressEqual(request.currency as Address, currency) && BigInt(request.amount ?? '0') <= Chain.cap
   })
   if (!found) return undefined
   return {

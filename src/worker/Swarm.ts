@@ -420,6 +420,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async sponsored(row: Store.Row, source: Source) {
     const terms = await Gateway.sponsorship(this.env)
     if (!terms) return false
+    const operator = await Gateway.wallet(this.env)
+    if (operator && source.row?.contributor?.toLowerCase() === operator) return false
     const room = await this.room(row, source)
     if (room.amount < Memo.units(terms.least)) return false
     const signer = await this.signer(row, source)
@@ -431,7 +433,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const sent = await Gateway.sponsor(this.env, row.id, { descriptor: opened.descriptor, transaction: opened.transaction })
     const registered = sent.ok || !(await Payer.state(this.env, opened.id).then((state) => state.deposit > 0n).catch(() => false)) ? sent : await Gateway.sponsor(this.env, row.id, { descriptor: opened.descriptor })
     if (!registered.ok) {
-      this.log('error', `The gateway did not take ${source.label}'s channel, so the swarm pays from it itself.`, registered.detail)
+      this.log('funds', `The gateway does not pay from ${source.label}'s channel itself, so the swarm pays the gateway from it as it goes.`, registered.detail)
       return false
     }
     this.kv.put(`channel:${source.id}`, { at: Date.now(), confirmed: true, deposit: String(Memo.units(registered.value.deposit)), descriptor: opened.descriptor, id: opened.id, signed: '0', sponsored: true } satisfies Payer.Channel)
@@ -1219,6 +1221,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (refused) return refused
     }
     if (input.operation === 'vendor') return this.passed(row, input, await this.vendor(row, input))
+
+    const price = Payer.priced(input.challenge)
+    if (price !== undefined && price > Chain.cap)
+      return { code: 'limit_reached', detail: `This request costs ${dollars(price)}, more than the ${dollars(Chain.cap)} the swarm pays for any one request; ask for less at once, such as a shorter lease or fewer machines.`, status: 402 }
 
     const snapshots = input.channels ?? []
     const known = [...this.kv.list<Payer.Channel>({ prefix: 'channel:' })]
