@@ -54,7 +54,7 @@ export function Side(props: {
   const [listed] = usePoll(() => Api.branches(props.swarm.id), 30_000, `branches:${props.swarm.id}`)
   const branches = (listed.data?.branches ?? []).filter((branch) => branch.parent === null)
   const target = branches.find((branch) => branch.id === props.branch)
-  const name = target ? target.role : 'the agent'
+  const name = target ? target.who : 'the agent'
   const [thread, setThread] = useState<Btw.Exchange[]>(() => recall(props.swarm.id, props.branch))
   const [pending, setPending] = useState<string>()
   const [text, setText] = useState('')
@@ -173,7 +173,7 @@ export function Side(props: {
           <select aria-label="Who to ask" onChange={(event) => props.onBranch(event.target.value === 'lead' ? null : Number(event.target.value))} value={props.branch ?? 'lead'}>
             <option value="lead">The agent</option>
             {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>{branch.role}</option>
+              <option key={branch.id} value={branch.id}>{branch.who}</option>
             ))}
           </select>
         </div>

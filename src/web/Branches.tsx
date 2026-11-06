@@ -124,7 +124,7 @@ function Card(props: {
     <li className="branch" data-open={props.open} data-starved={branch.starved} data-state={branch.state}>
       <button aria-expanded={props.open} className="branch-row" onClick={props.onToggle} type="button">
         <span className="branch-top">
-          <b className="branch-role">{branch.role}</b>
+          <b className="branch-role">{branch.who}</b>
           <span className="branch-state">{label(branch)}</span>
         </span>
         <span className="branch-task">{branch.task}</span>
@@ -134,7 +134,7 @@ function Card(props: {
           ) : (
             <>
               <span aria-hidden="true" className="branch-bar"><i style={{ width: `${filled}%` }} /></span>
-              <span className="branch-figures"><b>{usd(decimal(spent))}</b> of {usd(decimal(budget))} spent{branch.left !== null && units(branch.left) > 0n ? ` · ${usd(branch.left)} left` : ''}</span>
+              <span className="branch-figures"><b>{usd(decimal(spent))}</b> of {usd(decimal(budget))} spent{branch.left !== null && units(branch.left) > 0n && branch.state !== 'closed' ? ` · ${usd(branch.left)} left` : ''}</span>
             </>
           )}
         </span>
@@ -151,7 +151,7 @@ function Card(props: {
         <ul className="branch-children">
           {props.descendants.map((child) => (
             <li data-state={child.branch.state} key={child.branch.id} style={{ paddingInlineStart: `${(child.depth - 1) * 14}px` }}>
-              <span className="branch-child-role">{child.branch.role}</span>
+              <span className="branch-child-role">{child.branch.who}</span>
               <span className="branch-child-meta">
                 {label(child.branch)}
                 {child.branch.spent !== null && ` · ${usd(child.branch.spent)}`}
@@ -243,7 +243,7 @@ function Tray(props: { branch: Branch; config: Config | undefined; onChanged: ()
       if (!team) await payIn(config, props.swarm, need, setBusy)
       setBusy(steering ? 'Steering…' : 'Raising its budget…')
       const funded = await Api.fund(props.swarm.id, props.branch.id, { amount: decimal(need), ...(steering ? { message: message_ } : {}) })
-      setDone(steering ? `Steered ${props.branch.role}; its budget is now ${usd(funded.budget ?? '0')}.` : `${props.branch.role}'s budget is now ${usd(funded.budget ?? '0')}.`)
+      setDone(steering ? `Steered ${props.branch.who}; its budget is now ${usd(funded.budget ?? '0')}.` : `${props.branch.who}'s budget is now ${usd(funded.budget ?? '0')}.`)
       setText('')
       props.onChanged()
     } catch (reason) {
@@ -261,7 +261,7 @@ function Tray(props: { branch: Branch; config: Config | undefined; onChanged: ()
     setBusy('Moving…')
     try {
       const moved = await Api.move(props.swarm.id, props.branch.id, { amount: decimal(units(amount)), to })
-      setDone(`Moved ${usd(decimal(units(amount)))} to ${moved[1]?.role ?? 'the other branch'}.`)
+      setDone(`Moved ${usd(decimal(units(amount)))} to ${moved[1]?.who ?? 'the other branch'}.`)
       setShift('')
       props.onChanged()
     } catch (reason) {
@@ -272,12 +272,12 @@ function Tray(props: { branch: Branch; config: Config | undefined; onChanged: ()
   }
 
   const stop = async () => {
-    if (busy || !confirm(`Stop ${props.branch.role}? Its subagent closes, and what it has not spent of its backers' money goes back to them.`)) return
+    if (busy || !confirm(`Stop ${props.branch.who}? Its subagent closes, and what it has not spent of its backers' money goes back to them.`)) return
     setError(undefined)
     setBusy('Stopping…')
     try {
       await Api.stop(props.swarm.id, props.branch.id)
-      setDone(`Stopped ${props.branch.role}.`)
+      setDone(`Stopped ${props.branch.who}.`)
       props.onChanged()
     } catch (reason) {
       setError(message(reason))
@@ -289,11 +289,11 @@ function Tray(props: { branch: Branch; config: Config | undefined; onChanged: ()
   return (
     <div className="branch-tray">
       <textarea
-        aria-label={`Steer ${props.branch.role}`}
+        aria-label={`Steer ${props.branch.who}`}
         className="branch-say"
         disabled={!!busy}
         onChange={(event) => setText(event.target.value)}
-        placeholder={`Steer ${props.branch.role} (optional): what should it do?`}
+        placeholder={`Steer ${props.branch.who} (optional): what should it do?`}
         rows={2}
         value={text}
       />
@@ -312,7 +312,7 @@ function Tray(props: { branch: Branch; config: Config | undefined; onChanged: ()
           <span>of your {usd(mine.amount)} to</span>
           <select aria-label="Branch to move it to" disabled={!!busy} onChange={(event) => setTo(Number(event.target.value))} value={to}>
             {props.others.map((other) => (
-              <option key={other.id} value={other.id}>{other.role}</option>
+              <option key={other.id} value={other.id}>{other.who}</option>
             ))}
           </select>
           <button disabled={!!busy || to === undefined || !valid(shift || movable, 10_000n)} onClick={() => void move()} type="button">Move</button>

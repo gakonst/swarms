@@ -1908,6 +1908,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!agent) return { detail: 'The swarm has no agent yet.', ok: false, status: 409 }
     const closed = await Gateway.close(this.env, swarm, agent, branch)
     if (!closed.ok) return closed
+    if (this.kv.get<string>('turn'))
+      await Gateway.prompt(this.env, swarm, agent, { prompt: `${said} Backers stopped this branch: do not restart it, or give its work to another subagent, unless backers ask for it again.`, steer: true })
     this.log('status', said)
     this.announce(said)
     this.touch()

@@ -757,7 +757,11 @@ function reached<value>(call: Promise<Gateway.Result<value>>): Promise<Gateway.R
 async function directed(env: Cloudflare.Env, row: Store.Row): Promise<Problem.Result<{ list: Branch[]; members: Member[]; money: Awaited<ReturnType<typeof Store.funds>> }>> {
   const [found, money, members] = await Promise.all([reached(stub(env, row.id).subagents(row.id)), Store.funds(env, row.id), Store.members(env, row.id)])
   if (!found.ok) return Problem.fail(502, 'upstream_failed', `Could not list the swarm's subagents: ${found.detail}`)
-  const names = new Map(found.value.map((agent) => [agent.agent_id, found.value.some((other) => other.agent_id !== agent.agent_id && other.role === agent.role) ? `${agent.role} #${agent.agent_id}` : agent.role]))
+  const names = new Map<number, string>()
+  for (const agent of [...found.value].sort((a, b) => a.agent_id - b.agent_id)) {
+    const role = clip(agent.role.trim() || `subagent ${agent.agent_id}`, 60)
+    names.set(agent.agent_id, [...names.values()].includes(role) ? `${role} #${agent.agent_id}` : role)
+  }
   return Problem.ok({ list: found.value.map((agent) => branched(agent, money, members, names.get(agent.agent_id))), members, money })
 }
 
