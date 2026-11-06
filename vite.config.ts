@@ -58,7 +58,10 @@ export default defineConfig(({ command }) => {
 
   return {
     resolve: { alias: { '#ssr': fileURLToPath(new URL('./src/web/server.tsx', import.meta.url)) } },
-    environments: { client: { build: { rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'hash', test: /\/viem\/_esm\/utils\/(hash\/keccak256|encoding\/toHex)\.js$/ }] } } } } } },
+    environments: {
+      client: { build: { rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'hash', test: /\/viem\/_esm\/utils\/(hash\/keccak256|encoding\/toHex)\.js$/ }] } } } } },
+      swarms: { build: { minify: true } },
+    },
     server: { allowedHosts: ['terminal.local'] },
     plugins: [
       react(),

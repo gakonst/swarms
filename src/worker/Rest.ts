@@ -1,8 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { Contributed, Pending, Pledged } from '../shared/Api.ts'
-import * as Mcp from './Mcp.ts'
-import * as OpenApi from './OpenApi.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
@@ -35,9 +33,9 @@ app.use('/v1/*', cors({ exposeHeaders: [Replica.header] }))
 app.use('/openapi.json', cors())
 app.use('/mcp', cors({ exposeHeaders: ['mcp-protocol-version', 'mcp-session-id'] }))
 
-app.get('/openapi.json', (c) => c.json(OpenApi.document(new URL(c.req.url).origin)))
+app.get('/openapi.json', async (c) => c.json((await import('./OpenApi.ts')).document(new URL(c.req.url).origin)))
 
-app.all('/mcp', (c) => Mcp.handle(c.req.raw, c.env))
+app.all('/mcp', async (c) => (await import('./Mcp.ts')).handle(c.req.raw, c.env))
 
 app.get('/v1/config', (c) => c.json(Operations.config(c.env)))
 
