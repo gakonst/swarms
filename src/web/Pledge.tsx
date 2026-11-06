@@ -28,6 +28,7 @@ export function code(error: unknown) {
 export async function pledge(config: Config, swarm: string, amount: string, note: string, token: Currency, onStep: (step: Step) => void) {
   onStep('request')
   const text = note.trim()
+  if (token === 'mach' && Wallet.snapshot().session && !Api.fixture) return await keyed(config, swarm, decimal(units(amount)), text, onStep)
   const requested = await Api.pledge(swarm, { amount: decimal(units(amount)), token, ...(text ? { note: text } : {}) })
   onStep('approve')
   const approved = await Wallet.authorize(config, requested.authorizeAccessKey)
@@ -35,4 +36,19 @@ export async function pledge(config: Config, swarm: string, amount: string, note
   return await Api.confirm(swarm, requested.pledge, approved.keyAuthorization).finally(() => void Wallet.refresh(config).catch(() => {}))
 }
 
-export const steps = { approve: 'Approve the key in Tempo Wallet…', confirm: 'Recording the pledge…', request: 'Preparing the pledge…' } as const satisfies Record<Step, string>
+async function keyed(config: Config, swarm: string, amount: string, note: string, onStep: (step: Step) => void) {
+  const input = { amount, ...(note ? { note } : {}) }
+  const first = await Api.backing(swarm, input).catch((error: unknown) => {
+    if (code(error) === 'key_required') return undefined
+    throw error
+  })
+  if (first) return first
+  onStep('approve')
+  const requested = await Api.keyRequest()
+  const approved = await Wallet.authorize(config, requested.authorizeAccessKey)
+  onStep('confirm')
+  await Api.keyApprove(requested.key, approved.keyAuthorization)
+  return await Api.backing(swarm, input).finally(() => void Wallet.refresh(config).catch(() => {}))
+}
+
+export const steps = { approve: 'Approve a $100 MACH spending key in Tempo Wallet…', confirm: 'Recording the pledge…', request: 'Preparing the pledge…' } as const satisfies Record<Step, string>

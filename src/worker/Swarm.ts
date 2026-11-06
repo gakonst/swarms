@@ -1133,12 +1133,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.signers.delete(key.id)
       this.clients.delete(key.id)
     }
-    const ended = state.revoked ? 'revoked' : key.expires_at <= Date.now() ? 'expired' : !key.period && state.published && state.left < Keys.smallest ? 'spent' : undefined
+    const pledged = key.period ? undefined : Payer.max(BigInt(key.amount) - this.delivered(source, this.kv.get<Payer.Channel>(`channel:${source.id}`)), 0n)
+    const left = pledged === undefined ? state.left : Payer.min(state.left, pledged)
+    const ended = state.revoked ? 'revoked' : key.expires_at <= Date.now() ? 'expired' : !key.period && state.published && left < Keys.smallest ? 'spent' : undefined
     return {
-      amount: Payer.min(state.left, state.balance),
+      amount: Payer.min(left, state.balance),
       ...(ended ? { ended } : {}),
       resets: key.period ? state.periodEnd : null,
-      short: state.balance < state.left,
+      short: state.balance < left,
     }
   }
 

@@ -43,6 +43,18 @@ app.get('/v1/me', async (c) => Problem.respond(await Operations.account(c.env, a
 
 app.post('/v1/me', async (c) => Problem.respond(await Operations.rename(c.env, await body(c.req.raw), await Sessions.who(c.env, c.req.raw))))
 
+app.get('/v1/me/key', async (c) => Problem.respond(await Operations.key(c.env, await Sessions.who(c.env, c.req.raw))))
+
+app.post('/v1/me/key', async (c) => Problem.respond(await Operations.keyRequest(c.env, await Sessions.who(c.env, c.req.raw)), 201))
+
+app.post('/v1/me/key/:key', async (c) =>
+  Problem.respond(await Operations.keyApprove(c.env, { ...(await body(c.req.raw)), key: c.req.param('key') }, await Sessions.who(c.env, c.req.raw))),
+)
+
+app.post('/v1/swarms/:id/backing', async (c) =>
+  Problem.respond(await Operations.back(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), 201),
+)
+
 app.get('/v1/swarms', async (c) => Problem.respond(await Operations.list(c.env, c.req.query())))
 
 app.post('/v1/swarms', async (c) => Problem.respond(await Operations.create(c.env, await body(c.req.raw), await Sessions.who(c.env, c.req.raw)), 201))

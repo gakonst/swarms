@@ -127,6 +127,18 @@ export function create(input: { goal: string; problem?: string; title: string })
   return fixture ? staged((fixtures) => fixtures.create(input)) : request<Summary>('/api/swarms', input)
 }
 
+export function backing(id: string, input: { amount: string; note?: string }) {
+  return request<Pledged>(`/v1/swarms/${encodeURIComponent(id)}/backing`, input)
+}
+
+export function keyRequest() {
+  return request<{ authorizeAccessKey: unknown; key: string }>('/v1/me/key', {})
+}
+
+export function keyApprove(key: string, keyAuthorization: unknown) {
+  return request<{ expiresAt: number; key: string }>(`/v1/me/key/${encodeURIComponent(key)}`, { keyAuthorization })
+}
+
 export function pledge(id: string, input: { amount: string; note?: string; token: Currency }) {
   return fixture ? staged((fixtures) => fixtures.pledge(id, input)) : request<Requested>(`${path(id)}/pledges`, input)
 }

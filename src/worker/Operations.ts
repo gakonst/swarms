@@ -81,6 +81,10 @@ const id = z.string().trim().min(1).max(64).describe('The swarm id, the last par
 
 const pledgeDays = 7
 
+const keyDays = 30
+
+const keyLimit = 100_000_000n
+
 const pledgeId = z.string().trim().min(1).max(64).describe('The pledge id that swarm_pledge or the pledge request returned.')
 
 function units(value: string | number) {
@@ -138,6 +142,8 @@ export const schema = {
     swarm: id,
   }),
   approval: z.object({ ...authorization, pledge: pledgeId, swarm: id }),
+  back: z.object({ amount, note, swarm: id }),
+  keyed: z.object({ key: pledgeId, keyAuthorization: z.unknown().describe('The keyAuthorization Tempo Wallet returned from wallet_connect.') }),
   budget: z.object({
     amount: decimal
       .refine((value) => units(value) >= Store.budget.min, `A monthly budget is at least ${Memo.decimal(Store.budget.min)}.`)
@@ -1352,6 +1358,83 @@ export async function pledge(env: Cloudflare.Env, input: Input<'pledge'>): Promi
       : {}),
     pledge: id,
   })
+}
+
+export async function key(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<{ expiresAt: number | null; key: string | null; left: string | null }>> {
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to see your spending key.')
+  const found = await Store.walletKey(env, address)
+  if (!found) return Problem.ok({ expiresAt: null, key: null, left: null })
+  const state = await Keys.state(env, { ...shared(found), amount: String(keyLimit), contributor: address, published: 0 } as Store.Allowance).catch(() => undefined)
+  return Problem.ok({ expiresAt: found.expires_at, key: found.id, left: state ? Memo.decimal(state.left) : null })
+}
+
+export async function keyRequest(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<{ authorizeAccessKey: Keys.Request; key: string }>> {
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to approve a spending key.')
+  const requested = await Keys.request(env, { amount: keyLimit, days: keyDays, period: 0, recipient: Chain.recipient, token: 'mach' })
+  const id = identifier()
+  await Store.keyRequest(env, {
+    access_key: requested.authorizeAccessKey.address,
+    address: address.toLowerCase(),
+    authorization: JSON.stringify(requested.authorizeAccessKey),
+    expires_at: requested.authorizeAccessKey.expiry * 1000,
+    id,
+    sealed_key: requested.sealed,
+  })
+  return Problem.ok({ authorizeAccessKey: requested.authorizeAccessKey, key: id })
+}
+
+export async function keyApprove(env: Cloudflare.Env, input: Input<'keyed'>, address?: Address): Promise<Problem.Result<{ expiresAt: number; key: string }>> {
+  const parsed = parse(schema.keyed, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to approve a spending key.')
+  const pending = await Store.keyPending(env, parsed.value.key, address.toLowerCase())
+  if (!pending) return Problem.fail(404, 'not_found', 'No spending key request has this id for this account.')
+  const approved = await Keys.approve(env, JSON.parse(pending.authorization) as Keys.Request, { keyAuthorization: parsed.value.keyAuthorization })
+  if (typeof approved === 'string') return Problem.fail(400, 'invalid_request', approved)
+  if (approved.contributor !== address.toLowerCase()) return Problem.fail(403, 'access_denied', 'The key authorization was signed for another wallet than the one signed in.')
+  if (!(await Store.keyApprove(env, pending.id, JSON.stringify(approved.keyAuthorization)))) return Problem.fail(409, 'conflict', 'This spending key is already approved.')
+  return Problem.ok({ expiresAt: pending.expires_at, key: pending.id })
+}
+
+function shared(found: Store.WalletKey) {
+  return { access_key: found.access_key as Address, authorization: found.authorization, expires_at: found.expires_at, key_authorization: found.key_authorization, sealed_key: found.sealed_key, token: 'mach' as const }
+}
+
+export async function back(env: Cloudflare.Env, input: Input<'back'>, address?: Address): Promise<Problem.Result<Pledged>> {
+  const parsed = parse(schema.back, input)
+  if (!parsed.ok) return parsed
+  const request = parsed.value
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to back a swarm from your spending key.')
+  const contributor = address.toLowerCase() as Address
+  const [found, wallet] = await Promise.all([Store.find(env, request.swarm), Store.walletKey(env, contributor)])
+  if (!found) return missing()
+  if (!wallet?.key_authorization) return Problem.fail(409, 'key_required', 'Approve a spending key for MACH first: POST /v1/me/key, then POST /v1/me/key/:key with the keyAuthorization.')
+  const row = await provisioned(env, found)
+
+  const amount = units(request.amount)
+  const id = identifier()
+  const note = request.note || null
+  await Store.allow(env, { ...shared(wallet), amount: String(amount), id, note, note_id: note ? await Store.noteId(note) : null, period: 0, swarm: row.id })
+  const probe = { ...shared(wallet), amount: String(keyLimit), contributor, published: 0 } as Store.Allowance
+  const [balance, state] = await Promise.all([read(() => Keys.balance(env, contributor, 'mach')), read(() => Keys.state(env, probe))])
+  if (balance === undefined || state === undefined) {
+    await forget(env, id)
+    return Problem.fail(502, 'upstream_failed', "Tempo did not answer for the wallet's MACH balance or the key's limit; try again in a moment.")
+  }
+  const left = state.left
+  if (state.revoked || left < amount) {
+    await forget(env, id)
+    return Problem.fail(409, 'key_required', `Your spending key has ${Memo.decimal(left)} MACH left, less than ${Memo.decimal(amount)}; approve a new one.`)
+  }
+  const activated = await Store.approve(env, id, { amount: String(amount), balance, contributor, key_authorization: wallet.key_authorization, published: state.published })
+  if (!activated) {
+    const held = await Store.committed(env, contributor, 'mach', id)
+    await forget(env, id)
+    return Problem.fail(409, 'insufficient_balance', `The wallet holds ${Memo.decimal(balance)} MACH${held > 0n ? `, and its other pledges still hold ${Memo.decimal(held)} of it` : ''}, less than the ${Memo.decimal(amount)} MACH this needs. Add some and try again.`)
+  }
+  await stub(env, row.id).pledged({ amount: Memo.decimal(amount), contributor, id, note, noteId: null, swarm: row.id, token: 'mach' })
+  const [updated, saved] = await Promise.all([Store.find(env, row.id), Store.allowance(env, row.id, id)])
+  return saved ? Problem.ok(pledged(updated ?? row, saved)) : Problem.fail(502, 'unavailable', 'The pledge was not saved.')
 }
 
 export async function pay(env: Cloudflare.Env, swarm: string, authorization: string, input: Record<string, unknown>): Promise<Paid> {

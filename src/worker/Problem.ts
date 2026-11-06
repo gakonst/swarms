@@ -7,6 +7,7 @@ export type Code =
   | 'expired'
   | 'insufficient_balance'
   | 'invalid_request'
+  | 'key_required'
   | 'not_found'
   | 'not_member'
   | 'rate_limited'
@@ -27,6 +28,7 @@ export const codes = {
   expired: 'The Tempo Wallet approval expired before anyone approved it.',
   insufficient_balance: "The wallet holds less of the token than the pledge, so the pledge was dropped, or a steer asks for more than its author's backing not yet behind a note.",
   invalid_request: 'The input failed validation; detail says which field.',
+  key_required: 'The signed-in account has no spending key for MACH yet, or it is used up or expired; approve one with POST /v1/me/key.',
   not_found: 'No swarm, pledge, budget or route has this id, or Tempo has no receipt for the transaction yet.',
   not_member: "Only the swarm's backers (a pledge, a transfer, a daily budget or a lent machine) post in its room or ask it side questions, and on a team-steered swarm only its team steers it.",
   rate_limited: 'Too many side questions from this backer in the last hour.',

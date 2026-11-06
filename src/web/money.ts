@@ -4,8 +4,10 @@ import { decimal, units } from '../shared/Memo.ts'
 import * as Api from './api.ts'
 import { memo } from '../shared/Transfer.ts'
 import { choose, recorded } from './Contribute.tsx'
-import { pledge } from './Pledge.tsx'
+import { pledge, steps } from './Pledge.tsx'
 import * as Wallet from './wallet.ts'
+
+const minSteer = 100_000n
 
 export async function payIn(config: Config, swarm: { id: string; wallet: `0x${string}` | null }, need: bigint, busy: (step: string) => void) {
   if (!swarm.wallet) throw new Error('This swarm has no wallet yet.')
@@ -15,7 +17,7 @@ export async function payIn(config: Config, swarm: { id: string; wallet: `0x${st
   await Wallet.refresh(config).catch(() => {})
   const token = choose('send', decimal(need), Wallet.snapshot().balances)
   if (token === 'mach') {
-    await pledge(config, swarm.id, decimal(need), '', 'mach', (step) => busy(step === 'approve' ? 'Approve in Tempo Wallet…' : 'Sending…'))
+    await pledge(config, swarm.id, decimal(need < minSteer ? minSteer : need), '', 'mach', (step) => busy(step === 'approve' ? steps.approve : 'Sending…'))
     return
   }
   const hash = await Wallet.send(config, { amount: need, memo: memo(swarm.id, ''), to: wallet, token })

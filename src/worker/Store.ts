@@ -443,6 +443,38 @@ export async function committed(env: Cloudflare.Env, contributor: string, token:
   return BigInt(row?.amount ?? 0)
 }
 
+export type WalletKey = { access_key: string; address: string; authorization: string; created_at: number; expires_at: number; id: string; key_authorization: string | null; sealed_key: string }
+
+export async function keyRequest(env: Cloudflare.Env, input: Omit<WalletKey, 'created_at' | 'key_authorization'>) {
+  await env.DB.batch([
+    env.DB.prepare('delete from wallet_keys where address = ? and key_authorization is null').bind(input.address),
+    env.DB.prepare('insert into wallet_keys (id, address, access_key, sealed_key, authorization, expires_at, created_at) values (?, ?, ?, ?, ?, ?, ?)').bind(
+      input.id,
+      input.address,
+      input.access_key,
+      input.sealed_key,
+      input.authorization,
+      input.expires_at,
+      Date.now(),
+    ),
+  ]).finally(wrote)
+}
+
+export async function keyPending(env: Cloudflare.Env, id: string, address: string) {
+  return Replica.primary(env).DB.prepare('select * from wallet_keys where id = ? and address = ? and key_authorization is null').bind(id, address).first<WalletKey>()
+}
+
+export async function keyApprove(env: Cloudflare.Env, id: string, keyAuthorization: string) {
+  const result = await env.DB.prepare('update wallet_keys set key_authorization = ? where id = ? and key_authorization is null').bind(keyAuthorization, id).run().finally(wrote)
+  return result.meta.changes > 0
+}
+
+export async function walletKey(env: Cloudflare.Env, address: string) {
+  return fresh(env, (db) =>
+    db.prepare('select * from wallet_keys where address = ? and key_authorization is not null and expires_at > ? order by created_at desc limit 1').bind(address.toLowerCase(), Date.now() + 60_000).first<WalletKey>(),
+  )
+}
+
 export async function stash(env: Cloudflare.Env, id: string, keyAuthorization: string) {
   await env.DB.prepare("update budgets set key_authorization = ?, updated_at = ? where id = ? and status = 'pending'").bind(keyAuthorization, Date.now(), id).run().finally(wrote)
 }
