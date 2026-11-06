@@ -220,23 +220,25 @@ export function identify() {
   if (!token) return Promise.resolve(undefined)
   if (identifying?.token === token) return identifying.promise
   const at = renamed
-  const promise: Promise<Account | undefined> = (async () => {
-    try {
-      await Promise.resolve()
-      const account = await Api.account()
-      if (state.session?.token !== token) return undefined
-      if (renamed !== at) return state.account
-      set({ account })
-      return account
-    } catch (error) {
-      if (error instanceof Api.Failure && error.status === 401 && state.session?.token === token) signOut()
-      return undefined
-    } finally {
-      if (identifying?.promise === promise) identifying = undefined
-    }
-  })()
-  identifying = { promise, token }
-  return promise
+  const flight = { promise: read(token, at), token }
+  identifying = flight
+  void flight.promise.finally(() => {
+    if (identifying === flight) identifying = undefined
+  })
+  return flight.promise
+}
+
+async function read(token: string, at: number) {
+  try {
+    const account = await Api.account()
+    if (state.session?.token !== token) return undefined
+    if (renamed !== at) return state.account
+    set({ account })
+    return account
+  } catch (error) {
+    if (error instanceof Api.Failure && error.status === 401 && state.session?.token === token) signOut()
+    return undefined
+  }
 }
 
 export async function named() {
