@@ -72,7 +72,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   useEffect(() => {
     if (entries.length) trails.set(props.id, { entries: entries.slice(-400), seq: last.current })
   }, [entries, props.id])
-  const [note, setNote] = useState('')
+  const [note, setNote] = useState(() => asked().note)
   const [tab, setTab] = useTab()
   const [unread, setUnread] = useState(0)
   const [result, setResult] = useState(false)
