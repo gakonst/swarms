@@ -2123,6 +2123,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const state = (socket.deserializeAttachment() ?? {}) as Attached
     if (event.type === 'hello') {
       if (now - (state.hello ?? 0) < helloMs) return
+      socket.serializeAttachment({ ...state, hello: now })
       const token = typeof event.token === 'string' ? event.token.slice(0, 200) : ''
       const known = this.holders.get(token)
       const address = known && now - known.at < holderMs ? known.address : token ? await Sessions.holder(this.env, token) : undefined
