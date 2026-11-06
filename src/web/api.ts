@@ -1,4 +1,4 @@
-import type { Account, Artifact, Branch, Branches, BudgetRequested, Budgeted, Chatter, Config, Contributed, Currency, Detail, Entry, Issued, Lent, Live, Pledged, Posted, Problem, Requested, Room, Roster, Snapshot, Steering, Summary, Token } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Posted, Problem, Room, Roster, Snapshot, Steering, Summary } from '../shared/Api.ts'
 import type * as Btw from '../shared/Btw.ts'
 import { seeded } from './boot.ts'
 import { visitor } from './stage.ts'
@@ -127,32 +127,8 @@ export function create(input: { goal: string; problem?: string; title: string })
   return fixture ? staged((fixtures) => fixtures.create(input)) : request<Summary>('/api/swarms', input)
 }
 
-export function backing(id: string, input: { amount: string; note?: string }) {
-  return request<Pledged>(`/v1/swarms/${encodeURIComponent(id)}/backing`, input)
-}
-
-export function keyRequest() {
-  return request<{ authorizeAccessKey: unknown; key: string }>('/v1/me/key', {})
-}
-
-export function keyApprove(key: string, keyAuthorization: unknown) {
-  return request<{ expiresAt: number; key: string }>(`/v1/me/key/${encodeURIComponent(key)}`, { keyAuthorization })
-}
-
-export function pledge(id: string, input: { amount: string; note?: string; token: Currency }) {
-  return fixture ? staged((fixtures) => fixtures.pledge(id, input)) : request<Requested>(`${path(id)}/pledges`, input)
-}
-
 export function contribute(id: string, input: { hash: string; note?: string }) {
   return fixture ? staged((fixtures) => fixtures.contribute(id, input)) : request<Contributed>(`${path(id)}/contributions`, input)
-}
-
-export function budget(id: string, input: { amount: string; note?: string; token: Token }) {
-  return fixture ? staged((fixtures) => fixtures.budget(id, input)) : request<BudgetRequested>(`${path(id)}/budgets`, input)
-}
-
-export function allow(id: string, budget: string, keyAuthorization: unknown) {
-  return fixture ? staged((fixtures) => fixtures.allow(id, budget)) : request<Budgeted>(`${path(id)}/budgets/${encodeURIComponent(budget)}`, { keyAuthorization })
 }
 
 export function hands(id: string) {
@@ -285,6 +261,3 @@ export function chatter(id: string, listener: (event: Chatter | { type: 'open' |
   }
 }
 
-export function confirm(id: string, pledge: string, keyAuthorization: unknown) {
-  return fixture ? staged((fixtures) => fixtures.confirm(id, pledge)) : request<Pledged>(`${path(id)}/pledges/${encodeURIComponent(pledge)}`, { keyAuthorization })
-}

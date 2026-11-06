@@ -1,5 +1,5 @@
 import type { Address, Hex } from 'viem'
-import type { Account, Config, Currency } from '../shared/Api.ts'
+import type { Account, Config, Token } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { fixture } from './api.ts'
 import { boot, type Face, faceCookie, server } from './boot.ts'
@@ -11,7 +11,7 @@ export type State = {
   account: Account | undefined
   address: Address | undefined
   balance: bigint | undefined
-  balances: Partial<Record<Currency, bigint>>
+  balances: Partial<Record<Token, bigint>>
   pending: boolean
   session: Session | undefined
 }
@@ -19,38 +19,8 @@ export type State = {
 let provider: Promise<Awaited<ReturnType<typeof load>>['provider']> | undefined
 
 async function load() {
-  const { Mach, Provider, tempoWallet } = await import('accounts')
-  return { Mach, provider: Provider.create({ adapter: tempoWallet(), mpp: false }) }
-}
-
-let known: Config | undefined
-
-const keyDays = 30
-
-const keyLimit = 100_000_000n
-
-const transferWithMemo = '0x95777d59'
-
-let keyless = false
-
-function encoded(config: Config) {
-  const stable = config.tokens.filter((token) => token.id !== 'mach')
-  return {
-    expiry: Math.floor(Date.now() / 1000) + keyDays * 86_400,
-    limits: stable.map((token) => ({ limit: `0x${keyLimit.toString(16)}`, token: token.address })),
-    scopes: stable.map((token) => ({ address: token.address, selector: transferWithMemo })),
-  }
-}
-
-async function keyed(config: Config, calls: readonly { data: Hex; to: Address }[]) {
-  if (!state.session || keyless) return
-  const provider = await wallet()
-  const status = await provider.getAccessKeyStatus({ calls }).catch(() => 'missing' as const)
-  if (status !== 'missing' && status !== 'expired') return
-  await provider.request({ method: 'wallet_authorizeAccessKey', params: [encoded(config)] } as never).catch((error: unknown) => {
-    keyless = true
-    if (!declined(error)) console.warn('Tempo Wallet did not authorize an access key', error)
-  })
+  const { Provider, tempoWallet } = await import('accounts')
+  return { provider: Provider.create({ adapter: tempoWallet(), mpp: false }) }
 }
 
 const chain = () => Promise.all([import('viem'), import('viem/tempo'), import('viem/tempo/chains')])
@@ -170,12 +140,7 @@ function asked() {
   return new Promise((resolve) => setTimeout(resolve, 1200 * pace))
 }
 
-function declined(error: unknown) {
-  return (error as { code?: number } | undefined)?.code === 4001 || /reject|declin|denied|cancel/i.test(String((error as Error | undefined)?.message ?? error))
-}
-
 export async function restore(config: Config) {
-  known = config
   if (!checked) {
     checked = true
     if (state.session) {
@@ -197,7 +162,6 @@ export async function restore(config: Config) {
 }
 
 export async function connect(config: Config) {
-  known = config
   if (fixture) {
     if (!state.address) set({ address: visitor })
     return state.address ?? visitor
@@ -213,22 +177,6 @@ export async function connect(config: Config) {
   return address
 }
 
-export async function authorize(config: Config, authorizeAccessKey: unknown) {
-  if (fixture) {
-    await asked()
-    set({ address: visitor })
-    return { address: visitor, keyAuthorization: {} as unknown }
-  }
-  const result = (await (await wallet()).request({ method: 'wallet_connect', params: [{ capabilities: { authorizeAccessKey }, chainId: config.chainId }] } as never)) as {
-    accounts: readonly { address: Address; capabilities?: { keyAuthorization?: unknown } }[]
-  }
-  const account = result.accounts[0]
-  const keyAuthorization = account?.capabilities?.keyAuthorization
-  if (!account || !keyAuthorization) throw new Error('Tempo Wallet returned no approval.')
-  set({ address: account.address })
-  return { address: account.address, keyAuthorization }
-}
-
 export async function signIn(config: Config) {
   if (fixture) {
     await asked()
@@ -237,16 +185,10 @@ export async function signIn(config: Config) {
     void identify()
     return session
   }
-  known = config
-  const provider = await wallet()
-  const connect = (capabilities: Record<string, unknown>) =>
-    provider.request({ method: 'wallet_connect', params: [{ capabilities: { auth: { returnToken: true, url: config.auth }, ...capabilities }, chainId: config.chainId }] } as never) as Promise<{
-      accounts: readonly { address: Address; capabilities?: { auth?: { token?: string } } }[]
-    }>
-  const result = await connect({ authorizeAccessKey: encoded(config) }).catch((error: unknown) => {
-    if (declined(error)) throw error
-    return connect({})
-  })
+  const result = (await (await wallet()).request({
+    method: 'wallet_connect',
+    params: [{ capabilities: { auth: { returnToken: true, url: config.auth } }, chainId: config.chainId }],
+  } as never)) as { accounts: readonly { address: Address; capabilities?: { auth?: { token?: string } } }[] }
   const account = result.accounts[0]
   const token = account?.capabilities?.auth?.token
   if (!account || !token) throw new Error('Tempo Wallet returned no session.')
@@ -307,7 +249,6 @@ export function signOut() {
 
 export async function disconnect() {
   parted += 1
-  keyless = false
   signOut()
   set({ address: undefined, balance: undefined, balances: {}, pending: false })
   if (fixture) return
@@ -315,7 +256,7 @@ export async function disconnect() {
   await (await wallet()).request({ method: 'wallet_disconnect' }).catch(() => {})
 }
 
-export async function send(config: Config, input: { amount: bigint; memo: Hex; to: Address; token: Currency }) {
+export async function send(config: Config, input: { amount: bigint; memo: Hex; to: Address; token: Token }) {
   if (fixture) {
     const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])
     if (fixtures.balances[input.token] < input.amount) throw Object.assign(new Error(`Your wallet holds less than this.`), { code: 'insufficient_balance' })
@@ -328,7 +269,6 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
   if (!token) throw new Error('That token is not offered.')
   const [{ encodeFunctionData }, { Abis }] = await chain()
   const calls = [{ data: encodeFunctionData({ abi: Abis.tip20, args: [input.to, input.amount, input.memo], functionName: 'transferWithMemo' }), to: token.address }]
-  await keyed(config, calls)
   const receipt = (await (await wallet()).request({
     method: 'eth_sendTransactionSync',
     params: [{ calls, feeToken: token.address, from: address }],
@@ -349,15 +289,8 @@ export async function refresh(config: Config) {
       ? Promise.resolve(fixtures?.balances[token.id])
       : loaded[1].Actions.token.getBalance(client, { account: address, token: token.address }).then((balance) => balance.amount)
   const entries = await Promise.all(config.tokens.map(async (token) => [token.id, await read(token).catch(() => undefined)] as const))
-  const balances = Object.fromEntries(entries.filter((entry): entry is readonly [Currency, bigint] => entry[1] !== undefined)) as Partial<Record<Currency, bigint>>
-  if (state.address === address) set({ balance: balances.mach, balances })
-  return balances.mach
-}
-
-export function fund(shortfall?: bigint) {
-  const address = state.address
-  if (fixture || !address) return Promise.resolve()
-  const cents = shortfall === undefined ? 0n : (shortfall + 9_999n) / 10_000n
-  const amount = cents > 0n ? `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}` : undefined
-  return Promise.all([import('accounts'), wallet()]).then(([{ Mach }, connected]) => Mach.fund(connected, { address, displayName: 'Swarms', ...(amount ? { amount } : {}) }))
+  const balances = Object.fromEntries(entries.filter((entry): entry is readonly [Token, bigint] => entry[1] !== undefined)) as Partial<Record<Token, bigint>>
+  const balance = Object.values(balances).reduce((sum, value) => sum + value, 0n)
+  if (state.address === address) set({ balance, balances })
+  return balance
 }

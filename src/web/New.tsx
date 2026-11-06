@@ -101,7 +101,6 @@ export function New(props: { config: Config | undefined }) {
           <Fund
             action={(label) => (label === 'Pay' ? 'Launch' : `Launch · ${label.replace('Pay ', '')}`)}
             config={props.config}
-            least={props.config?.minPledge}
             locked={!briefReady}
             note={note}
             onChange={() => { setCreated(undefined); setStage(0) }}

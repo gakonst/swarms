@@ -106,10 +106,10 @@ function amounts(label: string, extra = '') {
 }
 
 const wallet = `<section class="view center" data-view="approve" hidden>
-    <p class="kicker">Approve in Tempo Wallet</p>
-    <p class="code" id="code">····</p>
-    <a class="go wide" id="approve" target="_blank" rel="noreferrer">Open Tempo Wallet ↗</a>
-    <p class="hint" id="waiting">Waiting for your approval…</p>
+    <p class="kicker">Send it with Tempo Wallet</p>
+    <p class="code" id="code">$2</p>
+    <a class="go wide" id="approve" target="_blank" rel="noreferrer">Open the swarm to pay ↗</a>
+    <p class="hint">You send USDC.e, OUSD or pathUSD to the swarm's wallet from its page.</p>
     <button class="back" data-back type="button">Cancel</button>
   </section>
   <section class="view center" data-view="done" hidden>
@@ -117,12 +117,7 @@ const wallet = `<section class="view center" data-view="approve" hidden>
     <h2 id="done-title">You're in.</h2>
     <div class="row"><a class="go" id="watch" target="_blank" rel="noreferrer">Watch it ↗</a><a class="ghost" id="share" target="_blank" rel="noreferrer">Share</a></div>
   </section>
-  <section class="view center" data-view="failed" hidden>
-    <i class="mark bad">!</i>
-    <h2 id="failed-title">You declined in Tempo Wallet.</h2>
-    <p class="hint" id="failed-detail">Nothing was charged.</p>
-    <button class="go" data-retry type="button">Try again</button>
-  </section>`
+`
 
 export function start(origin: string, swarms: readonly Summary[] = [], request?: URL) {
   const title = 'Start a breakthrough, or be part of one'
@@ -362,9 +357,9 @@ let current=views.find(item=>!item.hidden)?.dataset.view;
 const history=[];
 const show=(name,push=true)=>{if(push&&current&&current!==name)history.push(current);views.forEach(item=>item.hidden=item.dataset.view!==name);current=name};
 const back=()=>{show(history.pop()||views[0].dataset.view,false)};
-document.querySelectorAll('[data-back]').forEach(button=>button.addEventListener('click',()=>{polling=false;back()}));
+document.querySelectorAll('[data-back]').forEach(button=>button.addEventListener('click',()=>back()));
 document.querySelectorAll('[data-open]').forEach(button=>button.addEventListener('click',()=>show(button.dataset.open)));
-let amount='2',choice=null,note='',currentSwarm=frame.swarm||null,polling=false;
+let amount='2',choice=null,note='',currentSwarm=frame.swarm||null;
 document.querySelectorAll('[data-amount]').forEach(button=>button.addEventListener('click',()=>{const box=button.closest('.pay');box.querySelectorAll('[data-amount]').forEach(item=>item.setAttribute('aria-checked','false'));button.setAttribute('aria-checked','true');amount=button.dataset.amount;box.querySelector('[data-big]').textContent=amount}));
 const say=(box,text)=>{const line=box&&box.querySelector('[data-status]');if(line)line.textContent=text};
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -372,55 +367,32 @@ async function send(path,options){
   if(demo){
     await sleep(500);
     if(path==='/v1/swarms')return{id:'demo',title:choice.title};
-    if(/pledges$/.test(path))return{pledge:'demo',device:{userCode:'WXYZ-4821',verificationUriFull:'https://wallet.tempo.xyz/?user_code=WXYZ-4821',expiresAt:Date.now()+(demo==='expired'?1500:600000),interval:1}};
-    if(demo==='declined'){await sleep(900);const error=new Error('declined');error.status=403;throw error}
-    if(demo==='done'){await sleep(700);return{status:'active'}}
-    await sleep(15000);return{status:'pending'};
+    return{};
   }
   const response=await fetch(path,options);const data=await response.json().catch(()=>({}));
   if(!response.ok){const error=new Error(data.detail||'That did not go through.');error.status=response.status;throw error}
   return data;
 }
 function finish(){
-  polling=false;show('done');
-  document.getElementById('done-title').textContent="You're in."+(currentSwarm&&currentSwarm.title?' '+currentSwarm.title:'');
+  show('done');
+  document.getElementById('done-title').textContent='Finish on the swarm\'s page'+(currentSwarm&&currentSwarm.title?': '+currentSwarm.title:'.');
   const page=new URL(frame.url).origin+'/s/'+encodeURIComponent(currentSwarm.id);
   document.getElementById('watch').href=page;
   document.getElementById('share').href='https://x.com/intent/post?text='+encodeURIComponent((note?'I put money behind "'+note+'" on ':'I funded ')+currentSwarm.title+' '+new URL(frame.url).origin+'/x/s/'+encodeURIComponent(currentSwarm.id));
 }
-function failed(error){
-  polling=false;show('failed');
-  const declined=error.status===403,expired=error.status===410||/expired/i.test(error.message||'');
-  document.getElementById('failed-title').textContent=declined?'You declined in Tempo Wallet.':expired?'The approval timed out.':"That didn't go through.";
-  document.getElementById('failed-detail').textContent=declined||expired?'Nothing was charged.':error.message||'';
-}
-async function poll(requested){
-  if(polling)return;polling=true;
-  try{
-    while(polling&&Date.now()<requested.device.expiresAt){
-      const result=await send('/v1/swarms/'+encodeURIComponent(currentSwarm.id)+'/pledges/'+encodeURIComponent(requested.pledge)+'?wait=15');
-      if(!polling)return;
-      if(result.status!=='pending'){finish();return}
-      await sleep(Math.max(1500,requested.device.interval*1000));
-    }
-    if(polling)throw Object.assign(new Error('expired'),{status:410});
-  }catch(error){if(polling)failed(error)}
-}
-async function pledge(box){
+async function fund(box){
   const go=box&&box.querySelector('[data-go]');if(go)go.disabled=true;say(box,'');
   try{
     if(!currentSwarm){if(!choice)throw new Error('Pick an idea first.');currentSwarm=await send('/v1/swarms',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:choice.title,goal:choice.goal,problem:choice.id})})}
-    const requested=await send('/v1/swarms/'+encodeURIComponent(currentSwarm.id)+'/pledges',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount,token:'mach',device:true,...(note?{note}:{})})});
-    if(!requested.device)throw new Error('Tempo Wallet did not answer.');
+    const search=new URLSearchParams({fund:'',amount,...(note?{note}:{})});
+    const link=document.getElementById('approve');link.href=new URL(frame.url).origin+'/s/'+encodeURIComponent(currentSwarm.id)+'?'+search;
+    document.getElementById('code').textContent='$'+amount;
     show('approve');
-    document.getElementById('code').textContent=requested.device.userCode;
-    const link=document.getElementById('approve');link.href=requested.device.verificationUriFull;
-    void poll(requested);
   }catch(error){say(box,error.message||'That did not go through.')}
   finally{if(go)go.disabled=frame.kind==='home'&&!choice}
 }
-document.querySelectorAll('[data-go]').forEach(button=>button.addEventListener('click',()=>pledge(button.closest('.pay'))));
-document.querySelectorAll('[data-retry]').forEach(button=>button.addEventListener('click',()=>{history.length=0;show(frame.kind==='home'?'start':note?'room':'fund',false)}));
+document.getElementById('approve').addEventListener('click',()=>setTimeout(finish,300));
+document.querySelectorAll('[data-go]').forEach(button=>button.addEventListener('click',()=>fund(button.closest('.pay'))));
 if(frame.kind==='home'&&(demo||query.has('demo'))){
   const sample=[['running','Benchmark every open-weight coding model','9.04'],['running','Parse a terabyte of JSON in under a minute','4.20'],['paused','A field guide to DEX routing','2.75'],['funding','Speedrun nanoGPT on a T4','0.00']];
   const esc=text=>text.replace(/&/g,'&amp;').replace(/</g,'&lt;');
@@ -493,7 +465,7 @@ if(frame.kind==='swarm'){
     const update=()=>{const text=input.value.trim();stake.hidden=!text;sendButton.disabled=text.length<3};
     input.addEventListener('input',update);
     stake.querySelectorAll('[data-stake]').forEach(button=>button.addEventListener('click',()=>{stake.querySelectorAll('[data-stake]').forEach(item=>item.setAttribute('aria-checked','false'));button.setAttribute('aria-checked','true');amount=button.dataset.stake}));
-    form.addEventListener('submit',event=>{event.preventDefault();note=input.value.trim();if(note.length<3)return;history.push('room');void pledge(null)});
+    form.addEventListener('submit',event=>{event.preventDefault();note=input.value.trim();if(note.length<3)return;history.push('room');void fund(null)});
     if(query.get('note')){input.value=query.get('note');update()}
   }
   const behind=document.getElementById('behind');
@@ -502,5 +474,5 @@ if(frame.kind==='swarm'){
 }
 const view=query.get('view');
 if(view&&views.some(item=>item.dataset.view===view)){if(view!==current)history.push(current);show(view,false)}
-if(demo&&query.has('go')){const box=document.querySelector('[data-view='+(view||current)+'] .pay');if(document.getElementById('note')&&document.getElementById('note').value&&!box){note=document.getElementById('note').value.trim();void pledge(null)}else void pledge(box)}
+if(demo&&query.has('go')){const box=document.querySelector('[data-view='+(view||current)+'] .pay');if(document.getElementById('note')&&document.getElementById('note').value&&!box){note=document.getElementById('note').value.trim();void fund(null)}else void fund(box)}
 `

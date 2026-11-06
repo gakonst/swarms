@@ -5,18 +5,15 @@ import * as XFrames from '../src/worker/XFrames.ts'
 
 const overview: Overview = {
   answer: null,
-  budgets: [],
   code: null,
   contributions: [],
   contributors: 3,
   createdAt: 1,
-  daily: '0.000000',
   goal: 'Test <script> without placing markup in the player page.',
   hands: [],
   id: 'abc123',
   machines: 0,
   notes: [],
-  pledges: [],
   pool: '0.000000',
   raised: '1.250000',
   reason: null,
@@ -30,14 +27,14 @@ const overview: Overview = {
   working: null,
 }
 
-test('start frame publishes an X player card and device pledge flow', async () => {
+test('start frame publishes an X player card that sends people to the swarm page to pay', async () => {
   const response = XFrames.start('https://swarms.example')
   const html = await response.text()
 
   assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8')
   assert.match(html, /name="twitter:card" content="player"/)
   assert.match(html, /name="twitter:player" content="https:\/\/swarms\.example\/x"/)
-  assert.match(html, /device:true/)
+  assert.match(html, /Open the swarm to pay/)
   assert.match(html, /Launch/)
   assert.match(html, /Quantum-safe signatures/)
 })

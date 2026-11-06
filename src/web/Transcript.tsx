@@ -261,21 +261,17 @@ function rowKey(row: Row) {
   return ''
 }
 
-type Backed = { amount: string; at: number; id: string; monthly: boolean; note: string | null; who: string }
+type Backed = { amount: string; at: number; id: string; note: string | null; who: string }
 
 function backings(swarm: Detail): Backed[] {
-  return [
-    ...swarm.pledges.filter((item) => Number(item.delivered) > 0).map((item) => ({ amount: item.delivered, at: item.at, id: `p${item.id}`, monthly: false, note: item.note, who: item.contributor })),
-    ...swarm.contributions.filter((item) => item.kind === 'transfer').map((item) => ({ amount: item.amount, at: item.at, id: `c${item.hash}`, monthly: false, note: item.note, who: item.contributor })),
-    ...swarm.budgets.filter((item) => item.contributor && Number(item.delivered) > 0).map((item) => ({ amount: item.amount, at: item.at, id: `b${item.id}`, monthly: true, note: item.note, who: item.contributor ?? '' })),
-  ]
+  return swarm.contributions.map((item, index) => ({ amount: item.amount, at: item.at, id: `c${item.hash ?? index}`, note: item.note, who: item.contributor }))
 }
 
 const Funded = pure(function Funded(props: { item: Backed; name: string; onBack: ((note: string) => void) | undefined }) {
   return (
     <li className="beat beat-funded" data-go={!!(props.onBack && props.item.note)} onClick={() => props.item.note && props.onBack?.(props.item.note)} title={props.onBack && props.item.note ? 'Back this idea too' : clock(props.item.at)}>
       <span className="beat-coin" aria-hidden="true">$</span>
-      <span><b>{Mention.at(props.name)}</b> funded {usd(props.item.amount)}{props.item.monthly ? ' a month' : ''}{props.item.note ? <> behind <i>“{props.item.note}”</i></> : null}</span>
+      <span><b>{Mention.at(props.name)}</b> funded {usd(props.item.amount)}{props.item.note ? <> behind <i>“{props.item.note}”</i></> : null}</span>
     </li>
   )
 })

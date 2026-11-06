@@ -2,7 +2,7 @@ import type { Me, Member, Note, Way } from '../shared/Api.ts'
 import { percent, usd } from './format.ts'
 import { Avatar } from './Room.tsx'
 
-const ways = { budget: 'monthly', machine: 'lent a machine', pledge: 'pledge', transfer: 'once' } as const satisfies Record<Way, string>
+const ways = { machine: 'lent a machine', transfer: 'sent money' } as const satisfies Record<Way, string>
 
 export function Presence(props: { members: readonly Member[]; online: readonly string[]; watching: number }) {
   const here = props.members.filter((member) => props.online.includes(member.address)).slice(0, 3)

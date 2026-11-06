@@ -4,7 +4,7 @@ export const header = 'x-d1-bookmark'
 
 const primaries = new WeakMap<Cloudflare.Env, Cloudflare.Env>()
 
-const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|hands|answer|updates|search|wait|machines|backers|pledges|team|branches))?)?$/
+const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|hands|answer|updates|search|wait|machines|backers|team|branches))?)?$/
 
 const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|s\/[^/]+|s\/[^/]+\/code)$/
 
@@ -14,7 +14,6 @@ export function readable(method: string, path: string) {
 }
 
 export function writes(method: string, path: string) {
-  if (/^\/v1\/swarms\/[^/]+\/pledges\/[^/]+$/.test(path)) return true
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return false
   return /^\/(api|v1)\//.test(path) && !/^\/api\/swarms\/[^/]+\/pay$/.test(path) && !path.startsWith('/v1/auth')
 }

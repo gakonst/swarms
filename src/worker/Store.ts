@@ -1,16 +1,15 @@
-import type { Account, Answer, Budget, Contribution, Currency, Member, Note, Pledge, Summary, Way } from '../shared/Api.ts'
+import type { Account, Answer, Contribution, Currency, Member, Note, Summary, Way } from '../shared/Api.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Replica from './Replica.ts'
 
-const ways = ['pledge', 'budget', 'transfer', 'machine'] as const satisfies readonly Way[]
+const ways = ['transfer', 'machine'] as const satisfies readonly Way[]
 
 export type Row = {
   answer: string | null
   contributors: number
   created_at: number
   creator: `0x${string}` | null
-  daily: number
   goal: string
   id: string
   machines: number
@@ -34,103 +33,32 @@ export type Row = {
 
 export type Steering = Summary['steering']
 
-export type Backing = {
-  amount: string
-  contributor: `0x${string}`
-  created_at: number
-  id: string
-  note: string | null
-  note_id: string | null
-  request: string
-  sealed_key: string | null
-  spent: string
-  status: 'pending' | Pledge['status']
-  swarm: string
-  token: Currency
-}
-
 export type Gift = {
   amount: string
-  budget: string | null
   contributor: `0x${string}`
   created_at: number
-  id: `0x${string}`
-  kind: Contribution['kind']
-  note: string | null
-  note_id: string | null
-  swarm: string
-  token: Contribution['token']
-}
-
-export type Allowance = {
-  access_key: `0x${string}`
-  amount: string
-  authorization: string
-  contributor: `0x${string}` | null
-  created_at: number
-  delivered: string
-  detail: string | null
-  expires_at: number
   id: string
-  key_authorization: string | null
-  left_now: string | null
-  next_at: number | null
   note: string | null
   note_id: string | null
-  period: number
-  period_end: number | null
-  published: number
-  pulled: string
-  pulled_at: number | null
-  sealed_key: string
-  status: 'pending' | 'active' | 'revoked' | 'expired' | 'ended' | 'spent'
   swarm: string
   token: Currency
-  updated_at: number
 }
 
 export type Fields = Partial<
   Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'status' | 'steering' | 'team' | 'why'>
 >
 
-export type Changes = Partial<
-  Pick<
-    Allowance,
-    'delivered' | 'detail' | 'left_now' | 'next_at' | 'period_end' | 'published' | 'pulled' | 'pulled_at' | 'status'
-  >
->
-
 export const reserve = 50_000n
 
 export const headroom = 100_000n
 
-export const minPledge = 250_000n
-
-export const minSteer = 100_000n
-
 export const perCall = 20_000n
 
-export const budget = { days: 365, max: 100_000_000n, min: minPledge, period: 2_592_000 } as const
-
-const delivered = "(case when status in ('active', 'spent') then cast(delivered as integer) else min(cast(delivered as integer), cast(pulled as integer)) end)"
-
-const keyed = `(case when period = 0 then min(cast(amount as integer), ${delivered}) else ${delivered} end)`
-
-const used = 'min(cast(amount as integer), cast(spent as integer))'
-
 const totals = `select s.*,
-  coalesce((select sum(${used}) from pledges where swarm = s.id and status != 'pending'), 0)
-    + coalesce((select sum(${keyed}) from budgets where swarm = s.id and token = 'mach' and status != 'pending'), 0)
-    + coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) as raised,
-  coalesce((select sum(cast(spent as integer)) from pledges where swarm = s.id and status != 'pending'), 0)
-    + coalesce((select sum(cast(pulled as integer)) from budgets where swarm = s.id and token = 'mach' and status != 'pending'), 0) + s.pool_spent as spent,
-  coalesce((select sum(max(${keyed} - cast(pulled as integer), 0)) from budgets where swarm = s.id and token = 'mach' and status in ('active', 'spent')), 0) + s.pool_left as remaining,
-  (select count(*) from (
-    select lower(contributor) from pledges where swarm = s.id and status != 'pending' and ${used} > 0
-    union select contributor from contributions where swarm = s.id
-    union select contributor from budgets where swarm = s.id and token = 'mach' and status != 'pending' and contributor is not null and ${keyed} > 0
-  )) as contributors,
-  coalesce((select sum(cast(amount as integer) * 86400 / period) from budgets where swarm = s.id and status = 'active' and period > 0 and cast(delivered as integer) > 0), 0) as daily
+  coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) as raised,
+  s.pool_spent + s.spent_before as spent,
+  s.pool_left as remaining,
+  (select count(distinct contributor) from contributions where swarm = s.id) as contributors
   from swarms s`
 
 function answer(text: string | null): Answer | null {
@@ -144,7 +72,6 @@ export function summary(row: Row): Summary {
     answer: answer(row.answer),
     contributors: row.contributors,
     createdAt: row.created_at,
-    daily: Memo.decimal(BigInt(row.daily)),
     goal: row.goal,
     id: row.id,
     machines: row.machines,
@@ -164,7 +91,7 @@ export function summary(row: Row): Summary {
 
 export async function list(env: Cloudflare.Env, status?: Summary['status']) {
   const { results } = await env.DB.prepare(
-    `select * from (${totals}) where hidden = 0 and (raised > 0 or daily > 0)${status ? ' and status = ?' : ''} order by updated_at desc limit 100`,
+    `select * from (${totals}) where hidden = 0 and raised > 0${status ? ' and status = ?' : ''} order by updated_at desc limit 100`,
   )
     .bind(...(status ? [status] : []))
     .all<Row>()
@@ -247,80 +174,13 @@ export async function update(env: Cloudflare.Env, id: string, fields: Fields) {
     .run().finally(wrote)
 }
 
-export async function spend(env: Cloudflare.Env, id: string, spent: bigint, status?: Pledge['status']) {
-  await env.DB.prepare(
-    'update pledges set spent = ?, status = coalesce(?, status), updated_at = ? where id = ?',
-  )
-    .bind(String(spent), status ?? null, Date.now(), id)
-    .run().finally(wrote)
-}
-
-export async function active(env: Cloudflare.Env, swarm: string) {
-  const { results } = await env.DB.prepare("select * from pledges where swarm = ? and status = 'active'")
-    .bind(swarm)
-    .all<Backing>()
-  return results
-}
-
-function legacyPledges(env: Cloudflare.Env, swarm: string) {
-  return env.DB.prepare("select * from pledges where swarm = ? and status != 'pending' order by created_at desc limit 200").bind(swarm)
-}
-
-function heldPledges(env: Cloudflare.Env, swarm: string) {
-  return env.DB.prepare("select * from budgets where swarm = ? and period = 0 and status != 'pending' order by created_at desc limit 200").bind(swarm)
-}
-
-export async function pledges(env: Cloudflare.Env, swarm: string): Promise<Pledge[]> {
-  const [legacy, held] = await Promise.all([legacyPledges(env, swarm).all<Backing>(), heldPledges(env, swarm).all<Allowance>()])
-  return pledged(legacy.results, held.results)
-}
-
-function pledged(legacy: Backing[], held: Allowance[]): Pledge[] {
-  return [
-    ...held.map((row) => pledge(row)),
-    ...legacy.map((row) => ({
-      amount: Memo.decimal(BigInt(row.amount)),
-      at: row.created_at,
-      contributor: row.contributor,
-      delivered: Memo.decimal(BigInt(row.amount) < BigInt(row.spent) ? BigInt(row.amount) : BigInt(row.spent)),
-      id: row.id,
-      note: row.note,
-      spent: Memo.decimal(BigInt(row.spent)),
-      status: row.status === 'pending' ? ('active' as const) : row.status,
-      token: row.token,
-    })),
-  ]
-}
-
-export function arrived(row: Allowance) {
-  if (row.token !== 'mach') return BigInt(row.pulled)
-  const held = row.status === 'active' || row.status === 'spent' ? BigInt(row.delivered) : BigInt(row.delivered) < BigInt(row.pulled) ? BigInt(row.delivered) : BigInt(row.pulled)
-  return row.period === 0 && BigInt(row.amount) < held ? BigInt(row.amount) : held
-}
-
-export function pledge(row: Allowance): Pledge {
-  return {
-    amount: Memo.decimal(BigInt(row.amount)),
-    at: row.created_at,
-    contributor: row.contributor ?? '0x',
-    delivered: Memo.decimal(arrived(row)),
-    id: row.id,
-    note: row.note,
-    spent: Memo.decimal(BigInt(row.pulled)),
-    status: row.status === 'pending' || row.status === 'active' ? 'active' : row.status === 'spent' ? 'spent' : 'ended',
-    token: row.token,
-  }
-}
-
 export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>) {
   const result = await env.DB.prepare(
-    'insert or ignore into contributions (id, swarm, kind, budget, contributor, token, amount, note, note_id, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    "insert or ignore into contributions (id, swarm, kind, budget, contributor, token, amount, note, note_id, created_at) values (?, ?, 'transfer', null, ?, ?, ?, ?, ?, ?)",
   )
     .bind(
       input.id.toLowerCase(),
       input.swarm,
-      input.kind,
-      input.budget,
       input.contributor.toLowerCase(),
       input.token,
       input.amount,
@@ -338,7 +198,7 @@ export async function gift(env: Cloudflare.Env, id: string) {
 
 export async function annotate(env: Cloudflare.Env, id: string, input: { note: string; note_id: string }) {
   const result = await env.DB.prepare(
-    "update contributions set note = ?, note_id = ? where id = ? and kind = 'transfer' and note is null",
+    "update contributions set note = ?, note_id = ? where id = ? and note is null",
   )
     .bind(input.note, input.note_id, id.toLowerCase())
     .run().finally(wrote)
@@ -349,10 +209,8 @@ export function contribution(row: Gift): Contribution {
   return {
     amount: Memo.decimal(BigInt(row.amount)),
     at: row.created_at,
-    budget: row.budget,
     contributor: row.contributor,
-    hash: row.id,
-    kind: row.kind,
+    hash: row.id.startsWith('0x') ? (row.id as `0x${string}`) : null,
     note: row.note,
     token: row.token,
   }
@@ -374,208 +232,6 @@ export async function shares(env: Cloudflare.Env, swarm: string) {
     .bind(swarm)
     .all<{ amount: number; contributor: `0x${string}` }>()
   return results.map((row) => ({ amount: BigInt(row.amount), contributor: row.contributor }))
-}
-
-export async function allow(
-  env: Cloudflare.Env,
-  input: Pick<
-    Allowance,
-    'access_key' | 'amount' | 'authorization' | 'expires_at' | 'id' | 'note' | 'note_id' | 'period' | 'sealed_key' | 'swarm' | 'token'
-  >,
-) {
-  const now = Date.now()
-  await env.DB.prepare(
-    'insert into budgets (id, swarm, kind, token, amount, period, expires_at, access_key, sealed_key, authorization, note, note_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  )
-    .bind(
-      input.id,
-      input.swarm,
-      input.period > 0 ? 'budget' : 'pledge',
-      input.token,
-      input.amount,
-      input.period,
-      input.expires_at,
-      input.access_key,
-      input.sealed_key,
-      input.authorization,
-      input.note,
-      input.note_id,
-      now,
-      now,
-    )
-    .run().finally(wrote)
-}
-
-export async function allowance(env: Cloudflare.Env, swarm: string, id: string) {
-  return env.DB.prepare('select * from budgets where swarm = ? and id = ?').bind(swarm, id).first<Allowance>()
-}
-
-export async function approve(
-  env: Cloudflare.Env,
-  id: string,
-  input: { amount: string; balance?: bigint; contributor: string; key_authorization: string; published: boolean },
-) {
-  const result = await env.DB.prepare(
-    `update budgets set amount = ?1, contributor = ?2, key_authorization = ?3, published = ?4, left_now = ?1, status = 'active', updated_at = ?5 where id = ?6 and status = 'pending'
-    and (?7 is null or cast(?1 as integer) + (
-      select coalesce(sum(max(cast(b.amount as integer) - cast(b.delivered as integer), 0)), 0) from budgets b where b.contributor = ?2 and b.token = budgets.token and b.period = 0 and b.status = 'active' and b.id != ?6
-    ) <= cast(?7 as integer))`,
-  )
-    .bind(
-      input.amount,
-      input.contributor.toLowerCase(),
-      input.key_authorization,
-      input.published ? 1 : 0,
-      Date.now(),
-      id,
-      input.balance === undefined ? null : String(input.balance),
-    )
-    .run().finally(wrote)
-  return result.meta.changes > 0
-}
-
-export async function committed(env: Cloudflare.Env, contributor: string, token: Currency, except: string) {
-  const row = await env.DB.prepare(
-    "select coalesce(sum(max(cast(amount as integer) - cast(delivered as integer), 0)), 0) as amount from budgets where contributor = ? and token = ? and period = 0 and status = 'active' and id != ?",
-  )
-    .bind(contributor.toLowerCase(), token, except)
-    .first<{ amount: number }>()
-  return BigInt(row?.amount ?? 0)
-}
-
-export type WalletKey = { access_key: string; address: string; authorization: string; created_at: number; expires_at: number; id: string; key_authorization: string | null; sealed_key: string }
-
-export async function keyRequest(env: Cloudflare.Env, input: Omit<WalletKey, 'created_at' | 'key_authorization'>) {
-  await env.DB.batch([
-    env.DB.prepare('delete from wallet_keys where address = ? and key_authorization is null').bind(input.address),
-    env.DB.prepare('insert into wallet_keys (id, address, access_key, sealed_key, authorization, expires_at, created_at) values (?, ?, ?, ?, ?, ?, ?)').bind(
-      input.id,
-      input.address,
-      input.access_key,
-      input.sealed_key,
-      input.authorization,
-      input.expires_at,
-      Date.now(),
-    ),
-  ]).finally(wrote)
-}
-
-export async function keyPending(env: Cloudflare.Env, id: string, address: string) {
-  return Replica.primary(env).DB.prepare('select * from wallet_keys where id = ? and address = ? and key_authorization is null').bind(id, address).first<WalletKey>()
-}
-
-export async function keyApprove(env: Cloudflare.Env, id: string, keyAuthorization: string) {
-  const result = await env.DB.prepare('update wallet_keys set key_authorization = ? where id = ? and key_authorization is null').bind(keyAuthorization, id).run().finally(wrote)
-  return result.meta.changes > 0
-}
-
-export async function walletKey(env: Cloudflare.Env, address: string) {
-  return fresh(env, (db) =>
-    db.prepare('select * from wallet_keys where address = ? and key_authorization is not null and expires_at > ? order by created_at desc limit 1').bind(address.toLowerCase(), Date.now() + 60_000).first<WalletKey>(),
-  )
-}
-
-export async function stash(env: Cloudflare.Env, id: string, keyAuthorization: string) {
-  await env.DB.prepare("update budgets set key_authorization = ?, updated_at = ? where id = ? and status = 'pending'").bind(keyAuthorization, Date.now(), id).run().finally(wrote)
-}
-
-export async function issued(env: Cloudflare.Env, swarm: string) {
-  const { results } = await env.DB.prepare('select id from budgets where swarm = ?').bind(swarm).all<{ id: string }>()
-  return results.map((row) => row.id)
-}
-
-export async function forget(env: Cloudflare.Env, id: string) {
-  await env.DB.prepare("delete from budgets where id = ? and status = 'pending'").bind(id).run().finally(wrote)
-}
-
-export async function change(env: Cloudflare.Env, id: string, changes: Changes) {
-  const entries = Object.entries(changes)
-  await env.DB.prepare(
-    `update budgets set ${entries.map(([name]) => name + ' = ?, ').join('')}updated_at = ? where id = ?`,
-  )
-    .bind(...entries.map(([, value]) => value), Date.now(), id)
-    .run().finally(wrote)
-}
-
-export async function allowances(env: Cloudflare.Env, swarm: string) {
-  const { results } = await env.DB.prepare(
-    "select * from budgets where swarm = ? and status = 'active' and token != 'mach' order by coalesce(pulled_at, 0), created_at",
-  )
-    .bind(swarm)
-    .all<Allowance>()
-  return results
-}
-
-export async function keys(env: Cloudflare.Env, swarm: string) {
-  return (await held(env, swarm)).active
-}
-
-export async function drained(env: Cloudflare.Env, swarm: string) {
-  return (await held(env, swarm)).spent
-}
-
-export async function held(env: Cloudflare.Env, swarm: string) {
-  const { results } = await env.DB.prepare(
-    "select * from budgets where swarm = ? and status in ('active', 'spent') and token = 'mach' order by created_at",
-  )
-    .bind(swarm)
-    .all<Allowance>()
-  return { active: results.filter((row) => row.status === 'active'), spent: results.filter((row) => row.status === 'spent') }
-}
-
-export async function retire(env: Cloudflare.Env, swarm: string, used: readonly (readonly [string, string])[]) {
-  const now = Date.now()
-  await env.DB.batch([
-    ...used.map(([id, pulled]) => env.DB.prepare("update budgets set pulled = ?, left_now = '0', next_at = null, status = 'ended', updated_at = ? where id = ?").bind(pulled, now, id)),
-    env.DB.prepare("update budgets set status = 'ended', left_now = '0', next_at = null, updated_at = ? where swarm = ? and status in ('pending', 'active', 'spent')").bind(now, swarm),
-    env.DB.prepare("update pledges set status = 'ended' where swarm = ? and status in ('pending', 'active')").bind(swarm),
-  ]).finally(wrote)
-}
-
-export async function end(env: Cloudflare.Env, swarm: string) {
-  await env.DB.prepare(
-    "update budgets set status = 'ended', next_at = null, updated_at = ? where swarm = ? and status = 'active'",
-  )
-    .bind(Date.now(), swarm)
-    .run().finally(wrote)
-}
-
-export function view(row: Allowance, now = Date.now()): Budget {
-  return {
-    amount: Memo.decimal(BigInt(row.amount)),
-    at: row.created_at,
-    contributor: row.contributor,
-    delivered: Memo.decimal(arrived(row)),
-    detail: row.detail,
-    expiresAt: row.expires_at,
-    id: row.id,
-    left: row.left_now === null ? null : Memo.decimal(BigInt(row.left_now)),
-    nextAt: row.next_at,
-    note: row.note,
-    period: row.period,
-    pulled: Memo.decimal(BigInt(row.pulled)),
-    status:
-      row.status === 'pending'
-        ? 'active'
-        : row.status === 'spent'
-          ? 'ended'
-          : row.status === 'active' && row.expires_at <= now
-            ? 'expired'
-            : row.status === 'active' && row.next_at !== null && row.next_at > now
-              ? 'waiting'
-              : row.status,
-    token: row.token as Budget['token'],
-  }
-}
-
-function periodic(env: Cloudflare.Env, swarm: string) {
-  return env.DB.prepare("select * from budgets where swarm = ? and period > 0 and status != 'pending' order by created_at desc limit 200").bind(swarm)
-}
-
-export async function budgets(env: Cloudflare.Env, swarm: string): Promise<Budget[]> {
-  const { results } = await periodic(env, swarm).all<Allowance>()
-  const now = Date.now()
-  return results.map((row) => view(row, now))
 }
 
 type Weighed = { backers: number; id: string; note: string; weight: number }
@@ -604,10 +260,6 @@ function weighed(results: Weighed[], raised: bigint, steered: ReadonlySet<string
 function weighing(env: Cloudflare.Env, swarm: string) {
   return env.DB.prepare(
     `select note_id as id, min(note) as note, sum(weight) as weight, count(distinct contributor) as backers from (
-      select note_id, note, ${used} as weight, contributor from pledges where swarm = ?1 and status != 'pending' and note_id is not null and ${used} > 0
-      union all
-      select note_id, note, ${keyed} as weight, contributor from budgets where swarm = ?1 and token = 'mach' and status != 'pending' and note_id is not null and ${keyed} > 0
-      union all
       select note_id, note, cast(amount as integer) as weight, contributor from contributions where swarm = ?1 and note_id is not null
       union all
       select note_id, note, cast(amount as integer) as weight, contributor from steers where swarm = ?1 and branch is null
@@ -616,10 +268,8 @@ function weighing(env: Cloudflare.Env, swarm: string) {
 }
 
 export type Ledger = {
-  budgets: Budget[]
   contributions: Contribution[]
   notes: (steered: ReadonlySet<string>) => Note[]
-  pledges: Pledge[]
   reports: { ended_at: number; round: number }[]
   row: Row
 }
@@ -629,35 +279,25 @@ export async function ledger(env: Cloudflare.Env, id: string): Promise<Ledger | 
 }
 
 async function tally(env: Cloudflare.Env, id: string): Promise<Ledger | undefined> {
-  const [found, legacy, held, weights, budgeted, given, reports] = await env.DB.batch<Record<string, unknown>>([
+  const [found, weights, given, reports] = await env.DB.batch<Record<string, unknown>>([
     env.DB.prepare(totals + ' where s.id = ?').bind(id),
-    legacyPledges(env, id),
-    heldPledges(env, id),
     weighing(env, id),
-    periodic(env, id),
     gifts(env, id),
     env.DB.prepare('select round, ended_at from reports where swarm = ? order by round desc limit 40').bind(id),
   ])
   const row = found?.results[0] as Row | undefined
   if (!row) return undefined
   known.add(row.id)
-  const now = Date.now()
   return {
-    budgets: (budgeted?.results as Allowance[]).map((allowance) => view(allowance, now)),
     contributions: (given?.results as Gift[]).map(contribution),
     notes: (steered) => weighed(weights?.results as Weighed[], BigInt(row.raised), steered),
-    pledges: pledged(legacy?.results as Backing[], held?.results as Allowance[]),
     reports: reports?.results as { ended_at: number; round: number }[],
     row,
   }
 }
 
 const backing = `select contributor, amount, note_id, way, at from (
-  select lower(contributor) as contributor, ${used} as amount, note_id, 'pledge' as way, created_at as at from pledges where swarm = ?1 and status != 'pending' and ${used} > 0
-  union all
-  select contributor, ${keyed}, note_id, case when period = 0 then 'pledge' else 'budget' end, created_at from budgets where swarm = ?1 and token = 'mach' and status != 'pending' and contributor is not null and ${keyed} > 0
-  union all
-  select contributor, cast(amount as integer), note_id, case kind when 'transfer' then 'transfer' when 'pull' then 'budget' else 'pledge' end, created_at from contributions where swarm = ?1
+  select contributor, cast(amount as integer) as amount, note_id, 'transfer' as way, created_at as at from contributions where swarm = ?1
   union all
   select lower(contributor), 0, null, 'machine', created_at from hands where swarm = ?1 and contributor is not null and seen_at is not null
 )`

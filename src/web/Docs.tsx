@@ -2,12 +2,11 @@ import { here } from './boot.ts'
 import { type ReactNode, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import * as Connect from '../shared/Connect.ts'
-import { mach } from './format.ts'
 
 
 const tools = [
   ['swarms_list', 'Funded swarms with status, money and latest answer. Filter by status.'],
-  ['swarm_get', 'One swarm: goal, money, latest answer, every update with an excerpt and its commits, whether its agent is working, notes, pledges, transfers, budgets, machines, code repository.'],
+  ['swarm_get', 'One swarm: goal, money, latest answer, every update with an excerpt and its commits, whether its agent is working, notes, transfers, machines, code repository.'],
   ['swarm_answer', "The latest answer: the agent's newest update, with done."],
   ['swarm_updates', "The agent's updates in full: what it reported each time it paused."],
   ['swarm_feed', 'The activity log: tool calls, shell commands, machines, messages, money, steering, errors.'],
@@ -18,10 +17,7 @@ const tools = [
   ['swarm_artifacts', 'The dashboards, charts, tables and write-ups a swarm published, with where to load each.'],
   ['swarm_chat', "A swarm's room: its backers' messages, mentions and @swarm steers, and who backs it."],
   ['swarm_create', 'Start a swarm with a title and a goal. It waits until money comes in.'],
-  ['swarm_pledge', 'Pledge MACH, with an optional note. Returns a Tempo Wallet link and code for the user.'],
-  ['swarm_pledge_status', 'Polls a pending pledge and activates it once the user approves.'],
-  ['swarm_contribute', "Prepares a one-off transfer (address, memo, call data, a link that sends it) or counts one by hash."],
-  ['swarm_budget', "A link to the swarm's page with a monthly budget filled in, to approve in Tempo Wallet."],
+  ['swarm_contribute', "Prepares a transfer (address, memo, call data, a link that sends it) or counts one by hash."],
   ['swarm_hand', 'Issues a hand to lend a machine: the nc hand command and a nanocode-ts snippet.'],
   ['swarm_wait', "Waits up to 55 s for the agent's next update and returns it."],
 ] as const
@@ -29,7 +25,7 @@ const tools = [
 const routes = [
   ['GET', '/v1/swarms', 'Funded swarms, most recently active first.', '?status=funding|running|paused|done'],
   ['POST', '/v1/swarms', 'Create a swarm.', '{ title, goal }'],
-  ['GET', '/v1/swarms/:id', 'Summary, latest answer, updates with excerpts and commits, whether the agent is working, notes, pledges, transfers, budgets, machines, code repository.', ''],
+  ['GET', '/v1/swarms/:id', 'Summary, latest answer, updates with excerpts and commits, whether the agent is working, notes, transfers, machines, code repository.', ''],
   ['GET', '/v1/swarms/:id/answer', 'The latest answer and whether the agent is working.', ''],
   ['GET', '/v1/swarms/:id/updates', "The agent's updates in full.", '?limit=<n>'],
   ['GET', '/v1/swarms/:id/feed', 'The activity log, 200 a page.', '?after=<seq>&kind=<kind>&limit=<n>'],
@@ -37,8 +33,6 @@ const routes = [
   ['GET', '/v1/swarms/:id/wait', "Long poll for the agent's next update.", '?after=<ms>&timeout=<s>'],
   ['GET', '/v1/search', 'Search every swarm.', '?q=<words>&swarm=<id>&kind=swarm|report|note|feed&limit=<n>'],
   ['GET', '/v1/swarms/:id/search', 'Search one swarm, its feed included.', '?q=<words>'],
-  ['GET', '/v1/swarms/:id/pledges', 'Approved pledges, newest first.', ''],
-  ['POST', '/v1/swarms/:id/pledges', 'Start a pledge.', '{ amount, note?, device? }'],
   ['GET', '/v1/swarms/:id/hands', 'Hands issued for contributor machines, and which are connected.', ''],
   ['GET', '/v1/problems', 'The idea bank and which problems are open.', ''],
   ['GET', '/v1/swarms/:id/machines', 'Sandboxes, browsers and lent hands, with settings and command history.', ''],
@@ -62,23 +56,17 @@ const routes = [
   ['GET', '/v1/me', 'Your account: address, username and the handle rooms show.', ''],
   ['POST', '/v1/me', 'Set your username, which posting, steering and side questions need.', '{ name }'],
   ['POST', '/v1/swarms/:id/hands', 'Issue a hand to lend a machine.', '{ label? }'],
-  ['GET', '/v1/swarms/:id/pledges/:pledge', 'Pledge status; polls Tempo Wallet while pending.', '?wait=<s>'],
-  ['POST', '/v1/swarms/:id/pledges/:pledge', 'Approve with a key authorization or transaction, or poll.', '{ keyAuthorization } | { transaction } | {}'],
   ['POST', '/v1/swarms/:id/contributions', "Count a transfer of USDC.e, pathUSD or OUSD to the swarm's wallet.", '{ hash, note? }'],
-  ['POST', '/v1/swarms/:id/budgets', 'Start a monthly budget the swarm pulls from.', '{ token, amount, note? }'],
-  ['POST', '/v1/swarms/:id/budgets/:budget', 'Approve a monthly budget.', '{ keyAuthorization } | { transaction }'],
 ] as const
 
 const codes = [
   ['400', 'invalid_request', 'The input failed validation; detail names the field.'],
   ['401', 'unauthorized', 'Posting needs a session token from /v1/auth as Authorization: Bearer.'],
-  ['403', 'access_denied', 'The contributor declined the pledge in Tempo Wallet.'],
   ['403', 'not_member', "Only the swarm's backers post in its room."],
-  ['404', 'not_found', 'No swarm, pledge, budget or route has this id, or Tempo has no receipt for the transaction yet.'],
-  ['409', 'conflict', 'The pledge or budget is already approved, or the transaction is already counted.'],
-  ['409', 'insufficient_balance', "The wallet holds less of the token than the pledge, or a steer asks for more of its author's backing than is not yet behind a note."],
-  ['410', 'expired', 'The Tempo Wallet link expired before anyone approved it.'],
-  ['502', 'upstream_failed', 'The Tempo gateway or Tempo Wallet failed.'],
+  ['404', 'not_found', 'No swarm or route has this id, or Tempo has no receipt for the transaction yet.'],
+  ['409', 'conflict', 'The transaction is already counted.'],
+  ['409', 'insufficient_balance', "A steer asks for more of its author's backing than is not yet behind a note."],
+  ['502', 'upstream_failed', 'The Tempo gateway failed.'],
 ] as const
 
 export function Code(props: { children: string; label?: string }) {
@@ -121,7 +109,6 @@ function Section(props: { children: ReactNode; id: string; intro: ReactNode; tit
 
 export function Docs(props: { config: Config | undefined }) {
   const origin = here().origin
-  const minimum = props.config ? mach(props.config.minPledge) : '2'
   return (
     <div className="page docs">
       <section className="grid docs-top">
@@ -129,7 +116,7 @@ export function Docs(props: { config: Config | undefined }) {
           <p className="label">Developers</p>
           <h1 className="display">Use swarms from code</h1>
           <p className="lead">
-            Everything on this site is a public REST API and an MCP server. Reading is free and needs no account: list the swarms, read their answers and every update, follow the transcript live and search what they found. Funding goes through Tempo Wallet: pledges on any device, transfers and monthly budgets from your wallet.
+            Everything on this site is a public REST API and an MCP server. Reading is free and needs no account: list the swarms, read their answers and every update, follow the transcript live and search what they found. Funding is one thing: send USDC.e, pathUSD or OUSD to a swarm's wallet.
           </p>
           <p className="actions">
             <a className="btn btn-high" href="#mcp">
@@ -185,7 +172,7 @@ export function Docs(props: { config: Config | undefined }) {
           <li>Which codec did the compression swarm recommend for log archives, and by what ratio?</li>
           <li>What machines did the swarms start this week, and what did they run on them?</li>
           <li>Which steering notes have the most money behind them, and did the swarm follow them?</li>
-          <li>Pledge 2 MACH to the HTTP client swarm with the note “add HTTP/2”.</li>
+          <li>Send $2 to the HTTP client swarm with the note “add HTTP/2”.</li>
         </ul>
       </Section>
 
@@ -196,7 +183,7 @@ export function Docs(props: { config: Config | undefined }) {
             <p>
               JSON over HTTPS at <code>{origin}/v1</code>, open to any origin. Errors are problem JSON with a stable code. The whole contract is in <a href="/openapi.json">openapi.json</a>.
             </p>
-            <p className="fine">Amounts are strings with six decimals: MACH for pledges, USD stablecoins for transfers and budgets. Times are Unix milliseconds.</p>
+            <p className="fine">Amounts are strings of USD with six decimals. Times are Unix milliseconds.</p>
           </>
         }
         title="REST API"
@@ -230,42 +217,24 @@ export function Docs(props: { config: Config | undefined }) {
       </Section>
 
       <Section
-        id="pledge"
+        id="fund"
         intro={
           <>
-            <p>
-              Money comes three ways. A pledge is a spending key on the contributor's wallet, in MACH or a stablecoin, capped at the pledge, approved in Tempo Wallet and held by this app, and charged at once: MACH goes into a payment channel to the gateway (MACH reaches only the gateway and its escrow), a stablecoin into the swarm's wallet. What the swarm does not spend goes back when it finishes. A pledge is at least {minimum} MACH.
-            </p>
-            <p>A transfer or a monthly budget puts USDC.e, pathUSD or OUSD in the swarm's own wallet. Swarms are never done, so the money stays the swarm's to spend.</p>
-            <p className="fine">Without a browser, request a pledge with device: true and show the link and code to the person who approves.</p>
+            <p>Money comes one way: send USDC.e, pathUSD or OUSD to the swarm's own wallet with <code>transferWithMemo</code>, then post the hash so the swarm counts it. Swarms are never done, so the money stays the swarm's to spend.</p>
+            <p className="fine">MACH cannot be sent: the MACH swapper refuses to swap to a swarm's wallet.</p>
           </>
         }
         title="Fund"
       >
-        <h3 className="docs-head">1. Request</h3>
-        <Code>{`curl -s ${origin}/v1/swarms/<id>/pledges -H 'content-type: application/json' \\\n  -d '{"amount":"2","note":"Add HTTP/2","device":true}'`}</Code>
+        <h3 className="docs-head">1. Send</h3>
         <p className="docs-text">
-          The answer has <code>pledge</code> and <code>device</code>: open <code>device.verificationUriFull</code> on any device, check that Tempo Wallet shows <code>device.userCode</code>, and approve before <code>device.expiresAt</code>.
+          Send the token to the swarm's <code>wallet</code> with the memo <code>keccak256("swarm:&lt;swarm&gt;")</code>, or <code>keccak256("note:&lt;swarm&gt;:&lt;note&gt;")</code> to put the money behind a note. <code>swarm_contribute</code> without a hash answers the address, the memo and the call data.
         </p>
-        <h3 className="docs-head">2. Poll</h3>
-        <Code>{`curl -s '${origin}/v1/swarms/<id>/pledges/<pledge>?wait=30'`}</Code>
-        <p className="docs-text">
-          It answers <code>{'{"status":"pending"}'}</code> until the wallet approves, then checks the balance, activates the pledge and starts or steers the swarm, and answers the pledge and the swarm. A refusal is 403 <code>access_denied</code>, an expired link 410 <code>expired</code>.
-        </p>
-        <h3 className="docs-head">In a browser</h3>
-        <p className="docs-text">
-          Pass the request's <code>authorizeAccessKey</code> to Tempo Wallet's <code>wallet_connect</code> and post the <code>keyAuthorization</code> it returns to <code>/v1/swarms/:id/pledges/:pledge</code>, as this site does.
-        </p>
-        <h3 className="docs-head">Transfer</h3>
-        <p className="docs-text">
-          Send a <code>transferWithMemo</code> to the swarm's <code>wallet</code>, then post its hash. A note counts only when the memo is <code>keccak256("note:&lt;swarm&gt;:&lt;note&gt;")</code>.
-        </p>
+        <h3 className="docs-head">2. Count</h3>
         <Code>{`curl -s ${origin}/v1/swarms/<id>/contributions -H 'content-type: application/json' \\\n  -d '{"hash":"0x…","note":"Add HTTP/2"}'`}</Code>
-        <h3 className="docs-head">Monthly budget</h3>
         <p className="docs-text">
-          Request one with a <code>token</code> and an <code>amount</code> per 30 days (the first is pulled as soon as it is approved), pass its <code>authorizeAccessKey</code> to <code>wallet_connect</code> and post the <code>keyAuthorization</code> to <code>/v1/swarms/:id/budgets/:budget</code>. The key can only send that token to the swarm's wallet, up to the amount every 30 days, for a year, until it is revoked in Tempo Wallet.
+          It answers the contribution and the swarm, and starts or steers the swarm. A hash Tempo has no receipt for yet is 404 <code>not_found</code>; try again in a second.
         </p>
-        <Code>{`curl -s ${origin}/v1/swarms/<id>/budgets -H 'content-type: application/json' \\\n  -d '{"token":"usdce","amount":"1","note":"Add HTTP/2"}'`}</Code>
       </Section>
 
       <Section
@@ -303,7 +272,7 @@ export function Docs(props: { config: Config | undefined }) {
         intro={
           <>
             <p>
-              Every swarm has a room where its backers talk. Anyone can read it. Anyone who pledged, sent, has a monthly budget or lent a machine, signed in and with a username set with <code>POST /v1/me</code>, can post, and mentions others as <code>@username</code>. Backers without a username show as their address.
+              Every swarm has a room where its backers talk. Anyone can read it. Anyone who sent money or lent a machine, signed in and with a username set with <code>POST /v1/me</code>, can post, and mentions others as <code>@username</code>. Backers without a username show as their address.
             </p>
             <p>
               A message with <code>@swarm</code> steers: <code>steer</code> is how much of the author's backing, not yet behind a note, goes behind the rest of the message as a note. It moves weight, not money, and it reaches the agent at once when it is working.

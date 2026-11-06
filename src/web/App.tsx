@@ -1,7 +1,7 @@
 import { lazy, type MouseEvent, Suspense, useEffect, useRef, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
-import { mach, short } from './format.ts'
+import { short, usd } from './format.ts'
 import { message, remember, remembered, useConfig, useWallet } from './hooks.ts'
 import * as Api from './api.ts'
 import { Home, Join } from './Home.tsx'
@@ -84,12 +84,12 @@ function WalletButton(props: { config: Config | undefined }) {
         {wallet.pending ? (
           <span aria-busy="true" className="btn btn-medium wallet" onClick={() => setOpen(!open)}>
             <span>{wallet.account ? '@' + wallet.account.handle : short(wallet.address)}</span>
-            {wallet.balance !== undefined && <span className="wallet-balance">{mach(decimal(wallet.balance))} MACH</span>}
+            {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
           </span>
         ) : (
           <a className="btn btn-medium wallet" href={props.config ? `${props.config.explorer}/address/${wallet.address}` : undefined} onClick={tap} rel="noreferrer" target="_blank" title={wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : 'Your Tempo Wallet'}>
             <span>{wallet.account?.name ? `@${wallet.account.name}` : short(wallet.address)}</span>
-            {wallet.balance !== undefined && <span className="wallet-balance">{mach(decimal(wallet.balance))} MACH</span>}
+            {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
           </a>
         )}
         <div className="wallet-drop">

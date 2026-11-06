@@ -7,12 +7,12 @@ import * as Mention from '../shared/Mention.ts'
 import * as Api from './api.ts'
 import { percent, usd, minute } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
-import { code } from './Pledge.tsx'
+import { code } from './Contribute.tsx'
 import { seated, Steering, useRoster } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 
-const ways = { budget: 'daily budget', machine: 'machine', pledge: 'pledge', transfer: 'transfer' } as const satisfies Record<Way, string>
+const ways = { machine: 'machine', transfer: 'transfer' } as const satisfies Record<Way, string>
 
 export function tint(address: string) {
   let value = 0

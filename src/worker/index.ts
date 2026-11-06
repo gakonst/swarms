@@ -149,17 +149,6 @@ app.post('/api/swarms/:id/contributions', async (c) =>
   Rest.contributed(await Operations.contribute(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') })),
 )
 
-app.post('/api/swarms/:id/budgets', async (c) =>
-  Problem.respond(await Operations.budget(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }), 201),
-)
-
-app.post('/api/swarms/:id/budgets/:budget', async (c) =>
-  Problem.respond(
-    await Operations.allow(c.env, { ...(await Rest.body(c.req.raw)), budget: c.req.param('budget'), swarm: c.req.param('id') }),
-    201,
-  ),
-)
-
 app.get('/api/swarms/:id/artifacts', async (c) =>
   Problem.respond(await Operations.artifacts(c.env, { swarm: c.req.param('id') }, new URL(c.req.url).origin)),
 )
@@ -224,20 +213,6 @@ app.post('/api/swarms/:id/hands', async (c) =>
   Problem.respond(
     await Operations.hand(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)),
     201,
-  ),
-)
-
-app.post('/api/swarms/:id/pledges', async (c) =>
-  Problem.respond(await Operations.pledge(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }), 201),
-)
-
-app.post('/api/swarms/:id/pledges/:pledge', async (c) =>
-  Rest.settled(
-    await Operations.approve(c.env, {
-      ...(await Rest.body(c.req.raw)),
-      pledge: c.req.param('pledge'),
-      swarm: c.req.param('id'),
-    }),
   ),
 )
 

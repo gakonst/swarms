@@ -1,5 +1,5 @@
 import * as Answer from '../shared/Answer.ts'
-import type { Account, Artifact, Branch, Branches, Code, Budget, BudgetRequested, Budgeted, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Pledge, Pledged, Posted, Requested, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Posted, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -16,7 +16,7 @@ const minute = 60_000
 
 const started = Date.now()
 
-export const balances: Record<Currency, bigint> = scene.has('broke') ? { mach: 0n, ousd: 0n, pathusd: 0n, usdce: 0n } : { mach: 1_250_000n, ousd: 420_000n, pathusd: 3_000_000n, usdce: 8_750_000n }
+export const balances: Record<Token, bigint> = scene.has('broke') ? { ousd: 0n, pathusd: 0n, usdce: 0n } : { ousd: 420_000n, pathusd: 3_000_000n, usdce: 8_750_000n }
 
 const wallet = '0x3c93fC3eA108A4E738c10f64c4360d53C9415e5F'
 
@@ -31,10 +31,6 @@ const people = [
   '0x2bd8e1f0c3a4b5d6e7f8091a2b3c4d5e6f7a8b9c',
   '0x8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f',
 ] as const satisfies readonly `0x${string}`[]
-
-const requested = new Map<string, { amount: string; note: string | null; token: Currency }>()
-
-const allowances = new Map<string, { amount: string; note: string | null; token: Token }>()
 
 function at(minutes: number) {
   return started - minutes * minute
@@ -58,9 +54,7 @@ function build(input: {
   hands?: readonly string[]
   id: string
   lines: readonly Line[]
-  budgets?: readonly (readonly [number, string, Token, string, string, Budget['status'], number, string | null])[]
-  gifts?: readonly (readonly [number, string, Token, number, string | null, Contribution['kind']])[]
-  pledges: readonly (readonly [number, string, number, string | null, Currency?])[]
+  gifts?: readonly (readonly [number, string, Token, number, string | null])[]
   problem?: string | undefined
   resting?: boolean
   script?: readonly Line[]
@@ -71,41 +65,12 @@ function build(input: {
   title: string
   updates: readonly (readonly [number, string, string])[]
 }): Live {
-  const pledges = input.pledges.map(([person, amount, minutes, note, token], index): Pledge => ({
+  const contributions = (input.gifts ?? []).map(([person, amount, token, minutes, note], index): Contribution => ({
     amount,
     at: at(minutes),
-    contributor: people[person] ?? visitor,
-    delivered: amount,
-    id: id(`${input.id}:${index}`),
-    note,
-    spent: '0',
-    status: 'active',
-    token: token ?? 'mach',
-  }))
-  const contributions = (input.gifts ?? []).map(([person, amount, token, minutes, note, kind], index): Contribution => ({
-    amount,
-    at: at(minutes),
-    budget: kind === 'pull' ? id(`${input.id}:budget:${person}`) : null,
     contributor: people[person] ?? visitor,
     hash: `0x${id(`${input.id}:gift:${index}`).repeat(8)}`,
-    kind,
     note,
-    token,
-  }))
-  const budgets = (input.budgets ?? []).map(([person, amount, token, pulled, left, status, minutes, note]): Budget => ({
-    amount,
-    at: at(minutes),
-    contributor: people[person] ?? visitor,
-    delivered: pulled,
-    detail: status === 'waiting' ? 'Used up for this period.' : status === 'revoked' ? 'Revoked in Tempo Wallet.' : null,
-    expiresAt: started + 29 * 86_400_000,
-    id: id(`${input.id}:budget:${person}`),
-    left,
-    nextAt: status === 'waiting' ? started + 5 * 3_600_000 : null,
-    note,
-    period: 86_400,
-    pulled,
-    status,
     token,
   }))
   const feed = input.lines.map(([kind, text, detail, who], index): Entry => ({
@@ -118,14 +83,12 @@ function build(input: {
     who: who ?? null,
   }))
   return settle({
-    budgets,
     chat: [],
     contributions,
     contributors: 0,
     createdAt: at(input.age),
     code: input.code ?? null,
     cursor: 0,
-    daily: '0',
     feed,
     flicker: input.flicker ?? [],
     goal: input.goal,
@@ -134,7 +97,6 @@ function build(input: {
     machines: 0,
     next: started + 1200,
     notes: [],
-    pledges,
     pool: '0',
     problem: input.problem ?? null,
     resting: input.resting ?? false,
@@ -156,27 +118,19 @@ function build(input: {
 
 function settle(swarm: Live) {
   const given = swarm.contributions.reduce((sum, gift) => sum + units(gift.amount), 0n)
-  const raised = swarm.pledges.reduce((sum, pledge) => sum + units(pledge.amount), 0n) + given
-  let left = units(swarm.spent)
-  for (const pledge of swarm.pledges) {
-    const spent = left < units(pledge.amount) ? left : units(pledge.amount)
-    left -= spent
-    pledge.spent = decimal(spent)
-    pledge.status = swarm.status === 'done' ? 'ended' : spent === units(pledge.amount) ? 'spent' : 'active'
-  }
+  const raised = given
   swarm.raised = decimal(raised)
   swarm.remaining = decimal(raised > units(swarm.spent) ? raised - units(swarm.spent) : 0n)
-  swarm.contributors = new Set([...swarm.pledges.map((pledge) => pledge.contributor), ...swarm.contributions.map((gift) => gift.contributor), ...swarm.budgets.flatMap((budget) => (budget.contributor ? [budget.contributor] : []))]).size
-  swarm.daily = decimal(swarm.budgets.filter((budget) => budget.status === 'active' || budget.status === 'waiting').reduce((sum, budget) => sum + units(budget.amount), 0n))
+  swarm.contributors = new Set(swarm.contributions.map((gift) => gift.contributor)).size
   swarm.pool = decimal(given > units(swarm.spent) / 2n ? given - units(swarm.spent) / 2n : 0n)
   swarm.machines = swarm.hands.filter((hand) => hand.connected).length
-  const groups = new Map<string, (Pledge | Contribution | Backing)[]>()
-  for (const backing of [...swarm.pledges, ...swarm.contributions, ...swarm.steers]) if (backing.note) groups.set(backing.note, [...(groups.get(backing.note) ?? []), backing])
+  const groups = new Map<string, (Contribution | Backing)[]>()
+  for (const backing of [...swarm.contributions, ...swarm.steers]) if (backing.note) groups.set(backing.note, [...(groups.get(backing.note) ?? []), backing])
   swarm.notes = [...groups]
-    .map(([note, pledges]): Note => {
-      const weight = pledges.reduce((sum, pledge) => sum + units(pledge.amount), 0n)
+    .map(([note, backings]): Note => {
+      const weight = backings.reduce((sum, backing) => sum + units(backing.amount), 0n)
       return {
-        backers: new Set(pledges.map((pledge) => pledge.contributor)).size,
+        backers: new Set(backings.map((backing) => backing.contributor)).size,
         id: id(`${swarm.id}:${note}`),
         note,
         share: raised > 0n ? Number((weight * 10_000n) / raised) / 10_000 : 0,
@@ -271,17 +225,23 @@ const fixtures: Live[] = [
       [150, 'Harness and shortlist.\n\nThe gateway lists 31 text models; 19 call tools and qualify. I built the harness on two python:3.12-slim machines and ran a 20-task smoke test on each model.\n\nShortlist for full runs: GLM-5.3, Kimi K2.7, DeepSeek V4.1 Flash, Qwen3-Coder, gpt-oss-120b, Llama 4 Scout.\nDropped: 13 models that solved fewer than 2 of 20.\n\nSpent 0.41 MACH, most of it on the smoke test.', '0.412800'],
       [48, 'SWE-bench Lite.\n\nFour subagents, each on its own machine, ran 75 tasks per model.\n\n| Model | Solved | Rate | MACH per solved task |\n| --- | --- | --- | --- |\n| GLM-5.3 | 124/300 | 41% | 0.0020 |\n| Kimi K2.7 | 118/300 | 39% | 0.0031 |\n| DeepSeek V4.1 | 109/300 | 36% | 0.0006 |\n| gpt-oss-120b | 92/300 | 31% | 0.0011 |\n\nQwen3-Coder timed out on 40 tasks; it gets a dedicated machine next, as the top note asks.', '0.981200'],
     ],
-    budgets: [
-      [2, '1.000000', 'usdce', '2.400000', '0.360000', 'active', 160, 'Report cost per solved task, not per token'],
-      [5, '0.500000', 'pathusd', '1.500000', '0.000000', 'waiting', 120, null],
-      [7, '0.250000', 'usdce', '0.250000', '0.000000', 'revoked', 90, 'Skip models without tool calling'],
-    ],
     gifts: [
-      [0, '2.000000', 'usdce', 140, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow', 'transfer'],
-      [2, '0.640000', 'usdce', 70, 'Report cost per solved task, not per token', 'pull'],
-      [5, '0.500000', 'pathusd', 52, null, 'pull'],
-      [3, '0.250000', 'ousd', 31, 'Publish the harness as a repo anyone can fork', 'transfer'],
-      [2, '0.400000', 'usdce', 12, 'Report cost per solved task, not per token', 'pull'],
+      [0, '2.000000', 'usdce', 140, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow'],
+      [2, '0.640000', 'usdce', 70, 'Report cost per solved task, not per token'],
+      [5, '0.500000', 'pathusd', 52, null],
+      [3, '0.250000', 'ousd', 31, 'Publish the harness as a repo anyone can fork'],
+      [2, '0.400000', 'usdce', 12, 'Report cost per solved task, not per token'],
+      [1, '1.000000', 'usdce', 180, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow'],
+      [2, '0.500000', 'usdce', 170, 'Report cost per solved task, not per token'],
+      [3, '0.250000', 'usdce', 150, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow'],
+      [4, '0.600000', 'usdce', 120, 'Publish the harness as a repo anyone can fork'],
+      [5, '0.250000', 'usdce', 95, null],
+      [6, '0.700000', 'usdce', 60, 'Report cost per solved task, not per token'],
+      [7, '0.250000', 'usdce', 40, 'Skip models without tool calling'],
+      [8, '0.150000', 'usdce', 22, 'Try a second pass at temperature 0'],
+      [0, '0.300000', 'usdce', 9, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow'],
+      [1, '0.250000', 'usdce', 3, 'Report cost per solved task, not per token'],
+      [0, '1.000000', 'usdce', 100, null],
     ],
     id: 'bench-coders',
     problem: 'coding-models',
@@ -291,19 +251,6 @@ const fixtures: Live[] = [
       ['steer', 'Steered the agent toward "Include Qwen3-Coder and Kimi K2.7 even if they are slow"', '1.55 MACH behind it, 36.5% of everything contributed'],
       ['status', 'Published the artifact "Solved tasks per dollar"', 'Which model gets the most done for the money.\n/a/bench-coders/solved-per-dollar/chart.svg'],
       ...benchmark,
-    ],
-    pledges: [
-      [1, '1.000000', 180, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow'],
-      [2, '0.500000', 170, 'Report cost per solved task, not per token'],
-      [3, '0.250000', 150, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow'],
-      [4, '0.600000', 120, 'Publish the harness as a repo anyone can fork'],
-      [5, '0.250000', 95, null],
-      [6, '0.700000', 60, 'Report cost per solved task, not per token'],
-      [7, '0.250000', 40, 'Skip models without tool calling'],
-      [8, '0.150000', 22, 'Try a second pass at temperature 0'],
-      [0, '0.300000', 9, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow', 'usdce'],
-      [1, '0.250000', 3, 'Report cost per solved task, not per token'],
-      [0, '1.000000', 100, null],
     ],
     script: benchmark,
     since: 186,
@@ -317,16 +264,15 @@ const fixtures: Live[] = [
     goal: 'Find the fastest and the cheapest way to parse a terabyte of newline-delimited JSON logs on rented machines. Compare serde_json, simd-json and sonic-rs across machine sizes and report GiB/s and MACH per TiB.',
     hands: ['sb-91e0aa4f', 'sb-5c2b7d10'],
     updates: [[31, 'Generated 64 GiB of synthetic access logs and a harness that streams them through each parser.\nsonic-rs 1.55 GiB/s, simd-json 1.36 GiB/s, serde_json 0.41 GiB/s on 8 CPUs.', '0.180000']],
-    budgets: [[4, '0.250000', 'pathusd', '0.180000', '0.070000', 'active', 40, 'Measure cost per GiB, not just throughput']],
-    gifts: [[4, '0.180000', 'pathusd', 38, 'Measure cost per GiB, not just throughput', 'pull']],
+    gifts: [
+      [4, '0.180000', 'pathusd', 38, 'Measure cost per GiB, not just throughput'],
+      [3, '0.500000', 'usdce', 68, 'Measure cost per GiB, not just throughput'],
+      [5, '0.250000', 'usdce', 30, null],
+      [6, '0.100000', 'usdce', 12, 'Include serde_json as the baseline'],
+    ],
     id: 'json-terabyte',
     problem: 'json-terabyte',
     lines: [['status', 'Started working with $0.62 to spend.'], ...parser],
-    pledges: [
-      [3, '0.500000', 68, 'Measure cost per GiB, not just throughput'],
-      [5, '0.250000', 30, null],
-      [6, '0.100000', 12, 'Include serde_json as the baseline'],
-    ],
     script: parser,
     since: 66,
     spent: '0.232100',
@@ -341,7 +287,9 @@ const fixtures: Live[] = [
     updates: [],
     id: 'rust-book-el',
     lines: [['status', 'Started working with $0.60 to spend.'], ...translation],
-    pledges: [[2, '0.600000', 29, 'Keep code blocks in English']],
+    gifts: [
+      [2, '0.600000', 'usdce', 29, 'Keep code blocks in English'],
+    ],
     script: translation,
     since: 28,
     spent: '0.120000',
@@ -361,9 +309,9 @@ const fixtures: Live[] = [
       ['message', 'Saved the guide to field-guide/dex.md (11 pages).'],
       ['status', 'Waiting for money: $0.0038 is payable now, less than one model call holds. New money keeps it going.'],
     ],
-    pledges: [
-      [4, '0.500000', 390, 'Explain fees with real transactions'],
-      [7, '0.300000', 300, null],
+    gifts: [
+      [4, '0.500000', 'usdce', 390, 'Explain fees with real transactions'],
+      [7, '0.300000', 'usdce', 300, null],
     ],
     spent: '0.796210',
     status: 'paused',
@@ -375,8 +323,7 @@ const fixtures: Live[] = [
     updates: [],
     id: 'speedrun-t4',
     problem: 'small-model-math',
-    lines: [['status', 'Created. The first pledge starts its agent.']],
-    pledges: [],
+    lines: [['status', 'Created. The first contribution starts its agent.']],
     spent: '0',
     status: 'funding',
     title: 'The nanoGPT speedrun on one T4',
@@ -396,10 +343,10 @@ const fixtures: Live[] = [
       ['message', 'Final report written. Everything the goal asked for is answered.'],
       ['status', 'Resting: the agent found nothing worth spending on, so the swarm stopped asking it and spends nothing. $0.052 is kept for later; a note or new money wakes it.'],
     ],
-    pledges: [
-      [5, '1.000000', 1430, 'Separate sandwiches from arbitrage'],
-      [8, '0.500000', 1300, null],
-      [1, '0.500000', 1100, 'Separate sandwiches from arbitrage'],
+    gifts: [
+      [5, '1.000000', 'usdce', 1430, 'Separate sandwiches from arbitrage'],
+      [8, '0.500000', 'usdce', 1300, null],
+      [1, '0.500000', 'usdce', 1100, 'Separate sandwiches from arbitrage'],
     ],
     resting: true,
     spent: '1.948120',
@@ -422,9 +369,9 @@ function steady<T>(value: T, ms = 160) {
 
 const reasons = {
   idle: 'Resting: the agent found nothing worth spending on, so the swarm stopped asking it and spends nothing. $0.052 is kept for later; a note or new money wakes it.',
-  costly: "Waiting for money: the agent's next model call holds $0.2147, more than the $0.2083 any one contribution can pay at once. A contribution or budget pull that can cover it starts it again.",
+  costly: "Waiting for money: the agent's next model call holds $0.2147, more than the $0.2083 any one contribution can pay at once. A contribution that can cover it starts it again.",
   money: 'Waiting for money: $0.0038 is payable now, less than one model call holds. New money keeps it going.',
-  rest: 'The agent hit 3 errors in a row, so the swarm stopped to rest. New money restarts it, and so does the next budget pull at 16:37 UTC.',
+  rest: 'The agent hit 3 errors in a row, so the swarm stopped to rest. New money restarts it.',
 } as const
 
 function why(swarm: Live): Why | null {
@@ -451,7 +398,6 @@ function summary(swarm: Live): Summary {
     answer: latest ? { at: latest.at, done: latest.done, text: latest.text } : null,
     contributors: swarm.contributors,
     createdAt: swarm.createdAt,
-    daily: swarm.daily,
     goal: swarm.goal,
     id: swarm.id,
     machines: swarm.machines,
@@ -472,13 +418,11 @@ function summary(swarm: Live): Summary {
 function detail(swarm: Live): Detail {
   return {
     ...summary(swarm),
-    budgets: swarm.budgets,
     code: swarm.code,
     contributions: swarm.contributions,
     feed: swarm.feed.slice(-200),
     hands: swarm.hands,
     notes: swarm.notes,
-    pledges: swarm.pledges,
     reason: reason(swarm),
     why: reason(swarm) ? why(swarm) : null,
     updates: swarm.updates,
@@ -489,19 +433,15 @@ function detail(swarm: Live): Detail {
 export function config(): Promise<Config> {
   return steady({
     auth: '/v1/auth',
-    budget: { days: 365, max: '100.000000', min: '2.000000', period: 2_592_000 },
     chainId: 4217,
     explorer: 'https://explore.tempo.xyz',
     gateway: 'https://gateway.tempo-dev.workers.dev',
-    mach: '0x20c000000000000000000000f37de3740adec032',
-    minPledge: '0.250000',
     reserve: '0.050000',
     rpc: 'https://rpc.tempo.xyz',
     tokens: [
-      { address: '0x20c000000000000000000000f37de3740ADec032', id: 'mach', pool: false, symbol: 'MACH' },
-      { address: '0x20c0000000000000000000006a37DA5C996874BE', id: 'ousd', pool: true, symbol: 'OUSD' },
-      { address: '0x20c0000000000000000000000000000000000000', id: 'pathusd', pool: true, symbol: 'pathUSD' },
-      { address: '0x20C000000000000000000000b9537d11c60E8b50', id: 'usdce', pool: true, symbol: 'USDC.e' },
+      { address: '0x20c0000000000000000000006a37DA5C996874BE', id: 'ousd', symbol: 'OUSD' },
+      { address: '0x20c0000000000000000000000000000000000000', id: 'pathusd', symbol: 'pathUSD' },
+      { address: '0x20C000000000000000000000b9537d11c60E8b50', id: 'usdce', symbol: 'USDC.e' },
     ],
   })
 }
@@ -601,31 +541,9 @@ export function live(key: string, listener: (event: LiveEvent) => void) {
 
 export function create(input: { goal: string; problem?: string; title: string }) {
   const key = id(`${input.title}:${Date.now()}`)
-  const swarm = build({ age: 0, goal: input.goal, id: key, problem: input.problem, lines: [['status', 'Created. The first pledge starts its agent.']], pledges: [], spent: '0', status: 'funding', title: input.title, updates: [] })
+  const swarm = build({ age: 0, goal: input.goal, id: key, problem: input.problem, lines: [['status', 'Created. The first contribution starts its agent.']], spent: '0', status: 'funding', title: input.title, updates: [] })
   fixtures.unshift(swarm)
   return delay(summary(swarm), 400)
-}
-
-export async function pledge(key: string, input: { amount: string; note?: string; token: Currency }): Promise<Requested> {
-  await find(key)
-  const pledge = id(`pledge:${key}:${Date.now()}`)
-  requested.set(pledge, { amount: decimal(units(input.amount)), note: input.note?.trim() || null, token: input.token })
-  return delay({ authorizeAccessKey: {}, pledge }, 300)
-}
-
-export async function confirm(key: string, pledge: string): Promise<Pledged> {
-  const swarm = await find(key)
-  const request = requested.get(pledge)
-  if (!request) throw Object.assign(new Error('No pending pledge has this id.'), { code: 'not_found', status: 404 })
-  if (units(request.amount) > balances[request.token]) throw Object.assign(new Error('Your wallet holds less than the pledge.'), { code: 'insufficient_balance', status: 409 })
-  requested.delete(pledge)
-  const pledged: Pledge = { amount: request.amount, at: Date.now(), contributor: visitor, delivered: request.amount, id: pledge, note: request.note, spent: '0', status: 'active', token: request.token }
-  swarm.pledges.push(pledged)
-  if (request.note) swarm.steered.add(request.note)
-  push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} pledged ${request.amount} MACH${request.note ? ` behind "${request.note}"` : ''}.`, null, Date.now())
-  begin(swarm)
-  settle(swarm)
-  return delay({ pledge: pledged, status: 'active', swarm: summary(swarm) }, 600)
 }
 
 function begin(swarm: Live) {
@@ -640,33 +558,13 @@ export const sent = new Map<string, bigint>()
 
 export async function contribute(key: string, input: { hash: string; note?: string }): Promise<Contributed> {
   const swarm = await find(key)
-  const contribution: Contribution = { amount: decimal(sent.get(input.hash) ?? 250_000n), at: Date.now(), budget: null, contributor: visitor, hash: input.hash as `0x${string}`, kind: 'transfer', note: input.note?.trim() || null, token: 'usdce' }
+  const contribution: Contribution = { amount: decimal(sent.get(input.hash) ?? 250_000n), at: Date.now(), contributor: visitor, hash: input.hash as `0x${string}`, note: input.note?.trim() || null, token: 'usdce' }
   swarm.contributions.push(contribution)
   if (contribution.note) swarm.steered.add(contribution.note)
   push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} sent ${contribution.amount} USDC.e${contribution.note ? ' with a note' : ''}`, contribution.note, Date.now())
   begin(swarm)
   settle(swarm)
   return delay({ contribution, swarm: summary(swarm) }, 500)
-}
-
-export async function budget(key: string, input: { amount: string; note?: string; token: Token }): Promise<BudgetRequested> {
-  await find(key)
-  const budget = id(`budget:${key}:${Date.now()}`)
-  allowances.set(budget, { amount: decimal(units(input.amount)), note: input.note?.trim() || null, token: input.token })
-  return delay({ authorizeAccessKey: {}, budget }, 300)
-}
-
-export async function allow(key: string, budget: string): Promise<Budgeted> {
-  const swarm = await find(key)
-  const request = allowances.get(budget)
-  if (!request) throw Object.assign(new Error('No pending budget has this id.'), { code: 'not_found', status: 404 })
-  allowances.delete(budget)
-  const allowed: Budget = { amount: request.amount, at: Date.now(), contributor: visitor, delivered: request.amount, detail: null, expiresAt: Date.now() + 365 * 86_400_000, id: budget, left: '0.000000', nextAt: null, note: request.note, period: 2_592_000, pulled: request.amount, status: 'active', token: request.token }
-  swarm.budgets.push(allowed)
-  push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} set a budget of ${request.amount} ${request.token === 'usdce' ? 'USDC.e' : request.token === 'pathusd' ? 'pathUSD' : 'OUSD'} a day`, request.note, Date.now())
-  begin(swarm)
-  settle(swarm)
-  return delay({ budget: allowed, swarm: summary(swarm) }, 600)
 }
 
 const board = `<!doctype html>
@@ -922,9 +820,7 @@ function members(swarm: Live): Member[] {
     if (way) known.ways.add(way)
     found.set(address, known)
   }
-  for (const pledge of swarm.pledges) add(pledge.contributor, units(pledge.amount), pledge.note ? units(pledge.amount) : 0n, 'pledge', pledge.at)
-  for (const gift of swarm.contributions) if (gift.kind !== 'pledge') add(gift.contributor, units(gift.amount), gift.note ? units(gift.amount) : 0n, gift.kind === 'transfer' ? 'transfer' : 'budget', gift.at)
-  for (const budget of swarm.budgets) if (budget.contributor) add(budget.contributor, 0n, 0n, 'budget', budget.at)
+  for (const gift of swarm.contributions) add(gift.contributor, units(gift.amount), gift.note ? units(gift.amount) : 0n, 'transfer', gift.at)
   for (const steer of swarm.steers) if (found.has(steer.contributor)) add(steer.contributor, 0n, units(steer.amount), undefined, Date.now())
   for (const put of planted.get(swarm.id) ?? []) if (found.has(put.contributor)) add(put.contributor, 0n, put.amount, undefined, Date.now())
   return [...found].sort((a, b) => a[1].since - b[1].since).map(([address, item]) => ({
@@ -972,7 +868,7 @@ export async function say(key: string, input: { artifact?: boolean; steer?: stri
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   const self = me(swarm, who) as Me
   const seated = swarm.steering === 'team' ? rosters.get(key)?.seats.find((found) => found.address === who.toLowerCase()) : undefined
-  if (!self?.member && !seated) throw fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a daily budget or a lent machine lets you post in its room.')
+  if (!self?.member && !seated) throw fail(403, 'not_member', 'Back this swarm first: money or a lent machine lets you post in its room.')
   const text = input.text.trim()
   if (swarm.steering === 'team' && Mention.steers(text) && !seated) throw fail(403, 'not_member', "Only this swarm's team steers it.")
   let steer: Said['steer'] = null
@@ -999,7 +895,7 @@ export async function btw(key: string, input: { branch?: number; question: strin
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   const asker = me(swarm, who)
   if (!(asker?.member && units(asker.backed) >= 10_000n) && !(swarm.steering === 'team' && rosters.get(key)?.seats.some((found) => found.address === who.toLowerCase())))
-    throw fail(403, 'not_member', "Side questions are paid from the swarm's money, so they take at least $0.01 of your own behind it: a pledge, a transfer or a monthly budget.")
+    throw fail(403, 'not_member', "Side questions are paid from the swarm's money, so they take at least $0.01 of your own sent to it.")
   const branch = input.branch === undefined ? undefined : grown(swarm).find((found) => found.id === input.branch)
   const answer = `${branch ? `${branch.role}, from what it has done on its branch` : `From what it has done so far on "${swarm.title}"`}: ${input.thread.length ? 'building on your earlier questions, ' : ''}it would answer "${input.question.trim()}" from its last update without stopping its work.`
   return delay({ answer, question: input.question.trim() }, 600)

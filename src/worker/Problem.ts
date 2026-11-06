@@ -4,10 +4,8 @@ import type { Problem } from '../shared/Api.ts'
 export type Code =
   | 'access_denied'
   | 'conflict'
-  | 'expired'
   | 'insufficient_balance'
   | 'invalid_request'
-  | 'key_required'
   | 'not_found'
   | 'not_member'
   | 'rate_limited'
@@ -23,14 +21,12 @@ export type Failure = { code: Code; detail: string; status: Status }
 export type Result<value> = { ok: true; value: value } | ({ ok: false } & Failure)
 
 export const codes = {
-  access_denied: 'The contributor declined the pledge in Tempo Wallet.',
-  conflict: 'The swarm is done, the pledge or budget is already approved, or the transaction is already counted.',
-  expired: 'The Tempo Wallet approval expired before anyone approved it.',
-  insufficient_balance: "The wallet holds less of the token than the pledge, so the pledge was dropped, or a steer asks for more than its author's backing not yet behind a note.",
+  access_denied: "Only the swarm's admins manage its team, and only whoever holds more than half of what is behind a branch, or an admin, stops it.",
+  conflict: 'The transaction is already counted, the name is taken, or the branch is already stopped.',
+  insufficient_balance: "A steer asks for more than its author's backing not yet behind a note.",
   invalid_request: 'The input failed validation; detail says which field.',
-  key_required: 'The signed-in account has no spending key for MACH yet, or it is used up or expired; approve one with POST /v1/me/key.',
-  not_found: 'No swarm, pledge, budget or route has this id, or Tempo has no receipt for the transaction yet.',
-  not_member: "Only the swarm's backers (a pledge, a transfer, a daily budget or a lent machine) post in its room or ask it side questions, and on a team-steered swarm only its team steers it.",
+  not_found: 'No swarm, branch or route has this id, or Tempo has no receipt for the transaction yet.',
+  not_member: "Only the swarm's backers (who sent it money or lent it a machine) post in its room or ask it side questions, and on a team-steered swarm only its team steers it.",
   rate_limited: 'Too many side questions from this backer in the last hour.',
   unauthorized: 'Sign in with Tempo Wallet at /v1/auth and send the session token as Authorization: Bearer <token>.',
   unavailable: 'The swarm could not be saved.',

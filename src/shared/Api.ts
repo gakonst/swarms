@@ -10,7 +10,6 @@ export type Summary = {
   answer: Answer | null
   contributors: number
   createdAt: number
-  daily: string
   goal: string
   id: string
   machines: number
@@ -56,44 +55,13 @@ export type Branch = {
 
 export type Branches = { branches: Branch[]; steering: Steering }
 
-export type Pledge = {
-  amount: string
-  at: number
-  contributor: `0x${string}`
-  delivered: string
-  id: string
-  note: string | null
-  spent: string
-  status: 'active' | 'spent' | 'ended'
-  token: Currency
-}
-
 export type Contribution = {
   amount: string
   at: number
-  budget: string | null
   contributor: `0x${string}`
-  hash: `0x${string}`
-  kind: 'transfer' | 'pull' | 'pledge'
+  hash: `0x${string}` | null
   note: string | null
-  token: Token
-}
-
-export type Budget = {
-  amount: string
-  at: number
-  contributor: `0x${string}` | null
-  delivered: string
-  detail: string | null
-  expiresAt: number
-  id: string
-  left: string | null
-  nextAt: number | null
-  note: string | null
-  period: number
-  pulled: string
-  status: 'active' | 'waiting' | 'revoked' | 'expired' | 'ended'
-  token: Token
+  token: Currency
 }
 
 export type Note = {
@@ -150,17 +118,6 @@ export type Prepared = {
   wallet: `0x${string}`
 }
 
-export type Linked = {
-  amount: string
-  days: number
-  link: string
-  note: string | null
-  swarm: string
-  symbol: string
-  token: Currency
-  wallet: `0x${string}`
-}
-
 export type Terms = { channels: string | null; charged: string | null; earned: string | null; price: string | null; requests: number }
 
 export type Lent = { at: number; connected: boolean; label: string; name: string } & Terms
@@ -185,13 +142,11 @@ export type Live =
   | { type: 'end' | 'idle' }
 
 export type Detail = Summary & {
-  budgets: Budget[]
   code: Code | null
   contributions: Contribution[]
   feed: Entry[]
   hands: Hand[]
   notes: Note[]
-  pledges: Pledge[]
   reason: string | null
   updates: Pushed[]
   why: Why | null
@@ -200,42 +155,23 @@ export type Detail = Summary & {
 
 export type Config = {
   auth: string
-  budget: { days: number; max: string; min: string; period: number }
   chainId: number
   explorer: string
   gateway: string
-  mach: `0x${string}`
-  minPledge: string
   reserve: string
   rpc: string
-  tokens: { address: `0x${string}`; id: Currency; pool: boolean; symbol: string }[]
+  tokens: { address: `0x${string}`; id: Token; symbol: string }[]
 }
-
-export type Device = {
-  expiresAt: number
-  interval: number
-  userCode: string
-  verificationUri: string
-  verificationUriFull: string
-}
-
-export type Requested = { authorizeAccessKey: unknown; device?: Device; pledge: string }
-
-export type Pledged = { pledge: Pledge; status: Pledge['status']; swarm: Summary }
-
-export type Pending = { amount: string; device: Device | null; note: string | null; pledge: string; status: 'pending' }
 
 export type Brief = Omit<Update, 'text'> & { excerpt: string }
 
 export type Why = 'unfunded' | 'money' | 'costly' | 'rest' | 'idle'
 
 export type Overview = Summary & {
-  budgets: Budget[]
   code: Code | null
   contributions: Contribution[]
   hands: Hand[]
   notes: Note[]
-  pledges: Pledge[]
   reason: string | null
   updates: Brief[]
   why: Why | null
@@ -265,15 +201,11 @@ export type Waited = {
   working: Working | null
 }
 
-export type BudgetRequested = { authorizeAccessKey: unknown; budget: string }
-
-export type Budgeted = { budget: Budget; swarm: Summary }
-
 export type Contributed = { contribution: Contribution; swarm: Summary }
 
 export type Problem = { code: string; detail: string; status: number }
 
-export type Way = 'pledge' | 'budget' | 'transfer' | 'machine'
+export type Way = 'transfer' | 'machine'
 
 export type Member = {
   address: `0x${string}`

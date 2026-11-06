@@ -175,9 +175,6 @@ a.tile-swarm { text-decoration:none; }
 .chip-on,.chip-on:hover { border-color:var(--grey-800); background:var(--grey-800); color:var(--white); }
 a.quest-step { text-decoration:none; }
 .quest-step em { font-style:normal; }
-.pledge-behind { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; margin-top:12px; padding:10px 12px; border-radius:8px; background:var(--white); font-size:15px; line-height:1.35; overflow-wrap:anywhere; }
-.pledge-behind .label { width:100%; }
-.pledge-behind .btn-minimal { font:11px var(--mono); }
 .tab-count { min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:#d93025; color:var(--white); font-size:10px; line-height:18px; text-align:center; }
 .transcript { display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; border:1px solid #d6decf; border-radius:14px; background:var(--white); }
 .transcript-empty { align-items:center; justify-content:center; gap:4px; padding:28px; text-align:center; }

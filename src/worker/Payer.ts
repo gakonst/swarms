@@ -1,16 +1,12 @@
-import { Challenge, Credential } from 'mppx'
+import { Challenge } from 'mppx'
 import { createJsonChannelStore, Mppx, tempo } from 'mppx/client'
-import { Session } from 'mppx/tempo'
-import { Hex as OxHex } from 'ox'
-import { SignatureEnvelope } from 'ox/tempo'
 import { encodeFunctionData, isAddressEqual } from 'viem'
 import type { Account, Address, Hex } from 'viem'
-import { privateKeyToAccount } from 'viem/accounts'
 import { prepareTransactionRequest, readContract, sendRawTransactionSync, signTransaction } from 'viem/actions'
 import { Transaction } from 'viem/tempo'
 import * as Chain from './Chain.ts'
 
-export type Channel = { at: number; confirmed: boolean; deposit: string; descriptor: unknown; id: Hex; signed: string; sponsored?: true }
+export type Channel = { at: number; confirmed: boolean; deposit: string; descriptor: unknown; id: Hex; signed: string }
 
 export type Snapshot = {
   acceptedCumulative: string
@@ -125,29 +121,6 @@ export function client(env: Cloudflare.Env, kv: SyncKvStorage, id: string, accou
   return { createCredential: (response, context) => mppx.createCredential(response, context as never) }
 }
 
-export async function closing(client: Client, challenge: Response, channel: Channel, key: Hex) {
-  const voucher = Credential.deserialize<{ cumulativeAmount: string; signature: Hex }>(
-    await client.createCredential(challenge, { action: 'voucher', channelId: channel.id, cumulativeAmountRaw: channel.signed, descriptor: channel.descriptor }),
-  )
-  const signature = await privateKeyToAccount(key).signTypedData({
-    domain: { chainId: Chain.chain.id, name: 'TIP20 Channel Reserve', verifyingContract: Chain.escrow, version: '1' },
-    message: { channelId: channel.id, cumulativeAmount: BigInt(voucher.payload.cumulativeAmount) },
-    primaryType: 'CloseAuthorization',
-    types: { CloseAuthorization: [{ name: 'channelId', type: 'bytes32' }, { name: 'cumulativeAmount', type: 'uint96' }] },
-  })
-  return Credential.serialize({
-    ...voucher,
-    payload: {
-      action: 'close',
-      channelId: channel.id,
-      closeSignature: SignatureEnvelope.serialize(SignatureEnvelope.from(signature)),
-      cumulativeAmount: voucher.payload.cumulativeAmount,
-      descriptor: channel.descriptor,
-      signature: voucher.payload.signature,
-    },
-  })
-}
-
 export async function requestClose(env: Cloudflare.Env, channel: Channel, account: Account, sponsor: { account: Account; token: Address }) {
   const client = Chain.client(env)
   const call = { data: encodeFunctionData({ abi: escrowAbi, args: [channel.descriptor as never], functionName: 'requestClose' }), to: Chain.escrow }
@@ -171,24 +144,6 @@ export async function requestClose(env: Cloudflare.Env, channel: Channel, accoun
   const receipt = await sendRawTransactionSync(client, { serializedTransaction: serialized })
   if (receipt.status !== 'success') throw new Error('requestClose reverted')
   return receipt.transactionHash
-}
-
-export async function sponsored(env: Cloudflare.Env, account: Account, input: { deposit: bigint; operator: Address; signer: Address; token: Address }) {
-  const client = Chain.client(env)
-  const salt = OxHex.random(32)
-  const prepared = await prepareTransactionRequest(client, {
-    account,
-    calls: [{ data: encodeFunctionData({ abi: Session.Precompile.escrowAbi, args: [Chain.recipient, input.operator, input.token, input.deposit, salt, input.signer], functionName: 'open' }), to: Chain.escrow }],
-    feePayer: true,
-    nonceKey: 'expiring',
-  } as never)
-  const transaction = await signTransaction(client, prepared as never)
-  const expiringNonceHash = Session.Precompile.Channel.computeExpiringNonceHash(
-    Session.Precompile.Channel.transactionForExpiringNonceHash({ feePayer: true, transaction: Transaction.deserialize(transaction) as never }),
-    { sender: account.address },
-  )
-  const descriptor = { authorizedSigner: input.signer, expiringNonceHash, operator: input.operator, payee: Chain.recipient, payer: account.address, salt, token: input.token }
-  return { descriptor, id: Session.Precompile.Channel.computeId({ ...descriptor, chainId: Chain.chain.id, escrow: Chain.escrow }), transaction }
 }
 
 export function opened(kv: SyncKvStorage, id: string) {

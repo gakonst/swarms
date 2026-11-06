@@ -4,7 +4,7 @@ import { decimal, units } from '../shared/Memo.ts'
 import { percent, usd } from './format.ts'
 import { Avatar } from './Room.tsx'
 
-const ways = { budget: 'monthly budget', machine: 'lent a machine', pledge: 'pledge', transfer: 'sent once' } as const satisfies Record<Way, string>
+const ways = { machine: 'lent a machine', transfer: 'sent money' } as const satisfies Record<Way, string>
 
 function day(at: number) {
   return new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })

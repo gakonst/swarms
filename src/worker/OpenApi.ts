@@ -1,9 +1,7 @@
 import { z } from 'zod'
-import * as Memo from '../shared/Memo.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Sessions from './Sessions.ts'
-import * as Store from './Store.ts'
 
 type Json = Record<string, unknown>
 
@@ -15,7 +13,7 @@ const integer = { type: 'integer' }
 
 const time = { description: 'Unix time in ms.', type: 'integer' }
 
-const mach = { description: 'An amount with 6 decimals, such as "0.250000", in MACH or the pledge\'s token.', type: 'string' }
+const mach = { description: 'An amount with 6 decimals, such as "0.250000", in USD at par.', type: 'string' }
 
 const nullable = (schema: Json) => ({ anyOf: [schema, { type: 'null' }] })
 
@@ -47,10 +45,6 @@ function parameter(name: string, where: 'path' | 'query', schema: Json, descript
 
 const swarm = parameter('id', 'path', string, 'The swarm id, as in /s/<id>.')
 
-const pledge = parameter('pledge', 'path', string, 'The pledge id from the pledge request.')
-
-const budget = parameter('budget', 'path', string, 'The budget id from the budget request.')
-
 const usd = { description: 'A USD stablecoin amount with 6 decimals, such as "0.250000".', type: 'string' }
 
 const token = { enum: ['ousd', 'pathusd', 'usdce'], type: 'string' }
@@ -58,8 +52,6 @@ const token = { enum: ['ousd', 'pathusd', 'usdce'], type: 'string' }
 const currency = { enum: ['mach', 'ousd', 'pathusd', 'usdce'], type: 'string' }
 
 const address = { pattern: '^0x[0-9a-fA-F]{40}$', type: 'string' }
-
-const authorizeAccessKey = { description: "Pass to Tempo Wallet's wallet_connect as capabilities.authorizeAccessKey." }
 
 const schemas = {
   Account: object(
@@ -107,66 +99,30 @@ const schemas = {
     at: time,
     excerpt: { description: 'The start of the update as plain text.', type: 'string' },
   }),
-  Budget: object(
-    {
-      amount: usd,
-      at: time,
-      contributor: nullable(address),
-      delivered: { ...usd, description: 'What the budget has delivered so far: its pulls, or for MACH what reached its channel.' },
-      detail: nullable(string),
-      expiresAt: time,
-      id: string,
-      left: nullable({ ...usd, description: 'What the budget can still give this period.' }),
-      nextAt: nullable({ ...time, description: 'When the swarm may pull next.' }),
-      note: nullable(string),
-      period: { description: 'Seconds per period; 2592000 is 30 days.', type: 'integer' },
-      pulled: usd,
-      status: { enum: ['active', 'waiting', 'revoked', 'expired', 'ended'], type: 'string' },
-      token,
-    },
-    "A monthly budget: the swarm pulls up to amount each period from the contributor's wallet into its own.",
-  ),
-  Budgeted: object({ budget: ref('Budget'), swarm: ref('Summary') }),
-  BudgetRequested: object({ authorizeAccessKey, budget: string }),
   Code: object(
     { app: string, clone: { description: 'A read-only git remote: git clone <clone> fetches the whole history without a key; pushes are refused.', type: 'string' }, name: string, owner: address },
     'The public repository that keeps the swarm\'s code, cloned read-only from clone, or read without a key from the gateway at /p/<owner>/<app>/git/<name>/files, read, log and diff.',
   ),
   Config: object({
     auth: { description: "Where to sign in with Tempo Wallet: wallet_connect's capabilities.auth url.", type: 'string' },
-    budget: object({ days: integer, max: usd, min: usd, period: integer }),
     chainId: integer,
     explorer: string,
     gateway: string,
-    mach: string,
-    minPledge: mach,
     reserve: mach,
     rpc: string,
-    tokens: { items: object({ address, id: currency, pool: { description: 'Whether the swarm can pool it: transfers and budgets take pool tokens, pledges take all.', type: 'boolean' }, symbol: string }), type: 'array' },
+    tokens: { items: object({ address, id: token, symbol: string }), type: 'array' },
   }),
   Contributed: object({ contribution: ref('Contribution'), swarm: ref('Summary') }),
   Contribution: object(
     {
       amount: usd,
       at: time,
-      budget: nullable({ description: 'The budget a pull came from.', type: 'string' }),
       contributor: address,
-      hash: { description: 'The transaction.', type: 'string' },
-      kind: { description: 'transfer, a pull from a monthly budget, or a pull from a stablecoin pledge.', enum: ['transfer', 'pull', 'pledge'], type: 'string' },
+      hash: nullable({ description: 'The transaction; null for money that came in before 2026-11-06 through a pledge or monthly budget.', type: 'string' }),
       note: nullable(string),
-      token,
+      token: currency,
     },
-    "Money in the swarm's wallet: a one-off transfer, or a pull from a monthly budget.",
-  ),
-  Device: object(
-    {
-      expiresAt: time,
-      interval: { description: 'Seconds between polls.', type: 'integer' },
-      userCode: { description: 'The code Tempo Wallet shows; the user checks it matches.', type: 'string' },
-      verificationUri: string,
-      verificationUriFull: { description: 'The link to open, with the code in it.', type: 'string' },
-    },
-    'A Tempo Wallet approval on any device.',
+    "Money sent to the swarm. Before 2026-11-06 money also came through pledges and monthly budgets; what of it the swarm spent is listed here too, without a hash.",
   ),
   Entry: object({
     at: time,
@@ -219,7 +175,7 @@ const schemas = {
     backers: integer,
     id: string,
     note: string,
-    share: { description: 'Share of everything pledged, 0 to 1.', type: 'number' },
+    share: { description: 'Share of everything raised, 0 to 1.', type: 'number' },
     steered: { description: 'The note reached the swarm.', type: 'boolean' },
     weight: mach,
   }),
@@ -227,12 +183,10 @@ const schemas = {
     allOf: [
       ref('Summary'),
       object({
-        budgets: { items: ref('Budget'), type: 'array' },
         code: nullable(ref('Code')),
         contributions: { items: ref('Contribution'), type: 'array' },
         hands: { items: ref('Hand'), type: 'array' },
         notes: { items: ref('Note'), type: 'array' },
-        pledges: { items: ref('Pledge'), type: 'array' },
         reason: nullable({ description: 'Why the swarm is waiting, when it is.', type: 'string' }),
         why: nullable({ description: 'The reason as a code: unfunded (no money yet), money (too little payable), costly (the next call holds more than any one source can pay), rest (stopped after repeated errors) or idle (swarms that rested before 2026-11-04, when a swarm stopped resting on its own; the next look at it starts it again if it has money).', enum: ['unfunded', 'money', 'costly', 'rest', 'idle'], type: 'string' }),
         updates: { items: ref('Brief'), type: 'array' },
@@ -244,43 +198,11 @@ const schemas = {
     entries: { items: ref('Entry'), type: 'array' },
     next: { description: 'Pass as after for the next page.', type: 'integer' },
   }),
-  Pending: object({
-    amount: mach,
-    device: nullable(ref('Device')),
-    note: nullable(string),
-    pledge: string,
-    status: { const: 'pending', type: 'string' },
-  }),
-  Pledge: object({
-    amount: mach,
-    at: time,
-    contributor: string,
-    delivered: { ...mach, description: 'What of the pledge has reached the swarm: pulled into its wallet, or for MACH moved into its channel.' },
-    id: string,
-    note: nullable(string),
-    spent: mach,
-    status: { enum: ['active', 'spent', 'ended'], type: 'string' },
-    token: currency,
-  }),
-  Pledged: object({
-    pledge: ref('Pledge'),
-    status: { enum: ['active', 'spent', 'ended'], type: 'string' },
-    swarm: ref('Summary'),
-  }),
   Problem: object({
     code: { enum: Object.keys(Problem.codes), type: 'string' },
     detail: string,
     status: integer,
   }),
-  Requested: {
-    properties: {
-      authorizeAccessKey,
-      device: ref('Device'),
-      pledge: string,
-    },
-    required: ['authorizeAccessKey', 'pledge'],
-    type: 'object',
-  },
   Update: object(
     {
       at: { ...time, description: 'When the agent posted it.' },
@@ -298,18 +220,17 @@ const schemas = {
     answer: nullable(ref('Answer')),
     contributors: integer,
     createdAt: time,
-    daily: { ...usd, description: 'What active monthly budgets give a day.' },
     goal: string,
     id: string,
     machines: integer,
     pool: { ...usd, description: "What the swarm's wallet holds to spend." },
-    raised: { ...mach, description: 'Everything that reached the swarm, stablecoins at par: transfers, pulls from budgets and pledges, and what MACH keys moved into their channels.' },
+    raised: { ...mach, description: 'Everything sent to the swarm, at par.' },
     remaining: { ...mach, description: "What the swarm holds to spend now: its wallet and its channels' unspent deposits." },
     spent: mach,
     status: ref('Status'),
     title: string,
     updatedAt: time,
-    wallet: nullable({ ...address, description: "The swarm's own wallet, which takes transfers and budget pulls." }),
+    wallet: nullable({ ...address, description: "The swarm's own wallet: send USDC.e, OUSD or pathUSD here, then record the transfer." }),
   }),
   Room: object({
     me: nullable({ ...ref('Me'), description: 'The signed-in caller, when the request carries a session token.' }),
@@ -328,7 +249,7 @@ const schemas = {
       handle: { description: 'The name the room shows, derived from the address.', type: 'string' },
       since: time,
       steered: { ...usd, description: 'What the backer put behind notes, with money or with @swarm.' },
-      ways: { items: { enum: ['pledge', 'budget', 'transfer', 'machine'], type: 'string' }, type: 'array' },
+      ways: { items: { enum: ['transfer', 'machine'], type: 'string' }, type: 'array' },
     },
     "A backer of the swarm, who may post in its room. A lent machine counts when its hand was issued to a signed-in caller and has connected.",
   ),
@@ -404,13 +325,13 @@ export function document(origin: string) {
       schemas,
     },
     info: {
-      description: `Swarms are crowdfunded, long-running AI agents on the Tempo gateway, funded by pledges in MACH or a stablecoin, one-off stablecoin transfers to the swarm's wallet and monthly budgets, and steered by notes weighted by the money behind them. Each swarm's backers talk in its room, where an @swarm message puts part of its author's backing behind an idea. Reading needs no account; posting needs a Tempo Wallet session from /v1/auth. A pledge is a spending key the contributor approves in Tempo Wallet, at least ${Memo.decimal(Store.minPledge)} MACH; a monthly budget is a key the swarm pulls with, approved the same way. Errors are problem JSON with a stable code. The same operations are MCP tools at ${origin}/mcp.`,
+      description: `Swarms are crowdfunded, long-running AI agents on the Tempo gateway. Backers send USDC.e, OUSD or pathUSD to a swarm's wallet and record the transfer; notes on transfers steer the agent, weighted by the money behind them. Each swarm's backers talk in its room, where an @swarm message puts part of its author's backing behind an idea. Reading needs no account; posting needs a Tempo Wallet session from /v1/auth. Errors are problem JSON with a stable code. The same operations are MCP tools at ${origin}/mcp.`,
       title: 'Swarms',
       version: '1',
     },
     openapi: '3.1.0',
     paths: {
-      '/v1/config': { get: { operationId: 'config', responses: ok(ref('Config'), 'Chain, token and pledge sizes.'), summary: 'Configuration' } },
+      '/v1/config': { get: { operationId: 'config', responses: ok(ref('Config'), 'Chain and tokens.'), summary: 'Configuration' } },
       '/v1/me': {
         get: {
           description: 'The signed-in account, from Authorization: Bearer <token>.',
@@ -451,7 +372,7 @@ export function document(origin: string) {
           summary: 'List swarms',
         },
         post: {
-          description: 'A new swarm waits in funding until its first pledge.',
+          description: 'A new swarm waits in funding until someone sends it money.',
           operationId: 'createSwarm',
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.create) } }, required: true },
           responses: { ...ok(ref('Summary'), 'The swarm.', '201'), ...failures(400, 502) },
@@ -462,7 +383,7 @@ export function document(origin: string) {
         get: {
           operationId: 'getSwarm',
           parameters: [swarm],
-          responses: { ...ok(ref('Overview'), 'The swarm with its notes, pledges, machines and updates.'), ...failures(404) },
+          responses: { ...ok(ref('Overview'), 'The swarm with its notes, transfers, machines and updates.'), ...failures(404) },
           summary: 'Get a swarm',
         },
       },
@@ -501,35 +422,6 @@ export function document(origin: string) {
             ...failures(404),
           },
           summary: 'Live stream',
-        },
-      },
-      '/v1/swarms/{id}/budgets': {
-        post: {
-          description:
-            "Starts a monthly budget: pass authorizeAccessKey to Tempo Wallet's wallet_connect and post its keyAuthorization to the budget. The key may only send the token to the swarm's wallet, up to amount a day, for 30 days.",
-          operationId: 'requestBudget',
-          parameters: [swarm],
-          requestBody: {
-            content: { 'application/json': { schema: input(Operations.schema.budget.omit({ swarm: true })) } },
-            required: true,
-          },
-          responses: { ...ok(ref('BudgetRequested'), 'The budget to approve.', '201'), ...failures(400, 404, 409) },
-          summary: 'Request a monthly budget',
-        },
-      },
-      '/v1/swarms/{id}/budgets/{budget}': {
-        post: {
-          description: 'Approves the budget with the keyAuthorization Tempo Wallet returned, or a signed transaction carrying it.',
-          operationId: 'approveBudget',
-          parameters: [swarm, budget],
-          requestBody: {
-            content: {
-              'application/json': { schema: input(Operations.schema.allowance.omit({ budget: true, swarm: true })) },
-            },
-            required: true,
-          },
-          responses: { ...ok(ref('Budgeted'), 'The active budget and its swarm.', '201'), ...failures(400, 404, 409) },
-          summary: 'Approve a monthly budget',
         },
       },
       '/v1/swarms/{id}/contributions': {
@@ -727,63 +619,6 @@ export function document(origin: string) {
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.hand.omit({ swarm: true })) } } },
           responses: { ...ok(ref('Issued'), 'The hand.', '201'), ...failures(400, 404, 409, 502) },
           summary: 'Issue a hand',
-        },
-      },
-      '/v1/swarms/{id}/pledges': {
-        get: {
-          operationId: 'listPledges',
-          parameters: [swarm],
-          responses: { ...ok(object({ pledges: { items: ref('Pledge'), type: 'array' } }), 'Approved pledges, newest first.'), ...failures(404) },
-          summary: 'List pledges',
-        },
-        post: {
-          description:
-            'Starts a pledge. In a browser, pass authorizeAccessKey to Tempo Wallet and post its keyAuthorization to the pledge. Without one, send device: true and show device.verificationUriFull and device.userCode to the user, who approves on any device, then poll the pledge.',
-          operationId: 'requestPledge',
-          parameters: [swarm],
-          requestBody: {
-            content: { 'application/json': { schema: input(Operations.schema.pledge.omit({ swarm: true })) } },
-            required: true,
-          },
-          responses: { ...ok(ref('Requested'), 'The pledge to approve.', '201'), ...failures(400, 404, 409, 502) },
-          summary: 'Request a pledge',
-        },
-      },
-      '/v1/swarms/{id}/pledges/{pledge}': {
-        get: {
-          description:
-            'The pledge. While a device pledge is pending this polls Tempo Wallet, for up to wait seconds; once approved it checks the wallet balance, activates the pledge and starts or steers the swarm.',
-          operationId: 'getPledge',
-          parameters: [
-            swarm,
-            pledge,
-            parameter('wait', 'query', { default: 0, maximum: Operations.maxWait, minimum: 0, type: 'integer' }, 'Seconds to keep polling.'),
-          ],
-          responses: {
-            '200': {
-              content: { 'application/json': { schema: { oneOf: [ref('Pending'), ref('Pledged')] } } },
-              description: 'Pending, or the approved pledge and its swarm.',
-            },
-            ...failures(400, 403, 404, 409, 410, 502),
-          },
-          summary: 'Pledge status',
-        },
-        post: {
-          description:
-            'Approves the pledge with the keyAuthorization Tempo Wallet returned, or a signed transaction carrying it. An empty body polls a device pledge (202 while pending).',
-          operationId: 'approvePledge',
-          parameters: [swarm, pledge],
-          requestBody: {
-            content: {
-              'application/json': { schema: input(Operations.schema.approval.omit({ pledge: true, swarm: true })) },
-            },
-          },
-          responses: {
-            ...ok(ref('Pledged'), 'The active pledge and its swarm.', '201'),
-            ...ok(ref('Pending'), 'Still pending in Tempo Wallet.', '202'),
-            ...failures(400, 403, 404, 409, 410, 502),
-          },
-          summary: 'Approve a pledge',
         },
       },
       '/v1/swarms/{id}/updates': {
