@@ -21,16 +21,35 @@ function watch(listener: () => void) {
   }
 }
 
+const loops = new Map<string, { count: number; timer: ReturnType<typeof setInterval> }>()
+const flights = new Map<string, Promise<void>>()
+
+function fetched(id: string) {
+  const flying = flights.get(id)
+  if (flying) return flying
+  const flight = Api.team(id)
+    .then((value) => share(id, value), () => {})
+    .finally(() => flights.delete(id))
+  flights.set(id, flight)
+  return flight
+}
+
 export function useRoster(id: string, steering: Policy) {
   const roster = useSyncExternalStore(watch, () => rosters.get(id), () => undefined)
   useEffect(() => {
-    let live = true
-    const load = () => Api.team(id).then((value) => live && share(id, value), () => {})
-    void load()
-    const timer = setInterval(() => void load(), 60_000)
+    const loop = loops.get(id)
+    if (loop) loop.count += 1
+    else {
+      void fetched(id)
+      loops.set(id, { count: 1, timer: setInterval(() => void fetched(id), 60_000) })
+    }
     return () => {
-      live = false
-      clearInterval(timer)
+      const current = loops.get(id)
+      if (!current) return
+      current.count -= 1
+      if (current.count > 0) return
+      clearInterval(current.timer)
+      loops.delete(id)
     }
   }, [id, steering])
   return roster

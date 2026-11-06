@@ -105,6 +105,8 @@ export const Room = memo(function Room(props: {
   const stick = useRef(true)
   const last = useRef(0)
   const typed = useRef(0)
+  const opened = useRef(false)
+  const fetched = useRef(0)
 
   const load = useCallback(
     async (after: number) => {
@@ -116,6 +118,7 @@ export const Room = memo(function Room(props: {
         setMe(room.me)
         setLoaded(true)
         setFailed(undefined)
+        fetched.current = Date.now()
         if (token && !room.me) Wallet.signOut()
       } catch (error) {
         setFailed(reason(error))
@@ -129,7 +132,13 @@ export const Room = memo(function Room(props: {
   }, [messages])
 
   useEffect(() => {
-    void load(0)
+    if (seed && !fetched.current && !token) {
+      const timer = setTimeout(() => {
+        if (!opened.current) void load(last.current)
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+    void load(seed || fetched.current ? last.current : 0)
   }, [load])
 
   const shown = useVisible()
@@ -141,7 +150,9 @@ export const Room = memo(function Room(props: {
     }
     if (away.current) void load(last.current)
     away.current = false
-    const timer = setInterval(() => void load(last.current), 15_000)
+    const timer = setInterval(() => {
+      if (!opened.current || Date.now() - fetched.current > 60_000) void load(last.current)
+    }, 15_000)
     return () => clearInterval(timer)
   }, [load, shown])
 
@@ -154,7 +165,11 @@ export const Room = memo(function Room(props: {
 
   useEffect(() => {
     const connection = Api.chatter(id, (event) => {
-      if (event.type === 'open') void load(last.current)
+      if (event.type === 'open') {
+        opened.current = true
+        void load(last.current)
+      }
+      if (event.type === 'closed') opened.current = false
       if (event.type === 'said') setMessages((previous) => merge(previous, [event.message]))
       if (event.type === 'presence') {
         setOnline(event.online)

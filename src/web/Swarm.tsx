@@ -1,7 +1,7 @@
 import { type KeyboardEvent as Press, lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import * as Memo from '../shared/Memo.ts'
-import type { Config, Detail, Entry, Me, Member, Note, Said } from '../shared/Api.ts'
+import type { Config, Detail, Entry, Me, Member, Note, Room as RoomState, Said } from '../shared/Api.ts'
 import { merge } from '../shared/Trail.ts'
 import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
@@ -74,11 +74,12 @@ function useTab() {
 export function Swarm(props: { config: Config | undefined; id: string }) {
   const [entries, setEntries] = useState<readonly Entry[]>(() => trails.get(props.id)?.entries ?? remembered<Detail>(props.id)?.feed ?? seeded<Detail>(props.id)?.feed ?? [])
   const first = useRef(entries.length === 0)
+  const streaming = useRef(false)
   const [detail, reload] = usePoll(() => {
     const full = first.current
     first.current = false
     return Api.swarm(props.id, full)
-  }, (data) => (data?.status === 'running' ? 5000 : 10_000), props.id)
+  }, (data) => (data?.status !== 'running' ? 10_000 : streaming.current ? 10_000 : 5000), props.id)
   const last = useRef(trails.get(props.id)?.seq ?? highest(entries))
   useEffect(() => {
     if (entries.length) trails.set(props.id, { entries: entries.slice(-400), seq: last.current })
@@ -92,7 +93,10 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const [draft, setDraft] = useState({ at: 0, text: '' })
   const [side, setSide] = useState<{ branch: number | null; open: boolean; question: { at: number; text: string } }>({ branch: null, open: false, question: { at: 0, text: '' } })
   const [focus, setFocus] = useState({ at: 0, who: 'all' })
-  const [chat, setChat] = useState<{ handles: ReadonlyMap<string, string>; me: Me | null; members: readonly Member[]; online: readonly string[]; said: readonly Said[]; watching: number }>({ handles: new Map(), me: null, members: [], online: [], said: [], watching: 0 })
+  const [chat, setChat] = useState<{ handles: ReadonlyMap<string, string>; me: Me | null; members: readonly Member[]; online: readonly string[]; said: readonly Said[]; watching: number }>(() => {
+    const room = seeded<RoomState>(`room:${props.id}`)
+    return { handles: new Map((room?.members ?? []).map((member) => [member.address, member.handle])), me: null, members: room?.members ?? [], online: [], said: room?.messages ?? [], watching: 0 }
+  })
   const heard = useCallback((said: readonly Said[], me: Me | null, members: readonly Member[], online: readonly string[], watching: number) => setChat((previous) => ({ handles: new Map(members.map((member) => [member.address, member.handle])), me, members, online, watching, said: [...said, ...previous.said.filter((item) => !said.some((other) => other.id === item.id) && item.id > (said.at(-1)?.id ?? 0))] })), [])
   const [funding, setFunding] = useState(() => here().searchParams.has('fund'))
   const [artifact, setArtifact] = useState(chosen)
@@ -103,6 +107,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const loaded = detail.data !== undefined
   const [shelf] = usePoll(() => Api.artifacts(props.id), running ? 30_000 : 60_000, `artifacts:${props.id}`)
   const stream = useLive(props.id, running && visible, (entry) => setEntries((previous) => merge(previous, [entry])), () => last.current)
+  streaming.current = stream.pushed
   const coded = !!detail.data?.code
   useEffect(() => {
     if (!coded) return
@@ -139,7 +144,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   }, [artifact])
 
   const pace = running ? (stream.pushed ? 15_000 : 2000) : 10_000
-  const stamp = `${detail.data?.status}:${detail.data?.updatedAt}`
+  const stamp = running && stream.pushed ? 'pushed' : `${detail.data?.status}:${detail.data?.updatedAt}`
   const polled = useRef(false)
   useEffect(() => {
     if (!loaded || !visible) return
