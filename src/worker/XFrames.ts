@@ -375,7 +375,7 @@ async function send(path,options){
 }
 function finish(){
   show('done');
-  document.getElementById('done-title').textContent='Finish on the swarm\'s page'+(currentSwarm&&currentSwarm.title?': '+currentSwarm.title:'.');
+  document.getElementById('done-title').textContent="Finish on the swarm's page"+(currentSwarm&&currentSwarm.title?': '+currentSwarm.title:'.');
   const page=new URL(frame.url).origin+'/s/'+encodeURIComponent(currentSwarm.id);
   document.getElementById('watch').href=page;
   document.getElementById('share').href='https://x.com/intent/post?text='+encodeURIComponent((note?'I put money behind "'+note+'" on ':'I funded ')+currentSwarm.title+' '+new URL(frame.url).origin+'/x/s/'+encodeURIComponent(currentSwarm.id));

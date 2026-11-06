@@ -39,6 +39,15 @@ test('start frame publishes an X player card that sends people to the swarm page
   assert.match(html, /Quantum-safe signatures/)
 })
 
+test('card scripts parse', async () => {
+  const pages = [
+    await XFrames.start('https://swarms.example', [], new URL('https://swarms.example/x?xframes-content=')).text(),
+    await XFrames.swarm('https://swarms.example', overview, new URL('https://swarms.example/x/s/abc123?xframes-content=')).text(),
+  ]
+
+  for (const html of pages) for (const found of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(found[1] ?? ''))
+})
+
 test('swarm frame escapes research text and points the player at its own route', async () => {
   const response = XFrames.swarm('https://swarms.example', overview)
   const html = await response.text()
