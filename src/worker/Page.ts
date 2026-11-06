@@ -204,6 +204,8 @@ async function draw(request: Request, env: Cloudflare.Env) {
       }
     } catch (error) {
       console.error('Server render failed', error)
+      await writer.write(encoder.encode(`</div><script>window.__SWARMS_BOOT__=${json({ ...boot, data: {} })}</script>${after}`))
+      await writer.close()
       return false
     }
     await writer.write(encoder.encode(`</div><script>window.__SWARMS_BOOT__=${json(boot)}</script>${after}`))

@@ -194,7 +194,8 @@ function Tray(props: { branch: Branch; config: Config | undefined; onChanged: ()
   const [done, setDone] = useState<string>()
   const mine = props.branch.funders.find((funder) => funder.address === me)
   const movable = mine ? (props.branch.left !== null && units(props.branch.left) < units(mine.amount) ? props.branch.left : mine.amount) : '0'
-  const [to, setTo] = useState<number | undefined>(props.others[0]?.id)
+  const [chosen, setTo] = useState<number | undefined>(props.others[0]?.id)
+  const to = props.others.some((other) => other.id === chosen) ? chosen : props.others[0]?.id
   const [shift, setShift] = useState<string>('')
   const admin = !!me && !!roster?.admins.includes(me as `0x${string}`)
   const credit = useCredit()

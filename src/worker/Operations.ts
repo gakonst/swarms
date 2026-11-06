@@ -1000,7 +1000,9 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
 
   const halted = await reached(stub(env, row.id).halt(row.id, { agent, branch: target.id, said: `${Mention.at(account.handle)} stopped ${target.who} (branch ${target.id}).` }))
   if (!halted.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not stop the branch: ${halted.detail}`)
-  const left = target.budget === null ? null : target.left === null ? 0n : Memo.units(target.left)
+  const closed = halted.value.find((agent) => agent.agent_id === target.id)
+  const after = closed?.budget_usd === undefined ? undefined : Memo.units(closed.budget_usd.toFixed(6)) - Memo.units((closed.spent_usd ?? 0).toFixed(6))
+  const left = target.budget === null ? null : after !== undefined ? (after > 0n ? after : 0n) : target.left === null ? 0n : Memo.units(target.left)
   const returned = await Store.settle(env, { agent, branch: target.id, left, swarm: row.id })
   const back = returned.reduce((sum, item) => sum + item.amount, 0n)
   if (back > 0n) await reached(stub(env, row.id).voice(row.id, `${dollars(Memo.decimal(back))} that ${target.who} had not spent went back to its backers, to put behind something else.`))
@@ -1432,12 +1434,13 @@ export async function contribute(
   const total = transfers.reduce((sum, transfer) => sum + transfer.amount, 0n)
   const noteId = text ? await Store.noteId(text) : null
   const existing = await Store.gift(env, request.hash)
+  let counted: boolean
   if (existing) {
     if (!text || existing.note || existing.kind !== 'transfer' || !noteId)
       return Problem.fail(409, 'conflict', 'This transaction is already counted.')
-    await Store.annotate(env, request.hash, { note: text, note_id: noteId })
+    counted = await Store.annotate(env, request.hash, { note: text, note_id: noteId })
   } else {
-    await Store.give(env, {
+    counted = await Store.give(env, {
       amount: String(total),
       budget: null,
       contributor: sender as Address,
@@ -1449,22 +1452,24 @@ export async function contribute(
       token: first.token,
     })
   }
-  await stub(env, row.id).contributed({
-    amount: Memo.decimal(total),
-    contributor: sender as Address,
-    hash: request.hash,
-    note: text,
-    noteId,
-    swarm: row.id,
-    token: first.token,
-  })
-  if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
+  if (counted) {
+    await stub(env, row.id).contributed({
+      amount: Memo.decimal(total),
+      contributor: sender as Address,
+      hash: request.hash,
+      note: text,
+      noteId,
+      swarm: row.id,
+      token: first.token,
+    })
+    if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
+  }
 
   const [gift, updated] = await Promise.all([Store.gift(env, request.hash), Store.find(env, row.id)])
   if (!gift) return Problem.fail(502, 'unavailable', 'The contribution was not saved.')
   return Problem.ok({
     contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) },
-    created: !existing,
+    created: !existing && counted,
   })
 }
 

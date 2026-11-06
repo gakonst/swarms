@@ -55,7 +55,7 @@ export function Budgets(props: { budgets: readonly Budget[]; config: Config | un
               {money(budget.amount, budget.token)} {budget.period === 2_592_000 ? 'a month' : budget.period === 86_400 ? 'a day' : `per ${Math.round(budget.period / 3600)} h`}
             </span>
             <span>{mach(budget.pulled)} pulled</span>
-            {budget.left !== null && (budget.status === 'active' || budget.status === 'waiting') && <span>{mach(budget.left)} left today</span>}
+            {budget.left !== null && (budget.status === 'active' || budget.status === 'waiting') && <span>{mach(budget.left)} left {budget.period === 2_592_000 ? 'this month' : budget.period === 86_400 ? 'today' : 'this period'}</span>}
             <span className={budget.status === 'active' ? 'tag tag-on' : 'tag'}>{allowed[budget.status]}</span>
           </p>
           {(budget.detail || (budget.nextAt !== null && budget.nextAt > now)) && (

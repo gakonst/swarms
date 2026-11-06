@@ -144,9 +144,9 @@ const settleMs = 15_000
 
 const quickMs = 60_000
 
-const vendorCap = 1_000_000n
-
 const passCall = 250_000n
+
+const vendorCap = passCall
 
 const passHour = 1_000_000n
 
@@ -157,6 +157,19 @@ const dayMs = 86_400_000
 function earned(hand: Gateway.Listed) {
   const charges = hand['charges'] as { usd?: unknown } | null | undefined
   return typeof charges?.usd === 'number' && charges.usd > 0 ? Memo.units(charges.usd.toFixed(6)) : 0n
+}
+
+function asked(input: Pay) {
+  const stated = Memo.units(/^\d+(\.\d{1,6})?$/.test(input.amount ?? '') ? (input.amount as string) : '0')
+  const signed = (Array.isArray(input.challenge) ? input.challenge : [input.challenge]).map((serialized) => {
+    try {
+      const amount = (Challenge.deserialize(serialized).request as { amount?: unknown }).amount
+      return typeof amount === 'string' && /^\d{1,19}$/.test(amount) ? BigInt(amount) : 0n
+    } catch {
+      return 0n
+    }
+  })
+  return signed.reduce((most, amount) => (amount > most ? amount : most), stated)
 }
 
 function passHost(input: Pay) {
@@ -229,6 +242,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   upstream: Upstream | undefined
   holders = new Map<string, { address: Address | undefined; at: number }>()
   beating: ReturnType<typeof setInterval> | undefined
+
+  budgeting: Promise<unknown> = Promise.resolve()
 
   listing: { agent: string; at: number; pending: boolean; value: Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> } | undefined
 
@@ -1149,7 +1164,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   passable(row: Store.Row, input: Pay): Paid | undefined {
-    const amount = Memo.units(/^\d+(\.\d{1,6})?$/.test(input.amount ?? '') ? (input.amount as string) : '0')
+    const amount = asked(input)
     const now = Date.now()
     const recent = (this.kv.get<Passed[]>('passed') ?? []).filter((item) => item.at > now - hourMs)
     const hourly = Payer.max(passHour, BigInt(row.raised) / 20n)
@@ -1166,7 +1181,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   passed(row: Store.Row, input: Pay, paid: Paid): Paid {
     if (!('authorization' in paid)) return paid
-    const amount = Memo.units(/^\d+(\.\d{1,6})?$/.test(input.amount ?? '') ? (input.amount as string) : '0')
+    const amount = asked(input)
     const now = Date.now()
     const host = passHost(input)
     this.kv.put('passed', [...(this.kv.get<Passed[]>('passed') ?? []).filter((item) => item.at > now - hourMs), { amount: String(amount), at: now, host }])
@@ -2068,9 +2083,21 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const flight = { agent, at: Date.now(), pending: true, value }
     this.listing = flight
     const result = await value.catch((error: unknown) => ({ detail: error instanceof Error ? error.message : String(error), ok: false as const, status: 503 }))
-    if (this.listing === flight) this.listing = result.ok ? { ...flight, at: Date.now(), pending: false } : undefined
-    if (result.ok && JSON.stringify(result.value.list).length < keptBytes) this.kv.put('subagents', { agent, at: Date.now(), list: result.value.list })
+    if (this.listing !== flight) return result
+    this.listing = result.ok ? { ...flight, at: Date.now(), pending: false } : undefined
+    if (result.ok && JSON.stringify(result.value.list).length < keptBytes) this.ctx.storage.kv.put('subagents', { agent, at: flight.at, list: result.value.list })
     return result
+  }
+
+  rebudget(swarm: string, agent: string, branch: number) {
+    const run = this.budgeting.then(async () => {
+      const money = await Store.funds(this.env, swarm, agent)
+      const funded = [...(money.shares.get(branch)?.values() ?? [])].reduce((sum, amount) => sum + amount, 0n)
+      const total = (money.bases.get(branch) ?? 0n) + funded
+      return Gateway.budget(this.env, swarm, agent, branch, Number(total > 0n ? total : 1n) / 1_000_000)
+    })
+    this.budgeting = run.catch(() => undefined)
+    return run
   }
 
   async direct(
@@ -2080,7 +2107,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const agent = this.kv.get<string>('agent')
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
     if (agent !== input.agent) return { detail: "The swarm started a new agent since its branches were listed; list them again.", ok: false, status: 409 }
-    const set = input.usd === null ? undefined : await Gateway.budget(this.env, swarm, agent, input.branch, input.usd)
+    const set = input.usd === null ? undefined : await this.rebudget(swarm, agent, input.branch)
     if (set && !set.ok) return set
 
     if (input.steer) {
