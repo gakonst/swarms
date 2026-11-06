@@ -505,7 +505,7 @@ export function Transcript(props: {
     return found
   }, [shown, shelved])
   const last = shown.at(-1)
-  const first = shown.find((entry) => entry.seq > 0)
+  const first = shown.find((entry) => entry.seq > 0) ?? (shown.length ? undefined : props.entries.find((entry) => entry.seq > 0))
 
   useEffect(() => {
     const url = new URL(location.href)
@@ -560,6 +560,14 @@ export function Transcript(props: {
     })
   }
 
+  const filled = useRef('')
+  useEffect(() => {
+    const key = `${swarm.id}:${who}`
+    if (shown.length > 0 || !first || first.seq <= 1 || start || filled.current === key) return
+    filled.current = key
+    void older()
+  }, [shown.length, first, start, who, swarm.id])
+
   const unfunded = Number(swarm.raised) <= 0 && !working && !shown.some((entry) => entry.kind !== 'status')
   if ((!props.entries.length && !working) || unfunded)
     return (
@@ -610,7 +618,7 @@ export function Transcript(props: {
               <button className="btn btn-minimal" disabled={loading} onClick={() => void older()} type="button">{loading ? 'Loading…' : 'Earlier'}</button>
             </li>
           )}
-          {shown.length === 0 && !streaming.length && <li className="timeline-empty">{onAir ? 'Tuning in…' : 'Nothing here yet.'}</li>}
+          {rows.length === 0 && !streaming.length && <li className="timeline-empty">{onAir ? 'Tuning in…' : 'Nothing here yet.'}</li>}
           {rows.map((row, index) => {
             if ('backed' in row) return <Funded item={row.backed} onBack={swarm.status === 'done' ? undefined : props.onFund} key={row.backed.id} name={props.handles.get(row.backed.who) ?? Mention.short(row.backed.who)} />
             if ('said' in row) return <Voice item={row.said} onBack={swarm.status === 'done' ? undefined : props.onFund} key={`m${row.said.id}`} name={props.handles.get(row.said.author ?? '') ?? Mention.short(row.said.author ?? '')} />
