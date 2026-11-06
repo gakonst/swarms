@@ -9,6 +9,7 @@ import * as Wallet from './wallet.ts'
 export async function payIn(config: Config, swarm: { id: string; wallet: `0x${string}` | null }, need: bigint, busy: (step: string) => void) {
   if (!swarm.wallet) throw new Error('This swarm has no wallet yet.')
   const wallet = swarm.wallet
+  await Wallet.named()
   busy('Approve in Tempo Wallet…')
   await Wallet.refresh(config).catch(() => {})
   const token = choose('send', decimal(need), Wallet.snapshot().balances)

@@ -211,21 +211,42 @@ export async function signIn(config: Config) {
   return session
 }
 
-export async function identify() {
+let identifying: { promise: Promise<Account | undefined>; token: string } | undefined
+
+let renamed = 0
+
+export function identify() {
   const token = state.session?.token
-  if (!token) return undefined
-  try {
-    const account = await Api.account()
-    if (state.session?.token === token) set({ account })
-    return account
-  } catch (error) {
-    if (error instanceof Api.Failure && error.status === 401 && state.session?.token === token) signOut()
-    return undefined
-  }
+  if (!token) return Promise.resolve(undefined)
+  if (identifying?.token === token) return identifying.promise
+  const at = renamed
+  const promise: Promise<Account | undefined> = (async () => {
+    try {
+      await Promise.resolve()
+      const account = await Api.account()
+      if (state.session?.token !== token) return undefined
+      if (renamed !== at) return state.account
+      set({ account })
+      return account
+    } catch (error) {
+      if (error instanceof Api.Failure && error.status === 401 && state.session?.token === token) signOut()
+      return undefined
+    } finally {
+      if (identifying?.promise === promise) identifying = undefined
+    }
+  })()
+  identifying = { promise, token }
+  return promise
+}
+
+export async function named() {
+  const account = state.account ?? (await identify())
+  if (state.session && !account?.name) throw Object.assign(new Error('Pick a username first: people see it beside what you steer.'), { code: 'username_required' })
 }
 
 export async function rename(name: string | null) {
   const account = await Api.rename(name)
+  renamed += 1
   set({ account })
   return account
 }
