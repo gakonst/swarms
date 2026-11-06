@@ -592,7 +592,7 @@ async function tally(env: Cloudflare.Env, id: string): Promise<Ledger | undefine
     weighing(env, id),
     periodic(env, id),
     gifts(env, id),
-    env.DB.prepare('select round, ended_at from reports where swarm = ?').bind(id),
+    env.DB.prepare('select round, ended_at from reports where swarm = ? order by round desc limit 40').bind(id),
   ])
   const row = found?.results[0] as Row | undefined
   if (!row) return undefined

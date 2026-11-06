@@ -22,6 +22,16 @@ export async function cached<T>(env: Cloudflare.Env, key: string, seconds: numbe
   return (await refresh(key, request, stale, read)) as T
 }
 
+export function put<T>(env: Cloudflare.Env, key: string, value: T, stale: number) {
+  const at = Date.now()
+  memory.set(key, { at, value })
+  waitUntil(
+    caches.default
+      .put(new Request(new URL(`/__cache/${key}`, env.SWARMS_URL)), Response.json(value, { headers: { 'cache-control': `public, max-age=${stale}`, 'x-cached-at': String(at) } }))
+      .catch(() => undefined),
+  )
+}
+
 export function tag(kind: string, request: Request, version: string, salt = '') {
   const url = new URL(request.url)
   let hash = 0x811c9dc5
@@ -82,7 +92,7 @@ const drawing = new Map<string, Promise<void>>()
 
 const pageFresh = 5_000
 
-const pageStale = 60_000
+const pageStale = 600_000
 
 type Drawn = { at: number; body: ArrayBuffer; headers: [string, string][] }
 

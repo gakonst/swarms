@@ -376,7 +376,7 @@ async function provisioned(env: Cloudflare.Env, row: Store.Row) {
   return { ...updated, wallet: updated.wallet }
 }
 
-type Shape = { feed?: number; texts?: boolean }
+type Shape = { feed?: number; pushed?: boolean; texts?: boolean }
 
 async function load(env: Cloudflare.Env, id: string, shape: Shape = {}) {
   const viewing = Store.seen(id) ? Promise.resolve(stub(env, id).view(shape)) : undefined
@@ -470,7 +470,7 @@ export async function detail(env: Cloudflare.Env, input: Input<'swarm'>, feed = 
 export async function stamped(env: Cloudflare.Env, input: Input<'swarm'>, feed = true): Promise<Problem.Result<{ detail: Detail; stamp: Stamp }>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
-  const loaded = await ledgered(env, parsed.value.swarm, { feed: feed ? firstFeed : 0, texts: false })
+  const loaded = await ledgered(env, parsed.value.swarm, { feed: feed ? firstFeed : 0, pushed: true, texts: false })
   if (!loaded) return missing()
 
   const { ledger, row, view } = loaded
@@ -845,9 +845,9 @@ async function steerable(env: Cloudflare.Env, input: { address: Address | undefi
   return Problem.ok({ account, address: input.address, row, seat })
 }
 
-const shown = new Map<string, { at: number; value: Branches }>()
+const shownSeconds = 5
 
-const shownMs = 5_000
+const shownStale = 600
 
 export async function branches(env: Cloudflare.Env, input: Input<'branches'>): Promise<Problem.Result<Branches>> {
   const parsed = parse(schema.branches, input)
@@ -855,18 +855,26 @@ export async function branches(env: Cloudflare.Env, input: Input<'branches'>): P
   const row = await Store.find(env, parsed.value.swarm)
   if (!row) return missing()
 
-  const cached = shown.get(row.id)
-  if (cached && Date.now() - cached.at < shownMs) return Problem.ok(cached.value)
-  const found = await directed(env, row)
-  if (!found.ok) return found
-  const value = { branches: found.value.list, steering: row.steering }
-  shown.set(row.id, { at: Date.now(), value })
-  return Problem.ok(value)
+  let failed: Problem.Result<never> | undefined
+  const list = await Edge.cached(
+    env,
+    `branches/${row.id}`,
+    shownSeconds,
+    async () => {
+      const found = await directed(env, row)
+      if (found.ok) return found.value.list
+      failed = found
+      throw new Error(found.detail)
+    },
+    shownStale,
+  ).catch(() => undefined)
+  if (!list) return failed ?? Problem.fail(502, 'upstream_failed', "Could not list the swarm's subagents; try again in a few seconds.")
+  return Problem.ok({ branches: list, steering: row.steering })
 }
 
 async function fresh(env: Cloudflare.Env, row: Store.Row, ids: readonly number[], fallback: readonly Branch[]) {
-  shown.delete(row.id)
   const found = await directed(env, row)
+  if (found.ok) Edge.put(env, `branches/${row.id}`, found.value.list, shownStale)
   return ids.map((id, index) => (found.ok ? found.value.list.find((branch) => branch.id === id) : undefined) ?? (fallback[index] as Branch))
 }
 

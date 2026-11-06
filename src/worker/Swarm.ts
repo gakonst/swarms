@@ -460,7 +460,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     await this.ctx.storage.setAlarm(now)
   }
 
-  view(shape: { feed?: number; texts?: boolean } = {}): View {
+  view(shape: { feed?: number; pushed?: boolean; texts?: boolean } = {}): View {
     const stamp = this.stamp()
     this.ctx.waitUntil(this.heal())
     const sql = this.ctx.storage.sql
@@ -475,7 +475,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const id = this.kv.get<string>('id')
     const repo = this.kv.get<string>('repo')
     const owner = this.kv.get<string>('owner')
-    const turns = this.turns()
+    const turns = shape.pushed ? this.rows("WHERE commits != '[]' OR n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL ORDER BY n DESC LIMIT 3)") : this.turns()
+    const shown = shape.pushed ? updates(turns).filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) : updates(turns)
     const paused = this.kv.get<string>('paused')
     return {
       code: id && repo && owner ? { app: Gateway.app(id), clone: `${this.env.GATEWAY_URL}/p/${owner}/${Gateway.app(id)}/git/${repo}.git`, name: repo, owner } : null,
@@ -486,8 +487,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       stamp,
       why: paused ? known(this.kv.get<string>('why')) : null,
       steered: this.steered(),
-      ended: turns.flatMap((turn) => (turn.endedAt === null ? [] : [{ endedAt: turn.endedAt, n: turn.n }])),
-      updates: shape.texts === false ? updates(turns).map((update) => ({ ...update, text: '' })) : updates(turns),
+      ended: this.ctx.storage.sql
+        .exec<{ ended_at: number; n: number }>('SELECT n, ended_at FROM turns WHERE ended_at IS NOT NULL ORDER BY n DESC LIMIT 20')
+        .toArray()
+        .map((row) => ({ endedAt: Number(row.ended_at), n: Number(row.n) })),
+      updates: shape.texts === false ? shown.map((update) => ({ ...update, text: '' })) : shown,
       working: this.working(),
     }
   }
@@ -504,8 +508,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   turns(): Search.Turn[] {
+    return this.rows('')
+  }
+
+  private rows(where: string, ...bindings: SqlStorageValue[]): Search.Turn[] {
     return this.ctx.storage.sql
-      .exec<Record<string, SqlStorageValue>>('SELECT n, started_at, ended_at, status, message, spent, commits, base FROM turns ORDER BY n')
+      .exec<Record<string, SqlStorageValue>>(`SELECT n, started_at, ended_at, status, message, spent, commits, base FROM turns ${where} ORDER BY n`, ...bindings)
       .toArray()
       .map((row) => ({
         base: row['base'] === null ? null : String(row['base']),
@@ -940,7 +948,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.delete('started')
     const answer = status === 'completed' && message ? Answer.parse(redact(message), Date.now()) : undefined
     if (answer?.text) await Store.update(this.env, row.id, { answer: JSON.stringify(answer) })
-    const ended = this.turns().find((turn) => turn.n === n)
+    const ended = this.rows('WHERE n = ?', n)[0]
     if (ended) await Search.report(this.env, row.id, ended).catch((error: unknown) => console.error('Indexing the update failed', error))
     const pushed = commits.length ? ` and pushed ${commits.length} commit${commits.length === 1 ? '' : 's'} to ${repo.name}` : ''
     this.log(
