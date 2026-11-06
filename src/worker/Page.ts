@@ -143,9 +143,21 @@ export async function lost(request: Request, env: Cloudflare.Env) {
   return (await draw(request, env)).response
 }
 
-export function page(request: Request, env: Cloudflare.Env) {
+export async function page(request: Request, env: Cloudflare.Env) {
   const cookie = request.headers.get('cookie')
-  return Edge.page(request, `${mobile(request) ? 'm' : 'd'}|${zone(cookie) ?? ''}`, (given) => draw(given, env))
+  const build = await built(env, new URL(request.url).origin).catch(() => '')
+  return Edge.page(request, `${build}|${mobile(request) ? 'm' : 'd'}|${zone(cookie) ?? ''}`, (given) => draw(given, env))
+}
+
+let build: { html: string; value: string } | undefined
+
+async function built(env: Cloudflare.Env, origin: string) {
+  const html = await shell(env, origin)
+  if (build?.html === html) return build.value
+  let hash = 0x811c9dc5
+  for (let index = 0; index < html.length; index++) hash = Math.imul(hash ^ html.charCodeAt(index), 0x01000193)
+  build = { html, value: (hash >>> 0).toString(36) }
+  return build.value
 }
 
 function mobile(request: Request) {
