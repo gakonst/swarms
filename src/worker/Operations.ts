@@ -849,6 +849,8 @@ const shownSeconds = 5
 
 const shownStale = 600
 
+const shownPatience = 1500
+
 export async function branches(env: Cloudflare.Env, input: Input<'branches'>): Promise<Problem.Result<Branches>> {
   const parsed = parse(schema.branches, input)
   if (!parsed.ok) return parsed
@@ -867,6 +869,7 @@ export async function branches(env: Cloudflare.Env, input: Input<'branches'>): P
       throw new Error(found.detail)
     },
     shownStale,
+    shownPatience,
   ).catch(() => undefined)
   if (!list) return failed ?? Problem.fail(502, 'upstream_failed', "Could not list the swarm's subagents; try again in a few seconds.")
   return Problem.ok({ branches: list, steering: row.steering })

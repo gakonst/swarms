@@ -4,19 +4,23 @@ const memory = new Map<string, { at: number; value: unknown }>()
 
 const refreshing = new Map<string, Promise<unknown>>()
 
-export async function cached<T>(env: Cloudflare.Env, key: string, seconds: number, read: () => Promise<T>, stale = seconds * 3): Promise<T> {
+export async function cached<T>(env: Cloudflare.Env, key: string, seconds: number, read: () => Promise<T>, stale = seconds * 3, patience = 0): Promise<T> {
   const now = Date.now()
   const local = memory.get(key)
   if (local && now - local.at < seconds * 1000) return local.value as T
   const request = new Request(new URL(`/__cache/${key}`, env.SWARMS_URL))
-  const kept = local ?? (await shared(request))
+  const colo = await shared(request)
+  const kept = local && (!colo || local.at >= colo.at) ? local : colo
   if (kept && now - kept.at < seconds * 1000) {
     memory.set(key, kept)
     return kept.value as T
   }
   if (kept && now - kept.at < stale * 1000) {
     memory.set(key, kept)
-    waitUntil(refresh(key, request, stale, read).catch(() => undefined))
+    const task = refresh(key, request, stale, read)
+    const raced = patience > 0 ? await Promise.race([task.then((value) => ({ value }), () => undefined), new Promise<undefined>((resolve) => setTimeout(resolve, patience))]) : undefined
+    if (raced) return raced.value as T
+    waitUntil(task.catch(() => undefined))
     return kept.value as T
   }
   return (await refresh(key, request, stale, read)) as T
