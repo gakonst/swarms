@@ -184,6 +184,10 @@ export function tell(env: Cloudflare.Env, swarm: string, agent: string, subagent
   return send<{ disposition: string }>(env, `/v1/agents/${agent}/subagents/${subagent}/messages`, { app: app(swarm), body: { message, priority: 'deferred' } })
 }
 
+export function cancel(env: Cloudflare.Env, swarm: string, agent: string, turn: string) {
+  return send<Report>(env, `/v1/agents/${agent}/turns/${turn}/cancel`, { app: app(swarm), method: 'POST' })
+}
+
 export function turn(env: Cloudflare.Env, swarm: string, agent: string, turn: string) {
   return send<Report>(env, `/v1/agents/${agent}/turns/${turn}`, { app: app(swarm) })
 }
