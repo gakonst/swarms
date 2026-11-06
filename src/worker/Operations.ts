@@ -81,6 +81,8 @@ const id = z.string().trim().min(1).max(64).describe('The swarm id, the last par
 
 const pledgeDays = 7
 
+const gone = true
+
 const keyDays = 30
 
 const keyLimit = 100_000_000n
@@ -1323,6 +1325,7 @@ export async function pledges(env: Cloudflare.Env, input: Input<'swarm'>): Promi
 }
 
 export async function pledge(env: Cloudflare.Env, input: Input<'pledge'>): Promise<Problem.Result<Requested>> {
+  if (gone) return Problem.fail(410, 'conflict', 'Pledges, spending keys and monthly budgets are gone: send USDC.e, OUSD or pathUSD to the swarm and record the transfer.')
   const parsed = parse(schema.pledge, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
@@ -1369,6 +1372,7 @@ export async function key(env: Cloudflare.Env, address?: Address): Promise<Probl
 }
 
 export async function keyRequest(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<{ authorizeAccessKey: Keys.Request; key: string }>> {
+  if (gone) return Problem.fail(410, 'conflict', 'Pledges, spending keys and monthly budgets are gone: send USDC.e, OUSD or pathUSD to the swarm and record the transfer.')
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to approve a spending key.')
   const requested = await Keys.request(env, { amount: keyLimit, days: keyDays, period: 0, recipient: Chain.recipient, token: 'mach' })
   const id = identifier()
@@ -1384,6 +1388,7 @@ export async function keyRequest(env: Cloudflare.Env, address?: Address): Promis
 }
 
 export async function keyApprove(env: Cloudflare.Env, input: Input<'keyed'>, address?: Address): Promise<Problem.Result<{ expiresAt: number; key: string }>> {
+  if (gone) return Problem.fail(410, 'conflict', 'Pledges, spending keys and monthly budgets are gone: send USDC.e, OUSD or pathUSD to the swarm and record the transfer.')
   const parsed = parse(schema.keyed, input)
   if (!parsed.ok) return parsed
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to approve a spending key.')
@@ -1401,6 +1406,7 @@ function shared(found: Store.WalletKey) {
 }
 
 export async function back(env: Cloudflare.Env, input: Input<'back'>, address?: Address): Promise<Problem.Result<Pledged>> {
+  if (gone) return Problem.fail(410, 'conflict', 'Pledges, spending keys and monthly budgets are gone: send USDC.e, OUSD or pathUSD to the swarm and record the transfer.')
   const parsed = parse(schema.back, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
@@ -1557,6 +1563,7 @@ export async function contribute(
 }
 
 export async function budget(env: Cloudflare.Env, input: Input<'budget'>): Promise<Problem.Result<BudgetRequested>> {
+  if (gone) return Problem.fail(410, 'conflict', 'Pledges, spending keys and monthly budgets are gone: send USDC.e, OUSD or pathUSD to the swarm and record the transfer.')
   const parsed = parse(schema.budget, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
@@ -1591,6 +1598,7 @@ export async function budget(env: Cloudflare.Env, input: Input<'budget'>): Promi
 }
 
 export async function allow(env: Cloudflare.Env, input: Input<'allowance'>): Promise<Problem.Result<Budgeted>> {
+  if (gone) return Problem.fail(410, 'conflict', 'Pledges, spending keys and monthly budgets are gone: send USDC.e, OUSD or pathUSD to the swarm and record the transfer.')
   const parsed = parse(schema.allowance, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
@@ -1628,6 +1636,7 @@ export async function allow(env: Cloudflare.Env, input: Input<'allowance'>): Pro
 }
 
 export async function approve(env: Cloudflare.Env, input: Input<'approval'>): Promise<Problem.Result<Pledged | Pending>> {
+  if (gone) return Problem.fail(410, 'conflict', 'Pledges, spending keys and monthly budgets are gone: send USDC.e, OUSD or pathUSD to the swarm and record the transfer.')
   const parsed = parse(schema.approval, input)
   if (!parsed.ok) return parsed
   const approval = parsed.value
