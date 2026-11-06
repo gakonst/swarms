@@ -122,6 +122,8 @@ export function initial(): State {
 
 let checked = fixture
 
+let parted = 0
+
 Api.authorize(state.session?.token)
 
 const listeners = new Set<() => void>()
@@ -181,9 +183,11 @@ export async function restore(config: Config) {
       return void refresh(config).catch(() => {})
     }
     if (!state.address && !localStorage.getItem(remembered)) return
+    const at = parted
     const accounts = await (await wallet())
       .request({ method: 'eth_accounts' })
       .catch(() => [] as readonly Address[])
+    if (parted !== at) return
     const address = accounts[0]
     if (state.pending) set({ pending: false })
     if (!address) return set({ account: undefined, address: undefined, balance: undefined, balances: {} })
@@ -299,6 +303,16 @@ export function signOut() {
   const token = state.session?.token
   set({ account: undefined, session: undefined })
   if (token && !fixture) void fetch('/v1/auth/logout', { headers: { authorization: `Bearer ${token}` }, method: 'POST' }).catch(() => {})
+}
+
+export async function disconnect() {
+  parted += 1
+  keyless = false
+  signOut()
+  set({ address: undefined, balance: undefined, balances: {}, pending: false })
+  if (fixture) return
+  localStorage.removeItem(remembered)
+  await (await wallet()).request({ method: 'wallet_disconnect' }).catch(() => {})
 }
 
 export async function send(config: Config, input: { amount: bigint; memo: Hex; to: Address; token: Currency }) {

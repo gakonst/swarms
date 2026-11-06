@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, type MouseEvent, Suspense, useEffect, useRef, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import { mach, short } from './format.ts'
@@ -54,6 +54,8 @@ const Board = lazy(() => import('./Board.tsx').then((module) => ({ default: modu
 function WalletButton(props: { config: Config | undefined }) {
   const wallet = useWallet()
   const [error, setError] = useState<string>()
+  const [open, setOpen] = useState(false)
+  const menu = useRef<HTMLDivElement>(null)
   const token = wallet.session?.token
   const known = !!wallet.account
 
@@ -61,19 +63,48 @@ function WalletButton(props: { config: Config | undefined }) {
     if (token && !known) void Wallet.identify()
   }, [token, known])
 
-  if (wallet.address && wallet.pending)
-    return (
-      <span aria-busy="true" className="btn btn-medium wallet">
-        <span>{wallet.account ? '@' + wallet.account.handle : short(wallet.address)}</span>
-        {wallet.balance !== undefined && <span className="wallet-balance">{mach(decimal(wallet.balance))} MACH</span>}
-      </span>
-    )
+  useEffect(() => {
+    if (!open) return
+    const close = (event: PointerEvent) => {
+      if (!menu.current?.contains(event.target as Node)) setOpen(false)
+    }
+    addEventListener('pointerdown', close)
+    return () => removeEventListener('pointerdown', close)
+  }, [open])
+
+  const tap = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (open || !matchMedia('(hover: none)').matches) return event.currentTarget.blur()
+    event.preventDefault()
+    setOpen(true)
+  }
+
   if (wallet.address)
     return (
-      <a className="btn btn-medium wallet" href={props.config ? `${props.config.explorer}/address/${wallet.address}` : undefined} rel="noreferrer" target="_blank" title={wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : 'Your Tempo Wallet'}>
-        <span>{wallet.account?.name ? `@${wallet.account.name}` : short(wallet.address)}</span>
-        {wallet.balance !== undefined && <span className="wallet-balance">{mach(decimal(wallet.balance))} MACH</span>}
-      </a>
+      <div className="wallet-menu" data-open={open} ref={menu}>
+        {wallet.pending ? (
+          <span aria-busy="true" className="btn btn-medium wallet" onClick={() => setOpen(!open)}>
+            <span>{wallet.account ? '@' + wallet.account.handle : short(wallet.address)}</span>
+            {wallet.balance !== undefined && <span className="wallet-balance">{mach(decimal(wallet.balance))} MACH</span>}
+          </span>
+        ) : (
+          <a className="btn btn-medium wallet" href={props.config ? `${props.config.explorer}/address/${wallet.address}` : undefined} onClick={tap} rel="noreferrer" target="_blank" title={wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : 'Your Tempo Wallet'}>
+            <span>{wallet.account?.name ? `@${wallet.account.name}` : short(wallet.address)}</span>
+            {wallet.balance !== undefined && <span className="wallet-balance">{mach(decimal(wallet.balance))} MACH</span>}
+          </a>
+        )}
+        <div className="wallet-drop">
+          <button
+            className="wallet-out"
+            onClick={() => {
+              setOpen(false)
+              void Wallet.disconnect()
+            }}
+            type="button"
+          >
+            Disconnect
+          </button>
+        </div>
+      </div>
     )
   return (
     <button

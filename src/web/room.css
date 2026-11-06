@@ -1054,3 +1054,11 @@ button.said-backed:not(:disabled):hover { background:#2f5f37; }
 @media (max-width:799px) {
   .side { width:100vw; padding:12px 12px 14px; border-left:0; }
 }
+.wallet-menu { position:relative; display:flex; }
+.wallet-drop { position:absolute; top:100%; right:0; z-index:2; display:none; min-width:100%; padding-top:6px; }
+.wallet-menu[data-open='true'] > .wallet-drop,.wallet-menu:focus-within > .wallet-drop { display:block; }
+@media (hover:hover) { .wallet-menu:hover > .wallet-drop { display:block; } }
+.wallet-out { width:100%; padding:10px 16px; border:1px solid #d6decf; border-radius:12px; background:var(--white); box-shadow:0 12px 30px -16px #1a3d2c55; color:var(--black); font:12px var(--mono); white-space:nowrap; text-align:left; cursor:pointer; }
+.wallet-out:hover { background:#f2f5ec; }
+.wallet-out:focus-visible { outline:2px solid #3f7d4e; outline-offset:2px; }
+@media (max-width:799px) { .wallet-out { min-height:44px; } }
