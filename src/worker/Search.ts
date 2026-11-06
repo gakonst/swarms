@@ -95,7 +95,8 @@ export async function sync(env: Cloudflare.Env, swarm: string, turns: readonly T
 
 export function lags(turns: readonly { endedAt: number | null; n: number }[], reports: readonly { ended_at: number; round: number }[]) {
   const known = new Map(reports.map((row) => [row.round, row.ended_at]))
-  return turns.some((turn) => turn.endedAt !== null && known.get(turn.n) !== turn.endedAt)
+  const oldest = Math.min(...reports.map((row) => row.round))
+  return turns.some((turn) => turn.endedAt !== null && (turn.n >= oldest || reports.length < 40) && known.get(turn.n) !== turn.endedAt)
 }
 
 export async function lagging(env: Cloudflare.Env) {
