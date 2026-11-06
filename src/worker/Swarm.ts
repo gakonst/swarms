@@ -373,7 +373,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async deliver(swarm: string) {
-    for (const key of [...(await Store.keys(this.env, swarm)), ...(await Store.drained(this.env, swarm))]) {
+    const mach = await Store.held(this.env, swarm)
+    for (const key of [...mach.active, ...mach.spent]) {
       const source = held(key)
       await this.book(source, this.kv.get<Payer.Channel>(`channel:${source.id}`))
     }
@@ -1074,7 +1075,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async sources(row: Store.Row, all = false): Promise<Source[]> {
-    const keys = await this.memo(`keys:${row.id}`, () => Store.keys(this.env, row.id))
+    const keys = (await this.memo(`mach:${row.id}`, () => Store.held(this.env, row.id))).active
     return [...(row.wallet && (all || row.pool_left > 0 || this.kv.get('channel:pool')) ? [pool()] : []), ...keys.map((key) => held(key))]
   }
 
@@ -1504,7 +1505,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async revive(row: Store.Row) {
     if (row.status === 'done') return
-    for (const key of await Store.drained(this.env, row.id)) {
+    for (const key of (await this.memo(`mach:${row.id}`, () => Store.held(this.env, row.id))).spent) {
       const source = held(key)
       const channel = await this.channel(source)
       if (!channel || channel.sponsored) {

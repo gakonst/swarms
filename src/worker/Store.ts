@@ -475,21 +475,20 @@ export async function allowances(env: Cloudflare.Env, swarm: string) {
 }
 
 export async function keys(env: Cloudflare.Env, swarm: string) {
-  const { results } = await env.DB.prepare(
-    "select * from budgets where swarm = ? and status = 'active' and token = 'mach' order by created_at",
-  )
-    .bind(swarm)
-    .all<Allowance>()
-  return results
+  return (await held(env, swarm)).active
 }
 
 export async function drained(env: Cloudflare.Env, swarm: string) {
+  return (await held(env, swarm)).spent
+}
+
+export async function held(env: Cloudflare.Env, swarm: string) {
   const { results } = await env.DB.prepare(
-    "select * from budgets where swarm = ? and status = 'spent' and token = 'mach' order by created_at",
+    "select * from budgets where swarm = ? and status in ('active', 'spent') and token = 'mach' order by created_at",
   )
     .bind(swarm)
     .all<Allowance>()
-  return results
+  return { active: results.filter((row) => row.status === 'active'), spent: results.filter((row) => row.status === 'spent') }
 }
 
 export async function end(env: Cloudflare.Env, swarm: string) {

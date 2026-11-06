@@ -28,17 +28,6 @@ function load() {
   return import('./Code.tsx').then((module) => (loaded = module))
 }
 
-function roomy() {
-  const connection = (navigator as { connection?: { effectiveType?: string; saveData?: boolean } }).connection
-  return !connection?.saveData && (connection?.effectiveType ?? '4g') === '4g'
-}
-
-function idle(run: () => void) {
-  const schedule = (window as { requestIdleCallback?: (run: () => void, options: { timeout: number }) => number }).requestIdleCallback
-  if (schedule) return schedule(run, { timeout: 3000 })
-  return setTimeout(run, 1500)
-}
-
 const Code = lazy(() => load().then((module) => ({ default: module.Code })))
 
 const trails = new Map<string, { entries: readonly Entry[]; seq: number }>()
@@ -111,19 +100,9 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const coded = !!detail.data?.code
   useEffect(() => {
     if (!coded) return
-    let alive = true
-    const timer = setTimeout(() => {
-      void Api.code(props.id).catch(() => undefined)
-      if (!phone && roomy())
-        idle(() => {
-          if (alive) void load()
-        })
-    }, 300)
-    return () => {
-      alive = false
-      clearTimeout(timer)
-    }
-  }, [coded, phone, props.id])
+    const timer = setTimeout(() => void Api.code(props.id).catch(() => undefined), 300)
+    return () => clearTimeout(timer)
+  }, [coded, props.id])
   const warm = (item: Tab) => (item === 'code' && coded ? { onFocus: () => void load(), onPointerEnter: () => void load(), onTouchStart: () => void load() } : {})
 
   useEffect(() => {
