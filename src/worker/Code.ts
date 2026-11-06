@@ -1,5 +1,6 @@
 import * as Gateway from './Gateway.ts'
 import * as Store from './Store.ts'
+import * as Timing from './Timing.ts'
 
 const sha = /^[0-9a-f]{40}$/
 
@@ -29,8 +30,10 @@ export async function proxy(env: Cloudflare.Env, context: Pick<ExecutionContext,
 
   const [repo, owner] = await Promise.all([Store.repo(env, swarm), Gateway.wallet(env)])
   if (!repo || !owner) return Response.json({ code: 'not_found', detail: 'This swarm has no repository yet.', status: 404 }, { status: 404 })
-  const upstream = await fetch(`${env.GATEWAY_URL}/p/${owner}/${Gateway.app(swarm)}/git/${encodeURIComponent(repo)}/${read}?${query}${forever ? '' : `&at=${Math.floor(Date.now() / 5000)}`}`, { headers: { accept: 'application/json' } })
-  const body = await upstream.arrayBuffer()
+  const [upstream, body] = await Timing.span(
+    'gw.p.git',
+    fetch(`${env.GATEWAY_URL}/p/${owner}/${Gateway.app(swarm)}/git/${encodeURIComponent(repo)}/${read}?${query}${forever ? '' : `&at=${Math.floor(Date.now() / 5000)}`}`, { headers: { accept: 'application/json' } }).then(async (response) => [response, await response.arrayBuffer()] as const),
+  )
   const response = new Response(body, {
     headers: {
       'cache-control': upstream.ok ? (forever ? 'public, max-age=31536000, immutable' : 'public, max-age=5') : 'no-store',

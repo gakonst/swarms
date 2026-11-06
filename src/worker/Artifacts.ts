@@ -1,6 +1,7 @@
 import type { Artifact } from '../shared/Api.ts'
 import * as Shelf from '../shared/Artifact.ts'
 import * as Gateway from './Gateway.ts'
+import * as Timing from './Timing.ts'
 
 const fresh = 15_000
 
@@ -18,7 +19,7 @@ export async function list(env: Cloudflare.Env, swarm: string, cached = true): P
   const memo = listed.get(swarm)
   if (cached && memo && Date.now() - memo.at < fresh) return memo.artifacts
   const key = new Request(`https://swarms.cache/artifacts/${swarm}`)
-  const shared = cached ? await caches.default.match(key).catch(() => undefined) : undefined
+  const shared = cached ? await Timing.span('cache', caches.default.match(key).catch(() => undefined)) : undefined
   if (shared) {
     const artifacts = (await shared.json()) as Artifact[]
     listed.set(swarm, { artifacts, at: Number(shared.headers.get('x-listed-at')) || Date.now() - fresh / 2 })
@@ -29,10 +30,14 @@ export async function list(env: Cloudflare.Env, swarm: string, cached = true): P
   const entries: Entry[] = []
   let cursor: string | null = null
   for (let page = 0; page < 3; page++) {
-    const query = new URLSearchParams({ prefix: Shelf.prefix, ...(cursor ? { cursor } : {}) })
-    const response = await fetch(`${env.GATEWAY_URL}/p/${owner}/${Gateway.app(swarm)}/kv?${query}`, { headers: { accept: 'application/json' } })
-    if (!response.ok) return response.status === 404 ? [] : undefined
-    const body = (await response.json()) as { cursor: string | null; entries: Entry[] }
+    const query: URLSearchParams = new URLSearchParams({ prefix: Shelf.prefix, ...(cursor ? { cursor } : {}) })
+    const [response, body]: readonly [Response, { cursor: string | null; entries: Entry[] } | undefined] = await Timing.span(
+      'gw.p.kv',
+      fetch(`${env.GATEWAY_URL}/p/${owner}/${Gateway.app(swarm)}/kv?${query}`, { headers: { accept: 'application/json' } }).then(
+        async (response) => [response, response.ok ? ((await response.json()) as { cursor: string | null; entries: Entry[] }) : undefined] as const,
+      ),
+    )
+    if (!response.ok || !body) return response.status === 404 ? [] : undefined
     entries.push(...body.entries)
     cursor = body.cursor
     if (!cursor) break

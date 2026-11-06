@@ -1,4 +1,5 @@
 import { waitUntil } from 'cloudflare:workers'
+import * as Timing from './Timing.ts'
 
 const memory = new Map<string, { at: number; value: unknown }>()
 
@@ -67,7 +68,7 @@ export function minute() {
 }
 
 async function shared(request: Request) {
-  const hit = await caches.default.match(request).catch(() => undefined)
+  const hit = await Timing.span('cache', caches.default.match(request).catch(() => undefined))
   if (!hit) return undefined
   return { at: Number(hit.headers.get('x-cached-at') ?? 0), value: await hit.json() }
 }
@@ -163,7 +164,7 @@ async function keepPage(key: Request, response: Response, whole: Promise<boolean
 }
 
 async function recall(key: Request): Promise<Drawn | undefined> {
-  const hit = await caches.default.match(key).catch(() => undefined)
+  const hit = await Timing.span('cache', caches.default.match(key).catch(() => undefined))
   if (!hit) return undefined
   const at = Number(hit.headers.get('x-drawn-at') ?? 0)
   const headers = [...hit.headers].filter(([name]) => !['age', 'cache-control', 'cf-cache-status', 'content-encoding', 'content-length', 'expires', 'x-drawn-at'].includes(name))

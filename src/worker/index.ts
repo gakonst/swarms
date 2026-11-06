@@ -8,11 +8,26 @@ import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
 import * as Rest from './Rest.ts'
 import * as Sessions from './Sessions.ts'
+import * as Timing from './Timing.ts'
 import * as XFrames from './XFrames.ts'
 
 export { Swarm } from './Swarm.ts'
 
 const app = new Hono<{ Bindings: Cloudflare.Env }>()
+
+app.use('*', (c, next) =>
+  Timing.run(async () => {
+    c.env = { ...c.env, DB: Timing.database(c.env.DB) }
+    await next()
+    const timing = Timing.header()
+    if (!timing || c.res.headers.has('server-timing')) return
+    const headers = new Headers(c.res.headers)
+    headers.set('server-timing', timing)
+    const response = new Response(c.res.body, { headers, status: c.res.status, statusText: c.res.statusText, ...(c.res.webSocket ? { webSocket: c.res.webSocket } : {}) })
+    c.res = undefined
+    c.res = response
+  }),
+)
 
 app.use('*', async (c, next) => {
   await next()

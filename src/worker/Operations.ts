@@ -58,6 +58,7 @@ import * as Keys from './Keys.ts'
 import * as Problem from './Problem.ts'
 import * as Search from './Search.ts'
 import * as Sessions from './Sessions.ts'
+import * as Timing from './Timing.ts'
 import * as Store from './Store.ts'
 import * as Team from './Team.ts'
 import type { Snapshot } from './Payer.ts'
@@ -339,7 +340,7 @@ function parse<parser extends z.ZodType>(parser: parser, input: unknown): Proble
 }
 
 function stub(env: Cloudflare.Env, id: string): DurableObjectStub<Swarm> {
-  return env.SWARMS.get(env.SWARMS.idFromName(id))
+  return Timing.object(env.SWARMS.get(env.SWARMS.idFromName(id)))
 }
 
 function missing() {
