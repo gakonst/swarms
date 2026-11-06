@@ -1,5 +1,5 @@
 import type { Address } from 'viem'
-import type { Roster, Seat } from '../shared/Api.ts'
+import type { Member, Roster, Seat } from '../shared/Api.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Gateway from './Gateway.ts'
@@ -20,7 +20,7 @@ export async function roster(env: Cloudflare.Env, row: Store.Row): Promise<Roste
   const known = held.get(row.id)
   if (known && Date.now() - known.at < freshMs) return known.roster
 
-  const fallback = row.creator ?? (await Store.members(env, row.id))[0]?.address ?? null
+  const fallback = row.creator ?? biggest(await Store.members(env, row.id))
   if (!row.team) {
     const open: Roster = { admins: fallback ? [fallback.toLowerCase() as Address] : [], memberBudget: null, seats: [], steering: row.steering, team: null }
     held.set(row.id, { at: Date.now(), roster: open })
@@ -73,6 +73,11 @@ export async function ensure(env: Cloudflare.Env, row: Store.Row, admin: Address
   await Store.update(env, row.id, { team: made.value.address.toLowerCase() as Address })
   forget(row.id)
   return Problem.ok({ ...row, team: made.value.address.toLowerCase() as Address })
+}
+
+function biggest(members: readonly Member[]) {
+  const backers = members.filter((member) => Memo.units(member.backed) > 0n)
+  return backers.reduce<Member | undefined>((top, member) => (!top || Memo.units(member.backed) > Memo.units(top.backed) ? member : top), undefined)?.address ?? null
 }
 
 function units(value: number | string | null | undefined) {

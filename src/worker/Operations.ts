@@ -91,6 +91,7 @@ const decimal = z.union([z.string().regex(/^\d+(\.\d{1,6})?$/), z.number().posit
 const exchanges = z
   .array(z.object({ answer: z.string().max(Btw.maxAnswer), question: z.string().trim().min(1).max(Btw.maxQuestion) }))
   .max(Btw.maxThread)
+  .refine((thread) => Btw.size(thread) <= Btw.maxThreadBytes, `A side thread is at most ${Btw.maxThreadBytes} bytes of questions and answers; drop its oldest exchanges.`)
 
 const wallet = z
   .string()
@@ -206,7 +207,7 @@ export const schema = {
       .string()
       .trim()
       .min(3)
-      .max(60_000)
+      .refine((value) => Btw.bytes(value) <= Btw.maxMessageBytes, `A message to a branch is at most ${Btw.maxMessageBytes} bytes.`)
       .optional()
       .describe('Steer the branch with this message as well: it reaches the subagent at once, with the money behind it.'),
     swarm: id,
@@ -691,10 +692,14 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   if (!row) return missing()
   if (!account.name) return unnamed()
 
-  const members = await Store.members(env, row.id)
-  const author = members.find((member) => member.address === address)
+  let members = await Store.members(env, row.id)
+  let author = members.find((member) => member.address === address)
   const policed = row.steering === 'team'
   const seat = policed ? await Team.seat(env, row, address).catch(() => undefined) : undefined
+  if (!author && !seat && (await lender(env, row.id, address))) {
+    members = await Store.members(env, row.id)
+    author = members.find((member) => member.address === address)
+  }
   if (!author && !seat)
     return Problem.fail(403, 'not_member', "Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you post in its room.")
 
@@ -718,7 +723,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
           : `@swarm steers the swarm with money: send steer, how much of your ${dollars(author?.available ?? '0')} not yet behind a note goes behind this idea.`,
       )
     const amount = units(request.steer)
-    const noteId = await Store.noteId(note)
+    const noteId = await Store.noteId(request.btw ? `${note}\n${Btw.conversation(request.btw)}` : note)
     const placed = seat
       ? await Store.allot(env, { amount, contributor: address, id: identifier(), limit: seat.limit === null ? null : Memo.units(seat.limit), note, note_id: noteId, since: Date.now() - Team.period, swarm: row.id })
       : await Store.steer(env, { amount, contributor: address, id: identifier(), note, note_id: noteId, swarm: row.id })
@@ -746,6 +751,13 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   return Problem.ok({ me: await self(env, steer ? await Store.members(env, row.id) : members, address), message })
 }
 
+async function lender(env: Cloudflare.Env, swarm: string, address: Address) {
+  const rows = (await Hands.list(env, swarm)).filter((hand) => hand.contributor?.toLowerCase() === address.toLowerCase() && hand.seen_at === null)
+  if (!rows.length) return false
+  const marked = await Hands.seen(env, swarm, rows, await stub(env, swarm).lent())
+  return marked.some((hand) => hand.seen_at !== null)
+}
+
 function unnamed() {
   return Problem.fail(403, 'username_required', 'Pick a username first: POST /v1/me with { name }. People in a swarm talk and steer under the name they chose.')
 }
@@ -754,15 +766,21 @@ function reached<value>(call: Promise<Gateway.Result<value>>): Promise<Gateway.R
   return call.catch((error: unknown) => ({ detail: error instanceof Error ? error.message : String(error), ok: false as const, status: 503 }))
 }
 
-async function directed(env: Cloudflare.Env, row: Store.Row): Promise<Problem.Result<{ list: Branch[]; members: Member[]; money: Awaited<ReturnType<typeof Store.funds>> }>> {
-  const [found, money, members] = await Promise.all([reached(stub(env, row.id).subagents(row.id)), Store.funds(env, row.id), Store.members(env, row.id)])
+type Directed = { agent: string | null; list: Branch[]; members: Member[]; money: Awaited<ReturnType<typeof Store.funds>> }
+
+async function directed(env: Cloudflare.Env, row: Store.Row): Promise<Problem.Result<Directed>> {
+  const found = await reached(stub(env, row.id).subagents(row.id))
   if (!found.ok) return Problem.fail(502, 'upstream_failed', `Could not list the swarm's subagents: ${found.detail}`)
+  if (!Array.isArray(found.value.list)) return Problem.fail(502, 'upstream_failed', 'The swarm is starting on new code; try again in a few seconds.')
+  const agent = found.value.agent
+  if (agent) await Store.adopt(env, row.id, agent)
+  const [money, members] = await Promise.all([Store.funds(env, row.id, agent ?? ''), Store.members(env, row.id)])
   const names = new Map<number, string>()
-  for (const agent of [...found.value].sort((a, b) => a.agent_id - b.agent_id)) {
-    const role = clip(agent.role.trim() || `subagent ${agent.agent_id}`, 60)
-    names.set(agent.agent_id, [...names.values()].includes(role) ? `${role} #${agent.agent_id}` : role)
+  for (const subagent of [...found.value.list].sort((a, b) => a.agent_id - b.agent_id)) {
+    const role = clip(subagent.role.trim() || `subagent ${subagent.agent_id}`, 60)
+    names.set(subagent.agent_id, [...names.values()].includes(role) ? `${role} #${subagent.agent_id}` : role)
   }
-  return Problem.ok({ list: found.value.map((agent) => branched(agent, money, members, names.get(agent.agent_id))), members, money })
+  return Problem.ok({ agent, list: found.value.list.map((subagent) => branched(subagent, money, members, names.get(subagent.agent_id))), members, money })
 }
 
 function branched(agent: Gateway.Subagent, money: Awaited<ReturnType<typeof Store.funds>>, members: readonly Member[], who = agent.role): Branch {
@@ -791,7 +809,7 @@ function branched(agent: Gateway.Subagent, money: Awaited<ReturnType<typeof Stor
     role: agent.role,
     spent: spent === null ? null : Memo.decimal(spent),
     starved,
-    state: agent.status.state as Branch['state'],
+    state: money.settled.has(agent.agent_id) && agent.status.state !== 'closing' ? 'closed' : (agent.status.state as Branch['state']),
     task: agent.task.slice(0, 2000),
     who,
   }
@@ -801,6 +819,14 @@ function backed(money: Awaited<ReturnType<typeof Store.funds>>, branch: number) 
   const funded = [...(money.shares.get(branch)?.values() ?? [])].reduce((sum, amount) => sum + amount, 0n)
   const total = (money.bases.get(branch) ?? 0n) + funded
   return total > 0n ? total : 1n
+}
+
+function behind(money: Awaited<ReturnType<typeof Store.funds>>, branch: number) {
+  return [...(money.shares.get(branch)?.values() ?? [])].reduce((sum, amount) => sum + amount, 0n)
+}
+
+function ended(branch: Branch) {
+  return branch.state === 'closed' || branch.state === 'closing'
 }
 
 async function steerable(env: Cloudflare.Env, input: { address: Address | undefined; swarm: string }) {
@@ -815,14 +841,29 @@ async function steerable(env: Cloudflare.Env, input: { address: Address | undefi
   return Problem.ok({ account, address: input.address, row, seat })
 }
 
+const shown = new Map<string, { at: number; value: Branches }>()
+
+const shownMs = 5_000
+
 export async function branches(env: Cloudflare.Env, input: Input<'branches'>): Promise<Problem.Result<Branches>> {
   const parsed = parse(schema.branches, input)
   if (!parsed.ok) return parsed
   const row = await Store.find(env, parsed.value.swarm)
   if (!row) return missing()
 
+  const cached = shown.get(row.id)
+  if (cached && Date.now() - cached.at < shownMs) return Problem.ok(cached.value)
   const found = await directed(env, row)
-  return found.ok ? Problem.ok({ branches: found.value.list, steering: row.steering }) : found
+  if (!found.ok) return found
+  const value = { branches: found.value.list, steering: row.steering }
+  shown.set(row.id, { at: Date.now(), value })
+  return Problem.ok(value)
+}
+
+async function fresh(env: Cloudflare.Env, row: Store.Row, ids: readonly number[], fallback: readonly Branch[]) {
+  shown.delete(row.id)
+  const found = await directed(env, row)
+  return ids.map((id, index) => (found.ok ? found.value.list.find((branch) => branch.id === id) : undefined) ?? (fallback[index] as Branch))
 }
 
 export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: Address): Promise<Problem.Result<Branch>> {
@@ -835,10 +876,12 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
 
   const found = await directed(env, row)
   if (!found.ok) return found
+  const agent = found.value.agent
+  if (!agent) return Problem.fail(409, 'conflict', 'The swarm has no agent yet: it starts once money arrives.')
   const target = found.value.list.find((branch) => branch.id === request.branch)
   if (!target || target.parent !== null)
     return Problem.fail(404, 'not_found', `This swarm has no branch ${request.branch}: fund one of the subagents its agent started itself, from GET /v1/swarms/${row.id}/branches.`)
-  if (target.state === 'closed' || target.state === 'closing') return Problem.fail(409, 'conflict', `${target.role} is closed; fund another branch.`)
+  if (ended(target)) return Problem.fail(409, 'conflict', `${target.who} is stopped; fund another branch.`)
   const author = found.value.members.find((member) => member.address === allowed.value.address)
   if (!seat && !author) return Problem.fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you direct its money.')
 
@@ -846,7 +889,7 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
   const identity = identifier()
   const message = request.message ?? null
   const note = message ? clip(message.split('\n')[0] ?? message, Memo.maxNote) : `branch ${target.id}`
-  const entry = { amount, branch: target.id, contributor: allowed.value.address, id: identity, note, note_id: `branch:${target.id}`, swarm: row.id }
+  const entry = { amount, branch: { agent, id: target.id }, contributor: allowed.value.address, id: identity, note, note_id: `branch:${target.id}`, swarm: row.id }
   const placed = seat
     ? await Store.allot(env, { ...entry, limit: seat.limit === null ? null : Memo.units(seat.limit), since: Date.now() - Team.period })
     : await Store.steer(env, entry)
@@ -855,37 +898,45 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
       409,
       'insufficient_balance',
       seat
-        ? `Your team budget has ${dollars(seat.left ?? '0')} left in these 30 days, less than ${dollars(Memo.decimal(amount))}.`
-        : `You have ${dollars(author?.available ?? '0')} of backing not yet behind a note or branch, less than ${dollars(Memo.decimal(amount))}. Put new money behind this branch instead.`,
+        ? `Your team budget has ${dollars(seat.left ?? '0')} left in these 30 days, less than ${dollars(Memo.decimal(amount))}, or ${target.who} was just stopped.`
+        : `You have ${dollars(author?.available ?? '0')} of backing not yet behind a note or branch, less than ${dollars(Memo.decimal(amount))}, or ${target.who} was just stopped. Put new money behind this branch instead.`,
     )
   if (seat) Team.forget(row.id)
 
-  await Store.base(env, row.id, target.id, target.budget === null ? 0n : Memo.units(target.budget))
-  const money = await Store.funds(env, row.id)
-  const total = backed(money, target.id)
-  const behind = [...(money.shares.get(target.id)?.values() ?? [])].reduce((sum, value) => sum + value, 0n)
-  const set = await reached(stub(env, row.id).direct(row.id, {
-    branch: target.id,
-    said: message
-      ? `${Mention.at(account.handle)} steered ${target.role} (branch ${target.id}) with ${dollars(Memo.decimal(amount))}: "${clip(note, 140)}" Its budget is now ${dollars(Memo.decimal(total))}.`
-      : `${Mention.at(account.handle)} put ${dollars(Memo.decimal(amount))} behind ${target.role} (branch ${target.id}), whose budget is now ${dollars(Memo.decimal(total))}.`,
-    ...(message
-      ? {
-          steer: {
-            note: `${Mention.at(account.handle)} steered ${target.who} with ${dollars(Memo.decimal(amount))}: ${clip(note, 200)}`,
-            text: `[${dollars(Memo.decimal(amount))} behind this, from ${Mention.at(account.handle)}; backers have put ${dollars(Memo.decimal(behind))} behind your branch in all, and your budget is now ${dollars(Memo.decimal(total))}] Weigh what backers ask by the money behind it.\n\n${message}`,
-            who: target.who,
-          },
-        }
-      : {}),
-    usd: Number(total) / 1_000_000,
-    wake: target.starved ? `Backers raised your budget to ${dollars(Memo.decimal(total))}. Carry on with your task.` : null,
-  }))
+  const capped = target.budget !== null
+  if (capped) await Store.base(env, row.id, agent, target.id, Memo.units(target.budget ?? '0'))
+  const money = await Store.funds(env, row.id, agent)
+  const total = capped ? backed(money, target.id) : null
+  const sum = behind(money, target.id)
+  const who = Mention.at(account.handle)
+  const standing = total === null ? `It shares the swarm's money, with ${dollars(Memo.decimal(sum))} of backing behind it.` : `Its budget is now ${dollars(Memo.decimal(total))}.`
+  const set = await reached(
+    stub(env, row.id).direct(row.id, {
+      agent,
+      branch: target.id,
+      previous: target.budget === null ? null : Number(target.budget),
+      said: message
+        ? `${who} steered ${target.who} (branch ${target.id}) with ${dollars(Memo.decimal(amount))}. ${standing} ${Mention.quoted(note, 140)}`
+        : `${who} put ${dollars(Memo.decimal(amount))} behind ${target.who} (branch ${target.id}). ${standing}`,
+      ...(message
+        ? {
+            steer: {
+              note: `${who} steered ${target.who} with ${dollars(Memo.decimal(amount))}: ${clip(note, 200)}`,
+              text: `[${dollars(Memo.decimal(amount))} behind this, from ${who}; backers have put ${dollars(Memo.decimal(sum))} behind your branch in all${total === null ? '' : `, and your budget is now ${dollars(Memo.decimal(total))}`}] Weigh what backers ask by the money behind it.\n\n${Mention.claimed(message)}`,
+              who: target.who,
+            },
+          }
+        : {}),
+      usd: total === null ? null : Number(total) / 1_000_000,
+      wake: target.starved && total !== null ? `Backers raised your budget to ${dollars(Memo.decimal(total))}. Carry on with your task.` : null,
+    }),
+  )
   if (!set.ok) {
     await Store.unsteer(env, [identity])
-    return Problem.fail(502, 'upstream_failed', `The gateway did not raise the branch's budget, so nothing was put behind it: ${set.detail}`)
+    return Problem.fail(502, 'upstream_failed', `The gateway did not take it, so nothing was put behind the branch: ${set.detail}`)
   }
-  return Problem.ok(branched(set.value, money, await Store.members(env, row.id), target.who))
+  const [branch] = await fresh(env, row, [target.id], [target])
+  return Problem.ok(branch as Branch)
 }
 
 export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: Address): Promise<Problem.Result<Branch>> {
@@ -900,21 +951,27 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
 
   const found = await directed(env, row)
   if (!found.ok) return found
+  const agent = found.value.agent
   const target = found.value.list.find((branch) => branch.id === request.branch && branch.parent === null)
-  if (!target) return Problem.fail(404, 'not_found', `This swarm has no branch ${request.branch}.`)
-  if (target.state === 'closed' || target.state === 'closing') return Problem.fail(409, 'conflict', `${target.role} is already stopped.`)
-  const backer = target.funders.some((funder) => funder.address === address.toLowerCase())
-  if (!backer && !(await Team.admin(env, row, address).catch(() => false)))
-    return Problem.fail(403, 'access_denied', `Only those who put money behind ${target.role}, or the swarm's admins, stop it.`)
+  if (!agent || !target) return Problem.fail(404, 'not_found', `This swarm has no branch ${request.branch}.`)
+  if (ended(target)) return Problem.fail(409, 'conflict', `${target.who} is already stopped.`)
+  const funded = target.funders.reduce((sum, funder) => sum + units(funder.amount), 0n)
+  const mine = units(target.funders.find((funder) => funder.address === address.toLowerCase())?.amount ?? '0')
+  if (!(funded > 0n && mine * 2n > funded) && !(await Team.admin(env, row, address).catch(() => false)))
+    return Problem.fail(
+      403,
+      'access_denied',
+      `Only whoever holds more than half of the money behind ${target.who} (${dollars(Memo.decimal(funded))} in all), or the swarm's admins, stop it.`,
+    )
 
-  const halted = await reached(stub(env, row.id).halt(row.id, target.id, `${Mention.at(account.handle)} stopped ${target.role} (branch ${target.id}).`))
+  const halted = await reached(stub(env, row.id).halt(row.id, { agent, branch: target.id, said: `${Mention.at(account.handle)} stopped ${target.who} (branch ${target.id}).` }))
   if (!halted.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not stop the branch: ${halted.detail}`)
-  const left = target.left === null ? 0n : Memo.units(target.left)
-  const returned = await Store.settle(env, { branch: target.id, left, swarm: row.id })
+  const left = target.budget === null ? null : target.left === null ? 0n : Memo.units(target.left)
+  const returned = await Store.settle(env, { agent, branch: target.id, left, swarm: row.id })
   const back = returned.reduce((sum, item) => sum + item.amount, 0n)
-  if (back > 0n) await reached(stub(env, row.id).voice(row.id, `${dollars(Memo.decimal(back))} that ${target.role} had not spent went back to its backers, to put behind something else.`))
-  const closed = halted.value.find((agent) => agent.agent_id === target.id)
-  return Problem.ok(closed ? branched(closed, await Store.funds(env, row.id), await Store.members(env, row.id), target.who) : { ...target, state: 'closed' })
+  if (back > 0n) await reached(stub(env, row.id).voice(row.id, `${dollars(Memo.decimal(back))} that ${target.who} had not spent went back to its backers, to put behind something else.`))
+  const [branch] = await fresh(env, row, [target.id], [{ ...target, state: 'closed' }])
+  return Problem.ok(branch as Branch)
 }
 
 export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: Address): Promise<Problem.Result<Branch[]>> {
@@ -928,36 +985,46 @@ export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: 
 
   const found = await directed(env, row)
   if (!found.ok) return found
+  const agent = found.value.agent
   const source = found.value.list.find((branch) => branch.id === request.branch && branch.parent === null)
   const target = found.value.list.find((branch) => branch.id === request.to && branch.parent === null)
-  if (!source || !target) return Problem.fail(404, 'not_found', `This swarm has no branch ${source ? request.to : request.branch}.`)
-  if (target.state === 'closed' || target.state === 'closing') return Problem.fail(409, 'conflict', `${target.role} is closed; move the money to another branch.`)
+  if (!agent || !source || !target) return Problem.fail(404, 'not_found', `This swarm has no branch ${source ? request.to : request.branch}.`)
+  if (ended(source)) return Problem.fail(409, 'conflict', `${source.who} is stopped: what it had not spent already went back to its backers.`)
+  if (ended(target)) return Problem.fail(409, 'conflict', `${target.who} is stopped; move the money to another branch.`)
 
   const amount = units(request.amount)
-  if (source.left === null || Memo.units(source.left) < amount)
-    return Problem.fail(409, 'insufficient_balance', `${source.role} has ${dollars(source.left ?? '0')} of its budget left, less than ${dollars(Memo.decimal(amount))}: money a branch spent stays spent.`)
+  if (source.budget !== null && (source.left === null || Memo.units(source.left) < amount))
+    return Problem.fail(409, 'insufficient_balance', `${source.who} has ${dollars(source.left ?? '0')} of its budget left, less than ${dollars(Memo.decimal(amount))}: money a branch spent stays spent.`)
   const ids = [identifier(), identifier()] as const
-  if (!(await Store.shift(env, { amount, contributor: allowed.value.address, from: source.id, ids, swarm: row.id, team: row.steering === 'team', to: target.id })))
-    return Problem.fail(409, 'insufficient_balance', `You put less than ${dollars(Memo.decimal(amount))} behind ${source.role}; you move only what you put behind a branch.`)
+  if (!(await Store.shift(env, { agent, amount, contributor: allowed.value.address, from: source.id, ids, swarm: row.id, team: row.steering === 'team', to: target.id })))
+    return Problem.fail(409, 'insufficient_balance', `You put less than ${dollars(Memo.decimal(amount))} behind ${source.who}; you move only what you put behind a branch.`)
 
-  await Store.base(env, row.id, target.id, target.budget === null ? 0n : Memo.units(target.budget))
-  const money = await Store.funds(env, row.id)
-  const lowered = await reached(stub(env, row.id).direct(row.id, { branch: source.id, said: null, usd: Number(backed(money, source.id)) / 1_000_000, wake: null }))
-  const raised = lowered.ok
-    ? await reached(stub(env, row.id).direct(row.id, {
-        branch: target.id,
-        said: `${Mention.at(account.handle)} moved ${dollars(Memo.decimal(amount))} from ${source.role} (branch ${source.id}) to ${target.role} (branch ${target.id}).`,
-        usd: Number(backed(money, target.id)) / 1_000_000,
-        wake: target.starved ? `Backers raised your budget to ${dollars(Memo.decimal(backed(money, target.id)))}. Carry on with your task.` : null,
-      }))
-    : lowered
+  if (target.budget !== null) await Store.base(env, row.id, agent, target.id, Memo.units(target.budget))
+  const money = await Store.funds(env, row.id, agent)
+  const said = `${Mention.at(account.handle)} moved ${dollars(Memo.decimal(amount))} from ${source.who} (branch ${source.id}) to ${target.who} (branch ${target.id}).`
+  const lowered =
+    source.budget === null
+      ? undefined
+      : await reached(stub(env, row.id).direct(row.id, { agent, branch: source.id, previous: Number(source.budget), said: null, usd: Number(backed(money, source.id)) / 1_000_000, wake: null }))
+  const raised =
+    lowered && !lowered.ok
+      ? lowered
+      : await reached(
+          stub(env, row.id).direct(row.id, {
+            agent,
+            branch: target.id,
+            previous: target.budget === null ? null : Number(target.budget),
+            said,
+            usd: target.budget === null ? null : Number(backed(money, target.id)) / 1_000_000,
+            wake: target.starved && target.budget !== null ? `Backers raised your budget to ${dollars(Memo.decimal(backed(money, target.id)))}. Carry on with your task.` : null,
+          }),
+        )
   if (!raised.ok) {
     await Store.unsteer(env, ids)
-    if (lowered.ok) await reached(stub(env, row.id).direct(row.id, { branch: source.id, said: null, usd: Number(backed(await Store.funds(env, row.id), source.id)) / 1_000_000, wake: null }))
+    if (lowered?.ok) await reached(stub(env, row.id).direct(row.id, { agent, branch: source.id, previous: null, said: null, usd: Number(source.budget), wake: null }))
     return Problem.fail(502, 'upstream_failed', `The gateway did not move the budget, so nothing moved: ${raised.detail}`)
   }
-  const members = await Store.members(env, row.id)
-  return Problem.ok([branched(lowered.ok ? lowered.value : raised.value, money, members), branched(raised.value, money, members)])
+  return Problem.ok(await fresh(env, row, [source.id, target.id], [source, target]))
 }
 
 export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Address): Promise<Problem.Result<Btw.Exchange>> {
@@ -971,8 +1038,12 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
   if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
   if (row.steering === 'team' && !(await Team.seat(env, row, address).catch(() => undefined)))
     return Problem.fail(403, 'not_member', "Only this swarm's team asks it side questions, as only its team steers it.")
-  if (row.steering !== 'team' && !(await Store.members(env, row.id)).some((member) => member.address === address))
-    return Problem.fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you ask it side questions.')
+  if (row.steering !== 'team' && !(await Store.members(env, row.id)).some((member) => member.address === address && units(member.backed) >= Mention.smallestSteer))
+    return Problem.fail(
+      403,
+      'not_member',
+      `Side questions are paid from the swarm's money, so they take at least ${dollars(Memo.decimal(Mention.smallestSteer))} of your own behind it: a pledge, a transfer or a monthly budget.`,
+    )
 
   const answered = await stub(env, row.id).btw({ address, ...(request.branch === undefined ? {} : { branch: request.branch }), prompt: Btw.ask(request.thread, request.question), swarm: row.id })
   if (!answered.ok)
@@ -1086,9 +1157,16 @@ export async function hand(env: Cloudflare.Env, input: Input<'hand'>, contributo
   if (!parsed.ok) return parsed
   const found = await Store.find(env, parsed.value.swarm)
   if (!found) return missing()
-  if ((await Hands.count(env, found.id)) >= Hands.limit)
-    return Problem.fail(409, 'conflict', `This swarm has ${Hands.limit} hands already.`)
   const row = await provisioned(env, found)
+  const existing = await Hands.list(env, row.id)
+  const rows = existing.length >= Hands.limit || existing.some((hand) => hand.seen_at === null) ? await Hands.seen(env, row.id, existing, await stub(env, row.id).lent()) : existing
+  const evicted = Hands.evictable(rows, Date.now())
+  if (rows.length - evicted.length >= Hands.limit)
+    return Problem.fail(409, 'conflict', `This swarm has ${Hands.limit} machines that have connected already.`)
+  for (const hand of evicted) {
+    await Hands.forget(env, row.id, hand.name)
+    await reached(Gateway.detach(env, row.id, hand.name))
+  }
 
   const label = parsed.value.label ?? ''
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -1120,7 +1198,8 @@ export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise
   if (!(await Store.exists(env, parsed.value.swarm))) return missing()
 
   const rows = await Hands.list(env, parsed.value.swarm)
-  return Problem.ok({ hands: Hands.lent(rows, rows.length ? await stub(env, parsed.value.swarm).lent() : []) })
+  const listed = rows.length ? await stub(env, parsed.value.swarm).lent() : []
+  return Problem.ok({ hands: Hands.lent(await Hands.seen(env, parsed.value.swarm, rows, listed), listed) })
 }
 
 export async function transfer(env: Cloudflare.Env, input: Input<'transfer'>, origin: string): Promise<Problem.Result<Prepared>> {

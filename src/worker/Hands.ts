@@ -1,9 +1,11 @@
 import type { Lent, Terms } from '../shared/Api.ts'
 import type { Listed } from './Gateway.ts'
 
-export type Row = { contributor: string | null; created_at: number; label: string; name: string; swarm: string }
+export type Row = { contributor: string | null; created_at: number; label: string; name: string; seen_at: number | null; swarm: string }
 
 export const limit = 32
+
+export const unseenMs = 86_400_000
 
 export function slug(label: string) {
   const cleaned = label
@@ -45,6 +47,25 @@ export async function count(env: Cloudflare.Env, swarm: string) {
 
 export async function forget(env: Cloudflare.Env, swarm: string, name: string) {
   await env.DB.prepare('delete from hands where swarm = ? and name = ?').bind(swarm, name).run()
+}
+
+export function used(hand: Listed | undefined) {
+  return !!hand && (hand.connected || (typeof hand['requests'] === 'number' && hand['requests'] > 0))
+}
+
+export async function seen(env: Cloudflare.Env, swarm: string, rows: readonly Row[], listed: readonly Listed[]) {
+  const names = rows.filter((row) => row.seen_at === null && used(listed.find((hand) => hand.name === row.name))).map((row) => row.name)
+  if (!names.length) return rows
+  const now = Date.now()
+  await env.DB.batch(names.map((name) => env.DB.prepare('update hands set seen_at = ? where swarm = ? and name = ? and seen_at is null').bind(now, swarm, name)))
+  return rows.map((row) => (names.includes(row.name) ? { ...row, seen_at: now } : row))
+}
+
+export function evictable(rows: readonly Row[], now: number) {
+  const unseen = rows.filter((row) => row.seen_at === null).sort((a, b) => a.created_at - b.created_at)
+  const stale = unseen.filter((row) => row.created_at < now - unseenMs)
+  if (rows.length - stale.length < limit) return stale
+  return [...stale, ...unseen.filter((row) => !stale.includes(row)).slice(0, rows.length - stale.length - limit + 1)]
 }
 
 export const share = 5n

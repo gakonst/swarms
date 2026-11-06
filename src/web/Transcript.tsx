@@ -9,7 +9,7 @@ import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { clock, usd } from './format.ts'
 import { agent, type Live, message, speaker, type Stream, useWallet } from './hooks.ts'
-import { payIn } from './money.ts'
+import { useCredit } from './money.ts'
 import * as Wallet from './wallet.ts'
 import { Markdown } from './Markdown.tsx'
 import { seated, useRoster } from './Steering.tsx'
@@ -296,6 +296,7 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
   const area = useRef<HTMLTextAreaElement>(null)
+  const credit = useCredit()
 
   useEffect(() => {
     if (!props.draft.at) return
@@ -325,9 +326,10 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
       const need = units(stake)
       if (team) {
         if (!seat) throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
-      } else await payIn(config, { id: props.swarm, wallet: props.wallet }, need, setBusy)
+      } else await credit.cover(config, { id: props.swarm, wallet: props.wallet }, need, setBusy)
       setBusy('Sending…')
       const posted = await Api.say(props.swarm, { steer: decimal(need), text: `@swarm ${idea}` })
+      credit.spend(need)
       props.onSaid(posted.message)
       setText('')
     } catch (reason) {

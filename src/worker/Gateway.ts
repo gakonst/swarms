@@ -1,3 +1,5 @@
+import { redact } from '../shared/Trail.ts'
+
 export type Result<value> = { ok: true; value: value } | { detail: string; ok: false; status: number }
 
 export type Report = {
@@ -191,7 +193,8 @@ export async function subagents(env: Cloudflare.Env, swarm: string, agent: strin
 }
 
 export function subagent(raw: Raw): Subagent {
-  const result = rendered(raw.status.output ?? raw.last_output)
+  const output = rendered(raw.status.output ?? raw.last_output)
+  const result = output === undefined ? undefined : redact(output)
   return {
     agent_id: raw.agent_id,
     ...(raw.budget_usd === undefined ? {} : { budget_usd: raw.budget_usd }),
@@ -200,7 +203,7 @@ export function subagent(raw: Raw): Subagent {
     role: raw.role,
     ...(raw.spent_usd === undefined ? {} : { spent_usd: raw.spent_usd }),
     status: { ...(raw.status.error ? { error: raw.status.error } : {}), state: raw.status.state },
-    task: raw.task,
+    task: redact(raw.task),
   }
 }
 

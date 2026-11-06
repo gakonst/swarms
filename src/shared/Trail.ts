@@ -11,7 +11,10 @@ export function clip(text: string, length: number) {
 }
 
 export function redact(text: string) {
-  return text.replace(/(https?:\/\/)[^\s/@:'"]+:[^\s/@'"]+@/g, '$1***@').replace(/eyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g, '[redacted]')
+  return text
+    .replace(/(https?:\/\/)[^\s/@:'"]+:[^\s/@'"]+@/g, '$1***@')
+    .replace(/eyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g, '[redacted]')
+    .replace(/\b(sk-tempo-|nch_)[\w-]{8,}/g, '$1[redacted]')
 }
 
 export function tool(payload: Record<string, unknown>) {

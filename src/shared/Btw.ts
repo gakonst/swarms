@@ -10,6 +10,26 @@ export const maxThread = 20
 
 export const perHour = 20
 
+export const perSwarmHour = 120
+
+export const maxThreadBytes = 32_768
+
+export const maxMessageBytes = 48_000
+
+export function bytes(text: string) {
+  return new TextEncoder().encode(text).length
+}
+
+export function size(thread: readonly Exchange[]) {
+  return thread.reduce((sum, exchange) => sum + bytes(exchange.question) + bytes(exchange.answer), 0)
+}
+
+export function fit(thread: readonly Exchange[]) {
+  const kept = [...thread].slice(-maxThread)
+  while (kept.length > 1 && size(kept) > maxThreadBytes) kept.shift()
+  return kept
+}
+
 const collapsed = 'Collapsed /btw'
 
 const requested = 'Artifact from /btw'

@@ -7,7 +7,7 @@ import * as Api from './api.ts'
 import { usd } from './format.ts'
 import { message, usePoll, useWallet } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
-import { payIn } from './money.ts'
+import { useCredit } from './money.ts'
 import { seated, useRoster } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
@@ -64,6 +64,7 @@ export function Side(props: {
   const [done, setDone] = useState<string>()
   const area = useRef<HTMLTextAreaElement>(null)
   const list = useRef<HTMLOListElement>(null)
+  const credit = useCredit()
 
   useEffect(() => {
     setThread(recall(props.swarm.id, props.branch))
@@ -94,7 +95,7 @@ export function Side(props: {
     setPending(question)
     setText('')
     try {
-      const answered = await Api.btw(props.swarm.id, { ...(props.branch === null ? {} : { branch: props.branch }), question, thread })
+      const answered = await Api.btw(props.swarm.id, { ...(props.branch === null ? {} : { branch: props.branch }), question, thread: Btw.fit(thread) })
       remember([...thread, answered].slice(-Btw.maxThread))
     } catch (reason) {
       setText(question)
@@ -109,16 +110,18 @@ export function Side(props: {
     if (!config || busy || !thread.length || !valid(stake)) return
     setError(undefined)
     setDone(undefined)
+    const kept = Btw.fit(thread)
     try {
       const need = units(stake)
       if (team) {
         if (!seat) throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
-      } else await payIn(config, props.swarm, need, setBusy)
+      } else await credit.cover(config, props.swarm, need, setBusy)
       setBusy('Sending…')
       if (props.branch === null) {
-        const posted = await Api.say(props.swarm.id, { artifact, btw: thread, steer: decimal(need), text: `@swarm ${Btw.note(thread, artifact)}` })
+        const posted = await Api.say(props.swarm.id, { artifact, btw: kept, steer: decimal(need), text: `@swarm ${Btw.note(kept, artifact)}` })
         props.onSaid(posted.message)
-      } else await Api.fund(props.swarm.id, props.branch, { amount: decimal(need), message: Btw.collapse(thread, artifact) })
+      } else await Api.fund(props.swarm.id, props.branch, { amount: decimal(need), message: Btw.collapse(kept, artifact) })
+      credit.spend(need)
       setDone(artifact ? `Asked ${name} for an artifact, with ${usd(decimal(need))} behind it.` : `Steered ${name} with this thread and ${usd(decimal(need))}.`)
       remember([])
     } catch (reason) {

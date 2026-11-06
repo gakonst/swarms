@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Branch, Config, Detail } from '../shared/Api.ts'
+import * as Btw from '../shared/Btw.ts'
 import * as Mention from '../shared/Mention.ts'
 import { decimal, units } from '../shared/Memo.ts'
 import { Alert, explain } from './Alert.tsx'
@@ -7,7 +8,7 @@ import * as Api from './api.ts'
 import { usd } from './format.ts'
 import { message, usePoll, useWallet } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
-import { payIn } from './money.ts'
+import { useCredit } from './money.ts'
 import { seated, useRoster } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
@@ -78,7 +79,7 @@ export function Branches(props: { config: Config | undefined; onAsk: (branch: nu
           <b>{top.length}</b> {top.length === 1 ? 'branch' : 'branches'} · <b>{usd(decimal(spent))}</b> spent
           {total > 0n && <> · <b>{usd(decimal(total))}</b> put behind them</>}
         </p>
-        <p className="branches-how">A branch is a subagent the agent started, with the subagents under it. Money you put behind one becomes its budget, and it stops when that is spent. Steer a branch with a message and money behind it, ask it on the side, or move what it has not spent to another branch.</p>
+        <p className="branches-how">A branch is a subagent the agent started, with the subagents under it. Money you put behind one becomes its budget, and it stops when that is spent. Steer a branch with a message and money behind it, ask it on the side, or move what it has not spent to another branch. Whoever holds more than half of the money behind a branch, or an admin, can stop it.</p>
         {propose}
       </header>
       <ol className="branches-list">
@@ -130,7 +131,7 @@ function Card(props: {
         <span className="branch-task">{branch.task}</span>
         <span className="branch-money">
           {budget === null ? (
-            <span className="branch-pool"><b>{usd(decimal(spent))}</b> spent · no budget of its own, it shares the swarm's money</span>
+            <span className="branch-pool"><b>{usd(decimal(spent))}</b> spent · no budget of its own, it shares the swarm's money{units(branch.funded) > 0n ? `, with ${usd(branch.funded)} of backing behind it` : ''}</span>
           ) : (
             <>
               <span aria-hidden="true" className="branch-bar"><i style={{ width: `${filled}%` }} /></span>
@@ -196,6 +197,9 @@ function Tray(props: { branch: Branch; config: Config | undefined; onChanged: ()
   const [to, setTo] = useState<number | undefined>(props.others[0]?.id)
   const [shift, setShift] = useState<string>('')
   const admin = !!me && !!roster?.admins.includes(me as `0x${string}`)
+  const credit = useCredit()
+  const funded = props.branch.funders.reduce((sum, funder) => sum + units(funder.amount), 0n)
+  const majority = !!mine && units(mine.amount) * 2n > funded
 
   if (!wallet.session)
     return (
@@ -238,12 +242,15 @@ function Tray(props: { branch: Branch; config: Config | undefined; onChanged: ()
     if (!config || busy || !valid(stake)) return
     setError(undefined)
     setDone(undefined)
+    if (steering && Btw.bytes(message_) > Btw.maxMessageBytes) return setError(`A message to a branch is at most ${Btw.maxMessageBytes} bytes; shorten it.`)
     try {
       const need = units(stake)
-      if (!team) await payIn(config, props.swarm, need, setBusy)
+      if (!team) await credit.cover(config, props.swarm, need, setBusy)
       setBusy(steering ? 'Steering…' : 'Raising its budget…')
       const funded = await Api.fund(props.swarm.id, props.branch.id, { amount: decimal(need), ...(steering ? { message: message_ } : {}) })
-      setDone(steering ? `Steered ${props.branch.who}; its budget is now ${usd(funded.budget ?? '0')}.` : `${props.branch.who}'s budget is now ${usd(funded.budget ?? '0')}.`)
+      credit.spend(need)
+      const standing = funded.budget === null ? `it shares the swarm's money, with ${usd(funded.funded)} of backing behind it` : `its budget is now ${usd(funded.budget)}`
+      setDone(steering ? `Steered ${props.branch.who}; ${standing}.` : `Put ${usd(decimal(need))} behind ${props.branch.who}; ${standing}.`)
       setText('')
       props.onChanged()
     } catch (reason) {
@@ -304,7 +311,7 @@ function Tray(props: { branch: Branch; config: Config | undefined; onChanged: ()
         <label className="say-own">$<input aria-label="Your amount" disabled={!!busy} inputMode="decimal" onChange={(event) => setStake(event.target.value.replace(',', '.').replace('$', ''))} onFocus={(event) => event.target.select()} placeholder="…" value={(stakes as readonly string[]).includes(stake) ? '' : stake} /></label>
         <button className="branch-go" disabled={!!busy || !valid(stake)} onClick={() => void fund()} type="button">{busy ?? (valid(stake) ? `${steering ? 'Steer' : 'Fund'} ${usd(decimal(units(stake)))}` : 'Fund')}</button>
       </div>
-      <p className="branch-note">{team ? `From the swarm's money${seat?.left === null || seat?.left === undefined ? '' : ` · ${usd(seat.left)} of your team budget left`}.` : 'New money from your wallet, all of it for this branch.'}{props.branch.starved ? ' It is out of budget, so funding it starts it again.' : ''}</p>
+      <p className="branch-note">{team ? `From the swarm's money${seat?.left === null || seat?.left === undefined ? '' : ` · ${usd(seat.left)} of your team budget left`}.` : 'New money from your wallet, all of it for this branch.'}{props.branch.budget === null ? ' It has no budget of its own, so this counts as backing behind it, not a cap.' : ''}{props.branch.starved ? ' It is out of budget, so funding it starts it again.' : ''}</p>
       {mine && units(movable) > 0n && props.others.length > 0 && (
         <div className="branch-move">
           <span>Move</span>
@@ -318,7 +325,7 @@ function Tray(props: { branch: Branch; config: Config | undefined; onChanged: ()
           <button disabled={!!busy || to === undefined || !valid(shift || movable, 10_000n)} onClick={() => void move()} type="button">Move</button>
         </div>
       )}
-      {(mine || admin) && (
+      {(majority || admin) && (
         <button className="branch-stop" disabled={!!busy} onClick={() => void stop()} type="button">Stop this branch</button>
       )}
       {done && <p className="branch-done">{done}</p>}

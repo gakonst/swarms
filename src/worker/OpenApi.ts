@@ -328,7 +328,7 @@ const schemas = {
       steered: { ...usd, description: 'What the backer put behind notes, with money or with @swarm.' },
       ways: { items: { enum: ['pledge', 'budget', 'transfer', 'machine'], type: 'string' }, type: 'array' },
     },
-    "A backer of the swarm, who may post in its room. A lent machine counts when its hand was issued to a signed-in caller.",
+    "A backer of the swarm, who may post in its room. A lent machine counts when its hand was issued to a signed-in caller and has connected.",
   ),
   Posted: object({ me: ref('Me'), message: ref('Said') }),
   Exchange: object({ answer: string, question: string }),
@@ -628,7 +628,7 @@ export function document(origin: string) {
       '/v1/swarms/{id}/btw': {
         post: {
           description:
-            "Asks the swarm's agent a side question as the signed-in backer (Authorization: Bearer <token> from /v1/auth): the gateway answers it from the agent's own conversation, without tools and without interrupting or steering the running turn, as the nanocode CLI's /btw does. Send the thread's earlier questions and answers as thread, oldest first, to keep a side conversation. The answer is paid from the swarm's money, and a backer asks at most 20 an hour. To steer the agent with the thread, post @swarm Collapsed /btw: <the first question> to the room with btw set to the thread and steer to the money behind it.",
+            "Asks the swarm's agent a side question as the signed-in backer (Authorization: Bearer <token> from /v1/auth): the gateway answers it from the agent's own conversation, without tools and without interrupting or steering the running turn, as the nanocode CLI's /btw does. Send the thread's earlier questions and answers as thread, oldest first, to keep a side conversation. The answer is paid from the swarm's money, so the asker needs at least $0.01 of their own behind the swarm (or a seat on its team); a backer asks at most 20 an hour, a swarm answers at most 120 an hour from everyone, and thread is at most 32 KiB. Answers have credentials redacted. To steer the agent with the thread, post @swarm Collapsed /btw: <the first question> to the room with btw set to the thread and steer to the money behind it.",
           operationId: 'askBtw',
           parameters: [swarm],
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.btw.omit({ swarm: true })) } }, required: true },
@@ -671,7 +671,7 @@ export function document(origin: string) {
       '/v1/swarms/{id}/branches/{branch}/stop': {
         post: {
           description:
-            "As a signed-in backer of the branch, or an admin of the swarm, stops a branch: its subagent closes, and what backers put behind it that it had not spent goes back to their available backing, in proportion to what each put in.",
+            "As the signed-in backer who holds more than half of the money behind the branch, or an admin of the swarm, stops a branch: its subagent closes, and what backers put behind it that it had not spent goes back to their available backing, in proportion to what each put in.",
           operationId: 'stopBranch',
           parameters: [swarm, parameter('branch', 'path', integer, 'The branch to stop.')],
           responses: { ...ok(ref('Branch'), 'The stopped branch.'), ...failures(401, 403, 404, 409, 502) },

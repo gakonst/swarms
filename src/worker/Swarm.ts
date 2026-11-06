@@ -757,6 +757,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.put('cursor', 0)
     this.kv.put('fresh', true)
     this.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it pays for is paid from the contributions, one at a time.", created.value.id)
+    await this.release(row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
     return created.value.id
   }
 
@@ -1859,7 +1860,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         weight: note?.weight ?? input.steer.amount,
       }
     }
-    return this.speak(input.author, input.text, input.mentions, steer)
+    return this.speak(input.author, redact(input.text), input.mentions, steer)
   }
 
   tell(notes: Note[]): Note[] {
@@ -1869,24 +1870,29 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     })
   }
 
-  async subagents(swarm: string): Promise<Gateway.Result<Gateway.Subagent[]>> {
+  async subagents(swarm: string): Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> {
     const agent = this.kv.get<string>('agent')
-    if (!agent) return { ok: true, value: [] }
-    return Gateway.subagents(this.env, swarm, agent)
+    if (!agent) return { ok: true, value: { agent: null, list: [] } }
+    const listed = await Gateway.subagents(this.env, swarm, agent)
+    return listed.ok ? { ok: true, value: { agent, list: listed.value } } : listed
   }
 
   async direct(
     swarm: string,
-    input: { branch: number; said: string | null; steer?: { note: string; text: string; who: string }; usd: number; wake: string | null },
-  ): Promise<Gateway.Result<Gateway.Subagent>> {
+    input: { agent: string; branch: number; previous: number | null; said: string | null; steer?: { note: string; text: string; who: string }; usd: number | null; wake: string | null },
+  ): Promise<Gateway.Result<Gateway.Subagent | null>> {
     const agent = this.kv.get<string>('agent')
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
-    const set = await Gateway.budget(this.env, swarm, agent, input.branch, input.usd)
-    if (!set.ok) return set
+    if (agent !== input.agent) return { detail: "The swarm started a new agent since its branches were listed; list them again.", ok: false, status: 409 }
+    const set = input.usd === null ? undefined : await Gateway.budget(this.env, swarm, agent, input.branch, input.usd)
+    if (set && !set.ok) return set
 
     if (input.steer) {
       const told = await Gateway.tell(this.env, swarm, agent, input.branch, input.steer.text, 'urgent')
-      if (!told.ok) return told
+      if (!told.ok) {
+        if (set) await Gateway.budget(this.env, swarm, agent, input.branch, input.previous)
+        return told
+      }
       this.log('steer', input.steer.note, input.steer.text, { who: input.steer.who })
     } else if (input.wake) await Gateway.tell(this.env, swarm, agent, input.branch, input.wake)
     if (input.said) {
@@ -1894,7 +1900,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.announce(input.said)
     }
     this.touch()
-    return { ok: true, value: Gateway.subagent(set.value.agent) }
+    return { ok: true, value: set ? Gateway.subagent(set.value.agent) : null }
   }
 
   async voice(swarm: string, text: string): Promise<Gateway.Result<true>> {
@@ -1903,15 +1909,16 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return { ok: true, value: true }
   }
 
-  async halt(swarm: string, branch: number, said: string): Promise<Gateway.Result<Gateway.Subagent[]>> {
+  async halt(swarm: string, input: { agent: string; branch: number; said: string }): Promise<Gateway.Result<Gateway.Subagent[]>> {
     const agent = this.kv.get<string>('agent')
     if (!agent) return { detail: 'The swarm has no agent yet.', ok: false, status: 409 }
-    const closed = await Gateway.close(this.env, swarm, agent, branch)
+    if (agent !== input.agent) return { detail: "The swarm started a new agent since its branches were listed; list them again.", ok: false, status: 409 }
+    const closed = await Gateway.close(this.env, swarm, agent, input.branch)
     if (!closed.ok) return closed
     if (this.kv.get<string>('turn'))
-      await Gateway.prompt(this.env, swarm, agent, { prompt: `${said} Backers stopped this branch: do not restart it, or give its work to another subagent, unless backers ask for it again.`, steer: true })
-    this.log('status', said)
-    this.announce(said)
+      await Gateway.prompt(this.env, swarm, agent, { prompt: `${input.said} Backers stopped this branch: do not restart it, or give its work to another subagent, unless backers ask for it again.`, steer: true })
+    this.log('status', input.said)
+    this.announce(input.said)
     this.touch()
     return { ok: true, value: closed.value.agents.map(Gateway.subagent) }
   }
@@ -1921,11 +1928,23 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!agent) return
     const listed = await Gateway.subagents(this.env, row.id, agent)
     if (!listed.ok) return
-    for (const branch of listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed' && found.budget_usd !== undefined)) {
-      const left = Memo.units((branch.budget_usd ?? 0).toFixed(6)) - Memo.units((branch.spent_usd ?? 0).toFixed(6))
-      const returned = await Store.settle(this.env, { branch: branch.agent_id, left: left > 0n ? left : 0n, swarm: row.id })
+    for (const branch of listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed')) {
+      const returned = await Store.settle(this.env, { agent, branch: branch.agent_id, left: unspent(branch), swarm: row.id })
       const back = returned.reduce((sum, item) => sum + item.amount, 0n)
       if (back > 0n) this.announce(`${branch.role} (branch ${branch.agent_id}) closed with ${dollars(back)} of its backers' money unspent, which is theirs to put behind something else again.`)
+    }
+  }
+
+  async release(swarm: string, current: string) {
+    for (const old of await Store.replaced(this.env, swarm, current)) {
+      const listed = old.agent ? await Gateway.subagents(this.env, swarm, old.agent).catch(() => undefined) : undefined
+      let back = 0n
+      for (const branch of old.branches) {
+        const found = listed?.ok ? listed.value.find((agent) => agent.agent_id === branch) : undefined
+        const returned = await Store.settle(this.env, { agent: old.agent, branch, left: found ? unspent(found) : null, swarm })
+        back += returned.reduce((sum, item) => sum + item.amount, 0n)
+      }
+      if (back > 0n) this.announce(`The swarm started a new agent, so ${dollars(back)} that backers had put behind the old agent's branches went back to them, to put behind the new agent's work.`)
     }
   }
 
@@ -1939,14 +1958,20 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const oldest = recent[0]
     if (recent.length >= Btw.perHour && oldest !== undefined)
       return { detail: `At most ${Btw.perHour} side questions an hour; the next one opens at ${clock(oldest + hourMs)} UTC.`, ok: false, status: 429 }
+    const everyone = (this.kv.get<number[]>('btw:*') ?? []).filter((at) => at > now - hourMs)
+    const first = everyone[0]
+    if (everyone.length >= Btw.perSwarmHour && first !== undefined)
+      return { detail: `This swarm answers at most ${Btw.perSwarmHour} side questions an hour, from everyone; the next one opens at ${clock(first + hourMs)} UTC.`, ok: false, status: 429 }
     this.kv.put(key, [...recent, now])
+    this.kv.put('btw:*', [...everyone, now])
 
     const answered = input.branch === undefined ? await Gateway.side(this.env, input.swarm, agent, input.prompt) : await Gateway.ask(this.env, input.swarm, agent, input.branch, input.prompt)
     if (!answered.ok) {
       this.kv.put(key, recent)
+      this.kv.put('btw:*', everyone)
       return answered
     }
-    return { ok: true, value: answered.value.text }
+    return { ok: true, value: redact(answered.value.text) }
   }
 
   announce(text: string, artifact: Shown | null = null) {
@@ -2281,9 +2306,15 @@ function next(notes: Note[]) {
   return ['Keep going.', ...notes.map(weighed)].join('\n\n')
 }
 
+function unspent(branch: Gateway.Subagent) {
+  if (branch.budget_usd === undefined) return null
+  const left = Memo.units(branch.budget_usd.toFixed(6)) - Memo.units((branch.spent_usd ?? 0).toFixed(6))
+  return left > 0n ? left : 0n
+}
+
 function weighed(note: Note) {
   const backers = note.backers === 1 ? '1 backer' : `${note.backers} backers`
-  return `[${dollars(Memo.units(note.weight))} behind this, from ${backers}] ${note.note}`
+  return `[${dollars(Memo.units(note.weight))} behind this, from ${backers}] ${Mention.claimed(note.note)}`
 }
 
 function updates(turns: readonly Search.Turn[]): Update[] {

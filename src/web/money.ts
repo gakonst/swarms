@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import { memo } from '../shared/Transfer.ts'
@@ -18,4 +19,20 @@ export async function payIn(config: Config, swarm: { id: string; wallet: `0x${st
   const hash = await Wallet.send(config, { amount: need, memo: memo(swarm.id, ''), to: wallet, token })
   busy('Sending…')
   await recorded(swarm.id, hash, '')
+}
+
+export function useCredit() {
+  const credit = useRef(0n)
+  return {
+    async cover(config: Config, swarm: { id: string; wallet: `0x${string}` | null }, need: bigint, busy: (step: string) => void) {
+      const owed = need - credit.current
+      if (owed <= 0n) return
+      const sent = owed < 10_000n ? 10_000n : owed
+      await payIn(config, swarm, sent, busy)
+      credit.current += sent
+    },
+    spend(need: bigint) {
+      credit.current = credit.current > need ? credit.current - need : 0n
+    },
+  }
 }

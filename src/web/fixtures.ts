@@ -995,7 +995,9 @@ export async function btw(key: string, input: { branch?: number; question: strin
   const swarm = seed(await find(key))
   if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to ask the swarm side questions.')
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
-  if (!me(swarm, who)?.member && !(swarm.steering === 'team' && rosters.get(key)?.seats.some((found) => found.address === who.toLowerCase()))) throw fail(403, 'not_member', 'Back this swarm first: a pledge, a transfer, a monthly budget or a lent machine lets you ask it side questions.')
+  const asker = me(swarm, who)
+  if (!(asker?.member && units(asker.backed) >= 10_000n) && !(swarm.steering === 'team' && rosters.get(key)?.seats.some((found) => found.address === who.toLowerCase())))
+    throw fail(403, 'not_member', "Side questions are paid from the swarm's money, so they take at least $0.01 of your own behind it: a pledge, a transfer or a monthly budget.")
   const branch = input.branch === undefined ? undefined : grown(swarm).find((found) => found.id === input.branch)
   const answer = `${branch ? `${branch.role}, from what it has done on its branch` : `From what it has done so far on "${swarm.title}"`}: ${input.thread.length ? 'building on your earlier questions, ' : ''}it would answer "${input.question.trim()}" from its last update without stopping its work.`
   return delay({ answer, question: input.question.trim() }, 600)
@@ -1121,7 +1123,7 @@ function grown(swarm: Live): Branch[] {
   return sprouts.map(([id, parent, role, task, state, budget, spent]) => {
     const mine = puts.filter((put) => put.branch === id)
     const funded = mine.reduce((sum, put) => sum + put.amount, 0n)
-    const total = mine.length ? (budget === null ? 0n : units(budget)) + funded : budget === null ? null : units(budget)
+    const total = budget === null ? null : units(budget) + funded
     const used = spent === null ? (total === null ? null : 0n) : units(spent)
     const awake = woken.has(`${swarm.id}:${id}`)
     const stopped = halted.has(`${swarm.id}:${id}`)
@@ -1165,11 +1167,12 @@ export async function stop(key: string, branch: number, who: `0x${string}` | und
   directing(swarm, key, who)
   const target = grown(swarm).find((found) => found.id === branch && found.parent === null)
   if (!target) throw fail(404, 'not_found', `This swarm has no branch ${branch}.`)
-  if (!target.funders.some((funder) => funder.address === who?.toLowerCase()) && !rostered(key, swarm.steering).admins.includes(who?.toLowerCase() as `0x${string}`))
-    throw fail(403, 'access_denied', `Only those who put money behind ${target.role}, or the swarm's admins, stop it.`)
+  const funded = target.funders.reduce((sum, funder) => sum + units(funder.amount), 0n)
+  const mine = units(target.funders.find((funder) => funder.address === who?.toLowerCase())?.amount ?? '0')
+  if (!(funded > 0n && mine * 2n > funded) && !rostered(key, swarm.steering).admins.includes(who?.toLowerCase() as `0x${string}`))
+    throw fail(403, 'access_denied', `Only whoever holds more than half of the money behind ${target.role}, or the swarm's admins, stop it.`)
   halted.add(`${swarm.id}:${branch}`)
-  const left = target.left === null ? 0n : units(target.left)
-  const funded = units(target.funded)
+  const left = target.budget === null ? funded : target.left === null ? 0n : units(target.left)
   const back = left < funded ? left : funded
   if (back > 0n)
     planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), ...target.funders.map((funder) => ({ amount: -(back * units(funder.amount)) / funded, branch, contributor: funder.address }))])

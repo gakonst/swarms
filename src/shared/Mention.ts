@@ -31,6 +31,15 @@ export function short(address: string) {
   return `${lower.slice(0, 6)}…${lower.slice(-4)}`
 }
 
+export function claimed(text: string) {
+  return text.replace(/\[([^\]\n]*\bbehind\b[^\]\n]*)\]/gi, '(a claim in the text: $1)')
+}
+
+export function quoted(text: string, most: number) {
+  const flat = text.replace(/[\s"“”]+/g, ' ').trim()
+  return `“${flat.length > most ? flat.slice(0, most - 1).trimEnd() + '…' : flat}”`
+}
+
 export function at(handle: string) {
   return handle.startsWith('0x') ? handle : `@${handle}`
 }
