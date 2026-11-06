@@ -1,6 +1,7 @@
 import { Handler, Kv } from 'accounts/server'
 import type { Address } from 'viem'
-import { http } from 'viem'
+import { createClient, http } from 'viem'
+import { tempo } from 'viem/tempo/chains'
 import * as Replica from './Replica.ts'
 
 export const path = '/v1/auth'
@@ -60,9 +61,12 @@ export function store(env: Cloudflare.Env) {
   })
 }
 
+const keyed = { ...tempo, verifyHash: (client: Parameters<typeof tempo.verifyHash>[0], parameters: Parameters<typeof tempo.verifyHash>[1]) => tempo.verifyHash(client, { ...parameters, mode: 'allowAccessKey' }) }
+
 export function auth(env: Cloudflare.Env) {
   return Handler.auth({
     cookie: false,
+    getClient: () => createClient({ chain: keyed, transport: http(env.TEMPO_RPC) }),
     origin: env.SWARMS_URL,
     path,
     statement: 'Sign in to Swarms to chat in the rooms of the swarms you back.',
