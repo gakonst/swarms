@@ -523,6 +523,15 @@ export async function held(env: Cloudflare.Env, swarm: string) {
   return { active: results.filter((row) => row.status === 'active'), spent: results.filter((row) => row.status === 'spent') }
 }
 
+export async function retire(env: Cloudflare.Env, swarm: string, used: readonly (readonly [string, string])[]) {
+  const now = Date.now()
+  await env.DB.batch([
+    ...used.map(([id, pulled]) => env.DB.prepare("update budgets set pulled = ?, left_now = '0', next_at = null, status = 'ended', updated_at = ? where id = ?").bind(pulled, now, id)),
+    env.DB.prepare("update budgets set status = 'ended', left_now = '0', next_at = null, updated_at = ? where swarm = ? and status in ('pending', 'active', 'spent')").bind(now, swarm),
+    env.DB.prepare("update pledges set status = 'ended' where swarm = ? and status in ('pending', 'active')").bind(swarm),
+  ]).finally(wrote)
+}
+
 export async function end(env: Cloudflare.Env, swarm: string) {
   await env.DB.prepare(
     "update budgets set status = 'ended', next_at = null, updated_at = ? where swarm = ? and status = 'active'",

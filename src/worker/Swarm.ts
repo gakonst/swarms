@@ -462,6 +462,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async heal() {
     const now = Date.now()
     const id = this.kv.get<string>('id')
+    if (id && !this.kv.get<boolean>('retired')) await this.retire(id).catch((error: unknown) => console.error('Ending pledges and budgets failed', error))
     if (id && !this.kv.get<boolean>('open')) {
       const row = await this.found(id)
       if (row?.status === 'done' && (this.kv.get<boolean>('refunded') || this.kv.get<number>('refundAt') === undefined)) await this.reopen(row)
@@ -1405,6 +1406,28 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const receipt = JSON.parse(atob(header.replace(/-/g, '+').replace(/_/g, '/'))) as { acceptedCumulative?: string; spent?: string }
     this.kv.put(`channel:${source.id}`, { ...channel, signed: receipt.acceptedCumulative ?? String(cumulative) })
     if (receipt.spent) this.kv.put('spent:' + source.id, receipt.spent)
+  }
+
+  async retire(id: string) {
+    if (Date.now() - (this.kv.get<number>('retiring') ?? 0) < 60_000) return
+    this.kv.put('retiring', Date.now())
+    const row = await this.found(id)
+    if (!row) return
+    let failed = 0
+    for (const [key, channel] of [...this.kv.list<Payer.Channel>({ prefix: 'channel:' })]) {
+      const found = key.slice('channel:'.length)
+      if (found === 'pool' || found.startsWith('hand:')) continue
+      const source = await this.source(row, found)
+      if (!source) Payer.forget(this.kv, found)
+      else if (!(await this.close(row, source, channel).catch(() => false))) failed += 1
+    }
+    if (failed) return
+    const mach = await Store.held(this.env, row.id)
+    await Store.retire(this.env, row.id, [...mach.active, ...mach.spent].map((key) => [key.id, String(this.used(key.id))] as const))
+    this.kv.put('retired', true)
+    this.kv.delete('retiring')
+    this.memos.clear()
+    if (mach.active.length + mach.spent.length) this.log('funds', 'Pledges and monthly budgets are gone: every pledge channel closed and returned what it did not spend. From now on backers just send money.')
   }
 
   drop(id: string) {
