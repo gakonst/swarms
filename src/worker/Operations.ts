@@ -779,12 +779,16 @@ function reached<value>(call: Promise<Gateway.Result<value>>): Promise<Gateway.R
 type Directed = { agent: string | null; list: Branch[]; members: Member[]; money: Awaited<ReturnType<typeof Store.funds>> }
 
 async function directed(env: Cloudflare.Env, row: Pick<Store.Row, 'id'>, listing?: Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>>): Promise<Problem.Result<Directed>> {
+  const ledgers = Store.ledgers(env, row.id)
+  ledgers.catch(() => undefined)
   const found = await (listing ?? reached(stub(env, row.id).subagents(row.id)))
   if (!found.ok) return Problem.fail(502, 'upstream_failed', `Could not list the swarm's subagents: ${found.detail}`)
   if (!Array.isArray(found.value.list)) return Problem.fail(502, 'upstream_failed', 'The swarm is starting on new code; try again in a few seconds.')
   const agent = found.value.agent
   if (agent) waitUntil(logged(Store.adopt(env, row.id, agent)))
-  const { members, money } = await Store.directing(env, row.id, agent ?? '')
+  const read = await ledgers
+  const members = read.members
+  const money = read.money(agent ?? '')
   const names = new Map<number, string>()
   for (const subagent of [...found.value.list].sort((a, b) => a.agent_id - b.agent_id)) {
     const role = clip(subagent.role.trim() || `subagent ${subagent.agent_id}`, 60)
