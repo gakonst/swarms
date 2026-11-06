@@ -209,6 +209,10 @@ const stillMs = 2_000
 
 const listingMs = 2_000
 
+const keptMs = 10 * 60_000
+
+const keptBytes = 1_000_000
+
 export class Swarm extends DurableObject<Cloudflare.Env> {
   stepping: Promise<number | null> | undefined
   paying: Promise<unknown> = Promise.resolve()
@@ -2047,13 +2051,24 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async subagents(swarm: string, fresh = false): Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> {
     const agent = this.kv.get<string>('agent')
     if (!agent) return { ok: true, value: { agent: null, list: [] } }
-    const known = this.listing
-    if (!fresh && known?.agent === agent && (known.pending || Date.now() - known.at < listingMs)) return known.value
+    if (fresh) return this.list(swarm, agent)
+    const known = this.listing?.agent === agent ? this.listing : undefined
+    if (known && !known.pending && Date.now() - known.at < listingMs) return known.value
+    const kept = this.kv.get<{ agent: string; at: number; list: Gateway.Subagent[] }>('subagents')
+    if (kept?.agent === agent && Date.now() - kept.at < keptMs) {
+      if (!known?.pending) this.ctx.waitUntil(this.list(swarm, agent).catch(() => undefined))
+      return { ok: true, value: { agent, list: kept.list } }
+    }
+    return known?.pending ? known.value : this.list(swarm, agent)
+  }
+
+  async list(swarm: string, agent: string): Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> {
     const value = Gateway.subagents(this.env, swarm, agent).then((listed): Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }> => (listed.ok ? { ok: true, value: { agent, list: listed.value } } : listed))
     const flight = { agent, at: Date.now(), pending: true, value }
     this.listing = flight
     const result = await value.catch((error: unknown) => ({ detail: error instanceof Error ? error.message : String(error), ok: false as const, status: 503 }))
     if (this.listing === flight) this.listing = result.ok ? { ...flight, at: Date.now(), pending: false } : undefined
+    if (result.ok && JSON.stringify(result.value.list).length < keptBytes) this.kv.put('subagents', { agent, at: Date.now(), list: result.value.list })
     return result
   }
 
