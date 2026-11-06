@@ -1,5 +1,5 @@
 import { memo as pure, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Artifact, Config, Detail, Entry, Me, Said, Steering } from '../shared/Api.ts'
+import type { Artifact, Branch, Config, Detail, Entry, Me, Said, Steering } from '../shared/Api.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Mention from '../shared/Mention.ts'
@@ -7,8 +7,9 @@ import { decimal, units } from '../shared/Memo.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
+import { BranchBar, ended, label, root, tree } from './Branches.tsx'
 import { clock, usd } from './format.ts'
-import { agent, type Live, message, speaker, type Stream, useWallet } from './hooks.ts'
+import { agent, type Live, message, speaker, type Stream, usePoll, useWallet } from './hooks.ts'
 import { useCredit } from './money.ts'
 import * as Wallet from './wallet.ts'
 import { Markdown } from './Markdown.tsx'
@@ -281,7 +282,7 @@ const Funded = pure(function Funded(props: { item: Backed; name: string; onBack:
 
 const stakes = ['0.5', '1', '5'] as const
 
-function Composer(props: { config: Config | undefined; draft: { at: number; text: string }; me: Me | null; onFund: (note?: string) => void; onSaid: (said: Said) => void; onSide: (question: string) => void; steering: Steering; swarm: string; wallet: `0x${string}` | null }) {
+function Composer(props: { branch: Branch | undefined; config: Config | undefined; draft: { at: number; text: string }; me: Me | null; onDirected: () => void; onFund: (note?: string) => void; onSaid: (said: Said) => void; onSide: (question: string, branch: number | null) => void; steering: Steering; swarm: string; wallet: `0x${string}` | null }) {
   const wallet = useWallet()
   const roster = useRoster(props.swarm, props.steering)
   const team = props.steering === 'team'
@@ -290,8 +291,15 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
   const [stake, setStake] = useState<string>('0.5')
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
+  const [done, setDone] = useState<string>()
   const area = useRef<HTMLTextAreaElement>(null)
   const credit = useCredit()
+  const target = props.branch
+
+  useEffect(() => {
+    setError(undefined)
+    setDone(undefined)
+  }, [target?.id])
 
   useEffect(() => {
     if (!props.draft.at) return
@@ -302,14 +310,41 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
 
   const ok = /^\d*\.?\d{0,6}$/.test(stake) && stake !== '' && stake !== '.' && units(stake) >= 10_000n
   const command = Btw.command(text)
+  const words = text.trim()
+  const steering = words.length >= 3
+  const ready = ok && (steering || (!!target && !words))
 
   const submit = () => {
     if (command) {
-      props.onSide(command.rest)
+      props.onSide(command.rest, target?.id ?? null)
       setText('')
       return
     }
-    void send()
+    void (target ? direct(target) : send())
+  }
+
+  const direct = async (branch: Branch) => {
+    const config = props.config
+    if (!config || busy || !ready) return
+    if (steering && Btw.bytes(words) > Btw.maxMessageBytes) return setError(`A message to a branch is at most ${Btw.maxMessageBytes} bytes; shorten it.`)
+    setError(undefined)
+    setDone(undefined)
+    try {
+      const need = units(stake)
+      if (team) {
+        if (!seat) throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
+      } else await credit.cover(config, { id: props.swarm, wallet: props.wallet }, need, setBusy)
+      setBusy(steering ? 'Steering…' : 'Raising its budget…')
+      const funded = await Api.fund(props.swarm, branch.id, { amount: decimal(need), ...(steering ? { message: words } : {}) })
+      credit.spend(need)
+      setDone(funded.budget === null ? `${usd(funded.funded)} behind ${branch.who}` : `${branch.who}'s budget is ${usd(funded.budget)}`)
+      setText('')
+      props.onDirected()
+    } catch (reason) {
+      setError(message(reason))
+    } finally {
+      setBusy(undefined)
+    }
   }
 
   const send = async () => {
@@ -317,6 +352,7 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
     const idea = text.trim()
     if (!config || busy || idea.length < 3 || !ok) return
     setError(undefined)
+    setDone(undefined)
     try {
       const need = units(stake)
       if (team) {
@@ -354,7 +390,7 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
             }}
             type="button"
           >
-            {busy ?? 'Sign in to steer the agent'}
+            {busy ?? (target ? `Sign in to steer or fund ${target.who}` : 'Sign in to steer the agent')}
           </button>
           <button className="room-cta-side" onClick={() => props.onFund()} type="button">Fund to steer</button>
         </div>
@@ -379,17 +415,21 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
   return (
     <div className="say">
       {error && <Alert title={explain(error).title} tone="bad">{explain(error).detail}</Alert>}
-      {!command && text.trim() && (
+      {!command && (!!target || !!words) && (
         <div className="say-stake" role="radiogroup" aria-label="How much behind it">
           {stakes.map((value) => (
             <button aria-checked={stake === value} disabled={!!busy} key={value} onClick={() => setStake(value)} role="radio" type="button">${value === '0.5' ? '0.50' : value}</button>
           ))}
           <label className="say-own">$<input aria-label="Your amount" disabled={!!busy} inputMode="decimal" onChange={(event) => setStake(event.target.value.replace(',', '.').replace('$', ''))} onFocus={(event) => event.target.select()} value={(stakes as readonly string[]).includes(stake) ? '' : stake} placeholder="…" /></label>
-          {busy ? <span className="say-note">{busy}</span> : seat && <span className="say-note">from the swarm's money{seat.left === null ? '' : ` · ${usd(seat.left)} of your team budget left`}</span>}
+          {busy ? <span className="say-note">{busy}</span> : done ? <span className="say-note say-done">{done}</span> : seat && <span className="say-note">from the swarm's money{seat.left === null ? '' : ` · ${usd(seat.left)} of your team budget left`}</span>}
         </div>
       )}
       <form className="say-box" onSubmit={(event) => { event.preventDefault(); submit() }}>
-        <span className="mention" data-btw={command ? 'true' : undefined} data-swarm="true">{command ? '/btw' : '@swarm'}</span>
+        {target && !command ? (
+          <span className="mention" data-branch="true" style={{ background: hue(target.who) }} title={target.task}>{target.who}</span>
+        ) : (
+          <span className="mention" data-btw={command ? 'true' : undefined} data-swarm="true">{command ? '/btw' : '@swarm'}</span>
+        )}
         <textarea
           disabled={!!busy}
           onChange={(event) => setText(event.target.value.replace(/^@swarm\s*/i, ''))}
@@ -399,14 +439,18 @@ function Composer(props: { config: Config | undefined; draft: { at: number; text
               submit()
             }
           }}
-          placeholder="Steer the agent, with money behind it"
+          placeholder={target ? `Steer ${target.who}, or just fund it` : 'Steer the agent, with money behind it'}
           ref={area}
           rows={1}
           value={text}
         />
-        <button aria-label="Send" className="say-send" disabled={!!busy || (command ? false : text.trim().length < 3 || !ok)} type="submit">↑</button>
+        {target && !command ? (
+          <button className="say-send say-go" disabled={!!busy || !ready} type="submit">{words ? 'Steer' : 'Fund'}{ok ? ` ${usd(decimal(units(stake)))}` : ''}</button>
+        ) : (
+          <button aria-label="Send" className="say-send" disabled={!!busy || (command ? false : !ready)} type="submit">↑</button>
+        )}
       </form>
-      <button className="say-side" onClick={() => props.onSide('')} type="button">Ask on the side <span aria-hidden="true">→</span></button>
+      <button className="say-side" onClick={() => props.onSide('', target?.id ?? null)} type="button">{target ? `Ask ${target.who} on the side` : 'Ask on the side'} <span aria-hidden="true">→</span></button>
     </div>
   )
 }
@@ -430,14 +474,18 @@ export function Transcript(props: {
   said: readonly Said[]
   swarm: Detail
   tray?: ReactNode
-  focus: { at: number; who: string }
-  onSide: (question: string) => void
+  onSide: (question: string, branch: number | null) => void
 }) {
   const swarm = props.swarm
   const [who, setWho] = useState(asked)
   useEffect(() => {
-    if (props.focus.at) setWho(props.focus.who)
-  }, [props.focus])
+    if (props.draft.at) setWho((current) => (current === 'all' || current === agent ? current : 'all'))
+  }, [props.draft])
+  const [listed, relist] = usePoll(() => Api.branches(swarm.id), who === 'all' || who === agent ? 60_000 : 15_000, `branches:${swarm.id}`)
+  const branches = useMemo(() => listed.data?.branches ?? [], [listed.data])
+  const picked = branches.find((branch) => branch.who === who)
+  const lead = picked && root(branches, picked)
+  const target = lead && lead.parent === null && !ended(lead) && swarm.status !== 'done' ? lead : undefined
   const fetched = useRef(new Set<string>())
   useEffect(() => {
     if (who === 'all' || fetched.current.has(who)) return
@@ -458,10 +506,19 @@ export function Transcript(props: {
   const streamed = onAir && props.live.connected
 
   const speakers = useMemo(() => {
-    const seen: string[] = []
+    const seen = tree(branches).map((branch) => branch.who)
     for (const entry of props.entries) if (entry.who && !seen.includes(entry.who)) seen.push(entry.who)
     return seen
-  }, [props.entries])
+  }, [props.entries, branches])
+  const chips = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const nav = chips.current
+    const chip = nav?.querySelector<HTMLElement>('[aria-pressed="true"]')
+    if (!nav || !chip) return
+    const box = nav.getBoundingClientRect()
+    const at = chip.getBoundingClientRect()
+    if (at.left < box.left || at.right > box.right) nav.scrollLeft += at.left - box.left - (box.width - at.width) / 2
+  }, [who, speakers.includes(who)])
   const [shown, repeats] = useMemo(() => {
     const kept: Entry[] = []
     const counts = new Map<Entry, number>()
@@ -586,17 +643,22 @@ export function Transcript(props: {
     <section aria-label="Transcript" className="transcript" data-live={onAir}>
       <header className="transcript-bar" hidden={!speakers.length && !props.people}>
         {speakers.length > 0 && (
-          <nav aria-label="Who to show" className="transcript-who">
-            {['all', agent, ...speakers, ...(who === 'all' || who === agent || speakers.includes(who) ? [] : [who])].map((name) => (
-              <button aria-pressed={who === name} key={name} onClick={() => setWho(name)} type="button">
-                {name !== 'all' && <i data-live={streamed && !!now(props.live.streams[name])} style={{ background: hue(name) }} />}
-                {name === 'all' ? 'All' : name === agent ? 'Agent' : name}
-              </button>
-            ))}
+          <nav aria-label="Who to show" className="transcript-who" ref={chips}>
+            {['all', agent, ...speakers, ...(who === 'all' || who === agent || speakers.includes(who) ? [] : [who])].map((name) => {
+              const branch = branches.find((item) => item.who === name)
+              return (
+                <button aria-pressed={who === name} data-ended={!!branch && (ended(branch) || branch.state === 'completed')} key={name} onClick={() => setWho(name)} title={branch ? `${label(branch)}: ${branch.task}` : undefined} type="button">
+                  {name !== 'all' && <i data-live={streamed && !!now(props.live.streams[name])} style={{ background: hue(name) }} />}
+                  {name === 'all' ? 'All' : name === agent ? 'Agent' : name}
+                </button>
+              )
+            })}
           </nav>
         )}
+        {speakers.length > 0 && swarm.status !== 'done' && <button className="transcript-new" onClick={() => props.onFund('Start a new branch to ')} title="Propose a branch to the agent" type="button">+ Branch</button>}
         {props.people && <button className="transcript-people" onClick={props.onPeople} type="button">People →</button>}
       </header>
+      {picked && <BranchBar all={branches} branch={picked} key={picked.id} onChanged={relist} onPick={setWho} swarm={swarm} />}
       <div className="timeline-box">
         <ol
           className="timeline"
@@ -665,7 +727,7 @@ export function Transcript(props: {
           {props.tray}
         </div>
       ) : (
-        swarm.status !== 'done' && <Composer config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} onSide={props.onSide} steering={swarm.steering} swarm={swarm.id} />
+        swarm.status !== 'done' && <Composer branch={target} config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onDirected={relist} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} onSide={props.onSide} steering={swarm.steering} swarm={swarm.id} />
       )}
     </section>
   )

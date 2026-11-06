@@ -118,7 +118,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
 
   server.registerTool(
     'swarm_branches',
-    { annotations: reading, description: "A swarm's Branches tab: its agent's subagents, each with its role, task, state, budget (the most it and the subagents under it may spend together), what it spent, and what backers put behind it. Backers fund a branch, or move their money between branches, on the swarm's page or with POST /v1/swarms/<id>/branches/<branch>/fund and /move.", inputSchema: Operations.schema.branches.shape },
+    { annotations: reading, description: "A swarm's branches, which its page's transcript filters by: its agent's subagents, each with its role, task, state, budget (the most it and the subagents under it may spend together), what it spent, and what backers put behind it. Backers fund a branch, or move their money between branches, on the swarm's page or with POST /v1/swarms/<id>/branches/<branch>/fund and /move.", inputSchema: Operations.schema.branches.shape },
     async (input) => reply(await Operations.branches(read, input)),
   )
 

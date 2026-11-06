@@ -6,7 +6,6 @@ import { merge } from '../shared/Trail.ts'
 import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
 import { Artifacts } from './Artifacts.tsx'
-import { Branches } from './Branches.tsx'
 import { Side } from './Side.tsx'
 import { Connect } from './Connect.tsx'
 import { Contributors } from './Contributors.tsx'
@@ -32,7 +31,7 @@ const Code = lazy(() => load().then((module) => ({ default: module.Code })))
 
 const trails = new Map<string, { entries: readonly Entry[]; seq: number }>()
 
-const tabs = ['transcript', 'room', 'branches', 'artifacts', 'contributors', 'code', 'machines', 'about'] as const
+const tabs = ['transcript', 'room', 'artifacts', 'contributors', 'code', 'machines', 'about'] as const
 
 type Tab = (typeof tabs)[number]
 
@@ -81,7 +80,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const [prefill] = useState(() => asked())
   const [draft, setDraft] = useState({ at: 0, text: '' })
   const [side, setSide] = useState<{ branch: number | null; open: boolean; question: { at: number; text: string } }>({ branch: null, open: false, question: { at: 0, text: '' } })
-  const [focus, setFocus] = useState({ at: 0, who: 'all' })
   const [chat, setChat] = useState<{ handles: ReadonlyMap<string, string>; me: Me | null; members: readonly Member[]; online: readonly string[]; said: readonly Said[]; watching: number }>(() => {
     const room = seeded<RoomState>(`room:${props.id}`)
     return { handles: new Map((room?.members ?? []).map((member) => [member.address, member.handle])), me: null, members: room?.members ?? [], online: [], said: room?.messages ?? [], watching: 0 }
@@ -157,10 +155,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   })
   const backNote = useStable((text: string) => back(text || note))
   const ask = useStable((branch: number | null, text?: string) => setSide({ branch, open: true, question: { at: Date.now(), text: text ?? '' } }))
-  const follow = useStable((who: string) => {
-    setFocus({ at: Date.now(), who })
-    setTab('transcript')
-  })
 
   if (!detail.data)
     return detail.error ? (
@@ -191,7 +185,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const labels: Record<Tab, ReactNode> = {
     about: 'About',
     artifacts: <>Artifacts{shelved > 0 && <span className="tab-count tab-quiet">{shelved}</span>}</>,
-    branches: 'Branches',
     code: 'Code',
     contributors: <>Contributors{backers > 0 && <span className="tab-count tab-quiet">{backers}</span>}</>,
     machines: <>Machines{connected > 0 && <span className="tab-count tab-quiet">{connected}</span>}</>,
@@ -241,8 +234,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
               config={props.config}
               draft={draft}
               entries={entries}
-              focus={focus}
-              onSide={(question) => ask(null, question)}
+              onSide={(question, branch) => ask(branch, question)}
               handles={chat.handles}
               live={stream}
               me={chat.me}
@@ -268,7 +260,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
           {shown !== 'transcript' && shown !== 'room' && (
             <div aria-labelledby={`tab-${shown}`} className="room-panel room-page-panel" data-tab={shown} id={`panel-${shown}`} role="tabpanel">
               {shown === 'artifacts' && <Artifacts artifacts={shelf.data?.artifacts} error={shelf.error} onSelect={setArtifact} selected={artifact} working={live} />}
-              {shown === 'branches' && <Branches config={props.config} onAsk={(branch) => ask(branch)} onFollow={follow} onPropose={(text) => back(text)} swarm={swarm} />}
               {shown === 'contributors' && <Contributors me={chat.me} members={chat.members} online={chat.online} />}
               {shown === 'code' && <Repository config={props.config} swarm={swarm} />}
               {shown === 'machines' && (
