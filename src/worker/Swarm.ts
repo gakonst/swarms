@@ -123,6 +123,7 @@ const columns = [
   ['feed', 'who', 'ALTER TABLE feed ADD COLUMN who TEXT'],
   ['feed', 'event', 'ALTER TABLE feed ADD COLUMN event INTEGER'],
   ['chat', 'artifact', 'ALTER TABLE chat ADD COLUMN artifact TEXT'],
+  ['steered', 'weight', 'ALTER TABLE steered ADD COLUMN weight TEXT'],
 ] as const
 
 const followMs = 2_000
@@ -144,6 +145,27 @@ const settleMs = 15_000
 const quickMs = 60_000
 
 const vendorCap = 1_000_000n
+
+const passCall = 250_000n
+
+const passHour = 1_000_000n
+
+type Passed = { amount: string; at: number; host: string }
+
+const dayMs = 86_400_000
+
+function earned(hand: Gateway.Listed) {
+  const charges = hand['charges'] as { usd?: unknown } | null | undefined
+  return typeof charges?.usd === 'number' && charges.usd > 0 ? Memo.units(charges.usd.toFixed(6)) : 0n
+}
+
+function passHost(input: Pay) {
+  try {
+    return new URL(input.path ?? '').host || 'a paid service'
+  } catch {
+    return 'a paid service'
+  }
+}
 
 const quietMs = 600_000
 const snapshotMs = 60_000
@@ -198,6 +220,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   stamped = { at: 0, tuple: '' }
   kept: SyncKvStorage | undefined
   watchers = new Set<Watcher>()
+  upstream: Upstream | undefined
+  holders = new Map<string, { address: Address | undefined; at: number }>()
   beating: ReturnType<typeof setInterval> | undefined
 
   constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
@@ -520,37 +544,60 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return !!(this.kv.get<string>('id') && this.kv.get<string>('agent') && this.kv.get<string>('turn') && this.kv.get<string>('secret'))
   }
 
-  async relay(watcher: Watcher, again = true): Promise<void> {
-    const id = this.kv.get<string>('id') ?? ''
-    const agent = this.kv.get<string>('agent') ?? ''
-    const turn = this.kv.get<string>('turn') ?? ''
+  async relay(watcher: Watcher): Promise<void> {
     if (watcher.relaying || !this.watchers.has(watcher) || !this.streaming()) return
+    const turn = this.kv.get<string>('turn') ?? ''
+    const shared = this.upstream?.turn === turn ? this.upstream : this.open(turn)
     watcher.relaying = true
-    let ended = false
     try {
-      const upstream = await Gateway.stream(this.env, id, agent, this.kv.get<number>('cursor') ?? 0, watcher.signal).catch(() => undefined)
-      if (!upstream?.ok || !upstream.body) {
-        this.write(watcher, encoded({ type: 'idle' }))
-        return
-      }
-      const reader = upstream.body
-        .pipeThrough(live({ buffers: memory(), crew: this.crew(), ended: () => (ended = true), scope: agent, since: this.working()?.since ?? Date.now(), turn }))
-        .getReader()
-      for (;;) {
-        const read = await reader.read().catch(() => ({ done: true as const, value: undefined }))
-        if (read.done) break
-        if (!this.write(watcher, read.value)) {
-          await reader.cancel().catch(() => undefined)
-          return
-        }
-      }
+      for (const frame of shared.frames) if (!this.write(watcher, frame)) return
+      shared.subscribers.add(watcher)
+      await shared.done
     } finally {
+      shared.subscribers.delete(watcher)
       watcher.relaying = false
       if (!watcher.follow) this.unwatch(watcher)
     }
-    if (!ended && again && watcher.follow && this.kv.get<string>('turn') === turn) {
+  }
+
+  open(turn: string): Upstream {
+    const shared: Upstream = { bytes: 0, done: Promise.resolve(), frames: [], subscribers: new Set(), turn }
+    this.upstream = shared
+    shared.done = this.pump(shared).finally(() => {
+      if (this.upstream === shared) this.upstream = undefined
+    })
+    return shared
+  }
+
+  async pump(shared: Upstream, again = true): Promise<void> {
+    const id = this.kv.get<string>('id') ?? ''
+    const agent = this.kv.get<string>('agent') ?? ''
+    const aborted = new AbortController()
+    let ended = false
+    const upstream = await Gateway.stream(this.env, id, agent, this.kv.get<number>('cursor') ?? 0, aborted.signal).catch(() => undefined)
+    if (!upstream?.ok || !upstream.body) {
+      for (const watcher of shared.subscribers) this.write(watcher, encoded({ type: 'idle' }))
+      return
+    }
+    const reader = upstream.body
+      .pipeThrough(live({ buffers: memory(), crew: this.crew(), ended: () => (ended = true), scope: agent, since: this.working()?.since ?? Date.now(), turn: shared.turn }))
+      .getReader()
+    for (;;) {
+      const read = await reader.read().catch(() => ({ done: true as const, value: undefined }))
+      if (read.done) break
+      shared.frames.push(read.value)
+      shared.bytes += read.value.byteLength
+      while (shared.bytes > sharedBytes && shared.frames.length > 1) shared.bytes -= shared.frames.shift()?.byteLength ?? 0
+      for (const watcher of shared.subscribers) if (!this.write(watcher, read.value)) shared.subscribers.delete(watcher)
+      if (!shared.subscribers.size) {
+        aborted.abort()
+        await reader.cancel().catch(() => undefined)
+        return
+      }
+    }
+    if (!ended && again && shared.subscribers.size && this.kv.get<string>('turn') === shared.turn) {
       await new Promise((resolve) => setTimeout(resolve, 2000))
-      if (this.kv.get<string>('turn') === turn) return this.relay(watcher, false)
+      if (this.kv.get<string>('turn') === shared.turn && shared.subscribers.size) return this.pump(shared, false)
     }
   }
 
@@ -673,8 +720,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (base) this.kv.put('seen', base)
     else this.kv.delete('seen')
     const fresh = this.kv.get<boolean>('fresh')
-    const told = new Set(this.steered())
-    const text = fresh ? brief(money.row, this.tell(notes)) : next(this.tell(notes.filter((note) => !told.has(note.id))))
+    const told = this.told()
+    const included = fresh ? notes : notes.filter((note) => grown(told.get(note.id), Memo.units(note.weight)))
+    const text = fresh ? brief(money.row, this.tell(notes)) : next(this.tell(included))
     const sent = await Gateway.prompt(this.env, row.id, agent, { prompt: text, steer: false })
     if (!sent.ok) {
       this.log('error', 'The gateway did not take the next message for the agent.', sent.detail)
@@ -704,10 +752,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       String(money.row.spent),
       base,
     )
-    for (const note of notes) {
-      this.ctx.storage.sql.exec('INSERT OR IGNORE INTO steered (note, at) VALUES (?, ?)', note.id, now)
+    for (const note of included) {
+      this.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at, weight) VALUES (?, ?, ?)', note.id, now, String(Memo.units(note.weight)))
       this.kv.delete('collapse:' + note.id)
     }
+    for (const note of notes.filter((found) => told.get(found.id) === null)) this.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
     this.touch()
     await Store.update(this.env, row.id, { rounds: n, status: 'running', why: null })
     this.log('status', resumed ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
@@ -1030,6 +1079,32 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
   }
 
+  passable(row: Store.Row, input: Pay): Paid | undefined {
+    const amount = Memo.units(/^\d+(\.\d{1,6})?$/.test(input.amount ?? '') ? (input.amount as string) : '0')
+    const now = Date.now()
+    const recent = (this.kv.get<Passed[]>('passed') ?? []).filter((item) => item.at > now - hourMs)
+    const hourly = Payer.max(passHour, BigInt(row.raised) / 20n)
+    const host = passHost(input)
+    const used = recent.reduce((sum, item) => sum + BigInt(item.amount), 0n)
+    const there = recent.filter((item) => item.host === host).reduce((sum, item) => sum + BigInt(item.amount), 0n)
+    if (amount > passCall) return { code: 'limit_reached', detail: `The swarm pays an outside service at most ${dollars(passCall)} a call; ${host} asked ${dollars(amount)}.`, status: 402 }
+    if (used + amount > hourly)
+      return { code: 'limit_reached', detail: `The swarm pays outside services at most ${dollars(hourly)} an hour, and ${dollars(used)} went to them in the last hour.`, retry: 60, status: 402 }
+    if (there + amount > hourly / 2n)
+      return { code: 'limit_reached', detail: `The swarm pays one outside service at most ${dollars(hourly / 2n)} an hour, and ${host} had ${dollars(there)} of it.`, retry: 60, status: 402 }
+    return undefined
+  }
+
+  passed(row: Store.Row, input: Pay, paid: Paid): Paid {
+    if (!('authorization' in paid)) return paid
+    const amount = Memo.units(/^\d+(\.\d{1,6})?$/.test(input.amount ?? '') ? (input.amount as string) : '0')
+    const now = Date.now()
+    const host = passHost(input)
+    this.kv.put('passed', [...(this.kv.get<Passed[]>('passed') ?? []).filter((item) => item.at > now - hourMs), { amount: String(amount), at: now, host }])
+    if (input.operation === 'agent.fetch') this.log('funds', `The agent paid ${dollars(amount)} to an outside service through the gateway, from the swarm's money.`, input.path ?? null)
+    return paid
+  }
+
   async budget(secret: string, app: string | undefined): Promise<Paid> {
     const known = this.kv.get<string>('secret')
     if (!known || !same(known, secret)) return { code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 }
@@ -1052,7 +1127,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const row = await this.found(this.kv.get<string>('id') ?? '')
     if (!row) return { code: 'limit_reached', detail: 'This swarm pays for nothing.', status: 402 }
     if (input.app !== undefined && input.app !== Gateway.app(row.id)) return { code: 'unauthorized', detail: 'This payer pays only for its own swarm.', status: 401 }
-    if (input.operation === 'vendor') return this.vendor(row, input)
+    const passing = input.operation === 'vendor' || input.operation === 'agent.fetch'
+    if (passing) {
+      const refused = this.passable(row, input)
+      if (refused) return refused
+    }
+    if (input.operation === 'vendor') return this.passed(row, input, await this.vendor(row, input))
 
     const snapshots = input.channels ?? []
     const known = [...this.kv.list<Payer.Channel>({ prefix: 'channel:' })]
@@ -1106,7 +1186,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
           this.kv.put('payer', source.id)
           this.log('funds', `Paying from ${source.label} now.`)
         }
-        return result
+        return passing ? this.passed(row, input, result) : result
       }
       if (result.busy) busy = true
       if (result.busy || result.small) {
@@ -1330,7 +1410,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (previous.has(hand.name)) continue
       const guest = issued.get(hand.name)
       if (guest) joined.push({ ...guest, terms: Hands.terms(hand) })
-      if (guest && 'cap' in hand && this.kv.get<string>('turn')) await Gateway.cap(this.env, row.id, hand.name, Number(Memo.decimal(BigInt(this.kv.get<string>('handCap') ?? '0'))))
+      if (guest && 'cap' in hand && this.kv.get<string>('turn')) await Gateway.cap(this.env, row.id, hand.name, Number(Memo.decimal(this.allowance(row, hand, BigInt(this.kv.get<string>('handCap') ?? '0')))))
       this.log(
         'machine',
         guest
@@ -1377,6 +1457,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       const id = key.slice('channel:'.length)
       this.kv.put('spent:' + id, String(Memo.units(found.spent)))
       if (found.closing || found.endedAt !== null) this.drop(id)
+      else if (found.passThrough) await Gateway.sponsor(this.env, row.id, { descriptor: channel.descriptor })
     }
   }
 
@@ -1774,7 +1855,22 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.put('handCap', String(amount))
     const listed = await Gateway.hands(this.env, row.id)
     if (!listed.ok) return
-    for (const hand of listed.value.hands.filter((found) => found.connected && 'cap' in found)) await Gateway.cap(this.env, row.id, hand.name, Number(Memo.decimal(amount)))
+    for (const hand of listed.value.hands.filter((found) => found.connected && 'cap' in found)) {
+      this.kv.put('handTurn:' + hand.name, String(earned(hand)))
+      await Gateway.cap(this.env, row.id, hand.name, Number(Memo.decimal(this.allowance(row, hand, amount))))
+    }
+  }
+
+  allowance(row: Store.Row, hand: Gateway.Listed, perTurn: bigint) {
+    const now = Date.now()
+    const total = earned(hand)
+    const known = this.kv.get<{ at: number; usd: string }>('handDay:' + hand.name)
+    const day = known && now - known.at < dayMs ? known : { at: now, usd: String(total) }
+    if (day !== known) this.kv.put('handDay:' + hand.name, day)
+    const turn = total - BigInt(this.kv.get<string>('handTurn:' + hand.name) ?? String(total))
+    const today = total - BigInt(day.usd)
+    const left = Payer.min(perTurn - turn, BigInt(row.raised) / Hands.share - today)
+    return left > 0n ? left : 0n
   }
 
   async steer(swarm: string, noteId: string, what: string): Promise<Note | undefined> {
@@ -1792,7 +1888,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     })
     if (!sent.ok) return undefined
 
-    this.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at) VALUES (?, ?)', note.id, Date.now())
+    this.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at, weight) VALUES (?, ?, ?)', note.id, Date.now(), String(Memo.units(note.weight)))
     this.kv.delete('collapse:' + note.id)
     this.touch()
     this.log(
@@ -1948,7 +2044,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
   }
 
-  async btw(input: { address: Address; branch?: number; prompt: string; swarm: string }): Promise<Gateway.Result<string>> {
+  vouched(address: Address, seals: readonly string[]) {
+    const known = new Set(this.kv.get<string[]>('answered:' + address.toLowerCase()) ?? [])
+    return seals.every((seal) => known.has(seal))
+  }
+
+  async btw(input: { address: Address; branch?: number; prompt: string; question: string; swarm: string }): Promise<Gateway.Result<string>> {
     this.kv.put('id', input.swarm)
     const agent = this.kv.get<string>('agent')
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
@@ -1971,7 +2072,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.kv.put('btw:*', everyone)
       return answered
     }
-    return { ok: true, value: redact(answered.value.text) }
+    const answer = redact(answered.value.text)
+    const sealed = 'answered:' + input.address.toLowerCase()
+    this.kv.put(sealed, [...(this.kv.get<string[]>(sealed) ?? []), await Btw.seal({ answer, question: input.question })].slice(-200))
+    return { ok: true, value: answer }
   }
 
   announce(text: string, artifact: Shown | null = null) {
@@ -1999,6 +2103,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   socket(request: Request) {
     if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('Open the room as a WebSocket.', { status: 426 })
+    if (this.ctx.getWebSockets().length >= socketsMost) return new Response('This room is full right now; read it over HTTP.', { status: 503 })
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket]
     this.ctx.acceptWebSocket(server)
     server.serializeAttachment({ address: null })
@@ -2014,14 +2119,23 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     } catch {
       return
     }
+    const now = Date.now()
+    const state = (socket.deserializeAttachment() ?? {}) as Attached
     if (event.type === 'hello') {
-      const address = typeof event.token === 'string' ? await Sessions.holder(this.env, event.token.slice(0, 200)) : undefined
-      socket.serializeAttachment({ address: address ?? null })
+      if (now - (state.hello ?? 0) < helloMs) return
+      const token = typeof event.token === 'string' ? event.token.slice(0, 200) : ''
+      const known = this.holders.get(token)
+      const address = known && now - known.at < holderMs ? known.address : token ? await Sessions.holder(this.env, token) : undefined
+      if (token) this.holders.set(token, { address, at: now })
+      if (this.holders.size > 1000) this.holders.delete(this.holders.keys().next().value as string)
+      socket.serializeAttachment({ ...state, address: address ?? null, hello: now })
       this.presence()
     }
     if (event.type === 'typing') {
       const address = attached(socket)
-      if (address) this.broadcast({ address, type: 'typing' }, socket)
+      if (!address || now - (state.typing ?? 0) < typingMs) return
+      socket.serializeAttachment({ ...state, typing: now })
+      this.broadcast({ address, type: 'typing' }, socket)
     }
   }
 
@@ -2053,6 +2167,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async notes(row: Store.Row) {
     return Store.notes(this.env, row.id, BigInt(row.raised), new Set(this.steered()))
+  }
+
+  told() {
+    return new Map(
+      this.ctx.storage.sql
+        .exec<{ note: string; weight: string | null }>('SELECT note, weight FROM steered')
+        .toArray()
+        .map((row) => [row.note, row.weight === null ? null : BigInt(row.weight)] as const),
+    )
   }
 
   steered() {
@@ -2163,6 +2286,20 @@ function sse(body: BodyInit) {
 type Viewing = { buffers: Buffers; crew: Crew; ended?: () => void; scope: string; since: number; turn: string }
 
 type Watcher = { follow: boolean; relaying: boolean; signal: AbortSignal; until: number; writer: WritableStreamDefaultWriter<Uint8Array> }
+
+type Upstream = { bytes: number; done: Promise<void>; frames: Uint8Array[]; subscribers: Set<Watcher>; turn: string }
+
+const sharedBytes = 2_000_000
+
+type Attached = { address?: Address | null; hello?: number; typing?: number }
+
+const helloMs = 10_000
+
+const holderMs = 300_000
+
+const typingMs = 2_000
+
+const socketsMost = 500
 
 const backlogSize = 500
 
@@ -2304,6 +2441,12 @@ function brief(row: Store.Row, notes: Note[]) {
 
 function next(notes: Note[]) {
   return ['Keep going.', ...notes.map(weighed)].join('\n\n')
+}
+
+function grown(told: bigint | null | undefined, weight: bigint) {
+  if (told === undefined) return true
+  if (told === null) return false
+  return weight >= told + (told / 4n > 100_000n ? told / 4n : 100_000n)
 }
 
 function unspent(branch: Gateway.Subagent) {

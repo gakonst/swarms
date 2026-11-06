@@ -32,7 +32,7 @@ export type Minted = { command: string; short: string; tab?: string; token: stri
 
 export type Commit = { date?: string | null; message: string; parents?: string[]; sha: string }
 
-export type Sponsored = { available: string; channel: `0x${string}`; closing: boolean; deposit: string; endedAt: number | null; settled: string; spent: string; tx?: string }
+export type Sponsored = { available: string; channel: `0x${string}`; closing: boolean; deposit: string; endedAt: number | null; passThrough?: boolean; settled: string; spent: string; tx?: string }
 
 export type Sponsorship = { least: string; operator: `0x${string}`; signer: `0x${string}` }
 
@@ -122,7 +122,7 @@ export function sponsorship(env: Cloudflare.Env) {
 }
 
 export function sponsor(env: Cloudflare.Env, swarm: string, body: { descriptor: unknown; transaction?: string }) {
-  return send<Sponsored>(env, '/api/keys/sponsors', { app: app(swarm), body: { ...body, passThrough: true } })
+  return send<Sponsored>(env, '/api/keys/sponsors', { app: app(swarm), body: { ...body, passThrough: false } })
 }
 
 export function sponsors(env: Cloudflare.Env, swarm: string) {

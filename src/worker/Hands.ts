@@ -7,6 +7,8 @@ export const limit = 32
 
 export const unseenMs = 86_400_000
 
+const freshMs = 3_600_000
+
 export function slug(label: string) {
   const cleaned = label
     .normalize('NFKD')
@@ -54,18 +56,21 @@ export function used(hand: Listed | undefined) {
 }
 
 export async function seen(env: Cloudflare.Env, swarm: string, rows: readonly Row[], listed: readonly Listed[]) {
-  const names = rows.filter((row) => row.seen_at === null && used(listed.find((hand) => hand.name === row.name))).map((row) => row.name)
-  if (!names.length) return rows
   const now = Date.now()
-  await env.DB.batch(names.map((name) => env.DB.prepare('update hands set seen_at = ? where swarm = ? and name = ? and seen_at is null').bind(now, swarm, name)))
+  const names = rows
+    .filter((row) => (row.seen_at === null || row.seen_at < now - freshMs) && used(listed.find((hand) => hand.name === row.name)))
+    .map((row) => row.name)
+  if (!names.length) return rows
+  await env.DB.batch(names.map((name) => env.DB.prepare('update hands set seen_at = ? where swarm = ? and name = ?').bind(now, swarm, name)))
   return rows.map((row) => (names.includes(row.name) ? { ...row, seen_at: now } : row))
 }
 
-export function evictable(rows: readonly Row[], now: number) {
-  const unseen = rows.filter((row) => row.seen_at === null).sort((a, b) => a.created_at - b.created_at)
-  const stale = unseen.filter((row) => row.created_at < now - unseenMs)
+export function evictable(rows: readonly Row[], listed: readonly Listed[], now: number) {
+  const idle = rows.filter((row) => !listed.find((hand) => hand.name === row.name)?.connected)
+  const stale = idle.filter((row) => (row.seen_at ?? row.created_at) < now - unseenMs)
   if (rows.length - stale.length < limit) return stale
-  return [...stale, ...unseen.filter((row) => !stale.includes(row)).slice(0, rows.length - stale.length - limit + 1)]
+  const spare = idle.filter((row) => !stale.includes(row)).sort((a, b) => (a.seen_at ?? 0) - (b.seen_at ?? 0) || a.created_at - b.created_at)
+  return [...stale, ...spare.slice(0, rows.length - stale.length - limit + 1)]
 }
 
 export const share = 5n

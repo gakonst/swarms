@@ -783,13 +783,17 @@ export async function settle(env: Cloudflare.Env, input: { agent: string; branch
   )
     .bind(input.swarm, input.agent, input.branch)
     .all<{ amount: number; budget: number; contributor: string; since: number | null }>()
-  const shares = results.filter((row) => row.amount > 0)
-  const total = shares.reduce((sum, row) => sum + BigInt(row.amount), 0n)
+  const nets = new Map<string, bigint>()
+  for (const row of results) nets.set(row.contributor, (nets.get(row.contributor) ?? 0n) + BigInt(row.amount))
+  const total = [...nets.values()].reduce((sum, net) => sum + (net > 0n ? net : 0n), 0n)
   const back = input.left === null || input.left > total ? total : input.left
   if (back <= 0n || total === 0n) return []
 
-  const returned = shares.flatMap((row) => {
-    const amount = (back * BigInt(row.amount)) / total
+  const returned = results.flatMap((row) => {
+    const net = nets.get(row.contributor) ?? 0n
+    if (net <= 0n || row.amount <= 0) return []
+    const positive = results.filter((other) => other.contributor === row.contributor && other.amount > 0).reduce((sum, other) => sum + BigInt(other.amount), 0n)
+    const amount = (back * net * BigInt(row.amount)) / (total * positive)
     return amount > 0n ? [{ amount, budget: row.budget, contributor: row.contributor, since: row.since ?? now }] : []
   })
   await env.DB.batch(

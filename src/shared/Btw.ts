@@ -42,8 +42,17 @@ const artifact =
 
 const earlier = 'Earlier questions and answers in this side conversation, for context:'
 
+function inert(text: string) {
+  return text.trim().replace(/<(\/?)btw_conversation>/gi, '‹$1btw_conversation›')
+}
+
 export function conversation(thread: readonly Exchange[]) {
-  return thread.map((exchange) => `User:\n${exchange.question.trim()}\n\nAssistant:\n${exchange.answer.trim()}\n\n`).join('')
+  return thread.map((exchange) => `User:\n${inert(exchange.question)}\n\nAssistant:\n${inert(exchange.answer)}\n\n`).join('')
+}
+
+export async function seal(exchange: Exchange) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${exchange.question.trim()}\u0000${exchange.answer.trim()}`))
+  return Array.from(new Uint8Array(digest).slice(0, 16), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 export function ask(thread: readonly Exchange[], question: string) {
