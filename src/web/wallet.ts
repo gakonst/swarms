@@ -27,6 +27,8 @@ const chain = () => Promise.all([import('viem'), import('viem/tempo'), import('v
 
 const kept = 'swarms.session'
 
+const approvalSeconds = 240
+
 function stored(): Session | undefined {
   if (server) return undefined
   if (fixture) return scene.has('in') ? { address: visitor, token: 'fixture' } : undefined
@@ -271,12 +273,16 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
   const calls = [{ data: encodeFunctionData({ abi: Abis.tip20, args: [input.to, input.amount, input.memo], functionName: 'transferWithMemo' }), to: token.address }]
   const receipt = (await (await wallet()).request({
     method: 'eth_sendTransactionSync',
-    params: [{ calls, feeToken: token.address, from: address }],
+    params: [{ calls, feeToken: token.address, from: address, ...expiring() }],
   } as never)) as { status?: string; transactionHash?: Hex }
   if (!receipt.transactionHash) throw new Error('Tempo Wallet returned no transaction.')
   if (receipt.status && receipt.status !== 'success' && receipt.status !== '0x1') throw new Error('The transfer reverted.')
   void refresh(config).catch(() => {})
   return receipt.transactionHash
+}
+
+function expiring() {
+  return { nonce: '0x0', nonceKey: `0x${'f'.repeat(64)}`, validBefore: `0x${(Math.floor(Date.now() / 1000) + approvalSeconds).toString(16)}` }
 }
 
 export async function open(config: Config, call: { data: Hex; to: Address }) {
@@ -291,7 +297,7 @@ export async function open(config: Config, call: { data: Hex; to: Address }) {
   const address = await connect(config)
   const signed = (await (await wallet()).request({
     method: 'eth_signTransaction',
-    params: [{ calls: [call], feePayer: true, from: address }],
+    params: [{ calls: [call], feePayer: true, from: address, ...expiring() }],
   } as never)) as Hex | undefined
   if (!signed) throw new Error('Tempo Wallet returned no transaction.')
   void refresh(config).catch(() => {})

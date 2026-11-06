@@ -49,6 +49,7 @@ export async function swap(env: Cloudflare.Env, owner: ReturnType<typeof Account
     amountIn: amount,
     feeToken: tokenIn,
     minAmountOut: minimum,
+    nonceKey: 'expiring',
     tokenIn,
     tokenOut,
   })
@@ -68,6 +69,7 @@ export async function buy(env: Cloudflare.Env, owner: ReturnType<typeof Account.
     amountOut: amount,
     feeToken: tokenIn,
     maxAmountIn: quote + (quote * slippage) / 10_000n,
+    nonceKey: 'expiring',
     tokenIn,
     tokenOut,
   })
@@ -84,6 +86,7 @@ export async function send(
     amount: input.amount,
     feeToken: Chain.tokens.ousd.address,
     memo: input.memo,
+    nonceKey: 'expiring',
     to: input.to,
     token: Chain.tokens.ousd.address,
   })
