@@ -101,7 +101,7 @@ export function useGate(swarm: Pick<Detail, 'id' | 'steering'>) {
 
 export function Steering(props: { onChange: () => void; swarm: Detail }) {
   const wallet = useWallet()
-  const me = wallet.session?.address.toLowerCase()
+  const me = wallet.session?.address
   const roster = useRoster(props.swarm.id, props.swarm.steering)
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)

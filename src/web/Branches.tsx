@@ -217,7 +217,7 @@ export function BranchBar(props: { all: readonly Branch[]; branch: Branch; onCha
 function Manage(props: { branch: Branch; onChanged: () => void; others: readonly Branch[]; swarm: Detail }) {
   const wallet = useWallet()
   const roster = useRoster(props.swarm.id, props.swarm.steering)
-  const me = wallet.session?.address.toLowerCase()
+  const me = wallet.session?.address
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
   const [done, setDone] = useState<string>()
