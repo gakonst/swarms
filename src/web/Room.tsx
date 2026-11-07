@@ -13,7 +13,7 @@ import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 import * as Wire from './wire.ts'
 
-const roomMs = 15_000
+const roomMs = { closed: 15_000, open: 60_000 }
 
 const ways = { machine: 'machine', transfer: 'transfer' } as const satisfies Record<Way, string>
 
@@ -131,7 +131,9 @@ export const Room = memo(function Room(props: {
     last.current = messages.at(-1)?.id ?? 0
   }, [messages])
 
+  const [connected, setConnected] = useState(() => Wire.connected(id))
   const wired = Wire.useWire(id, 'room', (signal) => {
+    if (signal.type === 'open' || signal.type === 'closed') setConnected(signal.type === 'open')
     if (signal.type === 'said') setMessages((previous) => merge(previous, [signal.message]))
     if (signal.type === 'presence') {
       setOnline(signal.online)
@@ -153,11 +155,12 @@ export const Room = memo(function Room(props: {
       return
     }
     if (wired !== 'down') return
-    if (away.current || Date.now() - fetched.current > roomMs) void load(last.current)
+    const every = connected ? roomMs.open : roomMs.closed
+    if (away.current || Date.now() - fetched.current > every) void load(last.current)
     away.current = false
-    const timer = setInterval(() => void load(last.current), roomMs)
+    const timer = setInterval(() => void load(last.current), every)
     return () => clearInterval(timer)
-  }, [load, shown, wired])
+  }, [connected, load, shown, wired])
 
   const backers = useRef(props.swarm.contributors)
   useEffect(() => {

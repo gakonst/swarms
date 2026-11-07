@@ -23,6 +23,7 @@ type Wire = {
   line: Api.Line
   linger: ReturnType<typeof setTimeout> | undefined
   listeners: Set<(signal: Signal) => void>
+  open: boolean
   state: State
   users: number
   welcomed: number
@@ -53,6 +54,7 @@ function stir(wire: Wire, stirred: readonly Part[], cause: Cause) {
 }
 
 function heard(wire: Wire, event: Chatter | { type: 'open' | 'closed' }) {
+  if (event.type === 'open' || event.type === 'closed') wire.open = event.type === 'open'
   if (event.type === 'closed') {
     if (wire.state !== 'down') {
       wire.state = 'down'
@@ -95,7 +97,7 @@ function open(id: string, mode: Mode) {
     watching = true
     document.addEventListener('visibilitychange', released)
   }
-  const wire: Wire = { applied: undefined, held: new Map(), line: Api.chatter(id, mode === 'listen', (event) => heard(wire, event)), linger: undefined, listeners: new Set(), state: 'opening', users: 0, welcomed: 0 }
+  const wire: Wire = { applied: undefined, held: new Map(), line: Api.chatter(id, mode === 'listen', (event) => heard(wire, event)), linger: undefined, listeners: new Set(), open: false, state: 'opening', users: 0, welcomed: 0 }
   setTimeout(() => {
     if (wire.state !== 'opening') return
     wire.state = 'down'
@@ -126,6 +128,10 @@ export function join(id: string, mode: Mode, listener: (signal: Signal) => void)
 
 export function state(id: string, mode: Mode): State {
   return wires.get(named(id, mode))?.state ?? 'opening'
+}
+
+export function connected(id: string, mode: Mode = 'room') {
+  return wires.get(named(id, mode))?.open ?? false
 }
 
 export function live(id: string, mode: Mode = 'room') {
