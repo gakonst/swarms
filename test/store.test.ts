@@ -68,3 +68,22 @@ test('a steer spends only backing not yet behind a note, looked up by its author
   const [member] = (await Store.members(db.env, 'a')).filter((found) => found.address === '0x01')
   assert.deepEqual([member?.backed, member?.steered, member?.available], ['0.000130', '0.000130', '0.000000'])
 })
+
+test('search ranks by the stored weights and stops at the limit instead of sorting every match', async () => {
+  const db = open()
+  for (const id of ['a', 'b', 'c']) {
+    swarm(db, id)
+    give(db, id, '0x01', 100)
+  }
+  await Search.swarm(db.env, { goal: 'a parser for logs', id: 'a', title: 'Parser parser' })
+  await Search.swarm(db.env, { goal: 'parser parser parser benchmarks for logs', id: 'b', title: 'Benchmarks' })
+  await Search.swarm(db.env, { goal: 'nothing about it', id: 'c', title: 'Parser' })
+  await Search.note(db.env, 'a', 'n1', 'try a faster parser')
+
+  const hits = await Search.query(db.env, { kind: undefined, limit: 10, swarm: undefined, terms: ['parser'] })
+  const weighed = (db.sqlite.prepare(`select swarm, kind from search where search match '"parser"' order by bm25(search, 0, 0, 0, 2, 1)`).all() as { kind: string; swarm: string }[]).map((row) => row.swarm + ':' + row.kind)
+  assert.deepEqual(hits.map((hit) => hit.swarm.id + ':' + hit.kind), weighed)
+  const plan = planned(db, /order by search\.rank/)
+  assert.match(plan, /SCAN search VIRTUAL TABLE INDEX 32:/)
+  assert.doesNotMatch(plan, /TEMP B-TREE/)
+})

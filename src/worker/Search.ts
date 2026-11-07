@@ -44,7 +44,7 @@ export async function query(
     join swarms s on s.id = search.swarm
     left join reports r on search.kind = 'report' and r.swarm = search.swarm and r.round = cast(search.ref as integer)
     where search match ? and exists (select 1 from contributions c where c.swarm = s.id)${filters.map((filter) => ' and ' + filter).join('')}
-    order by bm25(search, 0, 0, 0, 2, 1) limit ?`,
+    order by search.rank limit ?`,
   )
     .bind(
       input.terms.map((term) => `"${term}"`).join(' OR '),
