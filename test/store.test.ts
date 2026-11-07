@@ -89,19 +89,17 @@ test('a contribution comes back from its own insert, and a repeat inserts nothin
   assert.equal(Store.seen('new'), true)
 })
 
-test('branch ledgers say whether rows from before agents still wait to be adopted', async () => {
+test("a branch's money is only what was put behind its own agent's branch", async () => {
   const db = open()
   swarm(db, 'a')
-  db.sqlite.prepare("insert into branches (swarm, agent, branch, base, created_at) values ('a', 'agt_1', 1, '30000', 1)").run()
-  db.sqlite.prepare("insert into steers (id, swarm, contributor, note, note_id, amount, created_at, branch, agent) values ('s1', 'a', '0x01', 'branch 1', 'branch:1', '100', 1, 1, 'agt_1')").run()
-  assert.equal((await Store.ledgers(db.env, 'a', false)).legacy, false)
+  db.sqlite.prepare("insert into branches (swarm, agent, branch, base, created_at, settled_at) values ('a', 'agt_1', 1, '30000', 1, null), ('a', 'agt_0', 1, '90000', 1, 5)").run()
+  db.sqlite.prepare("insert into steers (id, swarm, contributor, note, note_id, amount, created_at, branch, agent) values ('s1', 'a', '0x01', 'branch 1', 'branch:1', '100', 1, 1, 'agt_1'), ('s2', 'a', '0x02', 'branch 1', 'branch:1', '50', 1, 1, 'agt_0'), ('s3', 'a', '0x03', 'branch 1', 'branch:1', '70', 1, 1, null)").run()
 
-  db.sqlite.prepare("insert into steers (id, swarm, contributor, note, note_id, amount, created_at, branch, agent) values ('s2', 'a', '0x02', 'branch 2', 'branch:2', '50', 1, 2, null)").run()
-  const read = await Store.ledgers(db.env, 'a', false)
-  assert.equal(read.legacy, true)
-  assert.deepEqual([...(read.money('agt_1').shares.get(2) ?? [])], [['0x02', 50n]])
-  await Store.adopt(db.env, 'a', 'agt_1')
-  assert.equal((await Store.ledgers(db.env, 'a', false)).legacy, false)
+  const money = (await Store.ledgers(db.env, 'a', false)).money('agt_1')
+  assert.deepEqual([...(money.shares.get(1) ?? [])], [['0x01', 100n]])
+  assert.deepEqual([...money.bases], [[1, 30000n]])
+  assert.deepEqual([...money.settled], [])
+  assert.match(planned(db, /from steers where swarm = \?1 and branch is not null/), /steers_branch/)
 })
 
 test('lagging finds swarms whose recent turns have no report, through the reports key', async () => {

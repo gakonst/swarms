@@ -463,40 +463,32 @@ export async function directing(env: Cloudflare.Env, swarm: string, agent: strin
 export async function ledgers(env: Cloudflare.Env, swarm: string, listing = true) {
   const [funded, based, listed] = await env.DB.batch([
     env.DB.prepare(
-      'select coalesce(agent, \'\') as agent, branch, contributor, sum(cast(amount as integer)) as amount from steers where swarm = ?1 and branch is not null group by agent, branch, contributor',
+      'select agent, branch, contributor, sum(cast(amount as integer)) as amount from steers where swarm = ?1 and branch is not null group by agent, branch, contributor',
     ).bind(swarm),
     env.DB.prepare('select agent, branch, base, settled_at from branches where swarm = ?1').bind(swarm),
     ...(listing ? [backers(env, swarm)] : []),
   ])
   const members = listed ? membered(listed.results as Backer[]) : []
-  const legacy = [funded, based].some((read) => (read?.results as { agent: string }[] | undefined)?.some((row) => row.agent === ''))
   const money = (agent: string) => {
-    const mine = (row: { agent: string }) => row.agent === agent || row.agent === ''
-    const rows = (based?.results as { agent: string; base: string; branch: number; settled_at: number | null }[]).filter(mine).sort((a, b) => Number(a.agent === agent) - Number(b.agent === agent))
+    const mine = (row: { agent: string | null }) => row.agent === agent
+    const rows = (based?.results as { agent: string; base: string; branch: number; settled_at: number | null }[]).filter(mine)
     const bases = new Map(rows.map((row) => [row.branch, BigInt(row.base)]))
     const settled = new Set(rows.filter((row) => row.settled_at !== null).map((row) => row.branch))
     const shares = new Map<number, Map<string, bigint>>()
-    for (const row of (funded?.results as { agent: string; amount: number; branch: number; contributor: string }[]).filter(mine)) {
+    for (const row of (funded?.results as { agent: string | null; amount: number; branch: number; contributor: string }[]).filter(mine)) {
       const branch = shares.get(row.branch) ?? new Map<string, bigint>()
       branch.set(row.contributor, (branch.get(row.contributor) ?? 0n) + BigInt(row.amount))
       shares.set(row.branch, branch)
     }
     return { bases, settled, shares }
   }
-  return { legacy, members, money }
+  return { members, money }
 }
 
 export async function base(env: Cloudflare.Env, swarm: string, agent: string, branch: number, value: bigint) {
   await env.DB.prepare('insert or ignore into branches (swarm, agent, branch, base, created_at) values (?, ?, ?, ?, ?)')
     .bind(swarm, agent, branch, String(value), Date.now())
     .run().finally(wrote)
-}
-
-export async function adopt(env: Cloudflare.Env, swarm: string, agent: string) {
-  await env.DB.batch([
-    env.DB.prepare("update branches set agent = ? where swarm = ? and agent = ''").bind(agent, swarm),
-    env.DB.prepare("update steers set agent = ? where swarm = ? and branch is not null and (agent = '' or agent is null)").bind(agent, swarm),
-  ]).finally(wrote)
 }
 
 export async function replaced(env: Cloudflare.Env, swarm: string, current: string) {

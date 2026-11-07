@@ -737,7 +737,6 @@ async function directed(env: Cloudflare.Env, row: Pick<Store.Row, 'id'>, listing
   if (!Array.isArray(found.value.list)) return Problem.fail(502, 'upstream_failed', 'The swarm is starting on new code; try again in a few seconds.')
   const agent = found.value.agent
   const read = await ledgers
-  if (agent && read.legacy) waitUntil(logged(Store.adopt(env, row.id, agent)))
   const members = read.members
   const money = read.money(agent ?? '')
   const names = new Map<number, string>()
