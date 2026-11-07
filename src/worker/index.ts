@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import * as Artifacts from './Artifacts.ts'
 import * as Code from './Code.ts'
 import * as Edge from './Edge.ts'
+import * as Feedback from './Feedback.ts'
 import * as Operations from './Operations.ts'
 import * as Page from './Page.ts'
 import * as Problem from './Problem.ts'
@@ -93,6 +94,10 @@ app.on(['GET', 'HEAD'], '/a/:id/:slug/*', (c) => {
   }
   return Artifacts.serve(c.env, c.req.raw, id, slug, path)
 })
+
+app.all(Feedback.path, (c) => Feedback.feedback(c.env).fetch(c.req.raw))
+
+app.all(`${Feedback.path}/*`, (c) => Feedback.feedback(c.env).fetch(c.req.raw))
 
 app.all(Sessions.path, (c) => Sessions.auth(c.env).fetch(c.req.raw))
 
