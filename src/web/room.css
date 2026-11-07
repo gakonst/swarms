@@ -281,6 +281,8 @@ a.quest-step { text-decoration:none; }
   .artifacts { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); gap:8px; }
   .artifact-list { flex-direction:row; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
   .artifact-list li { flex:0 0 auto; }
+  .artifact-list:has(> li:only-child) { display:none; }
+  .artifacts:has(> .artifact-list > li:only-child) { grid-template-rows:minmax(0,1fr); }
   .artifact-list > li + li { border-top:0; border-left:1px solid #e3e9dd; }
   .artifact-item { width:auto; max-width:240px; padding:7px 12px 7px 7px; }
   .artifact-glyph { width:28px; height:28px; font-size:11px; }
