@@ -318,7 +318,7 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
 
   const submit = () => {
     if (command) {
-      props.onSide(command.rest, target?.id ?? null)
+      props.onSide(command.name === 'btw' ? command.rest : `/${command.name} ${command.rest}`.trim(), target?.id ?? null)
       setText('')
       return
     }
@@ -417,6 +417,11 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
   return (
     <div className="say">
       {error && <Alert title={explain(error).title} tone="bad">{explain(error).detail}</Alert>}
+      {command && (
+        <div className="say-stake">
+          <span className="say-note">{command.name === 'btw' ? `asks ${target ? target.who : 'the agent'} on the side: nothing from your wallet, and it keeps working` : command.name === 'collapse' ? 'opens your side thread to steer with it; you pick the money there' : 'closes the side pane'}</span>
+        </div>
+      )}
       {!command && (!!target || !!words) && (
         <div className="say-stake" role="radiogroup" aria-label="How much behind it">
           {stakes.map((value) => (
@@ -430,7 +435,7 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
         {target && !command ? (
           <span className="mention" data-branch="true" style={{ background: hue(target.who) }} title={target.task}>{target.who}</span>
         ) : (
-          <span className="mention" data-btw={command ? 'true' : undefined} data-swarm="true">{command ? '/btw' : '@swarm'}</span>
+          <span className="mention" data-btw={command ? 'true' : undefined} data-swarm="true">{command ? `/${command.name}` : '@swarm'}</span>
         )}
         <textarea
           disabled={!!busy}
@@ -452,7 +457,7 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
           <button aria-label={command || door.from === 'team' ? 'Send' : ok ? `Add ${usd(decimal(units(stake)))} and steer` : 'Add money and steer'} className="say-send" disabled={!!busy || (command ? false : !ready)} title={command || door.from === 'team' || !ok ? undefined : `Add ${usd(decimal(units(stake)))} to the swarm behind this`} type="submit">↑</button>
         )}
       </form>
-      <button className="say-side" onClick={() => props.onSide('', target?.id ?? null)} type="button">{target ? `Ask ${target.who} on the side` : 'Ask on the side'} <span aria-hidden="true">→</span></button>
+      <button className="say-side" onClick={() => props.onSide('', target?.id ?? null)} type="button">{target ? `Ask ${target.who} on the side` : 'Ask on the side'} (/btw) <span aria-hidden="true">→</span></button>
     </div>
   )
 }

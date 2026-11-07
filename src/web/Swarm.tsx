@@ -243,7 +243,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
               config={props.config}
               draft={draft}
               entries={entries}
-              onSide={(question, branch) => ask(branch, question)}
+              onSide={(question, branch) => (question === '/close' ? setSide((current) => ({ ...current, open: false })) : ask(branch, question))}
               handles={chat.handles}
               live={stream}
               me={chat.me}

@@ -15,6 +15,8 @@ import * as Wallet from './wallet.ts'
 
 const stakes = ['0.5', '1', '5'] as const
 
+type Mode = 'artifact' | 'steer'
+
 function slot(swarm: string, branch: number | null) {
   return `swarms.btw:${swarm}:${branch ?? 'lead'}`
 }
@@ -39,6 +41,11 @@ function valid(stake: string) {
   return /^\d*\.?\d{0,6}$/.test(stake) && stake !== '' && stake !== '.' && units(stake) >= 10_000n
 }
 
+function amount(text: string) {
+  const typed = text.replace(/^\$/, '').replace(',', '.').trim()
+  return valid(typed) ? typed : undefined
+}
+
 export function Side(props: {
   branch: number | null
   config: Config | undefined
@@ -53,26 +60,56 @@ export function Side(props: {
   const branches = (listed.data?.branches ?? []).filter((branch) => branch.parent === null)
   const target = branches.find((branch) => branch.id === props.branch)
   const name = target ? target.who : 'the agent'
+  const Name = target ? target.who : 'The agent'
   const [thread, setThread] = useState<Btw.Exchange[]>(() => recall(props.swarm.id, props.branch))
   const [pending, setPending] = useState<string>()
   const [text, setText] = useState('')
-  const [stake, setStake] = useState<string>('1')
+  const [stake, setStake] = useState<string>('0.5')
+  const [mode, setMode] = useState<Mode>('steer')
+  const [offer, setOffer] = useState(false)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
-  const [done, setDone] = useState<string>()
+  const [done, setDone] = useState<{ detail: string; title: string }>()
+  const [hint, setHint] = useState<string>()
   const area = useRef<HTMLTextAreaElement>(null)
   const list = useRef<HTMLOListElement>(null)
+  const send = useRef<HTMLButtonElement>(null)
   const credit = useCredit()
+  const team = typeof door === 'object' && door.at === 'open' && door.from === 'team'
+  const kept = Btw.fit(thread)
+  const typed = text.trim()
+  const command = Btw.command(text)
+  const ok = valid(stake)
+  const price = ok ? usd(decimal(units(stake))) : undefined
+  const asking = !thread.length && mode === 'artifact' && !!typed && !command
+  const shown = thread.length > 0 || (offer && !!typed && !command)
+  const chosen: Mode = thread.length ? mode : 'artifact'
+  const note = asking ? Btw.note([{ answer: '', question: typed }], true) : Btw.note(kept, chosen === 'artifact')
 
   useEffect(() => {
     setThread(recall(props.swarm.id, props.branch))
     setError(undefined)
     setDone(undefined)
+    setHint(undefined)
   }, [props.swarm.id, props.branch])
+
+  const collapsing = (rest: string) => {
+    const asked = amount(rest)
+    if (asked) setStake(asked)
+    setMode('steer')
+    setText('')
+    setDone(undefined)
+    setError(undefined)
+    if (!recall(props.swarm.id, props.branch).length) return setHint(`Nothing to collapse yet. Ask ${name} something on the side first; /collapse then steers it with that thread.`)
+    setHint(undefined)
+    requestAnimationFrame(() => send.current?.focus())
+  }
 
   useEffect(() => {
     if (!props.question.at) return
-    setText(props.question.text)
+    const asked = Btw.command(props.question.text)
+    if (asked?.name === 'collapse') return collapsing(asked.rest)
+    setText(asked ? asked.rest : props.question.text)
     requestAnimationFrame(() => area.current?.focus())
   }, [props.question])
 
@@ -85,11 +122,11 @@ export function Side(props: {
     keep(props.swarm.id, props.branch, next)
   }
 
-  const ask = async (): Promise<Btw.Exchange[] | undefined> => {
-    const question = text.trim()
+  const ask = async (question = typed): Promise<Btw.Exchange[] | undefined> => {
     if (!question || pending) return undefined
     setError(undefined)
     setDone(undefined)
+    setHint(undefined)
     setPending(question)
     setText('')
     try {
@@ -106,24 +143,43 @@ export function Side(props: {
     }
   }
 
-  const steer = async (artifact: boolean) => {
+  const submit = () => {
+    if (!command) return void ask()
+    if (command.name === 'close') return props.onClose()
+    if (command.name === 'collapse') return collapsing(command.rest)
+    if (command.rest) void ask(command.rest)
+    else setText('')
+  }
+
+  const steer = async () => {
     const config = props.config
-    if (!config || busy || pending || !valid(stake)) return
-    const asked = !thread.length && artifact && text.trim() ? await ask() : thread
+    if (!config || busy || pending || !ok) return
+    const artifact = chosen === 'artifact'
+    const asked = asking ? await ask() : thread
     if (!asked?.length) return
     setError(undefined)
     setDone(undefined)
-    const kept = Btw.fit(asked)
+    setHint(undefined)
+    const sent = Btw.fit(asked)
+    const line = Btw.note(sent, artifact)
+    const need = units(stake)
+    const paid = usd(decimal(need))
     try {
-      const need = units(stake)
       if (typeof door !== 'object' || door.at !== 'open') throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
       if (door.from === 'backing') await credit.cover(config, props.swarm, need, setBusy)
-      setBusy('Sending…')
+      setBusy(artifact ? 'Asking for the artifact…' : 'Collapsing into a steer…')
       if (props.branch === null) {
-        const posted = await Api.say(props.swarm.id, { artifact, btw: kept, steer: decimal(need), text: `@swarm ${Btw.note(kept, artifact)}` })
+        const posted = await Api.say(props.swarm.id, { artifact, btw: sent, steer: decimal(need), text: `@swarm ${line}` })
         props.onSaid(posted.message)
-      } else await Api.fund(props.swarm.id, props.branch, { amount: decimal(need), artifact, message: Btw.collapse(kept, artifact) })
-      setDone(artifact ? `Asked ${name} for an artifact, with ${usd(decimal(need))} behind it.` : `Steered ${name} with this thread and ${usd(decimal(need))}.`)
+      } else await Api.fund(props.swarm.id, props.branch, { amount: decimal(need), artifact, message: Btw.collapse(sent, artifact) })
+      const from = door.from === 'team' ? `${paid} of the swarm's money (your team budget)` : `${paid} from your wallet`
+      const what = sent.length === 1 ? 'your question and its answer' : `your ${sent.length} questions and their answers`
+      setDone(
+        artifact
+          ? { detail: `${from} went behind “${line}”, with ${what}. ${Name} publishes or updates an artifact of it and carries on; it shows under Artifacts.`, title: `Asked ${name} for an artifact` }
+          : { detail: `${from} went behind “${line}”, with ${what}. ${Name} reads the whole thread ${target ? 'at once' : 'on its next step'}, and the steer shows in the transcript.`, title: `Collapsed into a steer of ${name}` },
+      )
+      setOffer(false)
       remember([])
     } catch (reason) {
       setError(message(reason))
@@ -140,7 +196,7 @@ export function Side(props: {
     try {
       const posted = await Api.say(props.swarm.id, { text: `Asked ${name} on the side: "${last.question.slice(0, 300)}"\n\n${last.answer.slice(0, 1200)}` })
       props.onSaid(posted.message)
-      setDone('Shared to the room.')
+      setDone({ detail: 'Your last question and its answer are in the room. Nothing was paid and the agent was not steered.', title: 'Shared to the room' })
     } catch (reason) {
       setError(message(reason))
     } finally {
@@ -170,11 +226,26 @@ export function Side(props: {
     return undefined
   })()
 
+  const what = (() => {
+    const from = team ? `Puts ${price ?? 'the amount'} of the swarm's money (your team budget${typeof door === 'object' && door.at === 'open' && door.left !== null ? `, ${usd(door.left)} left` : ''})` : `Sends ${price ?? 'the amount you choose'} from your wallet to the swarm and puts it`
+    const thread = asking ? 'your question and its answer' : kept.length === 1 ? 'this question and its answer' : `these ${kept.length} questions and their answers`
+    const first = asking ? `Asks this first (the swarm pays for the answer). Then it ${from.charAt(0).toLowerCase()}${from.slice(1)}` : from
+    if (chosen === 'artifact') return `${first} behind “${note}”, with ${thread}, asking ${name} to publish or update an artifact that shows what you asked about.`
+    return `${first} behind “${note}”, with ${thread}. ${Name} reads the whole thread ${target ? 'at once' : 'on its next step'} and weighs it by that money.`
+  })()
+
+  const label = (() => {
+    if (busy) return busy
+    const money = price ?? '…'
+    if (chosen === 'artifact') return team ? `Ask for an artifact with ${money}` : `Add ${money} and ask for an artifact`
+    return team ? `Collapse with ${money}` : `Add ${money} and collapse`
+  })()
+
   return (
     <aside aria-label="Ask on the side" className="side">
       <header className="side-head">
         <div className="side-title">
-          <b>On the side</b>
+          <b>/btw</b>
           <select aria-label="Who to ask" onChange={(event) => props.onBranch(event.target.value === 'lead' ? null : Number(event.target.value))} value={props.branch ?? 'lead'}>
             <option value="lead">The agent</option>
             {branches.map((branch) => (
@@ -184,7 +255,7 @@ export function Side(props: {
         </div>
         <button aria-label="Close" className="side-close" onClick={props.onClose} type="button">×</button>
       </header>
-      <p className="side-how">Answered from {name}'s own context without interrupting it. Steer {name} with the thread, or ask {name} for an artifact of it, by putting money behind it.</p>
+      <p className="side-how"><b>Asking takes nothing from your wallet:</b> {name} answers from its own context without stopping its work, and the swarm pays for each answer. <b>/collapse</b> is what costs you: it sends the amount you choose, with this thread, to steer {name}.</p>
       <ol className="side-list" ref={list}>
         {thread.map((exchange, index) => (
           <li key={index}>
@@ -201,43 +272,52 @@ export function Side(props: {
         {!thread.length && !pending && <li className="side-empty">Ask {name} anything: where it stands, why it chose something, what a result means.</li>}
       </ol>
       {error && <Alert title={explain(error).title} tone="bad">{explain(error).detail}</Alert>}
-      {done && <p className="side-done">{done}</p>}
+      {done && <Alert title={done.title} tone="good">{done.detail}</Alert>}
+      {hint && <p className="side-note">{hint}</p>}
       {gate ?? (
         <>
-          {(thread.length > 0 || !!text.trim()) && (
-            <div className="side-act">
+          {shown && (
+            <section aria-label="Collapse into a steer" className="side-act">
+              {thread.length > 0 && (
+                <div aria-label="What to do with this thread" className="side-modes" role="radiogroup">
+                  <button aria-checked={mode === 'steer'} disabled={!!busy} onClick={() => setMode('steer')} role="radio" type="button">/collapse into a steer</button>
+                  <button aria-checked={mode === 'artifact'} disabled={!!busy} onClick={() => setMode('artifact')} role="radio" type="button">Ask for an artifact</button>
+                </div>
+              )}
+              <p className="side-what">{what}</p>
               <div className="say-stake" role="radiogroup" aria-label="How much behind it">
                 {stakes.map((value) => (
                   <button aria-checked={stake === value} disabled={!!busy} key={value} onClick={() => setStake(value)} role="radio" type="button">${value === '0.5' ? '0.50' : value}</button>
                 ))}
                 <label className="say-own">$<input aria-label="Your amount" disabled={!!busy} inputMode="decimal" onChange={(event) => setStake(event.target.value.replace(',', '.').replace('$', ''))} onFocus={(event) => event.target.select()} placeholder="…" value={(stakes as readonly string[]).includes(stake) ? '' : stake} /></label>
               </div>
+              {!ok && <p className="side-note">At least $0.01.</p>}
               <div className="side-buttons">
-                {thread.length > 0 && <button disabled={!!busy || !!pending || !valid(stake)} onClick={() => void steer(false)} type="button">Steer with this</button>}
-                <button disabled={!!busy || !!pending || !valid(stake)} onClick={() => void steer(true)} title={thread.length ? undefined : 'Asks this first, then asks for an artifact of it'} type="button">Ask for an artifact</button>
-                {thread.length > 0 && <button className="side-quiet" disabled={!!busy} onClick={() => void share()} type="button">Share to room</button>}
-                {thread.length > 0 && <button className="side-quiet" disabled={!!busy} onClick={() => remember([])} type="button">Clear</button>}
+                <button className="side-send" disabled={!!busy || !!pending || !ok} onClick={() => void steer()} ref={send} type="button">{label}</button>
+                {thread.length > 0 && <button className="side-quiet" disabled={!!busy} onClick={() => void share()} title="Post your last question and its answer in the room. Free; it does not steer the agent." type="button">Share to room</button>}
+                {thread.length > 0 && <button className="side-quiet" disabled={!!busy} onClick={() => { remember([]); setDone(undefined) }} title="Forget this thread. Nothing is sent." type="button">Clear</button>}
+                {!thread.length && <button className="side-quiet" disabled={!!busy} onClick={() => setOffer(false)} type="button">Cancel</button>}
               </div>
-              <p className="side-note">{busy ?? (typeof door === 'object' && door.at === 'open' && door.from === 'team' ? `From the swarm's money${door.left === null ? '' : ` · ${usd(door.left)} of your team budget left`}.` : 'New money from your wallet goes behind it.')}</p>
-            </div>
+            </section>
           )}
-          <form className="side-box" onSubmit={(event) => { event.preventDefault(); void ask() }}>
+          <form className="side-box" onSubmit={(event) => { event.preventDefault(); submit() }}>
             <textarea
               disabled={!!pending}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => { setText(event.target.value); setHint(undefined) }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault()
-                  void ask()
+                  submit()
                 }
               }}
-              placeholder={`Ask ${name} on the side`}
+              placeholder={thread.length ? `Ask ${name} a follow-up, or type /collapse` : `Ask ${name} on the side`}
               ref={area}
               rows={2}
               value={text}
             />
-            <button aria-label="Ask" className="say-send" disabled={!!pending || !text.trim()} type="submit">↑</button>
+            <button aria-label="Ask" className="say-send" disabled={!!pending || !typed} type="submit">↑</button>
           </form>
+          {!thread.length && !!typed && !command && !offer && <button className="say-side" disabled={!!pending} onClick={() => { setMode('artifact'); setOffer(true) }} type="button">Or ask this and request an artifact of the answer, with money behind it <span aria-hidden="true">→</span></button>}
         </>
       )}
     </aside>
