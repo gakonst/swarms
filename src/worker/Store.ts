@@ -106,14 +106,14 @@ export async function list(env: Cloudflare.Env, status?: Summary['status']) {
 
 const known = new Set<string>()
 
-let writes = 0
+const writes = new Map<string, number>()
 
-export function epoch() {
-  return writes
+export function epoch(swarm: string) {
+  return writes.get(swarm) ?? 0
 }
 
-function wrote() {
-  writes += 1
+function wrote(swarm: string) {
+  writes.set(swarm, epoch(swarm) + 1)
 }
 
 export function seen(id: string) {
@@ -168,7 +168,7 @@ export async function insert(
     'insert into swarms (id, title, goal, problem, wallet, sealed_wallet, creator, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as raised, pool_spent + sponsor_spent + spent_before as spent, pool_left + sponsor_left as remaining, 0 as contributors',
   )
     .bind(input.id, input.title, input.goal, input.problem, input.wallet, input.sealed_wallet, input.creator, now, now)
-    .first<Row>().finally(wrote)
+    .first<Row>().finally(() => wrote(input.id))
   if (row) known.add(row.id)
   return row
 }
@@ -176,7 +176,7 @@ export async function insert(
 export async function provision(env: Cloudflare.Env, id: string, input: { sealed_wallet: string; wallet: string }) {
   await env.DB.prepare('update swarms set wallet = ?, sealed_wallet = ? where id = ? and wallet is null')
     .bind(input.wallet, input.sealed_wallet, id)
-    .run().finally(wrote)
+    .run().finally(() => wrote(id))
 }
 
 export async function update(env: Cloudflare.Env, id: string, fields: Fields) {
@@ -185,7 +185,7 @@ export async function update(env: Cloudflare.Env, id: string, fields: Fields) {
     `update swarms set ${entries.map(([name]) => name + ' = ?, ').join('')}updated_at = ? where id = ?`,
   )
     .bind(...entries.map(([, value]) => value), Date.now(), id)
-    .run().finally(wrote)
+    .run().finally(() => wrote(id))
 }
 
 export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>) {
@@ -204,7 +204,7 @@ export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>)
       input.note_id,
       Date.now(),
     )
-    .first<Gift>().finally(wrote)
+    .first<Gift>().finally(() => wrote(input.swarm))
 }
 
 export async function gift(env: Cloudflare.Env, id: string) {
@@ -218,13 +218,13 @@ export async function channel(env: Cloudflare.Env, id: string) {
 export async function delivered(env: Cloudflare.Env, channel: string, amount: bigint) {
   await env.DB.prepare('update contributions set amount = ? where channel = ? and amount != ?')
     .bind(String(amount), channel.toLowerCase(), String(amount))
-    .run().finally(wrote)
+    .run()
 }
 
 export async function annotate(env: Cloudflare.Env, id: string, input: { note: string; note_id: string }) {
   return env.DB.prepare('update contributions set note = ?, note_id = ? where id = ? and note is null returning *')
     .bind(input.note, input.note_id, id.toLowerCase())
-    .first<Gift>().finally(wrote)
+    .first<Gift>()
 }
 
 export function contribution(row: Gift): Contribution {
@@ -245,15 +245,6 @@ function gifts(env: Cloudflare.Env, swarm: string) {
 export async function contributions(env: Cloudflare.Env, swarm: string): Promise<Contribution[]> {
   const { results } = await gifts(env, swarm).all<Gift>()
   return results.map(contribution)
-}
-
-export async function shares(env: Cloudflare.Env, swarm: string) {
-  const { results } = await env.DB.prepare(
-    'select contributor, sum(cast(amount as integer)) as amount from contributions where swarm = ? group by contributor order by amount desc',
-  )
-    .bind(swarm)
-    .all<{ amount: number; contributor: `0x${string}` }>()
-  return results.map((row) => ({ amount: BigInt(row.amount), contributor: row.contributor }))
 }
 
 type Weighed = { backers: number; id: string; note: string; weight: number }
@@ -390,7 +381,7 @@ export async function account(env: Cloudflare.Env, address: `0x${string}`): Prom
 export async function rename(env: Cloudflare.Env, address: `0x${string}`, name: string | null) {
   const lower = address.toLowerCase()
   if (!name) {
-    await env.DB.prepare('delete from names where address = ?').bind(lower).run().finally(wrote)
+    await env.DB.prepare('delete from names where address = ?').bind(lower).run()
     return true
   }
   try {
@@ -398,7 +389,7 @@ export async function rename(env: Cloudflare.Env, address: `0x${string}`, name: 
       'insert into names (address, name, updated_at) values (?, ?, ?) on conflict (address) do update set name = excluded.name, updated_at = excluded.updated_at',
     )
       .bind(lower, name, Date.now())
-      .run().finally(wrote)
+      .run()
     return true
   } catch (error) {
     if (/unique/i.test(String(error))) return false
@@ -420,7 +411,7 @@ export async function steer(
     ) >= cast(?6 as integer) and (?8 is null or ${open})`,
   )
     .bind(input.swarm, input.contributor.toLowerCase(), input.id, input.note, input.note_id, String(input.amount), Date.now(), input.branch?.id ?? null, input.branch?.agent ?? null)
-    .run().finally(wrote)
+    .run().finally(() => wrote(input.swarm))
   return result.meta.changes > 0
 }
 
@@ -447,7 +438,7 @@ export async function allot(
       input.limit === null ? null : String(input.limit),
       input.since,
     )
-    .run().finally(wrote)
+    .run().finally(() => wrote(input.swarm))
   return result.meta.changes > 0
 }
 
@@ -488,7 +479,7 @@ export async function ledgers(env: Cloudflare.Env, swarm: string, listing = true
 export async function base(env: Cloudflare.Env, swarm: string, agent: string, branch: number, value: bigint) {
   await env.DB.prepare('insert or ignore into branches (swarm, agent, branch, base, created_at) values (?, ?, ?, ?, ?)')
     .bind(swarm, agent, branch, String(value), Date.now())
-    .run().finally(wrote)
+    .run().finally(() => wrote(swarm))
 }
 
 export async function replaced(env: Cloudflare.Env, swarm: string, current: string) {
@@ -503,7 +494,7 @@ export async function replaced(env: Cloudflare.Env, swarm: string, current: stri
 }
 
 export async function unsteer(env: Cloudflare.Env, ids: readonly string[]) {
-  await env.DB.batch(ids.map((id) => env.DB.prepare('delete from steers where id = ?').bind(id))).finally(wrote)
+  await env.DB.batch(ids.map((id) => env.DB.prepare('delete from steers where id = ?').bind(id)))
 }
 
 export async function shift(
@@ -525,7 +516,7 @@ export async function shift(
       `insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
       select ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11 where exists (select 1 from steers where id = ?10)`,
     ).bind(input.ids[1], input.swarm, contributor, `branch ${input.to}`, `branch:${input.to}`, String(input.amount), now, input.team ? 1 : 0, input.to, input.ids[0], input.agent),
-  ]).finally(wrote)
+  ]).finally(() => wrote(input.swarm))
   return (taken?.meta.changes ?? 0) > 0
 }
 
@@ -538,21 +529,41 @@ export async function allotted(env: Cloudflare.Env, swarm: string, since: number
   return new Map(results.map((row) => [row.contributor, BigInt(row.amount)]))
 }
 
+export async function note(env: Cloudflare.Env, swarm: string, id: string, raised: bigint, steered: ReadonlySet<string>) {
+  const row = await env.DB.prepare(
+    `select note_id as id, min(note) as note, sum(weight) as weight, count(distinct contributor) as backers from (
+      select note_id, note, cast(amount as integer) as weight, contributor from contributions where swarm = ?1 and note_id = ?2
+      union all
+      select note_id, note, cast(amount as integer) as weight, contributor from steers where swarm = ?1 and branch is null and note_id = ?2
+    ) group by note_id`,
+  )
+    .bind(swarm, id)
+    .first<Weighed>()
+  return row ? weighed([row], raised, steered)[0] : undefined
+}
+
 export async function noteId(note: string) {
   const normalized = note.trim().toLowerCase().replace(/\s+/g, ' ')
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized))
   return Array.from(new Uint8Array(digest).slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export async function settle(env: Cloudflare.Env, input: { agent: string; branch: number; left: bigint | null; swarm: string }) {
+export async function claim(env: Cloudflare.Env, swarm: string, agent: string, branches: readonly number[]) {
+  if (!branches.length) return new Set<number>()
   const now = Date.now()
-  const claimed = await env.DB.prepare(
-    'insert into branches (swarm, agent, branch, base, created_at, settled_at) values (?, ?, ?, ?, ?, ?) on conflict (swarm, agent, branch) do update set settled_at = excluded.settled_at where branches.settled_at is null',
-  )
-    .bind(input.swarm, input.agent, input.branch, '0', now, now)
-    .run()
-    .finally(wrote)
-  if (claimed.meta.changes === 0) return []
+  const claimed = await env.DB.batch(
+    branches.map((branch) =>
+      env.DB.prepare(
+        'insert into branches (swarm, agent, branch, base, created_at, settled_at) values (?, ?, ?, ?, ?, ?) on conflict (swarm, agent, branch) do update set settled_at = excluded.settled_at where branches.settled_at is null',
+      ).bind(swarm, agent, branch, '0', now, now),
+    ),
+  ).finally(() => wrote(swarm))
+  return new Set(branches.filter((_, index) => (claimed[index]?.meta.changes ?? 0) > 0))
+}
+
+export async function settle(env: Cloudflare.Env, input: { agent: string; branch: number; claimed?: boolean; left: bigint | null; swarm: string }) {
+  const now = Date.now()
+  if (!input.claimed && !(await claim(env, input.swarm, input.agent, [input.branch])).has(input.branch)) return []
 
   const { results } = await env.DB.prepare(
     'select contributor, budget, sum(cast(amount as integer)) as amount, min(case when amount > 0 then created_at end) as since from steers where swarm = ? and agent = ? and branch = ? group by contributor, budget',
@@ -587,6 +598,6 @@ export async function settle(env: Cloudflare.Env, input: { agent: string; branch
         input.agent,
       ),
     ),
-  ).finally(wrote)
+  ).finally(() => wrote(input.swarm))
   return returned.map((row) => ({ amount: row.amount, budget: row.budget, contributor: row.contributor }))
 }

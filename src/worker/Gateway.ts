@@ -208,7 +208,7 @@ export function repay(env: Cloudflare.Env, swarm: string, agent: string, payer: 
   return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { payer }, method: 'PATCH' })
 }
 
-export function prompt(env: Cloudflare.Env, swarm: string, agent: string, input: { prompt: string; steer: boolean }) {
+export function prompt(env: Cloudflare.Env, swarm: string, agent: string, input: { id?: string; prompt: string; steer: boolean }) {
   return send<{ request_id: string; status: string }>(env, `/v1/agents/${agent}/turns`, { app: app(swarm), body: input })
 }
 
@@ -304,8 +304,8 @@ export function terminate(env: Cloudflare.Env, swarm: string, sandboxId: string)
   return send<unknown>(env, '/v1/compute/terminate', { app: app(swarm), body: { sandboxId } })
 }
 
-export function stream(env: Cloudflare.Env, swarm: string, agent: string, after: number, signal: AbortSignal) {
-  return call(env, `/v1/agents/${agent}/events?after=${after}&live=1`, {
+export function stream(env: Cloudflare.Env, swarm: string, agent: string, after: number, signal: AbortSignal, live: boolean) {
+  return call(env, `/v1/agents/${agent}/events?after=${after}&live=${live ? 1 : 0}`, {
     headers: { accept: 'text/event-stream', authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY, 'gateway-app': app(swarm) },
     signal,
   })

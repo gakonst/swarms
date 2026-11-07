@@ -26,8 +26,7 @@ export async function account(env: Cloudflare.Env, row: Pick<Store.Row, 'sealed_
   return Account.fromSecp256k1((await Seal.open(env.SWARMS_SECRET, row.sealed_wallet)) as Hex)
 }
 
-export async function balances(env: Cloudflare.Env, address: Address): Promise<Balances> {
-  const client = Chain.client(env)
+export async function balances(env: Cloudflare.Env, address: Address, client = Chain.client(env)): Promise<Balances> {
   const read = (id: Token) =>
     readContract(client, { abi: erc20Abi, address: Chain.tokens[id].address, args: [address], functionName: 'balanceOf' })
   const [ousd, pathusd, usdce] = await Promise.all([read('ousd'), read('pathusd'), read('usdce')])
@@ -74,23 +73,6 @@ export async function buy(env: Cloudflare.Env, owner: ReturnType<typeof Account.
     tokenOut,
   })
   return { fee: fee(receipt), hash: receipt.transactionHash, quote }
-}
-
-export async function send(
-  env: Cloudflare.Env,
-  owner: ReturnType<typeof Account.fromSecp256k1>,
-  input: { amount: bigint; memo: Hex; to: Address },
-) {
-  const { receipt } = await Actions.token.transferSync(Chain.client(env), {
-    account: owner,
-    amount: input.amount,
-    feeToken: Chain.tokens.ousd.address,
-    memo: input.memo,
-    nonceKey: 'expiring',
-    to: input.to,
-    token: Chain.tokens.ousd.address,
-  })
-  return { fee: fee(receipt), hash: receipt.transactionHash }
 }
 
 export function fee(receipt: { effectiveGasPrice: bigint; gasUsed: bigint }) {

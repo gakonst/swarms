@@ -1,12 +1,13 @@
 import { Challenge } from 'mppx'
 import { createJsonChannelStore, Mppx, tempo } from 'mppx/client'
-import { encodeFunctionData, isAddressEqual } from 'viem'
+import { isAddressEqual } from 'viem'
 import type { Account, Address, Hex } from 'viem'
-import { prepareTransactionRequest, readContract, sendRawTransactionSync, signTransaction } from 'viem/actions'
-import { Transaction } from 'viem/tempo'
+import { readContract } from 'viem/actions'
 import * as Chain from './Chain.ts'
 
-export type Channel = { at: number; confirmed: boolean; deposit: string; descriptor: unknown; id: Hex; signed: string }
+export type Channel = { at: number; confirmed: boolean; deposit: string; descriptor: unknown; id: Hex; signed: string; topUp?: { amount: string; at: number } | undefined }
+
+export const confirmMs = 8_000
 
 export type Snapshot = {
   acceptedCumulative: string
@@ -21,20 +22,6 @@ export type Snapshot = {
 }
 
 export type Client = { createCredential(response: Response, context?: unknown): Promise<string> }
-
-const descriptor = {
-  components: [
-    { name: 'payer', type: 'address' },
-    { name: 'payee', type: 'address' },
-    { name: 'operator', type: 'address' },
-    { name: 'token', type: 'address' },
-    { name: 'salt', type: 'bytes32' },
-    { name: 'authorizedSigner', type: 'address' },
-    { name: 'expiringNonceHash', type: 'bytes32' },
-  ],
-  name: 'descriptor',
-  type: 'tuple',
-} as const
 
 const escrowAbi = [
   {
@@ -53,7 +40,6 @@ const escrowAbi = [
     stateMutability: 'view',
     type: 'function',
   },
-  { inputs: [descriptor], name: 'requestClose', outputs: [], stateMutability: 'nonpayable', type: 'function' },
 ] as const
 
 function sessions(challenge: string | readonly string[], recipient: Address) {
@@ -121,31 +107,6 @@ export function client(env: Cloudflare.Env, kv: SyncKvStorage, id: string, accou
   return { createCredential: (response, context) => mppx.createCredential(response, context as never) }
 }
 
-export async function requestClose(env: Cloudflare.Env, channel: Channel, account: Account, sponsor: { account: Account; token: Address }) {
-  const client = Chain.client(env)
-  const call = { data: encodeFunctionData({ abi: escrowAbi, args: [channel.descriptor as never], functionName: 'requestClose' }), to: Chain.escrow }
-  const own = isAddressEqual(account.address, sponsor.account.address)
-  const prepared = await prepareTransactionRequest(client, {
-    account,
-    calls: [call],
-    ...(own ? { feeToken: sponsor.token } : { feePayer: true }),
-    nonceKey: 'expiring',
-  } as never)
-  const signed = await signTransaction(client, prepared as never)
-  const serialized = own
-    ? signed
-    : await signTransaction(client, {
-        ...(Transaction.deserialize(signed) as object),
-        account: sponsor.account,
-        feePayer: sponsor.account,
-        feeToken: sponsor.token,
-        type: 'tempo',
-      } as never)
-  const receipt = await sendRawTransactionSync(client, { serializedTransaction: serialized })
-  if (receipt.status !== 'success') throw new Error('requestClose reverted')
-  return receipt.transactionHash
-}
-
 export function opened(kv: SyncKvStorage, id: string) {
   for (const [, value] of kv.list<string>({ prefix: `mppx:${id}:` })) {
     const entry = JSON.parse(value) as { channelId: Hex; descriptor: unknown; opened?: boolean }
@@ -160,8 +121,31 @@ export function forget(kv: SyncKvStorage, id: string) {
   kv.delete(`pending:${id}`)
 }
 
-export function state(env: Cloudflare.Env, channel: Hex) {
-  return readContract(Chain.client(env), { abi: escrowAbi, address: Chain.escrow, args: [channel], functionName: 'getChannelState' })
+export function state(env: Cloudflare.Env, channel: Hex, client = Chain.client(env)) {
+  return readContract(client, { abi: escrowAbi, address: Chain.escrow, args: [channel], functionName: 'getChannelState' })
+}
+
+export function held(channel: Channel) {
+  return BigInt(channel.deposit) + BigInt(channel.topUp?.amount ?? '0')
+}
+
+export function inside(channel: Channel | undefined, spent: bigint) {
+  return channel?.confirmed ? max(BigInt(channel.deposit) - spent, 0n) : 0n
+}
+
+export function unsure(channel: Channel) {
+  return !channel.confirmed || !!channel.topUp
+}
+
+export function topped(channel: Channel, deposit: bigint, additional: bigint, signed: bigint, now: number): Channel {
+  if (additional <= 0n) return { ...channel, signed: String(signed) }
+  return { ...channel, signed: String(signed), topUp: { amount: String(deposit + additional - BigInt(channel.deposit)), at: now } }
+}
+
+export function confirm(channel: Channel, deposit: bigint, now: number): Channel {
+  const old = now - (channel.topUp?.at ?? channel.at) > confirmMs
+  if (deposit <= 0n || (deposit < held(channel) && !old)) return channel
+  return { at: channel.at, confirmed: true, deposit: String(deposit), descriptor: channel.descriptor, id: channel.id, signed: channel.signed }
 }
 
 export function max(a: bigint, b: bigint) {

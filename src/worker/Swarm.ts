@@ -1,10 +1,10 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { Account, Address, Hex } from 'viem'
-import { isAddress, keccak256, stringToHex } from 'viem'
+import { isAddress } from 'viem'
 import { Challenge } from 'mppx'
 import { Mppx, tempo } from 'mppx/client'
-import type { Artifact, Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Said, Shown, Snapshot, Steer, Terms, Token, Update, Working } from '../shared/Api.ts'
-import { type Buffers, type Crew, clip, crew, memory, narrate, redact, subagent } from '../shared/Trail.ts'
+import type { Artifact, Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Shown, Snapshot, Steer, Terms, Token, Update, Working } from '../shared/Api.ts'
+import { type Buffers, type Crew, clip, crew, narrate, redact, subagent, tool } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Memo from '../shared/Memo.ts'
@@ -31,13 +31,13 @@ export type Contributed = {
   noteId: string | null
   swarm: string
   token: Currency
+  kind?: 'new' | 'noted' | undefined
 }
 
 export type View = {
   code: Code | null
   feed: Entry[]
   hands: Hand[]
-  left: string | null
   reason: string | null
   why: Why | null
   stamp: Stamp
@@ -85,12 +85,48 @@ type Money = { biggest: bigint; left: bigint; row: Store.Row }
 
 type Repo = { name: string; state: 'none' | 'ready' }
 
-type Guest = { label: string; name: string; terms: Terms }
-
 type Seen = { title: string; turn: number; version: number }
 
+type Lead = { briefed: boolean; cursor: number; id: string; persona: boolean; unreachable: number | null; url: string }
+
+type Turning = Extract<Phase.Run, { state: 'working' }>
+
+const version = 1
+
+const dead = ['turn', 'started', 'since', 'paused', 'why', 'failures', 'wanted', 'checked', 'n', 'fresh', 'unreachable', 'url', 'persona', 'cursor', 'shelved', 'terms', 'left', 'expected', 'poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'round', 'resting', 'stuck', 'kicked', 'rechecked', 'retired', 'retiring', 'tallied', 'workers', 'refundAt', 'refunded', 'closing', 'returning', 'open', 'source', 'pledge', 'swept']
+
+const gone = ['owed:', 'sent:', 'seen:', 'closing:', 'available:']
+
+const sourced = ['banked:', 'spent:', 'paid:', 'pending:', 'exhausted:', 'unopened:', 'owing:', 'channel:', 'mppx:']
+
+function migrate(storage: DurableObjectStorage) {
+  const kv = storage.kv
+  const sql = storage.sql
+  const n = Number(sql.exec<{ n: number | null }>('SELECT MAX(n) AS n FROM turns').one().n ?? kv.get<number>('n') ?? 0)
+  if (kv.get<Phase.Run>('run') === undefined) kv.put('run', Phase.migrated(kv, n, Date.now()))
+  const agent = kv.get<unknown>('agent')
+  if (typeof agent === 'string')
+    kv.put('agent', {
+      briefed: !kv.get<boolean>('fresh'),
+      cursor: kv.get<number>('cursor') ?? 0,
+      id: agent,
+      persona: kv.get<string>('persona') === Persona.name,
+      unreachable: kv.get<number>('unreachable') ?? null,
+      url: kv.get<string>('url') ?? '',
+    } satisfies Lead)
+  for (const key of dead) kv.delete(key)
+  for (const prefix of gone) for (const [key] of [...kv.list({ prefix })]) kv.delete(key)
+  for (const prefix of sourced)
+    for (const [key] of [...kv.list({ prefix })]) {
+      const id = key.slice(prefix.length)
+      if (!id.startsWith('pool') && !id.startsWith('hand:')) kv.delete(key)
+    }
+  if (sql.exec<{ name: string }>('PRAGMA table_info(feed)').toArray().some((row) => row.name === 'round')) sql.exec('ALTER TABLE feed DROP COLUMN round')
+  kv.put('v', version)
+}
+
 const schema = [
-  'CREATE TABLE IF NOT EXISTS feed (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, round INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, detail TEXT)',
+  'CREATE TABLE IF NOT EXISTS feed (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, detail TEXT)',
   "CREATE TABLE IF NOT EXISTS turns (n INTEGER PRIMARY KEY, turn TEXT NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, status TEXT NOT NULL, message TEXT, spent_before TEXT NOT NULL, spent TEXT NOT NULL DEFAULT '0')",
   'CREATE TABLE IF NOT EXISTS steered (note TEXT PRIMARY KEY, at INTEGER NOT NULL)',
   "CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, author TEXT, text TEXT NOT NULL, mentions TEXT NOT NULL DEFAULT '[]', steer TEXT)",
@@ -104,6 +140,16 @@ const columns = [
   ['chat', 'artifact', 'ALTER TABLE chat ADD COLUMN artifact TEXT'],
   ['steered', 'weight', 'ALTER TABLE steered ADD COLUMN weight TEXT'],
 ] as const
+
+const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)']
+
+const pushedTurns = "WHERE n IN (SELECT n FROM turns WHERE commits != '[]' UNION ALL SELECT n FROM (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL ORDER BY n DESC LIMIT 3))"
+
+const newerTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL AND ended_at > ? ORDER BY n DESC LIMIT 5)"
+
+const lastTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL AND ended_at IS NOT NULL ORDER BY n DESC LIMIT ?)"
+
+const searched = 5_000
 
 const followMs = 2_000
 
@@ -132,6 +178,8 @@ const passHour = 1_000_000n
 type Passed = { amount: string; at: number; host: string }
 
 const dayMs = 86_400_000
+
+const pullMs = 120_000
 
 function earned(hand: Gateway.Listed) {
   const charges = hand['charges'] as { usd?: unknown } | null | undefined
@@ -167,12 +215,6 @@ const snapshotText = 64_000
 
 const restMs = 10 * 60_000
 
-const refundMs = 60_000
-
-const refundWaitMs = 20 * 60_000
-
-const closeWaitMs = 30 * 60_000
-
 const smallestSwap = 10_000n
 
 const chunk = 100_000n
@@ -186,8 +228,6 @@ const recentMs = 10_000
 const holdMs = 90_000
 
 const heldMs = 10 * 60_000
-
-const confirmMs = 8_000
 
 const shelfMs = 30_000
 
@@ -205,6 +245,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   stepping: Promise<number | null> | undefined
   paying: Promise<unknown> = Promise.resolve()
   funding: Promise<void> | undefined
+  wallet: Promise<unknown> = Promise.resolve()
+  checked = 0
+  vended = 0
   signers = new Map<string, Promise<Signer>>()
   clients = new Map<string, Payer.Client>()
   memos = new Map<string, { at: number; epoch: number; marked: number; value: unknown }>()
@@ -214,7 +257,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   stamped = { at: 0, tuple: '' }
   kept: SyncKvStorage | undefined
   watchers = new Set<Watcher>()
-  upstream: Upstream | undefined
+  ring: Ring = { bytes: 0, frames: [] }
+  window: { live: boolean; stop: AbortController } | undefined
+  fails = 0
+  cues = new Map<Cue, number>()
+  polled = new Map<Cue, number>()
+  held: Vault.Balances | undefined
+  pledged = { biggest: 0n, left: 0n, spent: 0n }
+  waiters = new Set<() => void>()
+  pending: Pending = { at: 0, parts: new Set(), pulse: undefined, timer: undefined }
   holders = new Map<string, { address: Address | undefined; at: number }>()
   beating: ReturnType<typeof setInterval> | undefined
 
@@ -242,6 +293,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const [table, column, statement] of columns)
       if (!ctx.storage.sql.exec<{ name: string }>(`PRAGMA table_info(${table})`).toArray().some((row) => row.name === column))
         ctx.storage.sql.exec(statement)
+    for (const statement of indexes) sql.exec(statement)
+    if ((ctx.storage.kv.get<number>('v') ?? 0) < version) migrate(ctx.storage)
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
   }
 
@@ -254,7 +307,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   stamp(): Stamp {
-    const tuple = `${Store.epoch()}.${this.marked}.${this.touches}`
+    const tuple = `${Store.epoch(this.kv.get<string>('id') ?? '')}.${this.marked}.${this.touches}`
     const now = Date.now()
     if (tuple !== this.stamped.tuple) this.stamped = { at: now, tuple }
     return { quiet: now - this.stamped.at >= stillMs, version: `${this.boot}.${tuple}` }
@@ -266,14 +319,18 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   found(id: string) {
-    return this.memo(`row:${id}`, () => Store.find(this.env, id), (row) => !!row?.wallet)
+    return this.memo(`row:${id}`, id, () => Store.find(this.env, id), (row) => !!row?.wallet)
   }
 
-  async memo<T>(key: string, read: () => Promise<T>, keep: (value: T) => boolean = () => true): Promise<T> {
+  remember(row: Store.Row) {
+    this.memos.set(`row:${row.id}`, { at: Date.now(), epoch: Store.epoch(row.id), marked: this.marked, value: structuredClone(row) })
+  }
+
+  async memo<T>(key: string, swarm: string, read: () => Promise<T>, keep: (value: T) => boolean = () => true): Promise<T> {
     const held = this.memos.get(key)
-    if (held && held.epoch === Store.epoch() && held.marked === this.marked && Date.now() - held.at < rowMs) return structuredClone(held.value) as T
+    if (held && held.epoch === Store.epoch(swarm) && held.marked === this.marked && Date.now() - held.at < rowMs) return structuredClone(held.value) as T
     const at = Date.now()
-    const epoch = Store.epoch()
+    const epoch = Store.epoch(swarm)
     const marked = this.marked
     const value = await read()
     if (keep(value)) this.memos.set(key, { at, epoch, marked, value: structuredClone(value) })
@@ -286,6 +343,13 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.put('id', input.swarm)
     this.kv.delete('exhausted:pool')
     if (input.token === 'mach') this.kv.put('sponsored', true)
+    if (input.kind === 'noted') {
+      this.log('funds', `${short(input.contributor)} put the ${trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
+      this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} put the ${trim(input.amount)} ${Chain.symbol(input.token)} they sent behind "${input.note ?? ''}".`)
+      if (input.noteId) await this.steer(input.swarm, input.noteId, `put ${trim(input.amount)} ${Chain.symbol(input.token)} behind it`)
+      this.changed('detail', 'members')
+      return this.wake('note')
+    }
     this.log(
       'funds',
       `${short(input.contributor)} sent ${trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
@@ -293,12 +357,122 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     )
     this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ` behind "${input.note}"` : ''}.`)
     if (input.noteId) await this.steer(input.swarm, input.noteId, `sent ${trim(input.amount)} ${Chain.symbol(input.token)}`)
-    if (!this.kv.get<string>('turn')) await this.ctx.storage.setAlarm(Date.now())
+    this.cue('chain')
+    this.changed('detail', 'members')
+    await this.wake('money')
+    if (this.listened()) {
+      const row = await this.found(input.swarm)
+      if (row) this.beacon(row)
+    }
+  }
+
+  run(): Phase.Run {
+    return this.kv.get<Phase.Run>('run') ?? { state: 'new' }
+  }
+
+  agent(): Lead | undefined {
+    return this.kv.get<Lead>('agent')
+  }
+
+  turn() {
+    const run = this.run()
+    return run.state === 'working' ? run.turn : undefined
+  }
+
+  last() {
+    return Number(this.ctx.storage.sql.exec<{ seq: number | null }>('SELECT MAX(seq) AS seq FROM feed').one().seq ?? 0)
+  }
+
+  turned() {
+    return Number(this.ctx.storage.sql.exec<{ n: number | null }>('SELECT MAX(n) AS n FROM turns').one().n ?? 0)
+  }
+
+  set(run: Phase.Run) {
+    Phase.check(this.run().state, run.state)
+    this.kv.put('run', run)
+  }
+
+  async move(row: Store.Row, run: Phase.Run, fields: Store.Fields = {}) {
+    this.set(run)
+    for (const waiter of [...this.waiters]) waiter()
+    const projected = Phase.project(run, run.state === 'starting' || run.state === 'working' ? run.n : this.turned())
+    const changed = projected.status !== row.status || projected.why !== (row.why ?? null)
+    if (changed || Object.keys(fields).length) {
+      await Store.update(this.env, row.id, { ...(changed ? projected : {}), ...fields })
+      row.status = projected.status
+      row.why = projected.why
+    }
+    this.beacon(row)
+  }
+
+  async waited(since: number, ms: number): Promise<{ update: Update | null; working: Working | null }> {
+    const now = this.latest(since)
+    if (now.update || !now.working || ms <= 0) return now
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer)
+        this.waiters.delete(done)
+        resolve()
+      }
+      const timer = setTimeout(done, Math.min(ms, maxWaitMs))
+      this.waiters.add(done)
+    })
+    return this.latest(since)
+  }
+
+  listened() {
+    return this.ctx.getWebSockets().length > 0
+  }
+
+  changed(...parts: Part[]) {
+    if (!this.listened()) return
+    for (const part of parts) this.pending.parts.add(part)
+    this.soon()
+  }
+
+  beacon(row: Store.Row) {
+    if (!this.listened()) return
+    this.pending.pulse = row
+    this.soon()
+  }
+
+  soon() {
+    if (this.pending.timer !== undefined) return
+    this.pending.timer = setTimeout(() => this.emit(), Math.max(0, this.pending.at + coalesceMs - Date.now()))
+  }
+
+  emit() {
+    const { parts, pulse } = this.pending
+    this.pending = { at: Date.now(), parts: new Set(), pulse: undefined, timer: undefined }
+    const version = this.stamp().version
+    if (pulse) this.broadcast({ ...this.pulsed(pulse), type: 'pulse', version })
+    if (parts.size) this.broadcast({ parts: [...parts].sort(), type: 'changed', version })
+  }
+
+  pulsed(row: Store.Row): Pulse {
+    const paused = Phase.paused(this.run())
+    return { hands: this.kv.get<Hand[]>('hands') ?? [], reason: paused ? Phase.reason(paused) : null, swarm: Store.summary(row), why: paused?.why ?? null, working: this.working() }
+  }
+
+  rostered(roster: Roster) {
+    this.broadcast({ roster, type: 'roster' })
+  }
+
+  async wake(reason: Phase.Reason) {
+    const run = this.run()
+    if (run.state === 'paused') {
+      if (!Phase.wakes(run.pause, reason)) return
+      this.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
+    }
+    if (run.state === 'paused' || run.state === 'waiting' || run.state === 'new') await this.ctx.storage.setAlarm(Date.now())
   }
 
   async hand(swarm: string, name: string): Promise<Gateway.Result<Gateway.Minted>> {
     this.marked += 1
     this.kv.put('id', swarm)
+    this.kv.put('issued', true)
+    this.changed('hands', 'members')
+    this.cue('hands')
     const listed = await Gateway.hands(this.env, swarm)
     if (listed.ok && listed.value.hands.some((hand) => hand.name === name))
       return { detail: 'A hand of the swarm already has this name.', ok: false, status: 409 }
@@ -315,21 +489,16 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async heal() {
     const now = Date.now()
     const id = this.kv.get<string>('id')
-    if (id && !this.kv.get<boolean>('open')) {
-      const row = await this.found(id)
-      if (row?.status === 'done' && (this.kv.get<boolean>('refunded') || this.kv.get<number>('refundAt') === undefined)) await this.reopen(row)
-      if (row && (row.status !== 'done' || this.kv.get<number>('refundAt') === undefined)) this.kv.put('open', true)
-    }
     if (id && !this.kv.get<number>('published') && now - (this.kv.get<number>('exposing') ?? 0) > 60_000) {
       this.kv.put('exposing', now)
       const row = await this.found(id)
       if (row) await this.expose(row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
       this.kv.delete('exposing')
     }
-    const turn = this.kv.get<string>('turn')
-    if ((!this.kv.get<string>('paused') && !turn) || now - (this.kv.get<number>('healed') ?? 0) < healMs) return
+    const run = this.run()
+    if (run.state === 'paused' || run.state === 'new' || now - (this.kv.get<number>('healed') ?? 0) < healMs) return
     const alarm = await this.ctx.storage.getAlarm()
-    if (alarm !== null && (turn || alarm < now + healMs)) return
+    if (alarm !== null) return
     this.kv.put('healed', now)
     console.log(JSON.stringify({ alarm, heal: this.kv.get<string>('id') }))
     await this.ctx.storage.setAlarm(now)
@@ -350,17 +519,16 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const id = this.kv.get<string>('id')
     const repo = this.kv.get<string>('repo')
     const owner = this.kv.get<string>('owner')
-    const turns = shape.pushed ? this.rows("WHERE commits != '[]' OR n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL ORDER BY n DESC LIMIT 3)") : this.turns()
+    const turns = shape.pushed ? this.rows(pushedTurns) : this.turns()
     const shown = shape.pushed ? updates(turns).filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) : updates(turns)
-    const paused = this.kv.get<string>('paused')
+    const paused = Phase.paused(this.run())
     return {
       code: id && repo && owner ? { app: Gateway.app(id), clone: `${this.env.GATEWAY_URL}/p/${owner}/${Gateway.app(id)}/git/${repo}.git`, name: repo, owner } : null,
       feed,
       hands: this.kv.get<Hand[]>('hands') ?? [],
-      left: this.kv.get<string>('left') ?? null,
-      reason: paused ? (Answer.spoken(paused) ?? 'Out of money. Fund it to keep going.') : null,
+      reason: paused ? Phase.reason(paused) : null,
       stamp,
-      why: paused ? known(this.kv.get<string>('why')) : null,
+      why: paused?.why ?? null,
       steered: this.steered(),
       ended: this.ctx.storage.sql
         .exec<{ ended_at: number; n: number }>('SELECT n, ended_at FROM turns WHERE ended_at IS NOT NULL ORDER BY n DESC LIMIT 20')
@@ -376,10 +544,17 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return { turns, updates: updates(turns), working: this.working() }
   }
 
+  latest(after: number): { update: Update | null; working: Working | null } {
+    return { update: updates(this.rows(newerTurns, after)).at(-1) ?? null, working: this.working() }
+  }
+
+  recent(limit: number): { updates: Update[]; working: Working | null } {
+    return { updates: updates(this.rows(lastTurns, limit + 10)).slice(-limit), working: this.working() }
+  }
+
   working(): Working | null {
-    const since = this.kv.get<number>('since')
-    if (!this.kv.get<string>('turn') && !since) return null
-    return { since: since ?? this.kv.get<number>('started') ?? Date.now() }
+    const since = Phase.since(this.run())
+    return since === null ? null : { since }
   }
 
   turns(after = 0): Search.Turn[] {
@@ -404,18 +579,20 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   feed(
     after: number,
-    filter: { before?: number | undefined; kind?: Kind | undefined; limit?: number | undefined; who?: string | undefined } = {},
+    filter: { before?: number | undefined; kind?: Kind | undefined; kinds?: readonly Kind[] | undefined; limit?: number | undefined; who?: string | undefined } = {},
   ): Entry[] {
     const where = [
       'seq > ?',
       ...(filter.before === undefined ? [] : ['seq < ?']),
       ...(filter.kind ? ['kind = ?'] : []),
+      ...(filter.kinds?.length ? [`kind IN (${filter.kinds.map(() => '?').join(', ')})`] : []),
       ...(filter.who === undefined ? [] : [filter.who === 'agent' ? 'who IS NULL' : 'who = ?']),
     ]
     const values = [
       after,
       ...(filter.before === undefined ? [] : [filter.before]),
       ...(filter.kind ? [filter.kind] : []),
+      ...(filter.kinds ?? []),
       ...(filter.who === undefined || filter.who === 'agent' ? [] : [filter.who]),
     ]
     const rows = this.ctx.storage.sql
@@ -430,7 +607,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   page(
     after: number,
-    filter: { before?: number | undefined; kind?: Kind | undefined; limit?: number | undefined; who?: string | undefined } = {},
+    filter: { before?: number | undefined; kind?: Kind | undefined; kinds?: readonly Kind[] | undefined; limit?: number | undefined; who?: string | undefined } = {},
   ) {
     const last = this.ctx.storage.sql.exec<{ seq: number | null }>('SELECT MAX(seq) AS seq FROM feed').one().seq ?? 0
     return { entries: this.feed(after, filter), last: Number(last) }
@@ -441,7 +618,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const score = terms.map(() => "(instr(lower(text || ' ' || coalesce(detail, '')), ?) > 0)").join(' + ')
     return this.ctx.storage.sql
       .exec<Record<string, SqlStorageValue>>(
-        `SELECT seq, at, kind, text, detail, who, event FROM (SELECT *, ${score} AS score FROM feed) WHERE score > 0 ORDER BY score DESC, seq DESC LIMIT ?`,
+        `SELECT seq, at, kind, text, detail, who, event FROM (SELECT *, ${score} AS score FROM (SELECT * FROM feed ORDER BY seq DESC LIMIT ${searched})) WHERE score > 0 ORDER BY score DESC, seq DESC LIMIT ?`,
         ...terms,
         limit,
       )
@@ -458,7 +635,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!follow && !streaming) return sse(`data: ${JSON.stringify({ type: 'idle' } satisfies Live)}\n\n`)
 
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
-    const watcher: Watcher = { follow, relaying: false, signal: request.signal, until: Date.now() + followForMs, writer: writable.getWriter() }
+    const watcher: Watcher = { follow, relaying: false, until: Date.now() + followForMs, writer: writable.getWriter() }
     this.watchers.add(watcher)
     request.signal.addEventListener('abort', () => this.unwatch(watcher), { once: true })
     if (follow) {
@@ -470,74 +647,52 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         return sse(readable)
       }
     }
-    if (streaming) this.ctx.waitUntil(this.relay(watcher))
+    if (streaming) this.join(watcher)
     this.beat()
     return sse(readable)
   }
 
   streaming() {
-    return !!(this.kv.get<string>('id') && this.kv.get<string>('agent') && this.kv.get<string>('turn') && this.kv.get<string>('secret'))
+    return !!(this.kv.get<string>('id') && this.agent() && this.turn() && this.kv.get<string>('secret'))
   }
 
-  async relay(watcher: Watcher): Promise<void> {
-    if (watcher.relaying || !this.watchers.has(watcher) || !this.streaming()) return
-    const turn = this.kv.get<string>('turn') ?? ''
-    const shared = this.upstream?.turn === turn ? this.upstream : this.open(turn)
+  join(watcher: Watcher) {
+    if (watcher.relaying || !this.watchers.has(watcher)) return
     watcher.relaying = true
-    try {
-      for (const frame of shared.frames) if (!this.write(watcher, frame)) return
-      shared.subscribers.add(watcher)
-      await shared.done
-    } finally {
-      shared.subscribers.delete(watcher)
-      watcher.relaying = false
-      if (!watcher.follow) this.unwatch(watcher)
-    }
+    this.write(watcher, encoded({ at: this.working()?.since ?? Date.now(), type: 'start' }))
+    for (const frame of this.ring.frames) if (!this.write(watcher, frame)) return
+    if (this.window && !this.window.live) this.poke()
   }
 
-  open(turn: string): Upstream {
-    const shared: Upstream = { bytes: 0, done: Promise.resolve(), frames: [], subscribers: new Set(), turn }
-    this.upstream = shared
-    shared.done = this.pump(shared).finally(() => {
-      if (this.upstream === shared) this.upstream = undefined
-    })
-    return shared
+  poke() {
+    this.window?.stop.abort()
+    this.ctx.waitUntil(this.ctx.storage.setAlarm(Date.now()))
   }
 
-  async pump(shared: Upstream, again = true): Promise<void> {
-    const id = this.kv.get<string>('id') ?? ''
-    const agent = this.kv.get<string>('agent') ?? ''
-    const aborted = new AbortController()
-    let ended = false
-    const upstream = await Gateway.stream(this.env, id, agent, this.kv.get<number>('cursor') ?? 0, aborted.signal).catch(() => undefined)
-    if (!upstream?.ok || !upstream.body) {
-      for (const watcher of shared.subscribers) this.write(watcher, encoded({ type: 'idle' }))
-      return
-    }
-    const reader = upstream.body
-      .pipeThrough(live({ buffers: memory(), crew: this.crew(), ended: () => (ended = true), scope: agent, since: this.working()?.since ?? Date.now(), turn: shared.turn }))
-      .getReader()
-    for (;;) {
-      const read = await reader.read().catch(() => ({ done: true as const, value: undefined }))
-      if (read.done) break
-      shared.frames.push(read.value)
-      shared.bytes += read.value.byteLength
-      while (shared.bytes > sharedBytes && shared.frames.length > 1) shared.bytes -= shared.frames.shift()?.byteLength ?? 0
-      for (const watcher of shared.subscribers) if (!this.write(watcher, read.value)) shared.subscribers.delete(watcher)
-      if (!shared.subscribers.size) {
-        aborted.abort()
-        await reader.cancel().catch(() => undefined)
-        return
+  relay(event: Live) {
+    if (!this.watchers.size) return
+    const bytes = encoded(event)
+    this.ring.frames.push(bytes)
+    this.ring.bytes += bytes.byteLength
+    while (this.ring.bytes > ringBytes && this.ring.frames.length > 1) this.ring.bytes -= this.ring.frames.shift()?.byteLength ?? 0
+    for (const watcher of this.watchers) if (watcher.relaying) this.write(watcher, bytes)
+  }
+
+  begin() {
+    this.ring = { bytes: 0, frames: [] }
+    this.fails = 0
+    for (const watcher of this.watchers) this.join(watcher)
+  }
+
+  ended() {
+    const bytes = encoded({ type: 'end' })
+    for (const watcher of [...this.watchers])
+      if (watcher.relaying) {
+        this.write(watcher, bytes)
+        watcher.relaying = false
+        if (!watcher.follow) this.unwatch(watcher)
       }
-    }
-    if (!ended && again && shared.subscribers.size && this.kv.get<string>('turn') === shared.turn) {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      if (this.kv.get<string>('turn') === shared.turn && shared.subscribers.size) return this.pump(shared, false)
-    }
-  }
-
-  attach() {
-    for (const watcher of this.watchers) if (watcher.follow && !watcher.relaying) this.ctx.waitUntil(this.relay(watcher))
+    this.ring = { bytes: 0, frames: [] }
   }
 
   write(watcher: Watcher, bytes: Uint8Array) {
@@ -578,7 +733,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         this.stepping = undefined
       })
     const next = await this.stepping
-    if (next !== null) await this.ctx.storage.setAlarm(next)
+    if (next === null) return
+    const pending = await this.ctx.storage.getAlarm()
+    await this.ctx.storage.setAlarm(pending !== null && pending < next ? pending : next)
   }
 
   async step() {
@@ -586,213 +743,301 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const row = id ? await this.found(id) : null
     if (!row) return null
 
-    await this.upgrade(row)
-    const phase = Phase.of(this.kv, row.status === 'done')
-    if (phase === 'settled') return this.reopen(row).then(async () => {
-      const fresh = await this.found(row.id)
-      return fresh ? this.advance(fresh) : null
-    })
-    if (phase === 'working') return this.follow(row)
-    if (phase === 'settling') return this.settle(row)
+    this.initialize()
+    const run = this.run()
+    if (run.state === 'paused') {
+      if (!Phase.due(run, Date.now())) return run.pause.why === 'money' ? run.pause.wake : null
+      this.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
+    }
+    if (run.state === 'working') return this.follow(row, run)
     return this.advance(row)
   }
 
-  async upgrade(row: Store.Row) {
+  initialize() {
     if (this.kv.get<string>('secret')) return
-    const pool = this.kv.get<string>('poolKey')
-    if (pool) {
-      await Gateway.revoke(this.env, await Seal.open(this.env.SWARMS_SECRET, pool))
-      this.kv.put('banked:pool', String(BigInt(this.kv.get<string>('poolSpent') ?? '0') + BigInt(this.kv.get<string>('poolChannel') ?? '0')))
-      this.kv.put('returning', Date.now() + 2 * 60_000)
-      this.log('funds', "Revoked the swarm's old gateway key, so its channel closes into the swarm's wallet, which pays from here on through the swarm's own channel.")
-    }
-    const turn = this.kv.get<string>('turn')
-    if (turn) this.ctx.storage.sql.exec("UPDATE turns SET status = 'cancelled', ended_at = ? WHERE turn = ? AND status = 'running'", Date.now(), turn)
-    this.touch()
-    for (const key of ['poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'source', 'pledge', 'agent', 'cursor', 'turn', 'started'])
-      this.kv.delete(key)
-    for (const [key] of [...this.kv.list({ prefix: 'seen:' })]) this.kv.delete(key)
-    this.kv.put('fresh', true)
+    const run = this.run()
+    if (run.state === 'working') this.ctx.storage.sql.exec("UPDATE turns SET status = 'cancelled', ended_at = ? WHERE n = ? AND status = 'running'", Date.now(), run.n)
+    if (run.state === 'working' || run.state === 'starting') this.set({ since: null, state: 'waiting', until: Date.now() })
+    this.kv.delete('agent')
     this.kv.put('secret', hex(crypto.getRandomValues(new Uint8Array(32))))
   }
 
   async advance(row: Store.Row) {
-    const worked = this.kv.get<number>('n') ?? 0
+    const run = this.run()
+    const worked = this.turned()
     await this.fund(row)
     const money = await this.refresh(row)
-    if (money.left < Store.reserve) {
-      const wake = this.wake()
-      await this.pause(
-        row,
-        worked ? 'paused' : 'funding',
-        worked || money.row.contributors
-          ? broke(money.left)
-          : undefined,
-      )
-      return wake
-    }
-    const wanted = BigInt(this.kv.get<string>('wanted') ?? '0')
-    if (wanted > money.biggest) {
-      const wake = this.wake()
-      await this.pause(row, worked ? 'paused' : 'funding', costly(wanted), 'costly')
+    if (run.state !== 'starting' && money.left < Store.reserve) {
+      const wake = this.rested()
+      await this.pause(money.row, worked || money.row.contributors ? { left: String(money.left), wake, why: 'money' } : { why: 'unfunded' })
       return wake
     }
     const repo = await this.repo(row)
 
     const agent = await this.lead(row)
-    if (!agent) return Date.now() + retryMs
+    if ('error' in agent) return this.retry(money.row, agent.error, agent.detail)
 
-    const n = worked + 1
-    const resumed = !this.kv.get<number>('since')
+    const n = run.state === 'starting' ? run.n : worked + 1
+    const since = Phase.since(run)
     const notes = await this.notes(money.row)
     const base = repo.state === 'ready' ? await this.head(row.id, repo.name) : null
     if (base) this.kv.put('seen', base)
     else this.kv.delete('seen')
-    const fresh = this.kv.get<boolean>('fresh')
     const told = this.told()
-    const included = fresh ? notes : notes.filter((note) => grown(told.get(note.id), Memo.units(note.weight)))
-    const text = fresh ? brief(money.row, this.tell(notes)) : next(this.tell(included))
-    const sent = await Gateway.prompt(this.env, row.id, agent, { prompt: text, steer: false })
-    if (!sent.ok) {
-      this.log('error', 'The gateway did not take the next message for the agent.', sent.detail)
+    const included = agent.briefed ? notes.filter((note) => grown(told.get(note.id), Memo.units(note.weight))) : notes
+    const text = agent.briefed ? next(this.tell(included)) : brief(money.row, this.tell(notes))
+    const id = `${agent.id}:${n}`
+    const start: Phase.Run =
+      run.state === 'starting' && run.id === id ? run : { id, n, since, state: 'starting', told: included.map((note) => [note.id, String(Memo.units(note.weight))]) }
+    await this.move(money.row, start)
+    const sent = await Gateway.prompt(this.env, row.id, agent.id, { id: start.id, prompt: text, steer: false })
+    if (!sent.ok && sent.status !== 409) {
       if (sent.status === 404) this.kv.delete('agent')
-      if (sent.status >= 500 && this.unreachable(Date.now())) this.abandon(agent, sent.detail)
-      return Date.now() + retryMs
+      if (sent.status >= 500 && this.unreachable(Date.now())) this.abandon(agent.id, sent.detail)
+      return this.retry(money.row, 'The gateway did not take the next message for the agent.', sent.detail)
     }
-    this.kv.delete('unreachable')
 
-    Phase.check(Phase.of(this.kv, row.status === 'done'), 'working')
     const now = Date.now()
+    const turn = sent.ok ? sent.value.request_id : start.id
     await this.cap(row, money.left / Hands.share)
-    this.kv.put('fresh', false)
-    this.kv.put('shelved', true)
-    this.kv.put('turn', sent.value.request_id)
-    this.attach()
-    this.kv.delete('paused')
-    this.kv.delete('why')
-    this.kv.put('n', n)
-    this.kv.put('started', now)
-    if (resumed) this.kv.put('since', now)
+    this.kv.put('agent', { ...(this.agent() ?? agent), briefed: true, unreachable: null })
     this.ctx.storage.sql.exec(
       "INSERT OR REPLACE INTO turns (n, turn, started_at, status, spent_before, base) VALUES (?, ?, ?, 'running', ?, ?)",
       n,
-      sent.value.request_id,
+      turn,
       now,
       String(money.row.spent),
       base,
     )
-    for (const note of included) {
-      this.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at, weight) VALUES (?, ?, ?)', note.id, now, String(Memo.units(note.weight)))
-      this.kv.delete('collapse:' + note.id)
+    for (const [note, weight] of start.told) {
+      this.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at, weight) VALUES (?, ?, ?)', note, now, weight)
+      this.kv.delete('collapse:' + note)
     }
     for (const note of notes.filter((found) => told.get(found.id) === null)) this.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
     this.touch()
-    await Store.update(this.env, row.id, { rounds: n, status: 'running', why: null })
-    this.log('status', resumed ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
-    if (resumed) this.announce(`${worked ? 'Back at work' : 'Started working'}.`)
+    await this.move(money.row, { from: this.last(), n, since: start.since ?? now, started: now, state: 'working', turn }, { rounds: n })
+    this.begin()
+    this.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
+    if (start.since === null) this.announce(`${worked ? 'Back at work' : 'Started working'}.`)
     return now + followMs
   }
 
+  async retry(row: Store.Row, error: string, detail: string) {
+    const run = this.run()
+    const now = Date.now()
+    const last = run.state === 'waiting' ? run.retry : undefined
+    const repeat = last?.error === error
+    const logged = last && repeat && now - last.logged < quietMs ? last.logged : now
+    if (logged === now) this.log('error', error, detail)
+    await this.move(row, {
+      ...(run.state === 'waiting' && run.from ? { from: run.from } : {}),
+      retry: { count: (last && repeat ? last.count : 0) + 1, error, logged },
+      since: Phase.since(run),
+      state: 'waiting',
+      until: now + retryMs,
+    })
+    return now + retryMs
+  }
+
   unreachable(now: number) {
-    const since = this.kv.get<number>('unreachable')
-    if (since === undefined) this.kv.put('unreachable', now)
-    return since !== undefined && now - since >= unreachableMs
+    const agent = this.agent()
+    if (!agent) return false
+    if (agent.unreachable === null) this.kv.put('agent', { ...agent, unreachable: now })
+    return agent.unreachable !== null && now - agent.unreachable >= unreachableMs
+  }
+
+  reached() {
+    const agent = this.agent()
+    if (agent && agent.unreachable !== null) this.kv.put('agent', { ...agent, unreachable: null })
   }
 
   abandon(agent: string, detail: string) {
-    this.kv.delete('unreachable')
     this.kv.delete('agent')
-    this.kv.put('cursor', 0)
-    this.kv.put('fresh', true)
     this.log('error', "The agent's session stopped answering for 15 minutes, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.", `${agent}: ${detail}`)
   }
 
-  async lead(row: Store.Row) {
+  async lead(row: Store.Row): Promise<Lead | { detail: string; error: string }> {
     const payer = { secret: this.kv.get<string>('secret') ?? '', url: `${this.env.SWARMS_URL}/api/swarms/${row.id}/pay` }
-    const known = this.kv.get<string>('agent')
+    const known = this.agent()
     if (known) {
-      if (this.kv.get<string>('url') === payer.url) return this.styled(row, known)
-      const patched = await Gateway.repay(this.env, row.id, known, payer)
+      if (known.url === payer.url) return this.styled(row, known)
+      const patched = await Gateway.repay(this.env, row.id, known.id, payer)
       if (patched.ok) {
-        this.kv.put('url', payer.url)
-        return this.styled(row, known)
+        const moved = { ...known, url: payer.url }
+        this.kv.put('agent', moved)
+        return this.styled(row, moved)
       }
-      if (patched.status !== 404) return undefined
+      if (patched.status !== 404) return { detail: patched.detail, error: "The gateway did not move the agent's payer." }
       this.kv.delete('agent')
     }
 
     const styled = await Persona.ensure(this.env)
     const named = { name: row.title.slice(0, 60), payer }
     let created = await Gateway.agent(this.env, row.id, styled ? { ...named, persona: Persona.name } : named)
+    const persona = styled && created.ok
     if (!created.ok && styled && created.status === 409) created = await Gateway.agent(this.env, row.id, named)
-    else if (created.ok && styled) this.kv.put('persona', Persona.name)
-    if (!created.ok) {
-      this.log('error', 'The gateway did not create the agent.', created.detail)
-      return undefined
-    }
-    this.kv.put('agent', created.value.id)
-    this.kv.put('url', payer.url)
-    this.kv.put('cursor', 0)
-    this.kv.put('fresh', true)
+    if (!created.ok) return { detail: created.detail, error: 'The gateway did not create the agent.' }
+    const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, persona, unreachable: null, url: payer.url }
+    this.kv.put('agent', agent)
     this.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it pays for is paid from the contributions, one at a time.", created.value.id)
     await this.release(row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
-    return created.value.id
-  }
-
-  async styled(row: Store.Row, agent: string) {
-    if (this.kv.get<string>('persona') === Persona.name || !(await Persona.ensure(this.env))) return agent
-    const patched = await Gateway.restyle(this.env, row.id, agent, Persona.name)
-    if (patched.ok || patched.status === 409) this.kv.put('persona', Persona.name)
-    if (patched.ok) this.log('status', "Gave the agent the swarm's instructions on artifacts, appended to its system prompt.")
-    else console.error('Giving the agent the swarm persona failed', patched.status, patched.detail)
     return agent
   }
 
-  async follow(row: Store.Row) {
-    const agent = this.kv.get<string>('agent')
-    const turn = this.kv.get<string>('turn')
-    if (!agent || !turn) return turn ? this.finish(row, { error: 'The agent is gone.', request_id: turn, status: 'failed' }) : Date.now()
+  async styled(row: Store.Row, agent: Lead): Promise<Lead> {
+    if (agent.persona || !(await Persona.ensure(this.env))) return agent
+    const patched = await Gateway.restyle(this.env, row.id, agent.id, Persona.name)
+    if (!patched.ok && patched.status !== 409) {
+      console.error('Giving the agent the swarm persona failed', patched.status, patched.detail)
+      return agent
+    }
+    const styled = { ...agent, persona: true }
+    this.kv.put('agent', styled)
+    if (patched.ok) this.log('status', "Gave the agent the swarm's instructions on artifacts, appended to its system prompt.")
+    return styled
+  }
 
-    let cursor = this.kv.get<number>('cursor') ?? 0
+  async follow(row: Store.Row, run: Turning) {
+    const agent = this.agent()
+    if (!agent) return this.finish(row, run, { error: 'The agent is gone.', request_id: run.turn, status: 'failed' })
+
     let ended = false
     let down = false
-    for (let page = 0; page < 5; page++) {
-      const read = await Gateway.events(this.env, row.id, agent, cursor)
-      if (!read.ok) {
-        down = read.status >= 500
-        break
+    const window = this.fails < streamFails ? await this.listen(row, agent, run) : undefined
+    if (window) {
+      this.fails = 0
+      ended = window.ended
+    } else {
+      if (this.fails < streamFails) this.fails += 1
+      let cursor = agent.cursor
+      for (let page = 0; page < 5; page++) {
+        const read = await Gateway.events(this.env, row.id, agent.id, cursor)
+        if (!read.ok) {
+          down = read.status >= 500
+          break
+        }
+        if (read.value.events.length) this.reached()
+        for (const event of read.value.events) ended = this.digest(event, run.turn) || ended
+        if (read.value.next_cursor !== cursor) this.kv.put('agent', { ...(this.agent() ?? agent), cursor: read.value.next_cursor })
+        cursor = read.value.next_cursor
+        if (!read.value.has_more) break
       }
-      if (read.value.events.length) this.kv.delete('unreachable')
-      for (const event of read.value.events) ended = this.digest(event, turn) || ended
-      cursor = read.value.next_cursor
-      this.kv.put('cursor', cursor)
-      if (!read.value.has_more) break
     }
 
     const now = Date.now()
-    if (!ended && now - (this.kv.get<number>('checked') ?? 0) < refreshMs) return now + followMs
+    if (!window && !ended && now - this.checked < refreshMs) return now + followMs
 
-    this.kv.put('checked', now)
-    const [report, money] = await Promise.all([Gateway.turn(this.env, row.id, agent, turn), this.refresh(row), this.watch(row), now - (this.kv.get<number>('shelvedAt') ?? 0) >= shelfMs ? this.publish(row.id) : undefined])
-    if (report.ok && !['queued', 'running'].includes(report.value.status)) return this.finish(row, report.value)
-    if (!report.ok && report.status !== 401 && report.status < 500)
-      return this.finish(row, { error: report.detail, request_id: turn, status: 'failed' })
-    if ((down || (!report.ok && report.status >= 500)) && this.unreachable(now)) {
-      const detail = report.ok ? 'its events did not load' : report.detail
-      await Gateway.cancel(this.env, row.id, agent, turn).catch(() => undefined)
-      this.abandon(agent, detail)
-      return this.finish(row, { error: `The agent's session stopped answering: ${detail}`, request_id: turn, status: 'failed' })
+    this.checked = now
+    const plan = window ? this.plan(now) : { ...everything, artifacts: now - (this.kv.get<number>('shelvedAt') ?? 0) >= shelfMs, git: true, turn: true }
+    const refreshing = plan.chain || plan.hands || plan.sponsors
+    const [report, money] = await Promise.all([
+      ended || plan.turn ? Gateway.turn(this.env, row.id, agent.id, run.turn) : undefined,
+      refreshing ? this.refresh(row, plan) : undefined,
+      plan.git ? this.watch(row) : undefined,
+      plan.artifacts ? this.publish(row.id) : undefined,
+    ])
+    if (report?.ok && !['queued', 'running'].includes(report.value.status)) return this.finish(row, run, report.value)
+    if (report && !report.ok && report.status !== 401 && report.status < 500)
+      return this.finish(row, run, { error: report.detail, request_id: run.turn, status: 'failed' })
+    if ((down || (report && !report.ok && report.status >= 500)) && this.unreachable(now)) {
+      const detail = !report || report.ok ? 'its events did not load' : report.detail
+      await Gateway.cancel(this.env, row.id, agent.id, run.turn).catch(() => undefined)
+      this.abandon(agent.id, detail)
+      return this.finish(row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
     }
-    if (money.left < Store.reserve + Store.headroom || BigInt(this.kv.get<string>('loose') ?? '0') >= smallestSwap) await this.fund(money.row)
-    return now + followMs
+    if (money && plan.chain && (money.left < Store.reserve + Store.headroom || BigInt(this.kv.get<string>('loose') ?? '0') >= smallestSwap)) await this.fund(money.row)
+    return window ? Date.now() : now + followMs
   }
 
-  async finish(row: Store.Row, report: Gateway.Report) {
-    const n = this.kv.get<number>('n') ?? 0
+  async listen(row: Store.Row, agent: Lead, run: Turning): Promise<{ ended: boolean } | undefined> {
+    const stop = new AbortController()
+    const live = [...this.watchers].some((watcher) => watcher.relaying)
+    const opened = Date.now()
+    this.window = { live, stop }
+    const timer = setTimeout(() => stop.abort(), refreshMs)
+    let ended = false
+    let cursor = agent.cursor
+    try {
+      const response = await Gateway.stream(this.env, row.id, agent.id, cursor, stop.signal, live).catch(() => undefined)
+      if (!response?.ok || !response.body) {
+        await response?.body?.cancel().catch(() => undefined)
+        return undefined
+      }
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+      let buffer = ''
+      for (;;) {
+        const read = await reader.read().catch(() => undefined)
+        if (!read || read.done) {
+          await reader.cancel().catch(() => undefined)
+          if (stop.signal.aborted || ended) return { ended }
+          return Date.now() - opened < refreshMs / 2 ? undefined : { ended }
+        }
+        buffer += read.value
+        const blocks = buffer.split('\n\n')
+        buffer = blocks.pop() ?? ''
+        for (const block of blocks) {
+          const found = frame(block)
+          if (!found) continue
+          const event = JSON.parse(found.data) as Gateway.Event
+          if (found.live) {
+            for (const delta of this.deltas(event, agent.id)) this.relay(delta)
+            continue
+          }
+          this.reached()
+          ended = this.digest(event, run.turn) || ended
+          cursor = Math.max(cursor, event.seq)
+        }
+        if (cursor !== (this.agent() ?? agent).cursor) this.kv.put('agent', { ...(this.agent() ?? agent), cursor })
+        if (ended) stop.abort()
+      }
+    } finally {
+      clearTimeout(timer)
+      if (this.window?.stop === stop) this.window = undefined
+    }
+  }
+
+  deltas(event: Gateway.Event, agent: string): Live[] {
+    const outer = event.event
+    if (!outer || outer.source === undefined) return []
+    if (outer.source === 'subagent') {
+      const update = outer.update as { event?: { payload?: Record<string, unknown>; type?: string }; id?: unknown; type?: string } | undefined
+      if (update?.type !== 'event') return []
+      const who = this.crew().names[`${outer.root_session_id ?? agent}:${String(update.id)}`] ?? `subagent ${String(update.id)}`
+      return streamed(who, update.event?.type, update.event?.payload ?? {})
+    }
+    return streamed(null, outer.event?.type, outer.event?.payload ?? {})
+  }
+
+  cue(cue: Cue) {
+    this.cues.set(cue, Date.now())
+  }
+
+  due(cue: Cue, every: number, now: number) {
+    const last = this.polled.get(cue) ?? 0
+    const cued = this.cues.get(cue)
+    const hit = (cued !== undefined && cued > last && now - cued >= cueMs) || now - last >= every
+    if (hit) this.polled.set(cue, now)
+    return hit
+  }
+
+  plan(now: number) {
+    const lent = (this.kv.get<Hand[]>('hands') ?? []).length > 0 || !!this.kv.get<boolean>('issued')
+    return {
+      artifacts: this.due('artifacts', fallbackMs, now),
+      chain: this.due('chain', minuteMs, now),
+      git: this.due('git', this.kv.get<string>('repo') ? minuteMs : fallbackMs, now),
+      hands: this.due('hands', lent ? refreshMs : minuteMs, now),
+      sponsors: !!this.kv.get<boolean>('sponsored') && this.due('sponsors', this.listened() ? refreshMs : 3 * refreshMs, now),
+      turn: this.due('turn', minuteMs, now),
+    }
+  }
+
+  async finish(row: Store.Row, run: Turning, report: Gateway.Report) {
+    this.ended()
+    const n = run.n
     const error = typeof report.error === 'string' ? report.error : report.error?.message
     const message = report.ok?.message ?? error ?? null
     const status = report.status === 'completed' ? 'completed' : report.status === 'cancelled' ? 'cancelled' : 'failed'
-    const started = this.kv.get<number>('started') ?? 0
     this.flush()
     await new Promise((resolve) => setTimeout(resolve, 3_000))
     for (const source of await this.sources(row)) await this.probe(row, source).catch(() => undefined)
@@ -813,8 +1058,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       JSON.stringify(commits.map((commit) => commit.sha)),
       n,
     )
-    this.kv.delete('turn')
-    this.kv.delete('started')
+    this.touch()
     const answer = status === 'completed' && message ? Answer.parse(redact(message), Date.now()) : undefined
     if (answer?.text) await Store.update(this.env, row.id, { answer: JSON.stringify(answer) })
     const ended = this.rows('WHERE n = ?', n)[0]
@@ -826,34 +1070,35 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       status === 'completed' ? (commits.length ? commits.map((commit) => `${commit.sha.slice(0, 7)} ${commit.message.split('\n')[0]}`).join('\n') : null) : message,
     )
     await this.publish(row.id)
+    this.changed('detail')
     if (answer?.text) this.announce(`Update: ${Answer.excerpt(answer.text, 280)}`)
 
-    const failures = status === 'completed' ? 0 : (this.kv.get<number>('failures') ?? 0) + 1
-    this.kv.put('failures', failures)
-    if (status === 'completed') this.kv.delete('wanted')
-    const stored = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE at >= ? AND kind = 'tool' AND ((text || coalesce(detail, '')) LIKE '%kv_set%' OR (text || coalesce(detail, '')) LIKE '%bucket_put%' OR (text || coalesce(detail, '')) LIKE '%git_create%')", started).one().n
+    const stored = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'tool' AND ((text || coalesce(detail, '')) LIKE '%kv_set%' OR (text || coalesce(detail, '')) LIKE '%bucket_put%' OR (text || coalesce(detail, '')) LIKE '%git_create%')", run.from).one().n
     if (stored > 0 || !this.kv.get<number>('published')) await this.expose(row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
-    const wanted = BigInt(this.kv.get<string>('wanted') ?? '0')
+    const latest = this.run()
+    const wanted = BigInt(latest.state === 'working' ? (latest.wanted ?? '0') : '0')
     if (status !== 'completed' && (money.left < Store.reserve || wanted > money.biggest)) {
-      this.kv.put('failures', 0)
-      const wake = this.wake()
-      await this.pause(
-        row,
-        'paused',
-        wanted > money.biggest
-          ? costly(wanted)
-          : broke(money.left),
-        wanted > money.biggest ? 'costly' : 'money',
-      )
-      return wake
+      const wake = this.rested()
+      await this.pause(money.row, wanted > money.biggest ? { wanted: String(wanted), why: 'costly' } : { left: String(money.left), wake, why: 'money' })
+      return wanted > money.biggest ? null : wake
     }
+    const failures = status === 'completed' ? 0 : this.failures(run.since)
     if (failures >= maxFailures) {
-      this.kv.put('failures', 0)
-      const wake = this.wake()
-      await this.pause(row, 'paused', `Stopped after ${failures} errors in a row. New money or a note restarts it.`, 'rest')
-      return wake
+      await this.pause(money.row, { failures, why: 'rest' })
+      return null
     }
-    return status === 'completed' ? Math.max(Date.now(), started + quickMs) : Date.now() + settleMs
+    const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : Date.now() + settleMs
+    await this.move(money.row, { since: run.since, state: 'waiting', until })
+    return until
+  }
+
+  failures(since: number) {
+    let count = 0
+    for (const row of this.ctx.storage.sql.exec<{ status: string }>('SELECT status FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, maxFailures).toArray()) {
+      if (row.status === 'completed') break
+      count += 1
+    }
+    return count
   }
 
   async expose(row: Store.Row) {
@@ -900,15 +1145,19 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       amount > vendorCap
     )
       return refused(`The swarm pays a service directly only for a Tempo USDC.e charge of at most ${dollars(vendorCap)}.`)
-    const account = await Vault.account(this.env, row)
-    const held = await Vault.balances(this.env, row.wallet)
-    if (held.usdce < amount) {
-      const short = amount - held.usdce
-      if (held.ousd < short + (short * Vault.slippage) / 10_000n + Vault.dust) return refused("The swarm's wallet cannot cover this service.")
-      await Vault.buy(this.env, account, 'usdce', short)
-    }
-    const client = Mppx.create({ methods: [tempo.charge({ account })], polyfill: false })
-    const authorization = await client.createCredential(new Response(null, { headers: { 'www-authenticate': serialized }, status: 402 })).catch((error: unknown) => error as Error)
+    const wallet = row.wallet
+    const authorization = await this.locked(async () => {
+      const account = await Vault.account(this.env, row)
+      const held = await Vault.balances(this.env, wallet)
+      if (held.usdce < amount) {
+        const short = amount - held.usdce
+        if (held.ousd < short + (short * Vault.slippage) / 10_000n + Vault.dust) return new Error("The swarm's wallet cannot cover this service.")
+        await Vault.buy(this.env, account, 'usdce', short)
+      }
+      this.vended = Date.now()
+      const client = Mppx.create({ methods: [tempo.charge({ account })], polyfill: false })
+      return client.createCredential(new Response(null, { headers: { 'www-authenticate': serialized }, status: 402 })).catch((error: unknown) => error as Error)
+    })
     if (authorization instanceof Error) return refused(authorization.message.split('\n')[0]?.slice(0, 200) ?? 'Signing failed.')
     this.kv.put('banked:pool', String(BigInt(this.kv.get<string>('banked:pool') ?? '0') + amount))
     const host = (() => {
@@ -923,19 +1172,19 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async sweep(row: Store.Row) {
-    const started = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE at >= ? AND kind = 'machine' AND text LIKE 'Starting machine%'", this.kv.get<number>('swept') ?? 0).one().n
+    const started = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'machine' AND text LIKE 'Starting machine%'", this.kv.get<number>('sweptSeq') ?? 0).one().n
     if (!started && !(this.kv.get<Hand[]>('hands') ?? []).length) return
     const listed = await Gateway.sandboxes(this.env, row.id)
     if (!listed.ok) return
-    this.kv.put('swept', Date.now())
+    this.kv.put('sweptSeq', this.last())
     for (const sandbox of listed.value.sandboxes.filter((found) => found.status !== 'terminated')) {
       const ended = await Gateway.terminate(this.env, row.id, sandbox.sandboxId)
       if (ended.ok) this.log('machine', `Shut down ${sandbox.hand ?? sandbox.sandboxId}, which was still running when the swarm stopped.`)
     }
   }
 
-  sources(row: Store.Row, all = false): Source[] {
-    return row.wallet && (all || row.pool_left > 0 || this.kv.get('channel:pool')) ? [pool()] : []
+  sources(row: Store.Row): Source[] {
+    return row.wallet ? [pool()] : []
   }
 
   source(row: Store.Row, id: string) {
@@ -971,18 +1220,22 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!channel || channel.confirmed) return channel
     for (;;) {
       const state = await Payer.state(this.env, channel.id).catch(() => undefined)
-      const deposit = state?.deposit ?? 0n
-      if (deposit >= BigInt(channel.deposit) || (deposit > 0n && Date.now() - channel.at > confirmMs)) {
-        const confirmed = { ...channel, confirmed: true, deposit: String(deposit) }
-        this.kv.put(`channel:${source.id}`, confirmed)
-        return confirmed
+      const old = Date.now() - channel.at > Payer.confirmMs
+      if (state) {
+        const confirmed = Payer.confirm(channel, state.deposit, Date.now())
+        if (confirmed.confirmed) {
+          this.kv.put(`channel:${source.id}`, confirmed)
+          return confirmed
+        }
+        if (old && state.deposit === 0n) {
+          Payer.forget(this.kv, source.id)
+          this.clients.delete(source.id)
+          if (Date.now() - (this.kv.get<number>(`unopened:${source.id}`) ?? 0) > quietMs) this.log('error', `The channel for ${source.label} never opened on Tempo, so the next payment opens another.`)
+          this.kv.put(`unopened:${source.id}`, Date.now())
+          return undefined
+        }
       }
-      if (Date.now() - channel.at > confirmMs) {
-        Payer.forget(this.kv, source.id)
-        if (Date.now() - (this.kv.get<number>(`unopened:${source.id}`) ?? 0) > quietMs) this.log('error', `The channel for ${source.label} never opened on Tempo, so the next payment opens another.`)
-        this.kv.put(`unopened:${source.id}`, Date.now())
-        return undefined
-      }
+      if (old) return channel
       await new Promise((resolve) => setTimeout(resolve, 750))
     }
   }
@@ -1016,7 +1269,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async budget(secret: string, app: string | undefined): Promise<Paid> {
     const known = this.kv.get<string>('secret')
     if (!known || !same(known, secret)) return { code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 }
-    const row = await Store.find(this.env, this.kv.get<string>('id') ?? '')
+    const row = await this.found(this.kv.get<string>('id') ?? '')
     if (!row) return { code: 'unauthorized', detail: 'No swarm has this id.', status: 401 }
     if (app !== undefined && app !== Gateway.app(row.id)) return { code: 'unauthorized', detail: 'This payer pays only for its own swarm.', status: 401 }
     const summary = Store.summary(row)
@@ -1054,7 +1307,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         const id = key.slice('channel:'.length)
         this.kv.put('spent:' + id, snapshot.spent)
         if (snapshot.closing || (index === 0 && input.rejected?.status === 410)) this.drop(id)
-        else if (!channel.confirmed && BigInt(snapshot.deposit) >= BigInt(channel.deposit)) this.kv.put(key, { ...channel, confirmed: true, deposit: snapshot.deposit })
+        else if (Payer.unsure(channel) && BigInt(snapshot.deposit) >= Payer.held(channel)) this.kv.put(key, Payer.confirm(channel, BigInt(snapshot.deposit), Date.now()))
         if (index === 0 && input.rejected && (input.attempt ?? 0) >= 2) {
           this.kv.put('exhausted:' + id, Date.now() + restMs)
           this.log('funds', `The gateway refused ${id === 'pool' ? "the swarm wallet's" : 'a contribution\'s'} payment again, so the swarm moves on to the next contribution.`, input.rejected.detail)
@@ -1103,8 +1356,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
 
     if (busy) return { code: 'busy', detail: "The swarm's contributions are holding other calls' reservations; try again shortly.", retry: 2, status: 429 }
-    if (wanted) this.kv.put('wanted', String(wanted))
-    const wake = this.wake()
+    const run = this.run()
+    if (wanted && run.state === 'working') this.set({ ...run, wanted: String(wanted) })
+    const wake = this.rested()
     return {
       code: 'limit_reached',
       detail: small
@@ -1140,6 +1394,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.kv.put(`channel:${source.id}`, { at: Date.now(), confirmed: false, deposit: String(deposit), descriptor: entry.descriptor, id: entry.channelId, signed: String(price) } satisfies Payer.Channel)
       this.kv.put('spent:' + source.id, String(price))
       this.kv.put('paid:' + source.id, Date.now())
+      this.cue('chain')
       if (payee) this.log('funds', `Opened a channel from the swarm's wallet to the owner of hand ${input.hand ?? 'a lent machine'} (${short(payee)}), which the gateway settles straight to them.`)
       return { authorization }
     }
@@ -1157,7 +1412,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       spent === undefined
         ? signed + price
         : [BigInt(snapshot?.requiredCumulative ?? '0'), floor + 1n, BigInt(spent) + pending + price].reduce(Payer.max)
-    const deposit = BigInt(snapshot?.deposit ?? channel.deposit)
+    const deposit = BigInt(snapshot?.deposit ?? Payer.held(channel))
     let topUp: string | undefined
     let additional = 0n
     if (need > deposit) {
@@ -1177,7 +1432,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       topUp = await mppx.createCredential(offered.response, { action: 'topUp', additionalDepositRaw: String(additional), channelId: channel.id, descriptor: channel.descriptor })
     }
     const authorization = await mppx.createCredential(offered.response, { action: 'voucher', channelId: channel.id, cumulativeAmountRaw: String(need), descriptor: channel.descriptor })
-    this.kv.put(`channel:${source.id}`, { ...channel, ...(topUp ? { at: Date.now(), confirmed: false } : {}), deposit: String(deposit + additional), signed: String(need) })
+    this.kv.put(`channel:${source.id}`, Payer.topped(channel, deposit, additional, need, Date.now()))
+    if (topUp) this.cue('chain')
     this.kv.put('pending:' + source.id, [...recent, { amount: String(price), at: Date.now(), cumulative: String(need) }])
     this.kv.put('paid:' + source.id, Date.now())
     return topUp ? { authorization, topUp } : { authorization }
@@ -1225,52 +1481,77 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return this.owners().reduce((sum, id) => sum + this.used(id), 0n)
   }
 
-  wake() {
+  rested() {
     const now = Date.now()
-    const times = [
-      ...[...this.kv.list<number>({ prefix: 'exhausted:' })].map(([, until]) => until),
-      this.kv.get<number>('returning') ?? 0,
-    ].filter((at) => at > now && at < now + 8 * 86_400_000)
+    const times = [...this.kv.list<number>({ prefix: 'exhausted:' })].map(([, until]) => until).filter((at) => at > now && at < now + 8 * 86_400_000)
     return times.length ? Math.min(...times) + 2_000 : null
   }
 
-  async refresh(row: Store.Row): Promise<Money> {
-    const sources = this.sources(row, true)
-    const [hands, balances] = await Promise.all([
-      Gateway.hands(this.env, row.id),
-      row.wallet ? Vault.balances(this.env, row.wallet) : Promise.resolve(undefined),
+  async refresh(row: Store.Row, plan: Plan = everything): Promise<Money> {
+    const sources = this.sources(row)
+    const client = Chain.client(this.env)
+    const unsure = plan.chain ? [...this.kv.list<Payer.Channel>({ prefix: 'channel:' })].filter(([, channel]) => Payer.unsure(channel)) : []
+    const reading = plan.chain || !this.held
+    const [hands, balances, states] = await Promise.all([
+      plan.hands ? Gateway.hands(this.env, row.id) : undefined,
+      row.wallet ? (reading ? Vault.balances(this.env, row.wallet, client) : Promise.resolve(this.held)) : Promise.resolve(undefined),
+      Promise.all(unsure.map(([, channel]) => Payer.state(this.env, channel.id, client).catch(() => undefined))),
     ])
+    if (reading && balances) this.held = balances
+    for (const [index, [key, channel]] of unsure.entries()) {
+      const state = states[index]
+      const confirmed = state ? Payer.confirm(channel, state.deposit, Date.now()) : channel
+      if (confirmed !== channel) this.kv.put(key, confirmed)
+    }
     let left = 0n
     let biggest = 0n
     let pooled = 0n
     for (const source of sources) {
       const channel = this.kv.get<Payer.Channel>(`channel:${source.id}`)
       const spent = BigInt(this.kv.get<string>('spent:' + source.id) ?? channel?.signed ?? '0')
-      const inside = channel?.confirmed ? Payer.max(BigInt(channel.deposit) - spent, 0n) : 0n
+      const inside = Payer.inside(channel, spent)
       const room = balances ? Payer.max(Vault.total(balances) - Vault.dust * 3n, 0n) : 0n
       const available = inside + room
-      this.kv.put('available:' + source.id, String(available))
       if (room >= perCall) this.kv.delete('exhausted:' + source.id)
       pooled = available
       if ((this.kv.get<number>('exhausted:' + source.id) ?? 0) > Date.now()) continue
       left += available
       biggest = Payer.max(biggest, available)
     }
-    this.kv.put('loose', String(balances ? balances.pathusd + balances.usdce - Vault.dust * 2n : 0n))
-    const sponsored = this.kv.get<boolean>('sponsored') ? await this.sponsorships(row) : { biggest: 0n, left: 0n, spent: 0n }
+    const loose = String(balances ? balances.pathusd + balances.usdce - Vault.dust * 2n : 0n)
+    if (this.kv.get<string>('loose') !== loose) this.kv.put('loose', loose)
+    if (plan.sponsors) this.pledged = this.kv.get<boolean>('sponsored') ? await this.sponsorships(row) : { biggest: 0n, left: 0n, spent: 0n }
+    const sponsored = plan.sponsors ? this.pledged : { biggest: this.pledged.biggest, left: BigInt(row.sponsor_left ?? 0), spent: BigInt(row.sponsor_spent ?? 0) }
     left += sponsored.left
     biggest = Payer.max(biggest, sponsored.biggest)
 
-    const connected = hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []
-    const previous = new Set((this.kv.get<Hand[]>('hands') ?? []).map((hand) => hand.name))
-    const issued = new Map(connected.length ? (await Hands.list(this.env, row.id)).map((hand) => [hand.name, hand]) : [])
-    const joined: Guest[] = []
-    this.kv.put('terms', Object.fromEntries(connected.map((hand) => [hand.name, Hands.terms(hand)])))
+    const previous = this.kv.get<Hand[]>('hands') ?? []
+    const connected = hands ? (hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []) : undefined
+    if (connected) await this.joined(row, connected, new Set(previous.map((hand) => hand.name)))
+
+    const pool = { machines: connected?.length ?? previous.length, pool_left: Number(pooled), pool_spent: Number(this.used('pool') + this.handsUsed()), sponsor_left: Number(sponsored.left), sponsor_spent: Number(sponsored.spent) }
+    if (
+      Number(row.machines) !== pool.machines ||
+      Number(row.pool_left) !== pool.pool_left ||
+      Number(row.pool_spent) !== pool.pool_spent ||
+      Number(row.sponsor_left) !== pool.sponsor_left ||
+      Number(row.sponsor_spent) !== pool.sponsor_spent
+    ) {
+      await Store.update(this.env, row.id, pool)
+      const updated = { ...row, ...pool, remaining: pool.pool_left + pool.sponsor_left, spent: Number(row.spent) - Number(row.pool_spent) - Number(row.sponsor_spent) + pool.pool_spent + pool.sponsor_spent }
+      this.remember(updated)
+      this.beacon(updated)
+      return { biggest, left, row: updated }
+    }
+    return { biggest, left, row: (await this.found(row.id)) ?? row }
+  }
+
+  async joined(row: Store.Row, connected: Gateway.Listed[], previous: ReadonlySet<string>) {
+    const issued = new Map(connected.some((hand) => !previous.has(hand.name)) ? (await Hands.list(this.env, row.id)).map((hand) => [hand.name, hand]) : [])
     for (const hand of connected) {
       if (previous.has(hand.name)) continue
       const guest = issued.get(hand.name)
-      if (guest) joined.push({ ...guest, terms: Hands.terms(hand) })
-      if (guest && 'cap' in hand && this.kv.get<string>('turn')) await Gateway.cap(this.env, row.id, hand.name, Number(Memo.decimal(this.allowance(row, hand, BigInt(this.kv.get<string>('handCap') ?? '0')))))
+      if (guest && 'cap' in hand && this.turn()) await Gateway.cap(this.env, row.id, hand.name, Number(Memo.decimal(this.allowance(row, hand, BigInt(this.kv.get<string>('handCap') ?? '0')))))
       this.log(
         'machine',
         guest
@@ -1280,19 +1561,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
     for (const name of previous)
       if (!connected.some((hand) => hand.name === name)) this.log('machine', `Machine ${name} left.`)
+    if (connected.length === previous.size && connected.every((hand) => previous.has(hand.name))) return
     this.kv.put('hands', connected.map((hand) => ({ connected: true, name: hand.name })))
-
-    this.kv.put('left', Memo.decimal(left))
-    const pool = { machines: connected.length, pool_left: Number(pooled), pool_spent: Number(this.used('pool') + this.handsUsed()), sponsor_left: Number(sponsored.left), sponsor_spent: Number(sponsored.spent) }
-    if (
-      Number(row.machines) !== pool.machines ||
-      Number(row.pool_left) !== pool.pool_left ||
-      Number(row.pool_spent) !== pool.pool_spent ||
-      Number(row.sponsor_left) !== pool.sponsor_left ||
-      Number(row.sponsor_spent) !== pool.sponsor_spent
-    )
-      await Store.update(this.env, row.id, pool)
-    return { biggest, left, row: (await this.found(row.id)) ?? row }
+    this.changed('hands')
   }
 
   async sponsorships(row: Store.Row) {
@@ -1307,6 +1578,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (channel.endedAt !== null || channel.closing) {
         if (this.kv.get<string>('delivered:' + channel.channel) !== String(used)) {
           await Store.delivered(this.env, channel.channel, used)
+          this.marked += 1
           this.kv.put('delivered:' + channel.channel, String(used))
         }
         continue
@@ -1319,10 +1591,16 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   fund(row: Store.Row) {
-    this.funding ??= this.refill(row).finally(() => {
+    this.funding ??= this.locked(() => this.refill(row)).finally(() => {
       this.funding = undefined
     })
     return this.funding
+  }
+
+  locked<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.wallet.then(task)
+    this.wallet = run.catch(() => undefined)
+    return run
   }
 
   async refill(row: Store.Row) {
@@ -1332,13 +1610,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     for (const id of ['pathusd', 'usdce'] as const) {
       const amount = balances[id] - Vault.dust
-      if (amount < smallestSwap) continue
+      if (amount < smallestSwap || (id === 'usdce' && Date.now() - this.vended < pullMs)) continue
       const result = await Vault.swap(this.env, owner, id, amount).catch((error: unknown) => error as Error)
       if (result instanceof Error) {
         this.log('error', `Swapping ${Chain.tokens[id].symbol} to OUSD failed.`, result.message.split('\n')[0] ?? null)
         continue
       }
       this.kv.delete('exhausted:pool')
+      this.cue('chain')
       this.log(
         'funds',
         `Swapped ${trim(Memo.decimal(amount))} ${Chain.tokens[id].symbol} to ${trim(Memo.decimal(result.received))} OUSD on the stablecoin DEX (quote ${trim(Memo.decimal(result.quote))}, at least ${trim(Memo.decimal(result.minimum))}, fee ${trim(Memo.decimal(result.fee))}).`,
@@ -1347,145 +1626,17 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
   }
 
-  async pause(row: Store.Row, status: 'funding' | 'paused', reason?: string, why: Why = status === 'funding' ? 'unfunded' : 'money') {
-    if (Phase.of(this.kv, row.status === 'done') !== 'idle') return
-    const text =
-      reason ??
-      (status === 'funding'
-        ? 'Not started: nobody has funded it yet.'
-        : 'Out of money. Fund it to keep going.')
-    if (this.kv.get<number>('since')) {
-      this.kv.delete('since')
-      if (why === 'idle' || why === 'rest') await this.sweep(row)
-      if (status === 'paused') this.announce(text)
+  async pause(row: Store.Row, pause: Phase.Pause) {
+    const run = this.run()
+    if (run.state === 'paused' && Phase.same(run.pause, pause)) return
+    const text = Phase.reason(pause)
+    if (Phase.since(run) !== null) {
+      if (pause.why === 'rest') await this.sweep(row)
+      if (this.turned()) this.announce(text)
     }
-    if (row.status === status && this.kv.get<string>('paused') === text && this.kv.get<Why>('why') === why) return
-    this.kv.put('paused', text)
-    this.kv.put('why', why)
-    await Store.update(this.env, row.id, { status, why })
-    this.log('status', text)
-  }
-
-  async reopen(row: Store.Row) {
-    this.kv.delete('refunded')
-    this.kv.delete('refundAt')
-    this.log('status', 'Open again: its agent carries on from where it stopped while it has money.')
-  }
-
-  async done(row: Store.Row, reason: string) {
-    Phase.check(Phase.of(this.kv, row.status === 'done'), 'settling')
-    this.kv.delete('turn')
-    this.kv.delete('returning')
-    this.kv.delete('paused')
-    this.kv.delete('payer')
-    this.kv.delete('since')
-    await this.sweep(row)
-    for (const hand of await Hands.list(this.env, row.id)) await Gateway.detach(this.env, row.id, hand.name)
-    this.kv.put('refundAt', Date.now())
-    await Store.update(this.env, row.id, { machines: 0, status: 'done' })
-    this.announce(`Done. ${reason} What the swarm did not spend goes back to its backers.`)
-    this.log(
-      'status',
-      `Done. ${reason} Every channel closes and returns what it did not spend, and what the swarm's wallet did not spend goes back to its contributors in proportion to what each put in.`,
-    )
-    return Date.now()
-  }
-
-  async settle(row: Store.Row) {
-    const at = this.kv.get<number>('refundAt')
-    if (!at || this.kv.get<boolean>('refunded')) return null
-    const open = [...this.kv.list<Payer.Channel>({ prefix: 'channel:' })].sort(([a], [b]) => Number(a === 'channel:pool') - Number(b === 'channel:pool'))
-    const failed: string[] = []
-    for (const [key, channel] of open) {
-      const source = await this.source(row, key.slice('channel:'.length))
-      if (!source) Payer.forget(this.kv, key.slice('channel:'.length))
-      else if (!(await this.close(row, source, channel))) failed.push(source.label)
-    }
-    if (failed.length && Date.now() - at < closeWaitMs) return Date.now() + retryMs
-    if (failed.length)
-      this.log('error', `Could not close ${failed.join(', ')} within 30 minutes. The payer can close it in Tempo Wallet, or the escrow's requestClose returns it.`)
-    return this.refund(row, at)
-  }
-
-  async close(row: Store.Row, source: Source, channel: Payer.Channel) {
-    const init = { body: JSON.stringify({ key: 'close' }), headers: { 'content-type': 'application/json', 'gateway-app': Gateway.app(row.id) }, method: 'POST' }
-    const left = Payer.max(BigInt(channel.deposit) - BigInt(this.kv.get<string>('spent:' + source.id) ?? channel.signed), 0n)
-    const signer = await this.signer(row, source)
-    const mppx = await this.client(row, source)
-    const challenge = owner(source) ? undefined : await Gateway.call(this.env, '/v1/kv/get', init)
-    const authorization = challenge
-      ? await mppx.createCredential(challenge, { action: 'close', channelId: channel.id, cumulativeAmountRaw: channel.signed, descriptor: channel.descriptor }).catch(() => undefined)
-      : undefined
-    const closed = authorization ? await Gateway.call(this.env, '/v1/kv/get', { ...init, headers: { ...init.headers, authorization } }).catch(() => undefined) : undefined
-    const returned = left > 0n ? `the ${dollars(left)} it did not spend` : 'nothing, since it spent its deposit in full'
-    this.kv.put(source.id === 'pool' ? 'closing' : 'closing:' + source.id, channel.id)
-    if (closed?.ok) {
-      this.drop(source.id)
-      this.log('funds', `Closed the channel of ${source.label}, returning ${returned}.`)
-      return true
-    }
-
-    const sponsor = await this.sponsor(row)
-    if (!sponsor) return false
-    const requested = await Payer.requestClose(this.env, channel, signer.account, sponsor).catch((error: unknown) => error as Error)
-    if (requested instanceof Error) {
-      this.log('error', `Could not ask the escrow to close the channel of ${source.label}.`, requested.message.split('\n')[0] ?? null)
-      return false
-    }
-    this.drop(source.id)
-    this.log(
-      'funds',
-      `Asked the escrow to close the channel of ${source.label}; the gateway closes it within about a minute and returns ${returned}.`,
-      requested,
-    )
-    return true
-  }
-
-  async sponsor(row: Store.Row): Promise<{ account: Account; token: Address } | undefined> {
-    if (!row.wallet || !row.sealed_wallet) return undefined
-    const balances = await Vault.balances(this.env, row.wallet)
-    const id = balances.ousd >= Vault.dust / 2n ? 'ousd' : balances.pathusd >= balances.usdce ? 'pathusd' : 'usdce'
-    if (balances[id] < Vault.dust / 2n) return undefined
-    return { account: await Vault.account(this.env, row), token: Chain.tokens[id].address as Address }
-  }
-
-  async refund(row: Store.Row, at: number) {
-    if (!row.wallet || !row.sealed_wallet) {
-      this.kv.put('refunded', true)
-      return null
-    }
-    const owner = await Vault.account(this.env, row)
-    const closing = [this.kv.get<Hex>('closing'), ...[...this.kv.list<Hex>({ prefix: 'closing:' })].map(([, id]) => id)].filter((id) => id !== undefined)
-    const states = await Promise.all(closing.map((id) => Payer.state(this.env, id).catch(() => undefined)))
-    const expected = BigInt(this.kv.get<string>('expected') ?? '0')
-    let balances = await Vault.balances(this.env, row.wallet)
-    if ((states.some((state) => !state || state.deposit > 0n) || balances.ousd < expected - expected / 10n) && Date.now() - at < refundWaitMs) return Date.now() + refundMs
-
-    for (const id of ['pathusd', 'usdce'] as const) {
-      const amount = balances[id] - Vault.dust
-      if (amount >= smallestSwap) await Vault.swap(this.env, owner, id, amount).catch(() => undefined)
-    }
-    balances = await Vault.balances(this.env, row.wallet)
-    const pot = balances.ousd - Vault.dust * 2n
-    const shares = await Store.shares(this.env, row.id)
-    const total = shares.reduce((sum, share) => sum + share.amount, 0n)
-    this.kv.put('refunded', true)
-    if (pot < smallestSwap || total <= 0n) {
-      await Store.update(this.env, row.id, { pool_left: 0 })
-      this.log('funds', `The swarm's wallet has ${dollars(balances.ousd)} left, too little to return.`)
-      return null
-    }
-
-    const memo = keccak256(stringToHex(`refund:${row.id}`))
-    for (const share of shares) {
-      const amount = (pot * share.amount) / total
-      if (amount < 1_000n) continue
-      const sent = await Vault.send(this.env, owner, { amount, memo, to: share.contributor }).catch((error: unknown) => error as Error)
-      if (sent instanceof Error) this.log('error', `Returning ${trim(Memo.decimal(amount))} OUSD to ${short(share.contributor)} failed.`, sent.message.split('\n')[0] ?? null)
-      else this.log('funds', `Returned ${trim(Memo.decimal(amount))} OUSD to ${short(share.contributor)}, their share of what the swarm's wallet did not spend.`, sent.hash)
-    }
-    await Store.update(this.env, row.id, { pool_left: 0 })
-    return null
+    const shown = Phase.paused(run)
+    await this.move(row, { at: Date.now(), pause, state: 'paused' })
+    if (shown?.why !== pause.why) this.log('status', text)
   }
 
   async owner() {
@@ -1508,6 +1659,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.kv.put('repo', found.name)
       await Store.update(this.env, row.id, { repo: found.name })
       this.log('status', `The swarm's code now lives in its public repository ${found.name}, which its page shows.`)
+      this.changed('detail', 'code')
       return { name: found.name, state: 'ready' }
     }
     return { name, state: 'none' }
@@ -1520,6 +1672,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!fresh[0]) return
     this.kv.put('seen', fresh[0].sha)
     await this.snapshot(row.id, repo.name).catch((error: unknown) => console.error('Reading the repository failed', error))
+    this.changed('code')
     for (const commit of fresh.reverse()) this.log('status', `Pushed ${commit.sha.slice(0, 7)} to ${repo.name}: ${redact(commit.message.split('\n')[0] ?? '')}`)
   }
 
@@ -1603,9 +1756,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async steer(swarm: string, noteId: string, what: string): Promise<Note | undefined> {
     const row = await this.found(swarm)
-    const agent = this.kv.get<string>('agent')
-    const turn = this.kv.get<string>('turn')
-    if (row?.status === 'running' && !turn) await this.ctx.storage.setAlarm(Date.now())
+    const agent = this.agent()?.id
+    const turn = this.turn()
+    if (!turn) await this.wake('note')
     if (!row || !agent || !turn || !this.kv.get<string>('secret')) return undefined
 
     const note = (await this.notes(row)).find((found) => found.id === noteId)
@@ -1619,6 +1772,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at, weight) VALUES (?, ?, ?)', note.id, Date.now(), String(Memo.units(note.weight)))
     this.kv.delete('collapse:' + note.id)
     this.touch()
+    this.changed('detail')
     this.log(
       'steer',
       `Steered the agent toward "${clip(note.note, 120)}"`,
@@ -1632,7 +1786,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const found = await Artifacts.list(this.env, swarm, false).catch(() => undefined)
     if (!found) return
     const known = this.kv.get<Record<string, Seen>>('artifacts') ?? {}
-    const turn = this.kv.get<number>('n') ?? 0
+    const turn = this.turned()
     const next: Record<string, Seen> = {}
     for (const artifact of found) {
       const seen = known[artifact.slug]
@@ -1644,7 +1798,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (changed) this.log('status', `Updated the artifact "${artifact.title}" (version ${artifact.version})`, artifact.summary)
       next[artifact.slug] = { title: artifact.title, turn: !seen || changed ? turn : seen.turn, version: artifact.version }
     }
+    const moved = Object.keys(next).length !== Object.keys(known).length || Object.entries(next).some(([slug, seen]) => known[slug]?.version !== seen.version)
+    if (!moved) return
     this.kv.put('artifacts', next)
+    if (this.listened()) this.broadcast({ artifacts: found, type: 'artifacts' })
   }
 
   messages(query: { after: number; before?: number | undefined; limit: number }): Said[] {
@@ -1673,7 +1830,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       const spent = Memo.units(input.steer.amount)
       const sent = await this.steer(input.swarm, input.steer.noteId, `put ${dollars(spent)} of their backing, from the swarm's room,`)
       const row = sent ? null : await this.found(input.swarm)
-      const note = sent ?? (row ? (await this.notes(row)).find((found) => found.id === input.steer?.noteId) : undefined)
+      const note = sent ?? (row ? await Store.note(this.env, row.id, input.steer.noteId, BigInt(row.raised), new Set(this.steered())) : undefined)
       steer = {
         amount: input.steer.amount,
         backers: note?.backers ?? 1,
@@ -1684,6 +1841,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         weight: note?.weight ?? input.steer.amount,
       }
     }
+    if (steer) this.changed('detail', 'members')
     return this.speak(input.author, redact(input.text), input.mentions, steer)
   }
 
@@ -1695,7 +1853,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async subagents(swarm: string, fresh = false): Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> {
-    const agent = this.kv.get<string>('agent')
+    const agent = this.agent()?.id
     if (!agent) return { ok: true, value: { agent: null, list: [] } }
     if (fresh) return this.list(swarm, agent)
     const known = this.listing?.agent === agent ? this.listing : undefined
@@ -1734,7 +1892,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     swarm: string,
     input: { agent: string; branch: number; previous: number | null; said: string | null; steer?: { note: string; text: string; who: string }; usd: number | null; wake: string | null },
   ): Promise<Gateway.Result<Gateway.Subagent | null>> {
-    const agent = this.kv.get<string>('agent')
+    const agent = this.agent()?.id
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
     if (agent !== input.agent) return { detail: "The swarm started a new agent since its branches were listed; list them again.", ok: false, status: 409 }
     const set = input.usd === null ? undefined : await this.rebudget(swarm, agent, input.branch)
@@ -1753,6 +1911,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.announce(input.said)
     }
     this.touch()
+    this.changed('branches', 'members')
     return { ok: true, value: set ? Gateway.subagent(set.value.agent) : null }
   }
 
@@ -1763,26 +1922,31 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async halt(swarm: string, input: { agent: string; branch: number; said: string }): Promise<Gateway.Result<Gateway.Subagent[]>> {
-    const agent = this.kv.get<string>('agent')
+    const agent = this.agent()?.id
     if (!agent) return { detail: 'The swarm has no agent yet.', ok: false, status: 409 }
     if (agent !== input.agent) return { detail: "The swarm started a new agent since its branches were listed; list them again.", ok: false, status: 409 }
     const closed = await Gateway.close(this.env, swarm, agent, input.branch)
     if (!closed.ok) return closed
-    if (this.kv.get<string>('turn'))
+    if (this.turn())
       await Gateway.prompt(this.env, swarm, agent, { prompt: `${input.said} Backers stopped this branch: do not restart it, or give its work to another subagent, unless backers ask for it again.`, steer: true })
     this.log('status', input.said)
     this.announce(input.said)
     this.touch()
+    this.changed('branches', 'members')
     return { ok: true, value: closed.value.agents.map(Gateway.subagent) }
   }
 
   async settled(row: Store.Row) {
-    const agent = this.kv.get<string>('agent')
+    const agent = this.agent()?.id
     if (!agent) return
     const listed = await Gateway.subagents(this.env, row.id, agent)
     if (!listed.ok) return
-    for (const branch of listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed')) {
-      const returned = await Store.settle(this.env, { agent, branch: branch.agent_id, left: unspent(branch), swarm: row.id })
+    const closed = listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed')
+    if (!closed.length) return
+    const { settled } = await Store.funds(this.env, row.id, agent)
+    const claimed = await Store.claim(this.env, row.id, agent, closed.filter((branch) => !settled.has(branch.agent_id)).map((branch) => branch.agent_id))
+    for (const branch of closed.filter((found) => claimed.has(found.agent_id))) {
+      const returned = await Store.settle(this.env, { agent, branch: branch.agent_id, claimed: true, left: unspent(branch), swarm: row.id })
       const back = returned.reduce((sum, item) => sum + item.amount, 0n)
       if (back > 0n) this.announce(`${branch.role} (branch ${branch.agent_id}) closed with ${dollars(back)} of its backers' money unspent, which is theirs to put behind something else again.`)
     }
@@ -1792,9 +1956,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const old of await Store.replaced(this.env, swarm, current)) {
       const listed = old.agent ? await Gateway.subagents(this.env, swarm, old.agent).catch(() => undefined) : undefined
       let back = 0n
-      for (const branch of old.branches) {
+      const claimed = await Store.claim(this.env, swarm, old.agent, old.branches)
+      for (const branch of old.branches.filter((id) => claimed.has(id))) {
         const found = listed?.ok ? listed.value.find((agent) => agent.agent_id === branch) : undefined
-        const returned = await Store.settle(this.env, { agent: old.agent, branch, left: found ? unspent(found) : null, swarm })
+        const returned = await Store.settle(this.env, { agent: old.agent, branch, claimed: true, left: found ? unspent(found) : null, swarm })
         back += returned.reduce((sum, item) => sum + item.amount, 0n)
       }
       if (back > 0n) this.announce(`The swarm started a new agent, so ${dollars(back)} that backers had put behind the old agent's branches went back to them, to put behind the new agent's work.`)
@@ -1817,7 +1982,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async btw(input: { address: Address; branch?: number; prompt: string; question: string; swarm: string }): Promise<Gateway.Result<string>> {
     this.kv.put('id', input.swarm)
-    const agent = this.kv.get<string>('agent')
+    const agent = this.agent()?.id
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
     const now = Date.now()
     const key = 'btw:' + input.address.toLowerCase()
@@ -1871,9 +2036,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('Open the room as a WebSocket.', { status: 426 })
     if (this.ctx.getWebSockets().length >= socketsMost) return new Response('This room is full right now; read it over HTTP.', { status: 503 })
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket]
-    this.ctx.acceptWebSocket(server)
+    const listening = new URL(request.url).searchParams.get('listen') === '1'
+    this.ctx.acceptWebSocket(server, listening ? ['listen'] : [])
     server.serializeAttachment({ address: null })
-    this.presence()
+    server.send(JSON.stringify({ type: 'welcome', version: this.stamp().version } satisfies Chatter))
+    if (!listening) this.presence()
     return new Response(null, { status: 101, webSocket: client })
   }
 
@@ -1888,7 +2055,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const now = Date.now()
     const state = (socket.deserializeAttachment() ?? {}) as Attached
     if (event.type === 'hello') {
-      if (now - (state.hello ?? 0) < helloMs) return
+      if (now - (state.hello ?? 0) < helloMs || this.ctx.getTags(socket).includes('listen')) return
       socket.serializeAttachment({ ...state, hello: now })
       const token = typeof event.token === 'string' ? event.token.slice(0, 200) : ''
       const known = this.holders.get(token)
@@ -1918,7 +2085,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   presence(gone?: WebSocket) {
-    const sockets = this.ctx.getWebSockets().filter((socket) => socket !== gone)
+    const sockets = this.ctx.getWebSockets().filter((socket) => socket !== gone && !this.ctx.getTags(socket).includes('listen'))
     const online = [...new Set(sockets.flatMap((socket) => attached(socket) ?? []))]
     this.broadcast({ online, type: 'presence', watching: sockets.length }, gone)
   }
@@ -1959,19 +2126,31 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   digest(event: Gateway.Event, turn: string) {
     const outer = event.event
     if (!outer) return false
-    if (outer.source === undefined) return outer.type === 'result' && event.request_id === turn
+    if (outer.source === undefined) {
+      if (outer.type !== 'result' || event.request_id !== turn) return false
+      this.ended()
+      return true
+    }
 
     const at = event.created_at ?? Date.now()
     if (outer.source === 'subagent' && outer.update) {
       const known = this.crew()
-      const found = subagent(this.buffers, known, outer.root_session_id ?? this.kv.get<string>('agent') ?? 'session', outer.update)
+      const found = subagent(this.buffers, known, outer.root_session_id ?? this.agent()?.id ?? 'session', outer.update)
       if (!found) return false
       this.kv.put('crew', known)
+      const update = outer.update as { event?: { payload?: Record<string, unknown>; type?: string }; type?: string }
+      if (update.type === 'added' || update.type === 'status' || update.type === 'completion') this.changed('branches')
+      if (update.type === 'event') {
+        if (update.event?.type === 'tool.call') for (const found of cues(update.event.payload ?? {})) this.cue(found)
+        for (const delta of streamed(found.who, update.event?.type, update.event?.payload ?? {})) this.relay(delta)
+      }
       for (const step of found.steps) this.log(step.kind, step.text, step.detail, { at, event: event.seq, who: found.who })
       return false
     }
 
     const inner = outer.event
+    if (inner?.type === 'tool.call') for (const found of cues(inner.payload ?? {})) this.cue(found)
+    for (const delta of streamed(null, inner?.type, inner?.payload ?? {})) this.relay(delta)
     this.record(null, inner?.type, inner?.payload ?? {}, event.seq, at)
     return false
   }
@@ -2011,9 +2190,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
     const row = this.ctx.storage.sql
       .exec<{ seq: number }>(
-        'INSERT INTO feed (at, round, kind, text, detail, who, event) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING seq',
+        'INSERT INTO feed (at, kind, text, detail, who, event) VALUES (?, ?, ?, ?, ?, ?) RETURNING seq',
         logged.at,
-        this.kv.get<number>('n') ?? 0,
         logged.kind,
         logged.text,
         logged.detail,
@@ -2022,9 +2200,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       )
       .one()
     this.touch()
+    if (!this.turn()) this.changed('feed')
     if (!this.watchers.size) return
     const bytes = encoded({ entry: { ...logged, seq: Number(row.seq) }, type: 'entry' })
-    for (const watcher of this.watchers) if (watcher.follow) this.write(watcher, bytes)
+    for (const watcher of this.watchers) if (watcher.follow || watcher.relaying) this.write(watcher, bytes)
   }
 }
 
@@ -2046,13 +2225,31 @@ function sse(body: BodyInit) {
   return new Response(body, { headers: { 'cache-control': 'no-store', 'content-type': 'text/event-stream' } })
 }
 
-type Viewing = { buffers: Buffers; crew: Crew; ended?: () => void; scope: string; since: number; turn: string }
+type Watcher = { follow: boolean; relaying: boolean; until: number; writer: WritableStreamDefaultWriter<Uint8Array> }
 
-type Watcher = { follow: boolean; relaying: boolean; signal: AbortSignal; until: number; writer: WritableStreamDefaultWriter<Uint8Array> }
+type Ring = { bytes: number; frames: Uint8Array[] }
 
-type Upstream = { bytes: number; done: Promise<void>; frames: Uint8Array[]; subscribers: Set<Watcher>; turn: string }
+type Cue = 'artifacts' | 'chain' | 'git' | 'hands' | 'sponsors' | 'turn'
 
-const sharedBytes = 2_000_000
+type Pending = { at: number; parts: Set<Part>; pulse: Store.Row | undefined; timer: ReturnType<typeof setTimeout> | undefined }
+
+type Plan = { chain: boolean; hands: boolean; sponsors: boolean }
+
+const everything: Plan = { chain: true, hands: true, sponsors: true }
+
+const ringBytes = 2_000_000
+
+const maxWaitMs = 60_000
+
+const streamFails = 2
+
+const fallbackMs = 5 * 60_000
+
+const cueMs = 5_000
+
+const coalesceMs = 2_000
+
+const viewKeys = new Set(['run', 'hands', 'repo', 'owner', 'id'])
 
 type Attached = { address?: Address | null; hello?: number; typing?: number }
 
@@ -2084,82 +2281,44 @@ function touched(kv: SyncKvStorage, touch: () => void): SyncKvStorage {
   return {
     delete(key) {
       const deleted = kv.delete(key)
-      touch()
+      if (viewKeys.has(key)) touch()
       return deleted
     },
     get: (key) => kv.get(key),
     list: (options) => kv.list(options),
     put(key, value) {
       kv.put(key, value)
-      touch()
+      if (viewKeys.has(key)) touch()
     },
   }
 }
 
-function live(context: Viewing) {
-  const decoder = new TextDecoder()
-  const encoder = new TextEncoder()
-  const send = (event: Live) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
-  let buffer = ''
-  return new TransformStream<Uint8Array, Uint8Array>({
-    start(controller) {
-      controller.enqueue(send({ at: context.since, type: 'start' }))
-    },
-    transform(chunk, controller) {
-      buffer += decoder.decode(chunk, { stream: true })
-      const blocks = buffer.split('\n\n')
-      buffer = blocks.pop() ?? ''
-      for (const block of blocks) {
-        const data = block
-          .split('\n')
-          .filter((line) => line.startsWith('data:'))
-          .map((line) => line.slice(5).trimStart())
-          .join('\n')
-        if (!data) {
-          controller.enqueue(encoder.encode(': keepalive\n\n'))
-          continue
-        }
-        for (const translated of translate(JSON.parse(data) as Gateway.Event, context)) {
-          controller.enqueue(send(translated))
-          if (translated.type === 'end') {
-            context.ended?.()
-            controller.terminate()
-            return
-          }
-        }
-      }
-    },
-  })
+function frame(block: string) {
+  const lines = block.split('\n')
+  const data = lines
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n')
+  if (!data) return undefined
+  return { data, live: lines.some((line) => /^event:\s*live$/.test(line)) }
 }
 
-function translate(event: Gateway.Event, context: Viewing): Live[] {
-  const outer = event.event
-  if (!outer) return []
-  if (outer.source === undefined) return outer.type === 'result' && event.request_id === context.turn ? [{ type: 'end' }] : []
+function streamed(who: string | null, type: string | undefined, payload: Record<string, unknown>): Live[] {
+  const text = typeof payload['text'] === 'string' ? redact(payload['text']) : ''
+  const offset = typeof payload['offset'] === 'number' ? payload['offset'] : null
+  if (type === 'assistant.delta') return [{ channel: 'text', delta: text, item: String(payload['item_id'] ?? ''), offset, type: 'delta', who }]
+  if (type === 'reasoning.summary.delta') return [{ channel: 'thinking', delta: text, item: `reasoning:${String(payload['model_call_index'] ?? '')}`, offset: null, type: 'delta', who }]
+  if (type === 'tool.input.delta') return [{ channel: 'input', delta: text, item: String(payload['call_id'] ?? ''), offset: null, type: 'delta', who }]
+  return []
+}
 
-  const at = event.created_at ?? Date.now()
-  const said = (who: string | null, found: { detail: string | null; kind: Kind; text: string }): Live => ({
-    entry: { at, detail: found.detail ? redact(found.detail) : null, event: event.seq, kind: found.kind, seq: 0, text: redact(found.text), who },
-    type: 'entry',
-  })
-  const stream = (who: string | null, type: string | undefined, payload: Record<string, unknown>): Live[] => {
-    const text = typeof payload['text'] === 'string' ? redact(payload['text']) : ''
-    const offset = typeof payload['offset'] === 'number' ? payload['offset'] : null
-    if (type === 'assistant.delta') return [{ channel: 'text', delta: text, item: String(payload['item_id'] ?? ''), offset, type: 'delta', who }]
-    if (type === 'reasoning.summary.delta') return [{ channel: 'thinking', delta: text, item: `reasoning:${String(payload['model_call_index'] ?? '')}`, offset: null, type: 'delta', who }]
-    if (type === 'tool.input.delta') return [{ channel: 'input', delta: text, item: String(payload['call_id'] ?? ''), offset: null, type: 'delta', who }]
-    return []
-  }
-
-  if (outer.source === 'subagent' && outer.update) {
-    const found = subagent(context.buffers, context.crew, outer.root_session_id ?? context.scope, outer.update)
-    if (!found) return []
-    const update = outer.update as { event?: { payload?: Record<string, unknown>; type?: string }; type?: string }
-    return [...(update.type === 'event' ? stream(found.who, update.event?.type, update.event?.payload ?? {}) : []), ...found.steps.map((step) => said(found.who, step))]
-  }
-
-  const payload = outer.event?.payload ?? {}
-  return [...stream(null, outer.event?.type, payload), ...narrate(context.buffers, null, outer.event?.type, payload).map((found) => said(null, found))]
+function cues(payload: Record<string, unknown>): Cue[] {
+  const said = `${tool(payload)} ${typeof payload['arguments'] === 'string' ? payload['arguments'] : JSON.stringify(payload['arguments'] ?? {})}`
+  return [
+    ...(/git_create|git_commit|git_remote|git push/.test(said) ? (['git'] as const) : []),
+    ...(/kv_set|bucket_put/.test(said) && said.includes('artifacts/') ? (['artifacts'] as const) : []),
+    ...(/compute_create|compute_hand|compute_terminate/.test(said) ? (['hands'] as const) : []),
+  ]
 }
 
 function same(a: string, b: string) {
@@ -2182,21 +2341,6 @@ function slug(title: string) {
       .slice(0, 48)
       .replace(/-+$/, '') || 'swarm'
   )
-}
-
-
-function costly(wanted: bigint) {
-  return `Paused: its next step needs about ${Answer.cash(Number(Memo.decimal(wanted)))} at once, more than any one backer has left in it. Fund it to keep going.`
-}
-
-function broke(left: bigint) {
-  return `Out of money: ${Answer.cash(Number(Memo.decimal(left)))} left, and one step can cost up to ${Answer.cash(Number(Memo.decimal(Store.reserve)))}. Fund it to keep going.`
-}
-
-const whys = ['unfunded', 'money', 'costly', 'rest', 'idle'] as const satisfies readonly Why[]
-
-function known(why: string | undefined): Why {
-  return (whys as readonly string[]).includes(why ?? '') ? (why as Why) : 'money'
 }
 
 function brief(row: Store.Row, notes: Note[]) {

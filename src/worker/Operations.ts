@@ -303,20 +303,6 @@ function identifier() {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 12)
 }
 
-function sleep(ms: number, signal: AbortSignal | undefined) {
-  return new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, Math.max(0, ms))
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer)
-        resolve()
-      },
-      { once: true },
-    )
-  })
-}
-
 function logged(task: Promise<unknown>) {
   return task.catch((error: unknown) => console.error('Indexing for search failed', error))
 }
@@ -481,9 +467,7 @@ export async function updates(env: Cloudflare.Env, input: Input<'updates'>): Pro
   const swarm = parsed.value.swarm
   if (!(await Store.exists(env, swarm))) return missing()
 
-  const pulse = await stub(env, swarm).pulse()
-  await logged(Search.sync(env, swarm, pulse.turns))
-  return Problem.ok({ updates: pulse.updates.slice(-parsed.value.limit), working: pulse.working })
+  return Problem.ok(await stub(env, swarm).recent(parsed.value.limit))
 }
 
 export async function code(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ snapshot: Snapshot | null }>> {
@@ -554,33 +538,23 @@ export async function wait(env: Cloudflare.Env, input: Input<'wait'>, signal?: A
   const started = Date.now()
   const deadline = started + parsed.value.timeout * 1000
   if (!(await Store.exists(env, swarm))) return missing()
-  let pulse = await stub(env, swarm).pulse()
-  const since = parsed.value.after ?? pulse.updates.at(-1)?.at ?? 0
+  const since = parsed.value.after ?? (await stub(env, swarm).latest(0)).update?.at ?? 0
 
   for (;;) {
-    const row = await Store.find(env, swarm)
-    if (!row) return missing()
-    const posted = pulse.updates.findLast((update) => update.at > since) ?? null
-    const reason = posted
-      ? 'updated'
-      : !pulse.working && row.status !== 'running'
-        ? 'idle'
-        : Date.now() >= deadline || signal?.aborted
-          ? 'timeout'
-          : undefined
+    const pulse = await stub(env, swarm).waited(since, signal?.aborted ? 0 : deadline - Date.now())
+    const reason = pulse.update ? 'updated' : !pulse.working ? 'idle' : Date.now() >= deadline || signal?.aborted ? 'timeout' : undefined
     if (reason) {
-      if (posted) await logged(Search.sync(env, swarm, pulse.turns))
+      const row = await Store.find(env, swarm)
+      if (!row) return missing()
       return Problem.ok({
-        changed: posted !== null,
+        changed: pulse.update !== null,
         reason,
         swarm: Store.summary(row),
-        update: posted,
+        update: pulse.update,
         waited: Date.now() - started,
         working: pulse.working,
       })
     }
-    await sleep(Math.min(2000, deadline - Date.now()), signal)
-    pulse = await stub(env, swarm).pulse()
   }
 }
 
@@ -798,7 +772,6 @@ async function steerable(env: Cloudflare.Env, input: { address: Address | undefi
   const [row, account] = await Promise.all([Store.find(env, input.swarm), Store.account(env, input.address)])
   if (!row) return missing()
   if (!account.name) return unnamed()
-  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
   const seat = row.steering === 'team' ? await Team.seat(env, row, input.address).catch(() => undefined) : undefined
   if (row.steering === 'team' && !seat)
     return Problem.fail(403, 'not_member', "Only this swarm's team directs its money. Its admins add who may: ask one of them in the room.")
@@ -930,7 +903,6 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
   const [row, account] = await Promise.all([Store.find(env, request.swarm), Store.account(env, address)])
   if (!row) return missing()
   if (!account.name) return unnamed()
-  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
 
   const found = await directed(env, row, reached(stub(env, row.id).subagents(row.id, true)))
   if (!found.ok) return found
@@ -1023,7 +995,6 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
   if (!found) return missing()
   if (!account.name) return unnamed()
   const row = found.row
-  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
   if (row.steering === 'team' && !(await Team.seat(env, row, address, found.members).catch(() => undefined)))
     return Problem.fail(403, 'not_member', "Only this swarm's team asks it side questions, as only its team steers it.")
   if (row.steering !== 'team' && !found.members.some((member) => member.address === address && units(member.backed) >= Mention.smallestSteer))
@@ -1057,7 +1028,6 @@ async function governed(env: Cloudflare.Env, swarm: string, address: Address | u
   if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo Wallet to manage who steers a swarm.")
   const row = await Store.find(env, swarm)
   if (!row) return missing()
-  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
   if (!(await Team.admin(env, row, address).catch(() => false)))
     return Problem.fail(403, 'access_denied', "Only this swarm's admins choose who steers it: whoever started it signed in, or else its first backer, and the admins they add.")
   return Problem.ok(row)
@@ -1128,7 +1098,7 @@ export async function chatter(env: Cloudflare.Env, input: Input<'swarm'>, reques
   if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return Problem.fail(400, 'invalid_request', 'Open this route as a WebSocket.')
   if (!(await Store.exists(env, parsed.value.swarm))) return missing()
 
-  return Problem.ok(await stub(env, parsed.value.swarm).fetch(new Request(`https://swarm/chat?swarm=${encodeURIComponent(parsed.value.swarm)}`, request)))
+  return Problem.ok(await stub(env, parsed.value.swarm).fetch(new Request(`https://swarm/chat?swarm=${encodeURIComponent(parsed.value.swarm)}${new URL(request.url).searchParams.get('listen') === '1' ? '&listen=1' : ''}`, request)))
 }
 
 function dollars(amount: string) {
@@ -1436,6 +1406,7 @@ export async function contribute(
       amount: Memo.decimal(total),
       contributor: sender as Address,
       hash: request.hash,
+      kind: existing ? 'noted' : 'new',
       note: text,
       noteId,
       swarm: row.id,
