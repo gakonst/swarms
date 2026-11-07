@@ -24,6 +24,7 @@ import * as Lobby from './Lobby.ts'
 import * as Store from './Store.ts'
 import * as Vault from './Vault.ts'
 import * as Words from './Words.ts'
+import * as Relay from './Relay.ts'
 
 export type Contributed = {
   amount: string
@@ -258,6 +259,8 @@ const keptMs = 10 * 60_000
 const keptBytes = 1_000_000
 
 export class Swarm extends DurableObject<Cloudflare.Env> {
+  declare ctx: DurableObjectState<{}>
+  declare env: Cloudflare.Env
   stepping: Promise<number | null> | undefined
   paying: Promise<unknown> = Promise.resolve()
   funding: Promise<void> | undefined
@@ -272,8 +275,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   touches = 0
   stamped = { at: 0, tuple: '' }
   kept: SyncKvStorage | undefined
-  watchers = new Set<Watcher>()
-  ring: Ring = { bytes: 0, frames: [] }
+  watchers = new Set<Relay.Watcher>()
+  ring: Relay.Ring = { bytes: 0, frames: [] }
   window: { live: boolean; stop: AbortController } | undefined
   fails = 0
   cues = new Map<Cue, number>()
@@ -681,95 +684,28 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const after = url.searchParams.get('after')
     const follow = after !== null && /^\d{1,15}$/.test(after)
     const streaming = this.streaming()
-    if (!follow && !streaming) return sse(`data: ${JSON.stringify({ type: 'idle' } satisfies Live)}\n\n`)
+    if (!follow && !streaming) return Relay.sse(`data: ${JSON.stringify({ type: 'idle' } satisfies Live)}\n\n`)
 
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
-    const watcher: Watcher = { follow, relaying: false, until: Date.now() + followForMs, writer: writable.getWriter() }
+    const watcher: Relay.Watcher = { follow, relaying: false, until: Date.now() + Relay.followForMs, writer: writable.getWriter() }
     this.watchers.add(watcher)
-    request.signal.addEventListener('abort', () => this.unwatch(watcher), { once: true })
+    request.signal.addEventListener('abort', () => Relay.unwatch(this, watcher), { once: true })
     if (follow) {
-      if (!streaming) this.write(watcher, encoded({ type: 'idle' }))
-      const backlog = this.feed(Number(after), { limit: backlogSize })
-      for (const found of backlog) this.write(watcher, encoded({ entry: found, type: 'entry' }))
-      if (backlog.length === backlogSize) {
-        this.unwatch(watcher)
-        return sse(readable)
+      if (!streaming) Relay.write(this, watcher, Relay.encoded({ type: 'idle' }))
+      const backlog = this.feed(Number(after), { limit: Relay.backlogSize })
+      for (const found of backlog) Relay.write(this, watcher, Relay.encoded({ entry: found, type: 'entry' }))
+      if (backlog.length === Relay.backlogSize) {
+        Relay.unwatch(this, watcher)
+        return Relay.sse(readable)
       }
     }
-    if (streaming) this.join(watcher)
-    this.beat()
-    return sse(readable)
+    if (streaming) Relay.join(this, watcher)
+    Relay.beat(this)
+    return Relay.sse(readable)
   }
 
   streaming() {
     return !!(this.kv.get<string>('id') && this.agent() && this.turn() && this.kv.get<string>('secret'))
-  }
-
-  join(watcher: Watcher) {
-    if (watcher.relaying || !this.watchers.has(watcher)) return
-    watcher.relaying = true
-    this.write(watcher, encoded({ at: this.working()?.since ?? Date.now(), type: 'start' }))
-    for (const frame of this.ring.frames) if (!this.write(watcher, frame)) return
-    if (this.window && !this.window.live) this.poke()
-  }
-
-  poke() {
-    this.window?.stop.abort()
-    this.ctx.waitUntil(this.ctx.storage.setAlarm(Date.now()))
-  }
-
-  relay(event: Live) {
-    if (!this.watchers.size) return
-    const bytes = encoded(event)
-    this.ring.frames.push(bytes)
-    this.ring.bytes += bytes.byteLength
-    while (this.ring.bytes > ringBytes && this.ring.frames.length > 1) this.ring.bytes -= this.ring.frames.shift()?.byteLength ?? 0
-    for (const watcher of this.watchers) if (watcher.relaying) this.write(watcher, bytes)
-  }
-
-  begin() {
-    this.ring = { bytes: 0, frames: [] }
-    this.fails = 0
-    for (const watcher of this.watchers) this.join(watcher)
-  }
-
-  ended() {
-    const bytes = encoded({ type: 'end' })
-    for (const watcher of [...this.watchers])
-      if (watcher.relaying) {
-        this.write(watcher, bytes)
-        watcher.relaying = false
-        if (!watcher.follow) this.unwatch(watcher)
-      }
-    this.ring = { bytes: 0, frames: [] }
-  }
-
-  write(watcher: Watcher, bytes: Uint8Array) {
-    if (!this.watchers.has(watcher)) return false
-    if ((watcher.writer.desiredSize ?? 0) < -backlogSize) {
-      this.unwatch(watcher)
-      return false
-    }
-    watcher.writer.write(bytes).catch(() => this.unwatch(watcher))
-    return true
-  }
-
-  unwatch(watcher: Watcher) {
-    if (!this.watchers.delete(watcher)) return
-    watcher.writer.close().catch(() => undefined)
-    if (!this.watchers.size && this.beating !== undefined) {
-      clearInterval(this.beating)
-      this.beating = undefined
-    }
-  }
-
-  beat() {
-    this.beating ??= setInterval(() => {
-      const now = Date.now()
-      for (const watcher of this.watchers)
-        if (watcher.follow && !watcher.relaying && now > watcher.until) this.unwatch(watcher)
-        else this.write(watcher, keepalive)
-    }, beatMs)
   }
 
   override async alarm() {
@@ -867,7 +803,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const note of notes.filter((found) => told.get(found.id) === null)) this.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
     this.touch()
     await this.move(money.row, { from: this.last(), n, since: start.since ?? now, started: now, state: 'working', turn }, { rounds: n })
-    this.begin()
+    Relay.begin(this)
     this.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
     if (start.since === null) this.announce(`${worked ? 'Back at work' : 'Started working'}.`)
     return now + followMs
@@ -1031,7 +967,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
           if (!found) continue
           const event = JSON.parse(found.data) as Gateway.Event
           if (found.live) {
-            for (const delta of this.deltas(event, agent.id)) this.relay(delta)
+            for (const delta of this.deltas(event, agent.id)) Relay.relay(this, delta)
             continue
           }
           this.reached()
@@ -1084,7 +1020,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async finish(row: Store.Row, run: Turning, report: Gateway.Report) {
-    this.ended()
+    Relay.ended(this)
     const n = run.n
     const error = typeof report.error === 'string' ? report.error : report.error?.message
     const message = report.ok?.message ?? error ?? null
@@ -2191,7 +2127,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!outer) return false
     if (outer.source === undefined) {
       if (outer.type !== 'result' || event.request_id !== turn) return false
-      this.ended()
+      Relay.ended(this)
       return true
     }
 
@@ -2205,7 +2141,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (update.type === 'added' || update.type === 'status' || update.type === 'completion') this.changed('branches')
       if (update.type === 'event') {
         if (update.event?.type === 'tool.call') for (const found of cues(update.event.payload ?? {})) this.cue(found)
-        for (const delta of streamed(found.who, update.event?.type, update.event?.payload ?? {})) this.relay(delta)
+        for (const delta of streamed(found.who, update.event?.type, update.event?.payload ?? {})) Relay.relay(this, delta)
       }
       for (const step of found.steps) this.log(step.kind, step.text, step.detail, { at, event: event.seq, who: found.who })
       return false
@@ -2213,7 +2149,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     const inner = outer.event
     if (inner?.type === 'tool.call') for (const found of cues(inner.payload ?? {})) this.cue(found)
-    for (const delta of streamed(null, inner?.type, inner?.payload ?? {})) this.relay(delta)
+    for (const delta of streamed(null, inner?.type, inner?.payload ?? {})) Relay.relay(this, delta)
     this.record(null, inner?.type, inner?.payload ?? {}, event.seq, at)
     return false
   }
@@ -2270,8 +2206,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.touch()
     if (!this.turn()) this.changed('feed')
     if (!this.watchers.size) return
-    const bytes = encoded({ entry: { ...logged, seq: Number(row.seq) }, type: 'entry' })
-    for (const watcher of this.watchers) if (watcher.follow || watcher.relaying) this.write(watcher, bytes)
+    const bytes = Relay.encoded({ entry: { ...logged, seq: Number(row.seq) }, type: 'entry' })
+    for (const watcher of this.watchers) if (watcher.follow || watcher.relaying) Relay.write(this, watcher, bytes)
   }
 }
 
@@ -2289,14 +2225,6 @@ function owner(source: Source) {
   return source.id.startsWith('hand:') ? (source.id.slice('hand:'.length) as Address) : undefined
 }
 
-function sse(body: BodyInit) {
-  return new Response(body, { headers: { 'cache-control': 'no-store', 'content-type': 'text/event-stream' } })
-}
-
-type Watcher = { follow: boolean; relaying: boolean; until: number; writer: WritableStreamDefaultWriter<Uint8Array> }
-
-type Ring = { bytes: number; frames: Uint8Array[] }
-
 type Cue = 'artifacts' | 'chain' | 'git' | 'hands' | 'sponsors' | 'turn'
 
 type Pending = { at: number; parts: Set<Part>; pulse: Store.Row | undefined; timer: ReturnType<typeof setTimeout> | undefined }
@@ -2304,8 +2232,6 @@ type Pending = { at: number; parts: Set<Part>; pulse: Store.Row | undefined; tim
 type Plan = { chain: boolean; hands: boolean; sponsors: boolean }
 
 const everything: Plan = { chain: true, hands: true, sponsors: true }
-
-const ringBytes = 2_000_000
 
 const maxWaitMs = 60_000
 
@@ -2332,18 +2258,6 @@ const socketsMost = 500
 const minuteMs = 60_000
 
 const postsPerMinute = 10
-
-const backlogSize = 500
-
-const followForMs = 15 * 60_000
-
-const beatMs = 25_000
-
-const keepalive = new TextEncoder().encode(': keepalive\n\n')
-
-function encoded(event: Live) {
-  return new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-}
 
 function touched(kv: SyncKvStorage, touch: () => void): SyncKvStorage {
   return {
