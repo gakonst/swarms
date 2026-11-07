@@ -43,6 +43,12 @@ export function call(payload: Record<string, unknown>): Step | undefined {
   if (name === 'compute_terminate') return { detail: raw, kind: 'machine', text: 'Shutting down a machine' }
   if (name === 'exec_command') return { detail: raw, kind: 'tool', text: `$ ${clip(String(input['cmd'] ?? ''), 140)}${on}` }
   if (name === 'write_stdin' || name === 'wait') return undefined
+  if (name === 'send_feedback' || name === 'stake_feedback')
+    return {
+      detail: clip([input['message'], input['tool'] && `Tool: ${String(input['tool'])}`, input['error'] && `Error: ${typeof input['error'] === 'string' ? input['error'] : JSON.stringify(input['error'])}`, input['context'] && `Context: ${typeof input['context'] === 'string' ? input['context'] : JSON.stringify(input['context'])}`].filter(Boolean).join('\n\n'), 4000),
+      kind: 'status',
+      text: `Reported a problem to the gateway's team: ${clip(String(input['message'] ?? '').split('\n')[0] ?? '', 140)}`,
+    }
   return { detail: clip(raw, 2000), kind: 'tool', text: `Called ${name}${on}` }
 }
 

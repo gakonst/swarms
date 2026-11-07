@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Entry } from '../src/shared/Api.ts'
-import { crew, memory, merge, named, narrate, redact, step, subagent, trouble } from '../src/shared/Trail.ts'
+import { call, crew, memory, merge, named, narrate, redact, step, subagent, trouble } from '../src/shared/Trail.ts'
 
 function entry(input: Partial<Entry>): Entry {
   return { at: 1000, detail: null, event: null, kind: 'tool', seq: 0, text: '', who: null, ...input }
@@ -19,6 +19,14 @@ test('a subagent is named by its role, speaks under that name and reports its re
   assert.deepEqual(subagent(buffers, known, 's', { id: 3, status: { output: 'again', state: 'completed' }, type: 'completion' })?.steps, [])
   assert.equal(subagent(buffers, known, 's', { id: 9, status: { error: 'No capacity', state: 'failed' }, type: 'status' })?.steps[0]?.text, 'subagent 9 failed')
   assert.equal(subagent(buffers, known, 's', 'nonsense'), undefined)
+})
+
+test("an agent's report to the gateway's team shows as a status line with what it reported", () => {
+  const reported = call({ arguments: { error: { code: 'payment_failed' }, message: 'kv_set stored a private key as public\nwhen the payer refused', tool: 'kv_set' }, tool: 'mcp__gateway__send_feedback' })
+  assert.equal(reported?.kind, 'status')
+  assert.equal(reported?.text, "Reported a problem to the gateway's team: kv_set stored a private key as public")
+  assert.match(reported?.detail ?? '', /Tool: kv_set/)
+  assert.match(reported?.detail ?? '', /"code":"payment_failed"/)
 })
 
 test('a subagent keeps its own thinking until its model call completes', () => {

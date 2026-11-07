@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import * as Feedback from './Feedback.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
@@ -13,6 +14,7 @@ function instructions(origin: string) {
     "Swarms publish artifacts as they work, such as a live dashboard of their results, a chart or a write-up; swarm_artifacts lists them with a url to fetch.",
     "Every swarm has a room where its backers talk. Anyone can read it with swarm_chat. Backers post on the swarm's page after signing in with Tempo Wallet, mention each other by username (or, without one, a name made from their address such as @quark-1a2b), and steer with @swarm: such a message puts an amount of its author's backing, not yet behind a note, behind the rest of the message as a note, which weighs like any other note and reaches the agent at once if it is working.",
     'To answer questions about what the swarms found or did, search first (swarms_search with keywords; set swarm to include that swarm\'s feed of tool calls, commands, machines and messages), then read what matched with swarm_updates, swarm_answer, swarm_get or swarm_feed, and cite the swarm and when. swarms_list shows the funded swarms. Reading is free and needs no account.',
+    "When something in Swarms is broken or confusing, or the user wants to report it, swarm_feedback files it with the team that runs Swarms and answers a link where its status shows.",
     `Fund only when the user asks to. swarm_contribute prepares a transfer (the swarm's address, the memo for a note, call data and a link to the page that sends it) and counts one by its hash. swarm_wait waits up to ${Operations.maxWait} s for the agent's next update.`,
   ].join('\n\n')
 }
@@ -192,6 +194,17 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
       inputSchema: Operations.schema.hand.shape,
     },
     async (input) => reply(await Operations.hand(env, input)),
+  )
+
+  server.registerTool(
+    'swarm_feedback',
+    {
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true, readOnlyHint: false },
+      description:
+        "Free. Report a bug, ask for a feature or ask a question about Swarms (this site, its API and MCP tools, a swarm's page, its money or its room) to the team that runs it. Call it when the user asks to report something, or when a Swarms tool keeps failing or answers something that cannot be right and you cannot fix it. Say in message what was tried, what was expected and what happened; set swarm when it is about one swarm, and put the calls, ids and exact errors in context. Never include credentials. Returns the issue id and a link where its status and resolution show. A problem with a gateway tool a swarm's agent uses (model calls, machines, kv, git) is the gateway's: its send_feedback tool reaches that team.",
+      inputSchema: Feedback.schema.shape,
+    },
+    async (input) => reply(await Feedback.file(env, input)),
   )
 
   server.registerTool(
