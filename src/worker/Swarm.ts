@@ -2,7 +2,6 @@ import { DurableObject } from 'cloudflare:workers'
 import type { Address } from 'viem'
 import type { Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
 import { clip, redact } from '../shared/Trail.ts'
-import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
@@ -27,6 +26,7 @@ import * as Repo from './Repo.ts'
 import * as Branching from './Branching.ts'
 import * as Chat from './Chat.ts'
 import * as Turns from './Turns.ts'
+import * as Feed from './Feed.ts'
 
 export type Contributed = {
   amount: string
@@ -128,20 +128,6 @@ const columns = [
 ] as const
 
 const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)']
-
-const pushedTurns = "WHERE n IN (SELECT n FROM turns WHERE commits != '[]' UNION ALL SELECT n FROM (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL ORDER BY n DESC LIMIT 3))"
-
-const newerTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL AND ended_at > ? ORDER BY n DESC LIMIT 5)"
-
-const lastTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL AND ended_at IS NOT NULL ORDER BY n DESC LIMIT ?)"
-
-const searched = 5_000
-
-const searchable = "text || ' ' || substr(coalesce(detail, ''), 1, 4000)"
-
-const indexChunk = 1_000
-
-const indexMs = 1_000
 
 const healMs = 5 * 60_000
 
@@ -414,7 +400,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (row) await Turns.expose(this, row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
       this.kv.delete('exposing')
     }
-    await this.reindex()
+    await Feed.reindex(this)
     const run = this.run()
     if (run.state === 'paused' || run.state === 'new' || now - (this.kv.get<number>('healed') ?? 0) < healMs) return
     const alarm = await this.ctx.storage.getAlarm()
@@ -434,13 +420,13 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
           .exec<Record<string, SqlStorageValue>>('SELECT seq, at, kind, text, detail, who, event FROM feed ORDER BY seq DESC LIMIT ?', limit)
           .toArray()
           .reverse()
-          .map(entry)
+          .map(Feed.entry)
       : []
     const id = this.kv.get<string>('id')
     const repo = this.kv.get<string>('repo')
     const owner = this.kv.get<string>('owner')
-    const turns = shape.pushed ? this.rows(pushedTurns) : this.turns()
-    const shown = shape.pushed ? updates(turns).filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) : updates(turns)
+    const turns = shape.pushed ? Feed.rows(this, Feed.pushedTurns) : this.turns()
+    const shown = shape.pushed ? Feed.updates(turns).filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) : Feed.updates(turns)
     const paused = Phase.paused(this.run())
     return {
       code: id && repo && owner ? { app: Gateway.app(id), clone: `${this.env.GATEWAY_URL}/p/${owner}/${Gateway.app(id)}/git/${repo}.git`, name: repo, owner } : null,
@@ -461,15 +447,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   pulse() {
     const turns = this.turns()
-    return { turns, updates: updates(turns), working: this.working() }
+    return { turns, updates: Feed.updates(turns), working: this.working() }
   }
 
   latest(after: number): { update: Update | null; working: Working | null } {
-    return { update: updates(this.rows(newerTurns, after)).at(-1) ?? null, working: this.working() }
+    return { update: Feed.updates(Feed.rows(this, Feed.newerTurns, after)).at(-1) ?? null, working: this.working() }
   }
 
   recent(limit: number): { updates: Update[]; working: Working | null } {
-    return { updates: updates(this.rows(lastTurns, limit + 10)).slice(-limit), working: this.working() }
+    return { updates: Feed.updates(Feed.rows(this, Feed.lastTurns, limit + 10)).slice(-limit), working: this.working() }
   }
 
   working(): Working | null {
@@ -478,23 +464,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   turns(after = 0): Search.Turn[] {
-    return this.rows('WHERE n > ?', after)
-  }
-
-  rows(where: string, ...bindings: SqlStorageValue[]): Search.Turn[] {
-    return this.ctx.storage.sql
-      .exec<Record<string, SqlStorageValue>>(`SELECT n, started_at, ended_at, status, message, spent, commits, base FROM turns ${where} ORDER BY n`, ...bindings)
-      .toArray()
-      .map((row) => ({
-        base: row['base'] === null ? null : String(row['base']),
-        commits: JSON.parse(String(row['commits'] ?? '[]')) as string[],
-        endedAt: row['ended_at'] === null ? null : Number(row['ended_at']),
-        message: row['message'] === null ? null : String(row['message']),
-        n: Number(row['n']),
-        spent: Memo.decimal(BigInt(String(row['spent']))),
-        startedAt: Number(row['started_at']),
-        status: String(row['status']),
-      }))
+    return Feed.rows(this, 'WHERE n > ?', after)
   }
 
   feed(
@@ -522,7 +492,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         filter.limit ?? 200,
       )
       .toArray()
-    return (filter.before === undefined ? rows : rows.reverse()).map(entry)
+    return (filter.before === undefined ? rows : rows.reverse()).map(Feed.entry)
   }
 
   page(
@@ -536,7 +506,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   search(terms: string[], limit: number): Entry[] {
     if (!terms.length) return []
     const indexed = this.kv.get<number>('unindexed') === undefined
-    if (!indexed) this.ctx.waitUntil(this.reindex())
+    if (!indexed) this.ctx.waitUntil(Feed.reindex(this))
     const score = terms.map(() => "(instr(lower(text || ' ' || coalesce(detail, '')), ?) > 0)").join(' + ')
     const [query, ...values]: [string, ...(string | number)[]] = indexed
       ? [
@@ -545,31 +515,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
           limit,
         ]
       : [
-          `SELECT seq, at, kind, text, detail, who, event FROM (SELECT *, ${score} AS score FROM (SELECT * FROM feed ORDER BY seq DESC LIMIT ${searched})) WHERE score > 0 ORDER BY score DESC, seq DESC LIMIT ?`,
+          `SELECT seq, at, kind, text, detail, who, event FROM (SELECT *, ${score} AS score FROM (SELECT * FROM feed ORDER BY seq DESC LIMIT ${Feed.searched})) WHERE score > 0 ORDER BY score DESC, seq DESC LIMIT ?`,
           ...terms,
           limit,
         ]
-    return this.ctx.storage.sql.exec<Record<string, SqlStorageValue>>(query, ...values).toArray().map(entry)
-  }
-
-  index() {
-    const below = this.kv.get<number>('unindexed')
-    if (below === undefined) return false
-    const sql = this.ctx.storage.sql
-    const edge = sql.exec<{ low: number | null; n: number }>('SELECT MIN(seq) AS low, COUNT(*) AS n FROM (SELECT seq FROM feed WHERE seq <= ? ORDER BY seq DESC LIMIT ?)', below, indexChunk).one()
-    if (edge.low !== null) sql.exec(`INSERT INTO feed_search (rowid, body) SELECT seq, ${searchable} FROM feed WHERE seq BETWEEN ? AND ?`, edge.low, below)
-    if (edge.low === null || edge.n < indexChunk) {
-      this.kv.delete('unindexed')
-      return false
-    }
-    this.kv.put('unindexed', edge.low - 1)
-    return true
-  }
-
-  async reindex() {
-    if (this.kv.get<number>('unindexed') === undefined || this.run().state !== 'paused') return
-    const alarm = await this.ctx.storage.getAlarm()
-    if (alarm === null || alarm > Date.now() + indexMs) await this.ctx.storage.setAlarm(Date.now())
+    return this.ctx.storage.sql.exec<Record<string, SqlStorageValue>>(query, ...values).toArray().map(Feed.entry)
   }
 
   override async fetch(request: Request) {
@@ -603,7 +553,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   override async alarm() {
-    const indexing = this.index()
+    const indexing = Feed.indexed(this)
     this.stepping ??= Turns.step(this)
       .catch((error: unknown) => {
         this.log('error', 'The swarm hit an error and will retry.', String(error))
@@ -613,7 +563,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         this.stepping = undefined
       })
     const stepped = await this.stepping
-    const next = indexing && this.run().state === 'paused' ? Math.min(stepped ?? Infinity, Date.now() + indexMs) : stepped
+    const next = indexing && this.run().state === 'paused' ? Math.min(stepped ?? Infinity, Date.now() + Feed.indexMs) : stepped
     if (next === null) return
     const pending = await this.ctx.storage.getAlarm()
     await this.ctx.storage.setAlarm(pending !== null && pending < next ? pending : next)
@@ -932,7 +882,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         logged.event,
       )
       .one()
-    this.ctx.storage.sql.exec(`INSERT INTO feed_search (rowid, body) SELECT seq, ${searchable} FROM feed WHERE seq = ?`, row.seq)
+    this.ctx.storage.sql.exec(`INSERT INTO feed_search (rowid, body) SELECT seq, ${Feed.searchable} FROM feed WHERE seq = ?`, row.seq)
     this.touch()
     if (!this.turn()) this.changed('feed')
     if (!this.watchers.size) return
@@ -962,25 +912,5 @@ function touched(kv: SyncKvStorage, touch: () => void): SyncKvStorage {
       kv.put(key, value)
       if (viewKeys.has(key)) touch()
     },
-  }
-}
-
-function updates(turns: readonly Search.Turn[]): Update[] {
-  return turns.flatMap((turn) => {
-    if (turn.status !== 'completed' || !turn.message || turn.endedAt === null) return []
-    const answer = Answer.parse(turn.message, turn.endedAt)
-    return answer.text ? [{ at: turn.endedAt, base: turn.base, commits: turn.commits, done: answer.done, spent: turn.spent, text: answer.text }] : []
-  })
-}
-
-function entry(row: Record<string, SqlStorageValue>): Entry {
-  return {
-    at: Number(row['at']),
-    detail: row['detail'] === null ? null : String(row['detail']),
-    event: row['event'] === null || row['event'] === undefined ? null : Number(row['event']),
-    kind: String(row['kind']) as Kind,
-    seq: Number(row['seq']),
-    text: String(row['text']),
-    who: row['who'] === null || row['who'] === undefined ? null : String(row['who']),
   }
 }

@@ -1,3 +1,4 @@
+import * as Feed from './Feed.ts'
 import type { Hand, Note } from '../shared/Api.ts'
 import { redact } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
@@ -235,7 +236,7 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   self.touch()
   const answer = status === 'completed' && message ? Answer.parse(redact(message), Date.now()) : undefined
   if (answer?.text) await Store.update(self.env, row.id, { answer: JSON.stringify(answer) })
-  const ended = self.rows('WHERE n = ?', n)[0]
+  const ended = Feed.rows(self, 'WHERE n = ?', n)[0]
   if (ended) await Search.report(self.env, row.id, ended).catch((error: unknown) => console.error('Indexing the update failed', error))
   const pushed = commits.length ? ` and pushed ${commits.length} commit${commits.length === 1 ? '' : 's'} to ${repo.name}` : ''
   self.log(
