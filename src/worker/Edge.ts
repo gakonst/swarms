@@ -3,7 +3,7 @@ import * as Timing from './Timing.ts'
 
 const memory = new Map<string, { at: number; value: unknown }>()
 
-const refreshing = new Map<string, Promise<unknown>>()
+const refreshing = new Set<string>()
 
 export async function cached<T>(env: Cloudflare.Env, key: string, seconds: number, read: () => Promise<T>, stale = seconds * 3, patience = 0): Promise<T> {
   const now = Date.now()
@@ -18,7 +18,9 @@ export async function cached<T>(env: Cloudflare.Env, key: string, seconds: numbe
   }
   if (kept && now - kept.at < stale * 1000) {
     memory.set(key, kept)
-    const task = refresh(key, request, stale, read)
+    if (refreshing.has(key)) return kept.value as T
+    refreshing.add(key)
+    const task = refresh(key, request, stale, read).finally(() => refreshing.delete(key))
     const raced = patience > 0 ? await Promise.race([task.then((value) => ({ value }), () => undefined), new Promise<undefined>((resolve) => setTimeout(resolve, patience))]) : undefined
     if (raced) return raced.value as T
     waitUntil(task.catch(() => undefined))
@@ -74,22 +76,16 @@ async function shared(request: Request) {
 }
 
 function refresh<T>(key: string, request: Request, stale: number, read: () => Promise<T>) {
-  const running = refreshing.get(key)
-  if (running) return running as Promise<T>
-  const task = read()
-    .then((value) => {
-      const at = Date.now()
-      memory.set(key, { at, value })
-      waitUntil(
-        caches.default
-          .put(request, Response.json(value, { headers: { 'cache-control': `public, max-age=${stale}`, 'x-cached-at': String(at) } }))
-          .catch(() => undefined),
-      )
-      return value
-    })
-    .finally(() => refreshing.delete(key))
-  refreshing.set(key, task)
-  return task
+  return read().then((value) => {
+    const at = Date.now()
+    memory.set(key, { at, value })
+    waitUntil(
+      caches.default
+        .put(request, Response.json(value, { headers: { 'cache-control': `public, max-age=${stale}`, 'x-cached-at': String(at) } }))
+        .catch(() => undefined),
+    )
+    return value
+  })
 }
 const drawn = new Map<string, Drawn>()
 

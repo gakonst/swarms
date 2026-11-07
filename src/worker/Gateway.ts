@@ -105,7 +105,7 @@ export function me(env: Cloudflare.Env) {
   return send<{ wallet: `0x${string}` }>(env, '/api/keys/me')
 }
 
-let operator: Promise<string | undefined> | undefined
+let operator: string | undefined
 
 const operatorSeconds = 86_400
 
@@ -114,8 +114,9 @@ async function fingerprint(secret: string) {
   return Array.from(digest.subarray(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export function wallet(env: Cloudflare.Env) {
-  const known = (operator ??= fingerprint(env.SWARMS_GATEWAY_KEY)
+export async function wallet(env: Cloudflare.Env) {
+  if (operator) return operator
+  const known = await fingerprint(env.SWARMS_GATEWAY_KEY)
     .then((key) =>
       Edge.cached(
         env,
@@ -129,29 +130,23 @@ export function wallet(env: Cloudflare.Env) {
         operatorSeconds * 30,
       ),
     )
-    .catch(() => me(env).then((result) => (result.ok ? result.value.wallet.toLowerCase() : undefined))))
-  void known.then((value) => {
-    if (!value && operator === known) operator = undefined
-  })
+    .catch(() => me(env).then((result) => (result.ok ? result.value.wallet.toLowerCase() : undefined)))
+  if (known) operator = known
   return known
 }
 
-let sponsoring: { at: number; value: Promise<Sponsorship | undefined> } | undefined
+let sponsoring: { at: number; value: Sponsorship } | undefined
 
-export function sponsorship(env: Cloudflare.Env) {
+export async function sponsorship(env: Cloudflare.Env) {
   if (sponsoring && Date.now() - sponsoring.at < 600_000) return sponsoring.value
-  const value = Promise.race([
+  const value = await Promise.race([
     Promise.all([
       send<{ accessKey: `0x${string}` }>(env, '/api/keys/me'),
       send<{ sponsors?: Omit<Sponsorship, 'signer'> }>(env, '/v1/capabilities'),
     ]).then(([me, capabilities]) => (me.ok && capabilities.ok && capabilities.value.sponsors ? { ...capabilities.value.sponsors, signer: me.value.accessKey } : undefined)),
     new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 3000)),
   ]).catch(() => undefined)
-  const entry = { at: Date.now(), value }
-  sponsoring = entry
-  void value.then((known) => {
-    if (!known && sponsoring === entry) sponsoring = undefined
-  })
+  if (value) sponsoring = { at: Date.now(), value }
   return value
 }
 

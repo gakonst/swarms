@@ -21,27 +21,25 @@ export function rendered(path: string) {
   return listed.has(path) || /^\/s\/[^/]+(\/code)?\/?$/.test(path)
 }
 
-let template: Promise<string> | undefined
+let template: string | undefined
 
-let chunks: Promise<{ code: string[]; repo: string[] }> | undefined
+let chunks: { code: string[]; repo: string[] } | undefined
 
-function preloads(env: Cloudflare.Env, origin: string) {
-  chunks ??= env.ASSETS.fetch(new Request(`${origin}/preload.json`))
+async function preloads(env: Cloudflare.Env, origin: string) {
+  if (chunks) return chunks
+  chunks = await env.ASSETS.fetch(new Request(`${origin}/preload.json`))
     .then((response) => (response.ok ? (response.json() as Promise<{ code: string[]; repo: string[] }>) : { code: [], repo: [] }))
     .catch(() => ({ code: [], repo: [] }))
   return chunks
 }
 
-function shell(env: Cloudflare.Env, origin: string) {
-  const loaded = env.ASSETS.fetch(new Request(`${origin}/index.html`)).then(async (response) => {
-    if (!response.ok) throw new Error(`index.html answered ${response.status}`)
-    return response.text()
-  })
-  if (!import.meta.env?.DEV) template ??= loaded.catch((error: unknown) => {
-    template = undefined
-    throw error
-  })
-  return template ?? loaded
+async function shell(env: Cloudflare.Env, origin: string) {
+  if (template !== undefined) return template
+  const response = await env.ASSETS.fetch(new Request(`${origin}/index.html`))
+  if (!response.ok) throw new Error(`index.html answered ${response.status}`)
+  const html = await response.text()
+  if (!import.meta.env?.DEV) template = html
+  return html
 }
 
 function escape(value: string) {
