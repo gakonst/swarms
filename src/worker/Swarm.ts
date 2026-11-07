@@ -25,6 +25,7 @@ import * as Store from './Store.ts'
 import * as Vault from './Vault.ts'
 import * as Words from './Words.ts'
 import * as Relay from './Relay.ts'
+import * as Clock from './Clock.ts'
 
 export type Contributed = {
   amount: string
@@ -175,10 +176,6 @@ const refreshMs = 10_000
 
 const healMs = 5 * 60_000
 
-const hourMs = 3_600_000
-
-const retryMs = 30_000
-
 const unreachableMs = 15 * 60_000
 
 const maxFailures = 3
@@ -194,8 +191,6 @@ const vendorCap = passCall
 const passHour = 1_000_000n
 
 type Passed = { amount: string; at: number; host: string }
-
-const dayMs = 86_400_000
 
 const pullMs = 120_000
 
@@ -224,13 +219,9 @@ function passHost(input: Pay) {
     return 'a paid service'
   }
 }
-
-const quietMs = 600_000
 const snapshotMs = 60_000
 const snapshotFiles = 2_000
 const snapshotText = 64_000
-
-const restMs = 10 * 60_000
 
 const smallestSwap = 10_000n
 
@@ -713,7 +704,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.stepping ??= this.step()
       .catch((error: unknown) => {
         this.log('error', 'The swarm hit an error and will retry.', String(error))
-        return Date.now() + retryMs
+        return Date.now() + Clock.retryMs
       })
       .finally(() => {
         this.stepping = undefined
@@ -814,16 +805,16 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const now = Date.now()
     const last = run.state === 'waiting' ? run.retry : undefined
     const repeat = last?.error === error
-    const logged = last && repeat && now - last.logged < quietMs ? last.logged : now
+    const logged = last && repeat && now - last.logged < Clock.quietMs ? last.logged : now
     if (logged === now) this.log('error', error, detail)
     await this.move(row, {
       ...(run.state === 'waiting' && run.from ? { from: run.from } : {}),
       retry: { count: (last && repeat ? last.count : 0) + 1, error, logged },
       since: Phase.since(run),
       state: 'waiting',
-      until: now + retryMs,
+      until: now + Clock.retryMs,
     })
-    return now + retryMs
+    return now + Clock.retryMs
   }
 
   unreachable(now: number) {
@@ -1011,11 +1002,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const lent = (this.kv.get<Hand[]>('hands') ?? []).length > 0 || !!this.kv.get<boolean>('issued')
     return {
       artifacts: this.due('artifacts', fallbackMs, now),
-      chain: this.due('chain', minuteMs, now),
-      git: this.due('git', this.kv.get<string>('repo') ? minuteMs : fallbackMs, now),
-      hands: this.due('hands', lent ? refreshMs : minuteMs, now),
+      chain: this.due('chain', Clock.minuteMs, now),
+      git: this.due('git', this.kv.get<string>('repo') ? Clock.minuteMs : fallbackMs, now),
+      hands: this.due('hands', lent ? refreshMs : Clock.minuteMs, now),
       sponsors: this.due('sponsors', this.listened() ? refreshMs : 3 * refreshMs, now),
-      turn: this.due('turn', minuteMs, now),
+      turn: this.due('turn', Clock.minuteMs, now),
     }
   }
 
@@ -1217,7 +1208,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         if (old && state.deposit === 0n) {
           Payer.forget(this.kv, source.id)
           this.clients.delete(source.id)
-          if (Date.now() - (this.kv.get<number>(`unopened:${source.id}`) ?? 0) > quietMs) this.log('error', `The channel for ${source.label} never opened on Tempo, so the next payment opens another.`)
+          if (Date.now() - (this.kv.get<number>(`unopened:${source.id}`) ?? 0) > Clock.quietMs) this.log('error', `The channel for ${source.label} never opened on Tempo, so the next payment opens another.`)
           this.kv.put(`unopened:${source.id}`, Date.now())
           return undefined
         }
@@ -1230,7 +1221,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   passable(row: Store.Row, input: Pay): Paid | undefined {
     const amount = asked(input)
     const now = Date.now()
-    const recent = (this.kv.get<Passed[]>('passed') ?? []).filter((item) => item.at > now - hourMs)
+    const recent = (this.kv.get<Passed[]>('passed') ?? []).filter((item) => item.at > now - Clock.hourMs)
     const hourly = Payer.max(passHour, BigInt(row.raised) / 20n)
     const host = passHost(input)
     const used = recent.reduce((sum, item) => sum + BigInt(item.amount), 0n)
@@ -1248,7 +1239,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const amount = asked(input)
     const now = Date.now()
     const host = passHost(input)
-    this.kv.put('passed', [...(this.kv.get<Passed[]>('passed') ?? []).filter((item) => item.at > now - hourMs), { amount: String(amount), at: now, host }])
+    this.kv.put('passed', [...(this.kv.get<Passed[]>('passed') ?? []).filter((item) => item.at > now - Clock.hourMs), { amount: String(amount), at: now, host }])
     if (input.operation === 'agent.fetch') this.log('funds', `The agent paid ${Words.dollars(amount)} to an outside service through the gateway, from the swarm's money.`, input.path ?? null)
     return paid
   }
@@ -1296,7 +1287,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         if (snapshot.closing || (index === 0 && input.rejected?.status === 410)) this.drop(id)
         else if (Payer.unsure(channel) && BigInt(snapshot.deposit) >= Payer.held(channel)) this.kv.put(key, Payer.confirm(channel, BigInt(snapshot.deposit), Date.now()))
         if (index === 0 && input.rejected && (input.attempt ?? 0) >= 2) {
-          this.kv.put('exhausted:' + id, Date.now() + restMs)
+          this.kv.put('exhausted:' + id, Date.now() + Clock.restMs)
           this.log('funds', `The gateway refused ${id === 'pool' ? "the swarm wallet's" : 'a contribution\'s'} payment again, so the swarm moves on to the next contribution.`, input.rejected.detail)
         }
       }
@@ -1309,7 +1300,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       )
       if ('authorization' in result || 'feeToken' in result) return result
       if ((this.kv.get<number>('owing:' + source.id) ?? 0) <= Date.now()) {
-        this.kv.put('owing:' + source.id, Date.now() + restMs)
+        this.kv.put('owing:' + source.id, Date.now() + Clock.restMs)
         this.log('funds', `The swarm's wallet cannot pay the owner of hand ${input.hand ?? 'a lent machine'} over its own channel right now, so the gateway bills that hand's use and pays its owner.`, result.failed)
       }
     }
@@ -1321,7 +1312,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     let wanted = 0n
     for (const source of ordered) {
       const result = await this.attempt(row, source, input, snapshots).catch(
-        (error: unknown): Failed => ({ failed: String(error).split('\n')[0]?.slice(0, 300) ?? 'The payment failed.', room: { amount: 0n, resets: Date.now() + retryMs } }),
+        (error: unknown): Failed => ({ failed: String(error).split('\n')[0]?.slice(0, 300) ?? 'The payment failed.', room: { amount: 0n, resets: Date.now() + Clock.retryMs } }),
       )
       if ('feeToken' in result) return result
       if ('authorization' in result) {
@@ -1337,7 +1328,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         if (result.small && result.price) wanted = Payer.max(wanted, result.price)
         continue
       }
-      const until = result.room?.resets ?? Date.now() + restMs
+      const until = result.room?.resets ?? Date.now() + Clock.restMs
       this.kv.put('exhausted:' + source.id, until)
       this.log('funds', `${Words.capital(source.label)} cannot pay right now, so the swarm moves on until ${Words.clock(until)} UTC.`, result.failed)
     }
@@ -1746,7 +1737,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const now = Date.now()
     const total = earned(hand)
     const known = this.kv.get<{ at: number; usd: string }>('handDay:' + hand.name)
-    const day = known && now - known.at < dayMs ? known : { at: now, usd: String(total) }
+    const day = known && now - known.at < Clock.dayMs ? known : { at: now, usd: String(total) }
     if (day !== known) this.kv.put('handDay:' + hand.name, day)
     const turn = total - BigInt(this.kv.get<string>('handTurn:' + hand.name) ?? String(total))
     const today = total - BigInt(day.usd)
@@ -1968,7 +1959,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   paced(address: Address) {
     const now = Date.now()
     const key = 'said:' + address.toLowerCase()
-    const recent = (this.kv.get<number[]>(key) ?? []).filter((at) => at > now - minuteMs)
+    const recent = (this.kv.get<number[]>(key) ?? []).filter((at) => at > now - Clock.minuteMs)
     if (recent.length >= postsPerMinute) return false
     this.kv.put(key, [...recent, now])
     return true
@@ -1985,14 +1976,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
     const now = Date.now()
     const key = 'btw:' + input.address.toLowerCase()
-    const recent = (this.kv.get<number[]>(key) ?? []).filter((at) => at > now - hourMs)
+    const recent = (this.kv.get<number[]>(key) ?? []).filter((at) => at > now - Clock.hourMs)
     const oldest = recent[0]
     if (recent.length >= Btw.perHour && oldest !== undefined)
-      return { detail: `At most ${Btw.perHour} side questions an hour; the next one opens at ${Words.clock(oldest + hourMs)} UTC.`, ok: false, status: 429 }
-    const everyone = (this.kv.get<number[]>('btw:*') ?? []).filter((at) => at > now - hourMs)
+      return { detail: `At most ${Btw.perHour} side questions an hour; the next one opens at ${Words.clock(oldest + Clock.hourMs)} UTC.`, ok: false, status: 429 }
+    const everyone = (this.kv.get<number[]>('btw:*') ?? []).filter((at) => at > now - Clock.hourMs)
     const first = everyone[0]
     if (everyone.length >= Btw.perSwarmHour && first !== undefined)
-      return { detail: `This swarm answers at most ${Btw.perSwarmHour} side questions an hour, from everyone; the next one opens at ${Words.clock(first + hourMs)} UTC.`, ok: false, status: 429 }
+      return { detail: `This swarm answers at most ${Btw.perSwarmHour} side questions an hour, from everyone; the next one opens at ${Words.clock(first + Clock.hourMs)} UTC.`, ok: false, status: 429 }
     this.kv.put(key, [...recent, now])
     this.kv.put('btw:*', [...everyone, now])
 
@@ -2254,8 +2245,6 @@ const holderMs = 300_000
 const typingMs = 2_000
 
 const socketsMost = 500
-
-const minuteMs = 60_000
 
 const postsPerMinute = 10
 
