@@ -89,14 +89,15 @@ function reason(text: string | null) {
   return found ? found.replace(/\\+"/g, '"') : text?.slice(0, 300) ?? null
 }
 
-function called(text: string, args: Record<string, unknown> | undefined) {
+function called(text: string, args: Record<string, unknown> | undefined, detail: string | null) {
   const command = args?.['command']
+  const path = args?.['path'] ?? /"path"\s*:\s*"([^"]+)"/.exec(detail ?? '')?.[1]
   if (text === 'Called compute_exec' || text === 'Called compute_spawn' || text === 'Called compute_stream') {
     const parts = Array.isArray(command) ? command.map(String) : []
     const script = parts.length === 3 && /^(ba)?sh$/.test(parts[0] ?? '') && parts[1] === '-c' ? parts[2] : parts.join(' ')
     return script ? `$ ${script.trim()}` : text.replace('Called ', '')
   }
-  if (text === 'Called compute_write' || text === 'Called compute_read') return `${text.replace('Called compute_', '')} ${String(args?.['path'] ?? '')}`.trim()
+  if (text === 'Called compute_write' || text === 'Called compute_read') return `${text.replace('Called compute_', '')} ${String(path ?? '')}`.trim()
   return text.replace('Called compute_', '')
 }
 
@@ -188,7 +189,7 @@ export function fleet(entries: readonly Entry[], hands: readonly Hand[], lent: r
         break
       }
     }
-    machine.commands.push({ at: entry.at, failed, output, seq: entry.seq, text: boxed ? called(entry.text, args) : entry.text.replace(/ on \S+$/, ''), who: entry.who })
+    machine.commands.push({ at: entry.at, failed, output, seq: entry.seq, text: boxed ? called(entry.text, args, entry.detail) : entry.text.replace(/ on \S+$/, ''), who: entry.who })
   }
 
   for (const hand of hands) {

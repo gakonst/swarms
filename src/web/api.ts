@@ -1,5 +1,6 @@
 import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Posted, Problem, Room, Roster, Snapshot, Steering, Summary } from '../shared/Api.ts'
 import type * as Btw from '../shared/Btw.ts'
+import type { Machine } from '../shared/Fleet.ts'
 import { seeded } from './boot.ts'
 import { visitor } from './stage.ts'
 
@@ -133,6 +134,10 @@ export function contribute(id: string, input: { hash?: string; note?: string; tr
 
 export function hands(id: string) {
   return fixture ? staged((fixtures) => fixtures.lent(id)) : request<{ hands: Lent[] }>(`${path(id)}/hands`)
+}
+
+export function machines(id: string) {
+  return fixture ? Promise.resolve({ machines: [] as Machine[] }) : request<{ machines: Machine[] }>(`/v1/swarms/${encodeURIComponent(id)}/machines`)
 }
 
 export function hand(id: string, label: string) {

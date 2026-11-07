@@ -65,7 +65,9 @@ function Row(props: { machine: Machine; now: number; onPick: () => void; open: b
 export function Machines(props: { entries: readonly Entry[]; hands: readonly Hand[]; live: boolean; swarm: string }) {
   const now = useNow(1000)
   const [lent] = usePoll(() => Api.hands(props.swarm), 15_000, `hands:${props.swarm}`)
-  const machines = useMemo(() => fleet(props.entries, props.hands, lent.data?.hands ?? ([] as Lent[])), [props.entries, props.hands, lent.data])
+  const [served] = usePoll(() => Api.machines(props.swarm), props.live ? 10_000 : 60_000, `machines:${props.swarm}`)
+  const local = useMemo(() => fleet(props.entries, props.hands, lent.data?.hands ?? ([] as Lent[])), [props.entries, props.hands, lent.data])
+  const machines = served.data?.machines.length ? served.data.machines : local
   const [picked, setPicked] = useState<string>()
 
   if (!machines.length)

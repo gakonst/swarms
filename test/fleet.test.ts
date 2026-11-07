@@ -63,6 +63,7 @@ test('fleet names a sandbox started without attach by its id', () => {
       entry(2, 'output', 'compute_create output', created),
       entry(3, 'tool', 'Called compute_exec', '{"command":["python","-V"],"sandboxId":"sb-xyz"}'),
       entry(4, 'output', 'compute_exec output', '{"exitCode":0}'),
+      entry(5, 'tool', 'Called compute_write', '{"path":"/work/big.py","sandboxId":"sb-xyz","text":"print(1)'),
     ],
     [],
     [],
@@ -70,7 +71,7 @@ test('fleet names a sandbox started without attach by its id', () => {
   assert.equal(machines.length, 1)
   assert.equal(machines[0]?.name, 'sb-xyz')
   assert.deepEqual(machines[0]?.config, [['Image', 'python:3.12-slim'], ['CPU', '2']])
-  assert.deepEqual(machines[0]?.commands.map((run) => run.text), ['$ python -V'])
+  assert.deepEqual(machines[0]?.commands.map((run) => run.text), ['$ python -V', 'write /work/big.py'])
 })
 
 test('fleet marks a machine whose compute_create failed as never started, with the reason', () => {
