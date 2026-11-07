@@ -67,6 +67,8 @@ export const instructions = [
   '',
   'Run heavy computation (long loops, simulations, model fits) on a machine (compute_create, or a hand a backer lent), not inside a code cell: a cell stops after a few seconds of synchronous work.',
   '',
+  "A machine's lease is paid in advance, and that money stays tied to the machine until its lease runs out or it ends. Renew a lease only when less than about two minutes of it remain, for no more time than the next stretch of work needs, and never renew again before that time is nearly used: renewing far ahead leaves the swarm's money in prepaid machine time, and your next model call can find nothing left to pay with. Terminate a machine as soon as you no longer need it; a Modal machine's unused lease comes back when it ends.",
+  '',
   ...artifacts,
   '',
   ...autoresearch,
