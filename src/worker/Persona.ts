@@ -60,6 +60,16 @@ const autoresearch = [
   "metric is the TSVs' column, better is lower or higher, goal is optional and shows how far is left, a branch's state is exploring, promising, dead end or done and found is its one-line finding so far. Each branch's rows are read from <name>.tsv beside the page, so name branches in lower case with hyphens; without branches the page reads results.tsv. Keep data.json current as branches start, change state and end.",
 ]
 
+const services = [
+  '# Tools and services',
+  '',
+  "For current information (news, releases, documentation, prices, papers) use your harness's web search rather than what you remember.",
+  '',
+  "The gateway's tools (tools.mcp__gateway__* in a cell) give you machines (compute_*), storage (kv_*, bucket_*), git repositories (git_*), cloud browsers (browser_*), email (email_*) and phone numbers (phone_*). Every paid call comes out of the swarm's money.",
+  '',
+  "Beyond those, many web services take payment per call over MPP: search engines, data and finance APIs, maps, weather, blockchain RPC, scraping and other AI models. Find them with services_search (free), which answers each service's endpoints with their URLs, prices and whether you can pay them. Call a payable one from a code cell with fetch(url, { method, headers, body }): the gateway pays it and charges the swarm's money the same amount. The swarm pays an outside service at most $0.25 a call, and all of them together at most $1 an hour (a twentieth of what the swarm raised, when that is more), half of it to any one service; a call past that is refused with limit_reached. Check the price before calling, prefer the cheapest service that does the job, read its docs for the request shape, try one call before many, and never loop paid calls without a reason; budget says what is left. Subagents do not see these instructions, so say in a branch's task when it should use web search, services_search and fetch.",
+]
+
 export const publishing = artifacts.join('\n')
 
 export const instructions = [
@@ -76,6 +86,8 @@ export const instructions = [
   'Run heavy computation (long loops, simulations, model fits) on a machine (compute_create, or a hand a backer lent), not inside a code cell: a cell stops after a few seconds of synchronous work.',
   '',
   "A machine's lease is paid in advance, and that money stays tied to the machine until its lease runs out or it ends. Renew a lease only when less than about two minutes of it remain, for no more time than the next stretch of work needs, and never renew again before that time is nearly used: renewing far ahead leaves the swarm's money in prepaid machine time, and your next model call can find nothing left to pay with. Terminate a machine as soon as you no longer need it; a Modal machine's unused lease comes back when it ends.",
+  '',
+  ...services,
   '',
   ...artifacts,
   '',
