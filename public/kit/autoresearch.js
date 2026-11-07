@@ -311,8 +311,11 @@ body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-va
       const placed = []
       const wins = data.branches.flatMap((branch) => branch.wins.filter((row) => row.description && inside(row.value)).map((row) => ({ branch, row })))
       for (const { branch, row } of wins.sort((a, b) => b.row.delta - a.row.delta)) {
-        const text = cut(row.description, 44)
-        const at = { length: text.length * 5.6, x: x(row.n) + 6, y: y(row.value) - 6 }
+        const left = { x: x(row.n) + 6, y: y(row.value) - 6 }
+        const room = Math.floor((width - pad.right - left.x) / 0.866 / 5.6)
+        if (room < 10) continue
+        const text = cut(row.description, Math.min(44, room))
+        const at = { ...left, length: text.length * 5.6 }
         const clash = placed.some((other) => {
           const dx = at.x - other.x
           const dy = at.y - other.y
