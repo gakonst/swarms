@@ -304,8 +304,8 @@ export function terminate(env: Cloudflare.Env, swarm: string, sandboxId: string)
   return send<unknown>(env, '/v1/compute/terminate', { app: app(swarm), body: { sandboxId } })
 }
 
-export function stream(env: Cloudflare.Env, swarm: string, agent: string, after: number, signal: AbortSignal) {
-  return call(env, `/v1/agents/${agent}/events?after=${after}&live=1`, {
+export function stream(env: Cloudflare.Env, swarm: string, agent: string, after: number, signal: AbortSignal, live: boolean) {
+  return call(env, `/v1/agents/${agent}/events?after=${after}&live=${live ? 1 : 0}`, {
     headers: { accept: 'text/event-stream', authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY, 'gateway-app': app(swarm) },
     signal,
   })

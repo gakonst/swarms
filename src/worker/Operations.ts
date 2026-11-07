@@ -303,20 +303,6 @@ function identifier() {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 12)
 }
 
-function sleep(ms: number, signal: AbortSignal | undefined) {
-  return new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, Math.max(0, ms))
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer)
-        resolve()
-      },
-      { once: true },
-    )
-  })
-}
-
 function logged(task: Promise<unknown>) {
   return task.catch((error: unknown) => console.error('Indexing for search failed', error))
 }
@@ -553,7 +539,7 @@ export async function wait(env: Cloudflare.Env, input: Input<'wait'>, signal?: A
   const since = parsed.value.after ?? (await stub(env, swarm).latest(0)).update?.at ?? 0
 
   for (;;) {
-    const pulse = await stub(env, swarm).latest(since)
+    const pulse = await stub(env, swarm).waited(since, signal?.aborted ? 0 : deadline - Date.now())
     const reason = pulse.update ? 'updated' : !pulse.working ? 'idle' : Date.now() >= deadline || signal?.aborted ? 'timeout' : undefined
     if (reason) {
       const row = await Store.find(env, swarm)
@@ -567,7 +553,6 @@ export async function wait(env: Cloudflare.Env, input: Input<'wait'>, signal?: A
         working: pulse.working,
       })
     }
-    await sleep(Math.min(2000, deadline - Date.now()), signal)
   }
 }
 
@@ -1101,7 +1086,7 @@ export async function chatter(env: Cloudflare.Env, input: Input<'swarm'>, reques
   if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return Problem.fail(400, 'invalid_request', 'Open this route as a WebSocket.')
   if (!(await Store.exists(env, parsed.value.swarm))) return missing()
 
-  return Problem.ok(await stub(env, parsed.value.swarm).fetch(new Request(`https://swarm/chat?swarm=${encodeURIComponent(parsed.value.swarm)}`, request)))
+  return Problem.ok(await stub(env, parsed.value.swarm).fetch(new Request(`https://swarm/chat?swarm=${encodeURIComponent(parsed.value.swarm)}${new URL(request.url).searchParams.get('listen') === '1' ? '&listen=1' : ''}`, request)))
 }
 
 function dollars(amount: string) {
