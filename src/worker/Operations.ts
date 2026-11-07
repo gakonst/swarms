@@ -726,8 +726,8 @@ async function directed(env: Cloudflare.Env, row: Pick<Store.Row, 'id'>, listing
   if (!found.ok) return Problem.fail(502, 'upstream_failed', `Could not list the swarm's subagents: ${found.detail}`)
   if (!Array.isArray(found.value.list)) return Problem.fail(502, 'upstream_failed', 'The swarm is starting on new code; try again in a few seconds.')
   const agent = found.value.agent
-  if (agent) waitUntil(logged(Store.adopt(env, row.id, agent)))
   const read = await ledgers
+  if (agent && read.legacy) waitUntil(logged(Store.adopt(env, row.id, agent)))
   const members = read.members
   const money = read.money(agent ?? '')
   const names = new Map<number, string>()
@@ -806,7 +806,8 @@ export async function branches(env: Cloudflare.Env, input: Input<'branches'>): P
   const parsed = parse(schema.branches, input)
   if (!parsed.ok) return parsed
   const id = parsed.value.swarm
-  const finding = Store.find(env, id)
+  const held = Team.cached(id)?.steering
+  const steering = held ? Promise.resolve(held) : Store.steering(env, id)
 
   let failed: Problem.Result<never> | undefined
   const listing = Edge.cached(
@@ -814,8 +815,8 @@ export async function branches(env: Cloudflare.Env, input: Input<'branches'>): P
     `branches/${id}`,
     shownSeconds,
     async () => {
-      const early = Store.seen(id) ? reached(stub(env, id).subagents(id)) : undefined
-      if (!early && !(await finding)) {
+      const early = held || Store.seen(id) ? reached(stub(env, id).subagents(id)) : undefined
+      if (!early && !(await steering)) {
         failed = missing()
         throw new Error('missing')
       }
@@ -827,10 +828,10 @@ export async function branches(env: Cloudflare.Env, input: Input<'branches'>): P
     shownStale,
     shownPatience,
   ).catch(() => undefined)
-  const [row, list] = await Promise.all([finding, listing])
-  if (!row) return missing()
+  const [policy, list] = await Promise.all([steering, listing])
+  if (!policy) return missing()
   if (!list) return failed ?? Problem.fail(502, 'upstream_failed', "Could not list the swarm's subagents; try again in a few seconds.")
-  return Problem.ok({ branches: list, steering: row.steering })
+  return Problem.ok({ branches: list, steering: policy })
 }
 
 async function fresh(env: Cloudflare.Env, row: Store.Row, ids: readonly number[], fallback: readonly Branch[]) {

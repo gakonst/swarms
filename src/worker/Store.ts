@@ -142,6 +142,12 @@ async function fresh<T>(env: Cloudflare.Env, read: (db: D1Database) => Promise<T
   return value === null && Replica.replicated(env) ? read(Replica.primary(env).DB) : value
 }
 
+export async function steering(env: Cloudflare.Env, id: string) {
+  const row = await fresh(env, (db) => db.prepare('select steering from swarms where id = ?').bind(id).first<{ steering: Steering }>())
+  if (row) known.add(id)
+  return row?.steering ?? null
+}
+
 const repos = new Map<string, { at: number; repo: string }>()
 
 export async function repo(env: Cloudflare.Env, id: string) {
@@ -457,6 +463,7 @@ export async function ledgers(env: Cloudflare.Env, swarm: string, listing = true
     ...(listing ? [backers(env, swarm)] : []),
   ])
   const members = listed ? membered(listed.results as Backer[]) : []
+  const legacy = [funded, based].some((read) => (read?.results as { agent: string }[] | undefined)?.some((row) => row.agent === ''))
   const money = (agent: string) => {
     const mine = (row: { agent: string }) => row.agent === agent || row.agent === ''
     const rows = (based?.results as { agent: string; base: string; branch: number; settled_at: number | null }[]).filter(mine).sort((a, b) => Number(a.agent === agent) - Number(b.agent === agent))
@@ -470,7 +477,7 @@ export async function ledgers(env: Cloudflare.Env, swarm: string, listing = true
     }
     return { bases, settled, shares }
   }
-  return { members, money }
+  return { legacy, members, money }
 }
 
 export async function base(env: Cloudflare.Env, swarm: string, agent: string, branch: number, value: bigint) {
@@ -479,15 +486,11 @@ export async function base(env: Cloudflare.Env, swarm: string, agent: string, br
     .run().finally(wrote)
 }
 
-const adopted = new Set<string>()
-
 export async function adopt(env: Cloudflare.Env, swarm: string, agent: string) {
-  if (adopted.has(swarm + ':' + agent)) return
   await env.DB.batch([
     env.DB.prepare("update branches set agent = ? where swarm = ? and agent = ''").bind(agent, swarm),
     env.DB.prepare("update steers set agent = ? where swarm = ? and branch is not null and (agent = '' or agent is null)").bind(agent, swarm),
   ]).finally(wrote)
-  adopted.add(swarm + ':' + agent)
 }
 
 export async function replaced(env: Cloudflare.Env, swarm: string, current: string) {

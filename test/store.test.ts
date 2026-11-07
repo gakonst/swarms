@@ -51,6 +51,9 @@ test('the list and a swarm read their totals from the backing index, each contri
   const empty = await Store.find(db.env, 'c')
   assert.deepEqual([empty?.raised, empty?.contributors], [0, 0])
   assert.equal(await Store.find(db.env, 'zz'), null)
+
+  assert.equal(await Store.steering(db.env, 'a'), 'open')
+  assert.equal(await Store.steering(db.env, 'zz'), null)
 })
 
 test('a steer spends only backing not yet behind a note, looked up by its author', async () => {
@@ -67,6 +70,21 @@ test('a steer spends only backing not yet behind a note, looked up by its author
   assert.equal(await steer('s3', 40n), true)
   const [member] = (await Store.members(db.env, 'a')).filter((found) => found.address === '0x01')
   assert.deepEqual([member?.backed, member?.steered, member?.available], ['0.000130', '0.000130', '0.000000'])
+})
+
+test('branch ledgers say whether rows from before agents still wait to be adopted', async () => {
+  const db = open()
+  swarm(db, 'a')
+  db.sqlite.prepare("insert into branches (swarm, agent, branch, base, created_at) values ('a', 'agt_1', 1, '30000', 1)").run()
+  db.sqlite.prepare("insert into steers (id, swarm, contributor, note, note_id, amount, created_at, branch, agent) values ('s1', 'a', '0x01', 'branch 1', 'branch:1', '100', 1, 1, 'agt_1')").run()
+  assert.equal((await Store.ledgers(db.env, 'a', false)).legacy, false)
+
+  db.sqlite.prepare("insert into steers (id, swarm, contributor, note, note_id, amount, created_at, branch, agent) values ('s2', 'a', '0x02', 'branch 2', 'branch:2', '50', 1, 2, null)").run()
+  const read = await Store.ledgers(db.env, 'a', false)
+  assert.equal(read.legacy, true)
+  assert.deepEqual([...(read.money('agt_1').shares.get(2) ?? [])], [['0x02', 50n]])
+  await Store.adopt(db.env, 'a', 'agt_1')
+  assert.equal((await Store.ledgers(db.env, 'a', false)).legacy, false)
 })
 
 test('lagging finds swarms whose recent turns have no report, through the reports key', async () => {
