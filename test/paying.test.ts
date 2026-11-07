@@ -1,0 +1,143 @@
+import assert from 'node:assert/strict'
+import { registerHooks } from 'node:module'
+import test from 'node:test'
+import { Challenge } from 'mppx'
+import type * as PayingModule from '../src/worker/Paying.ts'
+
+registerHooks({
+  resolve: (specifier, context, next) =>
+    specifier === 'cloudflare:workers' ? { shortCircuit: true, url: 'data:text/javascript,export const waitUntil = () => {}; export class DurableObject {}' } : next(specifier, context),
+})
+
+const Paying: typeof PayingModule = await import('../src/worker/Paying.ts')
+
+const recipient = '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE'
+const ousd = '0x20c0000000000000000000006a37DA5C996874BE'
+const wallet = '0x00000000000000000000000000000000000000aa'
+
+function challenge(amount: number, to = recipient) {
+  return Challenge.serialize(Challenge.from({ id: 'c' + amount, intent: 'session', method: 'tempo', realm: 'gateway', request: { amount: String(amount), currency: ousd, methodDetails: { chainId: 4217 }, recipient: to } }))
+}
+
+function swarm(fields: { raised?: number; kv?: Record<string, unknown> } = {}) {
+  const store = new Map<string, unknown>(Object.entries(fields.kv ?? { id: 'abc123abc123' }))
+  const kv = {
+    delete: (key: string) => store.delete(key),
+    get: <T>(key: string) => store.get(key) as T | undefined,
+    list: <T>(options: { prefix?: string } = {}) => new Map([...store].filter(([key]) => key.startsWith(options.prefix ?? '')) as [string, T][]).entries(),
+    put: (key: string, value: unknown) => void store.set(key, value),
+  }
+  const logs: [string, string][] = []
+  const credentials: unknown[] = []
+  const row = { id: 'abc123abc123', raised: fields.raised ?? 0, sealed_wallet: 'sealed', sponsor_left: 0, wallet }
+  const self = {
+    clients: new Map([['pool', { createCredential: async (_response: Response, context: unknown) => (credentials.push(context), 'Payment voucher') }]]),
+    cue: () => {},
+    env: { TEMPO_RPC: 'http://127.0.0.1:9' },
+    found: async () => structuredClone(row),
+    kv,
+    log: (kind: string, text: string) => void logs.push([kind, text]),
+    run: () => ({ state: 'new' }),
+    set: () => {},
+  }
+  return { credentials, kv, logs, row, self: self as never, store }
+}
+
+test("the payer refuses an outside service past the swarm's per-call, hourly and per-host limits", () => {
+  const { row, self, store } = swarm()
+  const call = (amount: string, path = 'https://api.exa.ai/search') => Paying.passable(self, row as never, { amount, challenge: challenge(Number(amount) * 1e6), operation: 'agent.fetch', path, secret: '' })
+  assert.match(String((call('0.3') as { detail: string }).detail), /at most \$0\.25 a call; api\.exa\.ai asked \$0\.3/)
+  assert.equal(call('0.25'), undefined)
+  assert.ok(call('0.250001'))
+  store.set('passed', [{ amount: '400000', at: Date.now(), host: 'api.exa.ai' }])
+  const host = call('0.2') as { detail: string; retry: number }
+  assert.match(host.detail, /one outside service at most \$0\.5 an hour, and api\.exa\.ai had \$0\.4/)
+  assert.equal(host.retry, 60)
+  assert.equal(call('0.2', 'https://other.example/x'), undefined)
+  store.set('passed', [{ amount: '400000', at: Date.now(), host: 'api.exa.ai' }, { amount: '450000', at: Date.now(), host: 'b.example' }])
+  assert.match(String((call('0.2', 'https://c.example/x') as { detail: string }).detail), /at most \$1 an hour, and \$0\.85 went to them/)
+  store.set('passed', [{ amount: '900000', at: Date.now() - 3_700_000, host: 'api.exa.ai' }])
+  assert.equal(call('0.2'), undefined)
+})
+
+test("the payer's hourly limit for outside services grows with what the swarm raised", () => {
+  const { row, self, store } = swarm({ raised: 100_000_000 })
+  store.set('passed', [{ amount: '2000000', at: Date.now(), host: 'a.example' }])
+  assert.equal(Paying.passable(self, row as never, { amount: '0.2', challenge: challenge(200_000), operation: 'agent.fetch', path: 'https://b.example/x', secret: '' }), undefined)
+  store.set('passed', [{ amount: '2450000', at: Date.now(), host: 'a.example' }, { amount: '2450000', at: Date.now(), host: 'b.example' }])
+  assert.match(String((Paying.passable(self, row as never, { amount: '0.2', challenge: challenge(200_000), operation: 'agent.fetch', path: 'https://c.example/x', secret: '' }) as { detail: string }).detail), /at most \$5 an hour/)
+})
+
+test('a paid outside call is recorded, and an agent fetch is logged, while a refusal records nothing', () => {
+  const { self, store, logs } = swarm()
+  const input = { amount: '0.01', challenge: challenge(10_000), operation: 'agent.fetch', path: 'https://api.exa.ai/search', secret: '' }
+  Paying.passed(self, input, { code: 'limit_reached', detail: 'no', status: 402 })
+  assert.equal(store.get('passed'), undefined)
+  Paying.passed(self, input, { authorization: 'Payment x' })
+  assert.deepEqual((store.get('passed') as { amount: string; host: string }[]).map((item) => [item.amount, item.host]), [['10000', 'api.exa.ai']])
+  assert.match(logs[0]?.[1] ?? '', /paid \$0\.01 to an outside service/)
+})
+
+test("the payer pays only for its own swarm's app and refuses a request above the per-request cap", async () => {
+  const { self } = swarm()
+  assert.equal(((await Paying.charge(self, { app: 'swarm-other', challenge: challenge(5000), operation: 'model.responses', secret: '' })) as { status: number }).status, 401)
+  const capped = (await Paying.charge(self, { challenge: challenge(11_000_000), operation: 'model.responses', secret: '' })) as { detail: string; status: number }
+  assert.equal(capped.status, 402)
+  assert.match(capped.detail, /costs \$11, more than the \$10/)
+})
+
+test('a voucher on an open channel signs what the gateway requires, what it already accepted plus one, or what was spent with the calls in flight and this one', async () => {
+  const channel = { at: 0, confirmed: true, deposit: '1000000', descriptor: {}, id: '0x' + '0c'.repeat(32), signed: '100000' }
+  const pay = (input: { snapshots?: object[]; pending?: object[]; spent?: string }) => {
+    const { credentials, row, self, store } = swarm({ kv: { 'channel:pool': channel, id: 'abc123abc123', ...(input.pending ? { 'pending:pool': input.pending } : {}), ...(input.spent ? { 'spent:pool': input.spent } : {}) } })
+    const source = Paying.sources(self, row as never)[0]
+    return Paying.attempt(self, row as never, source as never, { challenge: challenge(5000), operation: 'model.responses', secret: '' }, (input.snapshots ?? []) as never).then((paid) => ({ cumulative: (credentials[0] as { cumulativeAmountRaw?: string } | undefined)?.cumulativeAmountRaw, paid, store }))
+  }
+  assert.equal((await pay({})).cumulative, '105000')
+  assert.equal((await pay({ spent: '200000' })).cumulative, '205000')
+  const snapshot = { acceptedCumulative: '300000', channelId: channel.id, deposit: '1000000', requiredCumulative: '250000', spent: '280000' }
+  assert.equal((await pay({ snapshots: [snapshot] })).cumulative, '300001')
+  assert.equal((await pay({ snapshots: [{ ...snapshot, requiredCumulative: '400000' }] })).cumulative, '400000')
+  const flight = [{ amount: '30000', at: Date.now(), cumulative: '330000' }]
+  const both = await pay({ pending: flight, snapshots: [{ ...snapshot, spent: '290000' }] })
+  assert.equal(both.cumulative, '330001')
+  assert.deepEqual((both.store.get('pending:pool') as { cumulative: string }[]).map((item) => item.cumulative), ['330000', '330001'])
+  assert.equal((both.store.get('channel:pool') as { signed: string }).signed, '330001')
+  const old = [{ amount: '30000', at: Date.now() - 60_000, cumulative: '330000' }]
+  assert.equal((await pay({ pending: old, snapshots: [{ ...snapshot, spent: '290000' }] })).cumulative, '300001')
+})
+
+test('the payer offers nothing when the gateway asks for a token the swarm does not pay in', async () => {
+  const { row, self } = swarm({ kv: { 'channel:pool': { at: 0, confirmed: true, deposit: '1000000', descriptor: {}, id: '0x' + '0c'.repeat(32), signed: '0' }, id: 'abc123abc123' } })
+  const source = Paying.sources(self, row as never)[0]
+  const other = Challenge.serialize(Challenge.from({ id: 'm', intent: 'session', method: 'tempo', realm: 'gateway', request: { amount: '5000', currency: '0x20c000000000000000000000f37de3740ADec032', methodDetails: { chainId: 4217 }, recipient } }))
+  const failed = (await Paying.attempt(self, row as never, source as never, { challenge: other, operation: 'model.responses', secret: '' }, [])) as { failed: string; small: boolean }
+  assert.match(failed.failed, /offered no OUSD session/)
+  assert.equal(failed.small, true)
+})
+
+test("a gateway snapshot of a closing channel banks what it spent and forgets it, and a source refused again rests", async () => {
+  const channel = { at: 0, confirmed: true, deposit: '1000000', descriptor: {}, id: '0x' + '0d'.repeat(32), signed: '50000' }
+  const snapshot = { acceptedCumulative: '60000', channelId: channel.id, deposit: '1000000', requiredCumulative: '60001', spent: '60000' }
+  const closing = swarm({ kv: { 'channel:pool': channel, id: 'abc123abc123', 'spent:pool': '40000' } })
+  const answer = (await Paying.charge(closing.self, { challenge: challenge(5000), channels: [{ ...snapshot, closing: true }], operation: 'model.responses', secret: '' })) as { code: string; status: number }
+  assert.equal(answer.status, 402)
+  assert.equal(closing.store.get('banked:pool'), '60000')
+  assert.equal(closing.store.has('spent:pool'), false)
+  assert.equal(closing.store.has('channel:pool'), false)
+  assert.equal(Paying.used(closing.self, 'pool'), 60000n)
+  assert.ok((closing.store.get('exhausted:pool') as number) > Date.now())
+  assert.match(closing.logs.at(-1)?.[1] ?? '', /cannot pay right now/)
+  const refused = swarm({ kv: { 'channel:pool': channel, id: 'abc123abc123' } })
+  await Paying.charge(refused.self, { attempt: 2, challenge: challenge(5000), channels: [snapshot], operation: 'model.responses', rejected: { detail: 'delta too small', status: 402 }, secret: '' })
+  assert.equal(refused.store.get('spent:pool'), '60000')
+  assert.ok((refused.store.get('exhausted:pool') as number) > Date.now() + 9 * 60_000)
+  assert.match(refused.logs[0]?.[1] ?? '', /refused the swarm wallet's payment again/)
+})
+
+test('the swarm wakes when its earliest set-aside source comes back, within eight days', () => {
+  const now = Date.now()
+  const { self } = swarm({ kv: { 'exhausted:hand:0x1': now + 50_000, 'exhausted:pool': now + 90_000, 'exhausted:stale': now - 1, 'exhausted:far': now + 9 * 86_400_000 } })
+  assert.equal(Paying.rested(self), now + 52_000)
+  assert.equal(Paying.rested(swarm().self), null)
+})
