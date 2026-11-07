@@ -23,6 +23,7 @@ import * as Words from './Words.ts'
 import * as Relay from './Relay.ts'
 import * as Clock from './Clock.ts'
 import * as Paying from './Paying.ts'
+import * as Money from './Money.ts'
 
 export type Contributed = {
   amount: string
@@ -57,8 +58,6 @@ export type Spoken = {
   swarm: string
   text: string
 }
-
-type Money = { biggest: bigint; left: bigint; row: Store.Row }
 
 type Repo = { name: string; state: 'none' | 'ready' }
 
@@ -152,18 +151,9 @@ const maxFailures = 3
 const settleMs = 15_000
 
 const quickMs = 60_000
-
-const pullMs = 120_000
-
-function earned(hand: Gateway.Listed) {
-  const charges = hand['charges'] as { usd?: unknown } | null | undefined
-  return typeof charges?.usd === 'number' && charges.usd > 0 ? Memo.units(charges.usd.toFixed(6)) : 0n
-}
 const snapshotMs = 60_000
 const snapshotFiles = 2_000
 const snapshotText = 64_000
-
-const smallestSwap = 10_000n
 
 const rowMs = 10_000
 
@@ -669,8 +659,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async advance(row: Store.Row) {
     const run = this.run()
     const worked = this.turned()
-    await this.fund(row)
-    const money = await this.refresh(row)
+    await Money.fund(this, row)
+    const money = await Money.refresh(this, row)
     if (run.state !== 'starting' && money.left < Store.reserve) {
       const wake = Paying.rested(this)
       await this.pause(money.row, worked || money.row.contributors ? { left: String(money.left), wake, why: 'money' } : { why: 'unfunded' })
@@ -703,7 +693,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     const now = Date.now()
     const turn = sent.ok ? sent.value.request_id : start.id
-    await this.cap(row, money.left / Hands.share)
+    await Money.cap(this, row, money.left / Hands.share)
     this.kv.put('agent', { ...(this.agent() ?? agent), briefed: true, unreachable: null })
     this.ctx.storage.sql.exec(
       "INSERT OR REPLACE INTO turns (n, turn, started_at, status, spent_before, base) VALUES (?, ?, ?, 'running', ?, ?)",
@@ -832,11 +822,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!window && !ended && now - this.checked < Clock.refreshMs) return now + Clock.followMs
 
     this.checked = now
-    const plan = window ? this.plan(now) : { ...everything, artifacts: now - (this.kv.get<number>('shelvedAt') ?? 0) >= Clock.shelfMs, git: true, turn: true }
+    const plan = window ? this.plan(now) : { ...Money.everything, artifacts: now - (this.kv.get<number>('shelvedAt') ?? 0) >= Clock.shelfMs, git: true, turn: true }
     const refreshing = plan.chain || plan.hands || plan.sponsors
     const [report, money] = await Promise.all([
       ended || plan.turn ? Gateway.turn(this.env, row.id, agent.id, run.turn) : undefined,
-      refreshing ? this.refresh(row, plan) : undefined,
+      refreshing ? Money.refresh(this, row, plan) : undefined,
       plan.git ? this.watch(row) : undefined,
       plan.artifacts ? this.publish(row.id) : undefined,
     ])
@@ -849,7 +839,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.abandon(agent.id, detail)
       return this.finish(row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
     }
-    if (money && plan.chain && (money.left < Store.reserve + Store.headroom || BigInt(this.kv.get<string>('loose') ?? '0') >= smallestSwap)) await this.fund(money.row)
+    if (money && plan.chain && (money.left < Store.reserve + Store.headroom || BigInt(this.kv.get<string>('loose') ?? '0') >= Money.smallestSwap)) await Money.fund(this, money.row)
     return window ? Date.now() : now + Clock.followMs
   }
 
@@ -945,7 +935,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.flush()
     await new Promise((resolve) => setTimeout(resolve, 3_000))
     for (const source of await Paying.sources(this, row)) await Paying.probe(this, row, source).catch(() => undefined)
-    const money = await this.refresh(row)
+    const money = await Money.refresh(this, row)
     const found = this.ctx.storage.sql
       .exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n)
       .toArray()[0]
@@ -1056,143 +1046,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return run
   }
 
-  async refresh(row: Store.Row, plan: Plan = everything): Promise<Money> {
-    const sources = Paying.sources(this, row)
-    const client = Chain.client(this.env)
-    const unsure = plan.chain ? [...this.kv.list<Payer.Channel>({ prefix: 'channel:' })].filter(([, channel]) => Payer.unsure(channel)) : []
-    const reading = plan.chain || !this.held
-    const [hands, balances, states, pledged] = await Promise.all([
-      plan.hands ? Gateway.hands(this.env, row.id) : undefined,
-      row.wallet ? (reading ? Vault.balances(this.env, row.wallet, client) : Promise.resolve(this.held)) : Promise.resolve(undefined),
-      Promise.all(unsure.map(([, channel]) => Payer.state(this.env, channel.id, client).catch(() => undefined))),
-      plan.sponsors ? this.sponsorships(row) : undefined,
-    ])
-    if (reading && balances) this.held = balances
-    for (const [index, [key, channel]] of unsure.entries()) {
-      const state = states[index]
-      const confirmed = state ? Payer.confirm(channel, state.deposit, Date.now()) : channel
-      if (confirmed !== channel) this.kv.put(key, confirmed)
-    }
-    let left = 0n
-    let biggest = 0n
-    let pooled = 0n
-    for (const source of sources) {
-      const channel = this.kv.get<Payer.Channel>(`channel:${source.id}`)
-      const spent = BigInt(this.kv.get<string>('spent:' + source.id) ?? channel?.signed ?? '0')
-      const inside = Payer.inside(channel, spent)
-      const room = balances ? Payer.max(Vault.total(balances) - Vault.dust * 3n, 0n) : 0n
-      const available = inside + room
-      if (room >= Paying.perCall) this.kv.delete('exhausted:' + source.id)
-      pooled = available
-      if ((this.kv.get<number>('exhausted:' + source.id) ?? 0) > Date.now()) continue
-      left += available
-      biggest = Payer.max(biggest, available)
-    }
-    const loose = String(balances ? balances.pathusd + balances.usdce - Vault.dust * 2n : 0n)
-    if (this.kv.get<string>('loose') !== loose) this.kv.put('loose', loose)
-    if (pledged) this.pledged = pledged
-    const sponsored = plan.sponsors ? this.pledged : { biggest: this.pledged.biggest, left: BigInt(row.sponsor_left ?? 0), spent: BigInt(row.sponsor_spent ?? 0) }
-    left += sponsored.left
-    biggest = Payer.max(biggest, sponsored.biggest)
-    this.kv.put('sponsoredMost', String(sponsored.biggest))
-
-    const previous = this.kv.get<Hand[]>('hands') ?? []
-    const connected = hands ? (hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []) : undefined
-    if (connected) await this.joined(row, connected, new Set(previous.map((hand) => hand.name)))
-
-    const pool = { machines: connected?.length ?? previous.length, pool_left: Number(pooled), pool_spent: Number(Paying.used(this, 'pool') + Paying.handsUsed(this)), sponsor_left: Number(sponsored.left), sponsor_spent: Number(sponsored.spent) }
-    if (
-      Number(row.machines) !== pool.machines ||
-      Number(row.pool_left) !== pool.pool_left ||
-      Number(row.pool_spent) !== pool.pool_spent ||
-      Number(row.sponsor_left) !== pool.sponsor_left ||
-      Number(row.sponsor_spent) !== pool.sponsor_spent
-    ) {
-      await Store.update(this.env, row.id, pool)
-      const updated = { ...row, ...pool, remaining: pool.pool_left + pool.sponsor_left, spent: Number(row.spent) - Number(row.pool_spent) - Number(row.sponsor_spent) + pool.pool_spent + pool.sponsor_spent }
-      this.remember(updated)
-      this.beacon(updated)
-      return { biggest, left, row: updated }
-    }
-    return { biggest, left, row: (await this.found(row.id)) ?? row }
-  }
-
-  async joined(row: Store.Row, connected: Gateway.Listed[], previous: ReadonlySet<string>) {
-    const issued = new Map(connected.some((hand) => !previous.has(hand.name)) ? (await Hands.list(this.env, row.id)).map((hand) => [hand.name, hand]) : [])
-    for (const hand of connected) {
-      if (previous.has(hand.name)) continue
-      const guest = issued.get(hand.name)
-      if (guest && 'cap' in hand && this.turn()) await Gateway.cap(this.env, row.id, hand.name, Number(Memo.decimal(this.allowance(row, hand, BigInt(this.kv.get<string>('handCap') ?? '0')))))
-      this.log(
-        'machine',
-        guest
-          ? `A contributor's machine joined the swarm as hand ${hand.name}${guest.label ? ` (${guest.label})` : ''}.`
-          : `Machine ${hand.name} joined the swarm.`,
-      )
-    }
-    for (const name of previous)
-      if (!connected.some((hand) => hand.name === name)) this.log('machine', `Machine ${name} left.`)
-    if (connected.length === previous.size && connected.every((hand) => previous.has(hand.name))) return
-    this.kv.put('hands', connected.map((hand) => ({ connected: true, name: hand.name })))
-    this.changed('hands')
-  }
-
-  async sponsorships(row: Store.Row) {
-    const counted = new Map<string, bigint>((await Store.channels(this.env, row.id)).map((gift) => [gift.channel, BigInt(gift.amount)]))
-    if (!counted.size) return { biggest: 0n, left: 0n, spent: 0n }
-    const listed = await Gateway.sponsors(this.env, row.id)
-    if (!listed.ok) return { biggest: 0n, left: BigInt(row.sponsor_left ?? 0), spent: BigInt(row.sponsor_spent ?? 0) }
-    let biggest = 0n
-    let left = 0n
-    let spent = 0n
-    for (const channel of listed.value.sponsors) {
-      const used = Memo.units(channel.spent)
-      spent += used
-      if (channel.endedAt !== null || channel.closing) {
-        const amount = counted.get(channel.channel.toLowerCase())
-        if (amount !== undefined && amount !== used) {
-          await Store.delivered(this.env, channel.channel, used)
-          this.marked += 1
-        }
-        continue
-      }
-      const available = Memo.units(channel.available)
-      left += available
-      biggest = Payer.max(biggest, available)
-    }
-    return { biggest, left, spent }
-  }
-
-  fund(row: Store.Row) {
-    this.funding ??= Paying.locked(this, () => this.refill(row)).finally(() => {
-      this.funding = undefined
-    })
-    return this.funding
-  }
-
-  async refill(row: Store.Row) {
-    if (!row.wallet || !row.sealed_wallet) return
-    const owner = await Vault.account(this.env, row)
-    const balances = await Vault.balances(this.env, row.wallet)
-
-    for (const id of ['pathusd', 'usdce'] as const) {
-      const amount = balances[id] - Vault.dust
-      if (amount < smallestSwap || (id === 'usdce' && Date.now() - this.vended < pullMs)) continue
-      const result = await Vault.swap(this.env, owner, id, amount).catch((error: unknown) => error as Error)
-      if (result instanceof Error) {
-        this.log('error', `Swapping ${Chain.tokens[id].symbol} to OUSD failed.`, result.message.split('\n')[0] ?? null)
-        continue
-      }
-      this.kv.delete('exhausted:pool')
-      this.cue('chain')
-      this.log(
-        'funds',
-        `Swapped ${Words.trim(Memo.decimal(amount))} ${Chain.tokens[id].symbol} to ${Words.trim(Memo.decimal(result.received))} OUSD on the stablecoin DEX (quote ${Words.trim(Memo.decimal(result.quote))}, at least ${Words.trim(Memo.decimal(result.minimum))}, fee ${Words.trim(Memo.decimal(result.fee))}).`,
-        result.hash,
-      )
-    }
-  }
-
   async pause(row: Store.Row, pause: Phase.Pause) {
     const run = this.run()
     if (run.state === 'paused' && Phase.same(run.pause, pause)) return
@@ -1297,28 +1150,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const commits = await this.commits(swarm, name, 50)
     const at = base ? commits.findIndex((commit) => commit.sha === base) : -1
     return at >= 0 ? commits.slice(0, at) : commits
-  }
-
-  async cap(row: Store.Row, amount: bigint) {
-    this.kv.put('handCap', String(amount))
-    const listed = await Gateway.hands(this.env, row.id)
-    if (!listed.ok) return
-    for (const hand of listed.value.hands.filter((found) => found.connected && 'cap' in found)) {
-      this.kv.put('handTurn:' + hand.name, String(earned(hand)))
-      await Gateway.cap(this.env, row.id, hand.name, Number(Memo.decimal(this.allowance(row, hand, amount))))
-    }
-  }
-
-  allowance(row: Store.Row, hand: Gateway.Listed, perTurn: bigint) {
-    const now = Date.now()
-    const total = earned(hand)
-    const known = this.kv.get<{ at: number; usd: string }>('handDay:' + hand.name)
-    const day = known && now - known.at < Clock.dayMs ? known : { at: now, usd: String(total) }
-    if (day !== known) this.kv.put('handDay:' + hand.name, day)
-    const turn = total - BigInt(this.kv.get<string>('handTurn:' + hand.name) ?? String(total))
-    const today = total - BigInt(day.usd)
-    const left = Payer.min(perTurn - turn, BigInt(row.raised) / Hands.share - today)
-    return left > 0n ? left : 0n
   }
 
   async steer(swarm: string, noteId: string): Promise<Note | undefined> {
@@ -1781,10 +1612,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 type Cue = 'artifacts' | 'chain' | 'git' | 'hands' | 'sponsors' | 'turn'
 
 type Pending = { at: number; parts: Set<Part>; pulse: Store.Row | undefined; timer: ReturnType<typeof setTimeout> | undefined }
-
-type Plan = { chain: boolean; hands: boolean; sponsors: boolean }
-
-const everything: Plan = { chain: true, hands: true, sponsors: true }
 
 const maxWaitMs = 60_000
 
