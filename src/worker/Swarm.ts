@@ -740,7 +740,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async styled(row: Store.Row, agent: string) {
-    if (this.kv.get<string>('persona') === Persona.name || !(await Persona.ensure(this.env))) return agent
+    if (!(await Persona.ensure(this.env)) || this.kv.get<string>('persona') === Persona.name) return agent
     const patched = await Gateway.restyle(this.env, row.id, agent, Persona.name)
     if (patched.ok || patched.status === 409) this.kv.put('persona', Persona.name)
     if (patched.ok) this.log('status', "Gave the agent the swarm's instructions on artifacts, appended to its system prompt.")
