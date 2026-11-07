@@ -49,5 +49,5 @@ export async function file(env: Cloudflare.Env, input: unknown): Promise<Problem
   const answer = (await response.json().catch(() => ({}))) as { detail?: string; id?: string; link?: string; reason?: string }
   if (!response.ok || !answer.id || !answer.link)
     return Problem.fail(502, 'upstream_failed', `The report was not filed: ${answer.detail ?? answer.reason ?? `status ${response.status}`}`)
-  return Problem.ok({ id: answer.id, link: answer.link })
+  return Problem.ok({ id: answer.id, link: new URL(answer.link, origin).href })
 }
