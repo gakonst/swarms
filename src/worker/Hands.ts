@@ -42,11 +42,6 @@ export async function list(env: Cloudflare.Env, swarm: string) {
   return results
 }
 
-export async function count(env: Cloudflare.Env, swarm: string) {
-  const row = await env.DB.prepare('select count(*) as n from hands where swarm = ?').bind(swarm).first<{ n: number }>()
-  return row?.n ?? 0
-}
-
 export async function forget(env: Cloudflare.Env, swarm: string, name: string) {
   await env.DB.prepare('delete from hands where swarm = ? and name = ?').bind(swarm, name).run()
 }
