@@ -427,7 +427,7 @@ export async function attempt(self: Swarm, row: Store.Row, source: Source, input
 
 export async function probe(self: Swarm, row: Store.Row, source: Source) {
   const channel = self.kv.get<Payer.Channel>(`channel:${source.id}`)
-  if (!channel?.confirmed) return
+  if (!channel?.confirmed || self.kv.get<string>('probed:' + source.id) === channel.signed) return
   const init = { body: JSON.stringify({ key: 'probe' }), headers: { 'content-type': 'application/json', 'gateway-app': Gateway.app(row.id) }, method: 'POST' }
   const challenge = await Gateway.call(self.env, '/v1/kv/get', init)
   const offered = Payer.offer(challenge.headers.get('www-authenticate') ?? '', source.currency)
@@ -441,7 +441,9 @@ export async function probe(self: Swarm, row: Store.Row, source: Source) {
   const header = paid.headers.get('payment-receipt')
   if (!paid.ok || !header) return
   const receipt = JSON.parse(atob(header.replace(/-/g, '+').replace(/_/g, '/'))) as { acceptedCumulative?: string; spent?: string }
-  self.kv.put(`channel:${source.id}`, { ...channel, signed: receipt.acceptedCumulative ?? String(cumulative) })
+  const signed = receipt.acceptedCumulative ?? String(cumulative)
+  self.kv.put(`channel:${source.id}`, { ...channel, signed })
+  self.kv.put('probed:' + source.id, signed)
   if (receipt.spent) self.kv.put('spent:' + source.id, receipt.spent)
 }
 

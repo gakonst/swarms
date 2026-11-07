@@ -11,7 +11,7 @@ import * as Clock from './Clock.ts'
 import * as Paying from './Paying.ts'
 import type { Swarm } from './Swarm.ts'
 
-type Money = { biggest: bigint; left: bigint; row: Store.Row }
+type Money = { biggest: bigint; left: bigint; listed: Gateway.Listed[] | undefined; row: Store.Row }
 
 type Plan = { chain: boolean; hands: boolean; sponsors: boolean }
 
@@ -82,9 +82,9 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
     const updated = { ...row, ...pool, remaining: pool.pool_left + pool.sponsor_left, spent: Number(row.spent) - Number(row.pool_spent) - Number(row.sponsor_spent) + pool.pool_spent + pool.sponsor_spent }
     self.remember(updated)
     self.beacon(updated)
-    return { biggest, left, row: updated }
+    return { biggest, left, listed: hands?.ok ? hands.value.hands : undefined, row: updated }
   }
-  return { biggest, left, row: (await self.found(row.id)) ?? row }
+  return { biggest, left, listed: hands?.ok ? hands.value.hands : undefined, row: (await self.found(row.id)) ?? row }
 }
 
 export async function joined(self: Swarm, row: Store.Row, connected: Gateway.Listed[], previous: ReadonlySet<string>) {
@@ -163,11 +163,11 @@ export async function refill(self: Swarm, row: Store.Row) {
   }
 }
 
-export async function cap(self: Swarm, row: Store.Row, amount: bigint) {
+export async function cap(self: Swarm, row: Store.Row, amount: bigint, known: Gateway.Listed[] | undefined) {
   self.kv.put('handCap', String(amount))
-  const listed = await Gateway.hands(self.env, row.id)
-  if (!listed.ok) return
-  for (const hand of listed.value.hands.filter((found) => found.connected && 'cap' in found)) {
+  if (!known && !(self.kv.get<Hand[]>('hands') ?? []).length) return
+  const listed: Gateway.Listed[] = known ?? (await Gateway.hands(self.env, row.id).then((found) => (found.ok ? found.value.hands : [])))
+  for (const hand of listed.filter((found) => found.connected && 'cap' in found)) {
     self.kv.put('handTurn:' + hand.name, String(earned(hand)))
     await Gateway.cap(self.env, row.id, hand.name, Number(Memo.decimal(allowance(self, row, hand, amount))))
   }

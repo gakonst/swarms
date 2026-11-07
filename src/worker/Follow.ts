@@ -43,7 +43,11 @@ const streamFails = 2
 
 const fallbackMs = 5 * 60_000
 
-const cueMs = 5_000
+export const cueMs = 5_000
+
+const spacingMs = 30_000
+
+const lendingMs = 3_600_000
 
 export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   const agent = self.agent()
@@ -78,8 +82,10 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   self.checked = now
   const plan = window ? planned(self, now) : { ...Money.everything, artifacts: now - (self.kv.get<number>('shelvedAt') ?? 0) >= Clock.shelfMs, git: true, turn: true }
   const refreshing = plan.chain || plan.hands || plan.sponsors
+  const reported = ended ? self.reported : undefined
+  self.reported = undefined
   const [report, money] = await Promise.all([
-    ended || plan.turn ? Gateway.turn(self.env, row.id, agent.id, run.turn) : undefined,
+    reported ? ({ ok: true, value: reported } as const) : ended || plan.turn ? Gateway.turn(self.env, row.id, agent.id, run.turn) : undefined,
     refreshing ? Money.refresh(self, row, plan) : undefined,
     plan.git ? Repo.watch(self, row) : undefined,
     plan.artifacts ? self.publish(row.id) : undefined,
@@ -101,8 +107,9 @@ export async function listen(self: Swarm, row: Store.Row, agent: Lead, run: Turn
   const stop = new AbortController()
   const live = [...self.watchers].some((watcher) => watcher.relaying)
   const opened = Date.now()
-  self.window = { live, stop }
-  const timer = setTimeout(() => stop.abort(), Clock.refreshMs)
+  let closing = Math.max(until(self, opened), opened + Clock.refreshMs)
+  const timer = setTimeout(() => stop.abort(), closing - opened)
+  self.window = { close: (at) => (closing = Math.min(closing, Math.max(at, opened + Clock.refreshMs))), live, stop }
   let ended = false
   let cursor = agent.cursor
   try {
@@ -136,7 +143,7 @@ export async function listen(self: Swarm, row: Store.Row, agent: Lead, run: Turn
         cursor = Math.max(cursor, event.seq)
       }
       if (cursor !== (self.agent() ?? agent).cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor })
-      if (ended) stop.abort()
+      if (ended || Date.now() >= closing) stop.abort()
     }
   } finally {
     clearTimeout(timer)
@@ -159,21 +166,51 @@ export function deltas(self: Swarm, event: Gateway.Event, agent: string): Live[]
 export function due(self: Swarm, cue: Cue, every: number, now: number) {
   const last = self.polled.get(cue) ?? 0
   const cued = self.cues.get(cue)
-  const hit = (cued !== undefined && cued > last && now - cued >= cueMs) || now - last >= every
+  const hit = (cued !== undefined && cued > last && now - cued >= cueMs && now - last >= spacingMs) || now - last >= every
   if (hit) self.polled.set(cue, now)
   return hit
 }
 
-export function planned(self: Swarm, now: number) {
-  const lent = (self.kv.get<Hand[]>('hands') ?? []).length > 0 || !!self.kv.get<boolean>('issued')
+export function cued(self: Swarm, cue: Cue, since: number) {
+  return (self.cues.get(cue) ?? 0) > since || self.born > since
+}
+
+function every(self: Swarm, now: number): Record<Cue, number> {
+  const lent = (self.kv.get<Hand[]>('hands') ?? []).length > 0 || now - (self.kv.get<number>('issued') ?? 0) < lendingMs
   return {
-    artifacts: due(self, 'artifacts', fallbackMs, now),
-    chain: due(self, 'chain', Clock.minuteMs, now),
-    git: due(self, 'git', self.kv.get<string>('repo') ? Clock.minuteMs : fallbackMs, now),
-    hands: due(self, 'hands', lent ? Clock.refreshMs : Clock.minuteMs, now),
-    sponsors: due(self, 'sponsors', self.listened() ? Clock.refreshMs : 3 * Clock.refreshMs, now),
-    turn: due(self, 'turn', Clock.minuteMs, now),
+    artifacts: fallbackMs,
+    chain: fallbackMs,
+    git: fallbackMs,
+    hands: lent ? Clock.minuteMs : fallbackMs,
+    sponsors: self.listened() ? Clock.minuteMs : fallbackMs,
+    turn: fallbackMs,
   }
+}
+
+export function handsDue(self: Swarm, now: number) {
+  return due(self, 'hands', every(self, now).hands, now)
+}
+
+export function planned(self: Swarm, now: number) {
+  const intervals = every(self, now)
+  return {
+    artifacts: due(self, 'artifacts', intervals.artifacts, now),
+    chain: due(self, 'chain', intervals.chain, now),
+    git: due(self, 'git', intervals.git, now),
+    hands: due(self, 'hands', intervals.hands, now),
+    sponsors: due(self, 'sponsors', intervals.sponsors, now),
+    turn: due(self, 'turn', intervals.turn, now),
+  }
+}
+
+export function until(self: Swarm, now: number) {
+  let next = now + fallbackMs
+  for (const [cue, interval] of Object.entries(every(self, now)) as [Cue, number][]) {
+    const last = self.polled.get(cue) ?? 0
+    const at = self.cues.get(cue)
+    next = Math.min(next, last + interval, at !== undefined && at > last ? Math.max(at + cueMs, last + spacingMs) : Infinity)
+  }
+  return next
 }
 
 export function digest(self: Swarm, event: Gateway.Event, turn: string) {
@@ -181,6 +218,8 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
   if (!outer) return false
   if (outer.source === undefined) {
     if (outer.type !== 'result' || event.request_id !== turn) return false
+    const result = outer as Record<string, unknown>
+    if (typeof result['status'] === 'string') self.reported = { ...result, request_id: turn, status: result['status'] } as Gateway.Report
     Relay.ended(self)
     return true
   }
@@ -192,7 +231,10 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
     if (!found) return false
     const update = outer.update as { event?: { payload?: Record<string, unknown>; type?: string }; type?: string }
     if (update.type !== 'event') self.kv.put('crew', known)
-    if (update.type === 'added' || update.type === 'status' || update.type === 'completion') self.changed('branches')
+    if (update.type === 'added' || update.type === 'status' || update.type === 'completion') {
+      self.branched = Date.now()
+      self.changed('branches')
+    }
     if (update.type === 'event') {
       if (update.event?.type === 'tool.call') for (const found of cues(update.event.payload ?? {})) self.cue(found)
       for (const delta of streamed(found.who, update.event?.type, update.event?.payload ?? {})) Relay.relay(self, delta)

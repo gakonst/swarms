@@ -143,6 +143,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   funding: Promise<void> | undefined
   wallet: Promise<unknown> = Promise.resolve()
   checked = 0
+  born = Date.now()
+  branched = 0
+  reported: Gateway.Report | undefined
   vended = 0
   signers = new Map<string, Promise<Paying.Signer>>()
   clients = new Map<string, Payer.Client>()
@@ -154,7 +157,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   kept: SyncKvStorage | undefined
   watchers = new Set<Relay.Watcher>()
   ring: Relay.Ring = { bytes: 0, frames: [] }
-  window: { live: boolean; stop: AbortController } | undefined
+  window: { close: (at: number) => void; live: boolean; stop: AbortController } | undefined
   fails = 0
   cues = new Map<Follow.Cue, number>()
   polled = new Map<Follow.Cue, number>()
@@ -257,6 +260,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ` behind "${input.note}"` : ''}.`)
     if (input.noteId) await this.steer(input.swarm, input.noteId)
     this.cue('chain')
+    this.cue('sponsors')
     this.changed('detail', 'members')
     await this.wake('money')
     if (this.listened()) {
@@ -375,7 +379,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async hand(swarm: string, name: string): Promise<Gateway.Result<Gateway.Minted>> {
     this.marked += 1
     this.kv.put('id', swarm)
-    this.kv.put('issued', true)
+    this.kv.put('issued', Date.now())
     this.changed('hands', 'members')
     this.cue('hands')
     const listed = await Gateway.hands(this.env, swarm)
@@ -570,7 +574,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   cue(cue: Follow.Cue) {
-    this.cues.set(cue, Date.now())
+    const now = Date.now()
+    this.cues.set(cue, now)
+    this.window?.close(Follow.until(this, now))
   }
 
   async budget(secret: string, app: string | undefined): Promise<Paying.Paid> {
@@ -796,6 +802,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket]
     const listening = new URL(request.url).searchParams.get('listen') === '1'
     this.ctx.acceptWebSocket(server, listening ? ['listen'] : [])
+    this.window?.close(Follow.until(this, Date.now()))
     server.serializeAttachment({ address: null })
     server.send(JSON.stringify({ type: 'welcome', version: this.stamp().version } satisfies Chatter))
     if (!listening) Chat.presence(this)

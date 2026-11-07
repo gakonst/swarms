@@ -1,5 +1,6 @@
 import type { Snapshot } from '../shared/Api.ts'
 import { redact } from '../shared/Trail.ts'
+import * as Follow from './Follow.ts'
 import * as Gateway from './Gateway.ts'
 import * as Store from './Store.ts'
 import type { Swarm } from './Swarm.ts'
@@ -24,10 +25,20 @@ const snapshotText = 64_000
 
 type Repo = { name: string; state: 'none' | 'ready' }
 
+const lookMs = 30 * 60_000
+
+export function saw(self: Swarm, sha: string) {
+  self.kv.put('seen', sha)
+  self.kv.put('seenAt', Date.now())
+}
+
 export async function located(self: Swarm, row: Store.Row): Promise<Repo> {
   const ready = self.kv.get<string>('repo')
   if (ready) return { name: ready, state: 'ready' }
   const name = row.repo ?? slug(row.title)
+  const looked = self.kv.get<number>('repoLooked') ?? 0
+  if (!Follow.cued(self, 'git', looked) && Date.now() - looked < lookMs) return { name, state: 'none' }
+  self.kv.put('repoLooked', Date.now())
   const owner = await gatewayWallet(self)
   const listed = owner ? await Gateway.code<{ repos: { name: string }[] }>(self.env, owner, row.id, `?at=${Date.now()}`) : undefined
   const found = listed?.repos.find((repo) => repo.name === name) ?? listed?.repos[0]
@@ -55,7 +66,7 @@ export async function watch(self: Swarm, row: Store.Row) {
   if (repo.state !== 'ready') return
   const fresh = await pushed(self, row.id, repo.name, self.kv.get<string>('seen') ?? null)
   if (!fresh[0]) return
-  self.kv.put('seen', fresh[0].sha)
+  saw(self, fresh[0].sha)
   await snapshot(self, row.id, repo.name).catch((error: unknown) => console.error('Reading the repository failed', error))
   self.changed('code')
   for (const commit of fresh.reverse()) self.log('status', `Pushed ${commit.sha.slice(0, 7)} to ${repo.name}: ${redact(commit.message.split('\n')[0] ?? '')}`)

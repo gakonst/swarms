@@ -76,7 +76,7 @@ export async function advance(self: Swarm, row: Store.Row) {
   const run = self.run()
   const worked = self.turned()
   await Money.fund(self, row)
-  const money = await Money.refresh(self, row)
+  const money = await Money.refresh(self, row, { chain: true, hands: Follow.handsDue(self, Date.now()), sponsors: true })
   if (run.state !== 'starting' && money.left < Store.reserve) {
     const wake = Paying.rested(self)
     await pause(self, money.row, worked || money.row.contributors ? { left: String(money.left), wake, why: 'money' } : { why: 'unfunded' })
@@ -90,8 +90,9 @@ export async function advance(self: Swarm, row: Store.Row) {
   const n = run.state === 'starting' ? run.n : worked + 1
   const since = Phase.since(run)
   const notes = await self.notes(money.row)
-  const base = repo.state === 'ready' ? await Repo.head(self, row.id, repo.name) : null
-  if (base) self.kv.put('seen', base)
+  const seen = self.kv.get<string>('seen')
+  const base = repo.state !== 'ready' ? null : seen && !Follow.cued(self, 'git', self.kv.get<number>('seenAt') ?? 0) ? seen : await Repo.head(self, row.id, repo.name)
+  if (base) Repo.saw(self, base)
   else self.kv.delete('seen')
   const told = self.told()
   const included = agent.briefed ? notes.filter((note) => grown(told.get(note.id), Memo.units(note.weight))) : notes
@@ -109,7 +110,7 @@ export async function advance(self: Swarm, row: Store.Row) {
 
   const now = Date.now()
   const turn = sent.ok ? sent.value.request_id : start.id
-  await Money.cap(self, row, money.left / Hands.share)
+  await Money.cap(self, row, money.left / Hands.share, money.listed)
   self.kv.put('agent', { ...(self.agent() ?? agent), briefed: true, unreachable: null })
   self.ctx.storage.sql.exec(
     "INSERT OR REPLACE INTO turns (n, turn, started_at, status, spent_before, base) VALUES (?, ?, ?, 'running', ?, ?)",
@@ -181,7 +182,7 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
     self.kv.delete('agent')
   }
 
-  const styled = await Persona.ensure(self.env)
+  const styled = await Persona.ensure(self.env, self.kv)
   const named = { name: row.title.slice(0, 60), payer }
   let created = await Gateway.agent(self.env, row.id, styled ? { ...named, persona: Persona.name } : named)
   const persona = styled && created.ok
@@ -195,7 +196,7 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
 }
 
 export async function restyled(self: Swarm, row: Store.Row, agent: Lead): Promise<Lead> {
-  if (!(await Persona.ensure(self.env)) || agent.persona) return agent
+  if (!(await Persona.ensure(self.env, self.kv)) || agent.persona) return agent
   const patched = await Gateway.restyle(self.env, row.id, agent.id, Persona.name)
   if (!patched.ok && patched.status !== 409) {
     console.error('Giving the agent the swarm persona failed', patched.status, patched.detail)
@@ -216,13 +217,17 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   Follow.flush(self)
   await new Promise((resolve) => setTimeout(resolve, 3_000))
   for (const source of await Paying.sources(self, row)) await Paying.probe(self, row, source).catch(() => undefined)
-  const money = await Money.refresh(self, row)
+  const money = await Money.refresh(self, row, { chain: true, hands: Follow.handsDue(self, Date.now()), sponsors: true })
   const found = self.ctx.storage.sql
     .exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n)
     .toArray()[0]
-  await Branching.settled(self, money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
+  if (self.branched > (self.kv.get<number>('settledAt') ?? 0) || self.born > run.started) {
+    self.kv.put('settledAt', Date.now())
+    await Branching.settled(self, money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
+  }
   const repo = await Repo.located(self, money.row)
-  const commits = repo.state === 'ready' ? await Repo.pushed(self, row.id, repo.name, found?.base ?? null) : []
+  const commits = repo.state === 'ready' && Follow.cued(self, 'git', run.started) ? await Repo.pushed(self, row.id, repo.name, found?.base ?? null) : []
+  if (commits[0]) Repo.saw(self, commits[0].sha)
   const spent = BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
   self.ctx.storage.sql.exec(
     'UPDATE turns SET ended_at = ?, status = ?, message = ?, spent = ?, commits = ? WHERE n = ?',
@@ -244,12 +249,18 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
     status === 'completed' ? `Posted an update after spending ${Words.dollars(spent > 0n ? spent : 0n)}${pushed}.` : `The agent stopped with an error after spending ${Words.dollars(spent > 0n ? spent : 0n)}${pushed}.`,
     status === 'completed' ? (commits.length ? commits.map((commit) => `${commit.sha.slice(0, 7)} ${commit.message.split('\n')[0]}`).join('\n') : null) : message,
   )
-  await self.publish(row.id)
+  if (Follow.cued(self, 'artifacts', self.kv.get<number>('shelvedAt') ?? 0)) await self.publish(row.id)
   self.changed('detail')
   if (answer?.text) Chat.announce(self, `Update: ${Answer.excerpt(answer.text, 280)}`)
 
-  const stored = self.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'tool' AND ((text || coalesce(detail, '')) LIKE '%kv_set%' OR (text || coalesce(detail, '')) LIKE '%bucket_put%' OR (text || coalesce(detail, '')) LIKE '%git_create%')", run.from).one().n
-  if (stored > 0 || !self.kv.get<number>('published')) await expose(self, row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
+  const stored = self.ctx.storage.sql
+    .exec<{ bucket: number; git: number; kv: number }>(
+      "SELECT COALESCE(SUM((text || coalesce(detail, '')) LIKE '%kv_set%'), 0) AS kv, COALESCE(SUM((text || coalesce(detail, '')) LIKE '%bucket_put%'), 0) AS bucket, COALESCE(SUM((text || coalesce(detail, '')) LIKE '%git_create%'), 0) AS git FROM feed WHERE seq > ? AND kind = 'tool'",
+      run.from,
+    )
+    .one()
+  const kinds = new Set((['kv', 'bucket', 'git'] as const).filter((kind) => stored[kind] > 0 || !self.kv.get<number>('published')))
+  if (kinds.size) await expose(self, row, kinds).catch((error: unknown) => console.error('Making the swarm data public failed', error))
   const latest = self.run()
   const wanted = BigInt(latest.state === 'working' ? (latest.wanted ?? '0') : '0')
   if (status !== 'completed' && (money.left < Store.reserve || wanted > money.biggest)) {
@@ -310,9 +321,10 @@ async function squeeze(self: Swarm, row: Store.Row, run: Turning) {
   return until
 }
 
-export async function expose(self: Swarm, row: Store.Row) {
+export async function expose(self: Swarm, row: Store.Row, kinds: ReadonlySet<'bucket' | 'git' | 'kv'> = new Set(['bucket', 'git', 'kv'])) {
   const hidden: ['bucket' | 'git' | 'kv', string][] = []
   for (const [kind, page] of [['kv', (cursor: string | null) => Gateway.values(self.env, row.id, cursor).then((found) => found.ok ? { cursor: found.value.cursor, items: found.value.entries } : undefined)], ['bucket', (cursor: string | null) => Gateway.objects(self.env, row.id, cursor).then((found) => found.ok ? { cursor: found.value.cursor, items: found.value.objects } : undefined)]] as const) {
+    if (!kinds.has(kind)) continue
     let cursor: string | null = null
     for (let pages = 0; pages < 20; pages++) {
       const found: { cursor: string | null; items: { key: string; public: boolean }[] } | undefined = await page(cursor)
@@ -322,8 +334,8 @@ export async function expose(self: Swarm, row: Store.Row) {
       if (!cursor) break
     }
   }
-  const listed = await Gateway.repos(self.env, row.id)
-  if (listed.ok) for (const repo of listed.value.repos) if (!repo.public) hidden.push(['git', repo.name])
+  const listed = kinds.has('git') ? await Gateway.repos(self.env, row.id) : undefined
+  if (listed?.ok) for (const repo of listed.value.repos) if (!repo.public) hidden.push(['git', repo.name])
   let shown = 0
   for (const [kind, name] of hidden) if ((await Gateway.reveal(self.env, row.id, kind, name)).ok) shown++
   self.kv.put('published', Date.now())

@@ -74,15 +74,24 @@ export const instructions = [
   ...autoresearch,
 ].join('\n')
 
-let set: Promise<boolean> | undefined
+const version = (() => {
+  let hash = 0xcbf29ce484222325n
+  for (const char of description + '\n' + instructions) hash = BigInt.asUintN(64, (hash ^ BigInt(char.codePointAt(0) ?? 0)) * 0x100000001b3n)
+  return hash.toString(16)
+})()
 
-export function ensure(env: Cloudflare.Env) {
-  const known = (set ??= Gateway.persona(env, { description, instructions, name }).then((result) => {
-    if (!result.ok) console.error('Setting the swarm persona failed', result.status, result.detail)
-    return result.ok
-  }))
-  void known.then((ok) => {
-    if (!ok && set === known) set = undefined
-  })
-  return known
+let set: string | undefined
+
+export async function ensure(env: Cloudflare.Env, kv: SyncKvStorage) {
+  if (kv.get<string>('personaSet') === version) return true
+  if (set !== version) {
+    const result = await Gateway.persona(env, { description, instructions, name })
+    if (!result.ok) {
+      console.error('Setting the swarm persona failed', result.status, result.detail)
+      return false
+    }
+    set = version
+  }
+  kv.put('personaSet', version)
+  return true
 }
