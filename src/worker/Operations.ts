@@ -38,6 +38,7 @@ import type {
 } from '../shared/Api.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
+import * as Setup from '../shared/Setup.ts'
 import * as Connect from '../shared/Connect.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Transfer from '../shared/Transfer.ts'
@@ -156,6 +157,22 @@ export const schema = {
       .describe('What the swarm should find out or build, what done looks like and what its updates should report.'),
     problem: z.enum(ids).optional().describe('The id of the idea-bank problem this swarm works on, from GET /v1/problems. A problem with an open swarm is not offered again until that swarm finishes.'),
     title: z.string().trim().min(3).max(80).describe('A short name for the swarm.'),
+    template: z
+      .enum(Setup.templates)
+      .default(Setup.fallback)
+      .describe(
+        'Which models the swarm runs on. frontier-mix (the default): Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, GPT-6.1 Sol or GPT-6 Astra on Claude Code or Codex. frontier-anthropic: Claude Code on Opus 5.5 only. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
+      ),
+    harness: z.enum(Setup.harnesses).optional().describe('custom only: the lead agent\'s harness, claude (Claude Code) or codex.'),
+    model: z.string().min(1).max(200).optional().describe('custom only: the lead agent\'s gateway model id, such as vercel/anthropic/claude-opus-5.5.'),
+    subagents: z
+      .object({
+        harnesses: z.array(z.enum(Setup.harnesses)).min(1).max(Setup.harnesses.length),
+        models: z.array(z.string().min(1).max(200)).min(1),
+      })
+      .nullable()
+      .optional()
+      .describe('custom only: the harnesses and gateway models the lead\'s subagents may use, every model under every harness; null or left out lets them use any.'),
   }),
   seat: z.object({
     budget: allowance.optional(),
@@ -351,8 +368,9 @@ async function backfill(env: Cloudflare.Env, row: Store.Row, latest: Update | un
 }
 
 export async function config(env: Cloudflare.Env): Promise<Config> {
-  const terms = await Gateway.sponsorship(env)
+  const [terms, prices] = await Promise.all([Gateway.sponsorship(env), Gateway.prices(env)])
   return {
+    models: [...(prices?.values() ?? [])],
     auth: Sessions.path,
     chainId: Chain.chain.id,
     channel: terms ? { escrow: terms.escrow, least: terms.least, operator: terms.operator, recipient: terms.recipient, signer: terms.signer } : null,
@@ -385,8 +403,16 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   const parsed = parse(schema.create, input)
   if (!parsed.ok) return parsed
 
+  const chosen = Setup.resolve(parsed.value)
+  if (typeof chosen === 'string') return Problem.fail(400, 'invalid_request', chosen)
+  if (parsed.value.template !== 'custom' && (parsed.value.harness || parsed.value.model || parsed.value.subagents !== undefined))
+    return Problem.fail(400, 'invalid_request', 'harness, model and subagents go with template custom.')
+  const prices = await Gateway.prices(env)
+  if (!prices) return Problem.fail(503, 'unavailable', "The gateway's model prices could not be read, so the swarm's costs are unknown. Try again shortly.")
+  const setup = Setup.priced(chosen, prices)
+  if (typeof setup === 'string') return Problem.fail(400, 'invalid_request', `${setup} GET /v1/config lists them.`)
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
-  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, ...(await Vault.create(env.SWARMS_SECRET)) })
+  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup), ...(await Vault.create(env.SWARMS_SECRET)) })
   if (!row) return Problem.fail(502, 'unavailable', 'The swarm was not saved.')
   await logged(Search.swarm(env, swarm))
   return Problem.ok(Store.summary(row))

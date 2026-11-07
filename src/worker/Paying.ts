@@ -57,7 +57,6 @@ const holdMs = 90_000
 
 const heldMs = 10 * 60_000
 
-export const perCall = Store.perCall
 
 function asked(input: Pay) {
   const stated = Memo.units(/^\d+(\.\d{1,6})?$/.test(input.amount ?? '') ? (input.amount as string) : '0')
@@ -327,9 +326,9 @@ export async function charge(self: Swarm, input: Pay, marks: Marks = {}): Promis
   if (busy) return { code: 'busy', detail: "The swarm's contributions are holding other calls' reservations; try again shortly.", retry: 2, status: 429 }
   const held = BigInt(((await self.found(row.id)) ?? row).sponsor_left ?? 0)
   const most = BigInt(self.kv.get<string>('sponsoredMost') ?? '0')
-  const scarce = !passing && held >= perCall && price !== undefined && most < price
+  const scarce = !passing && held >= Store.callOf(row) && price !== undefined && most < price
   if (scarce) wanted = Payer.max(wanted, price)
-  const squeezed = !passing && !scarce && held >= perCall
+  const squeezed = !passing && !scarce && held >= Store.callOf(row)
   if (squeezed) self.kv.put('squeezed', Date.now())
   const run = self.run()
   if (wanted && run.state === 'working') self.set({ ...run, wanted: String(wanted) })
@@ -339,9 +338,9 @@ export async function charge(self: Swarm, input: Pay, marks: Marks = {}): Promis
     code: 'limit_reached',
     detail: scarce
       ? `No channel of this swarm holds ${Words.dollars(price)} at once: the MACH channels the gateway spends for it hold ${Words.dollars(held)} in all, the largest ${Words.dollars(most)}. Ask for less at once, such as a shorter lease or a smaller machine.`
-      : held >= perCall && passing
+      : held >= Store.callOf(row) && passing
         ? `Payments to outside services come only from the swarm's wallet, which cannot pay this; the MACH channels the gateway spends for the swarm (${Words.dollars(held)} left) pay only for the gateway's own requests.`
-        : held >= perCall
+        : held >= Store.callOf(row)
           ? `The swarm's wallet cannot pay this, and the gateway found no room for it on the MACH channels it spends for the swarm (${Words.dollars(held)} in all, the largest ${Words.dollars(most)}): it reserves a model call's worst case on one channel, and prepaid machine time stays on its channel until the machine ends. The swarm backs off before it tries again.`
           : small
             ? 'No single contribution to this swarm can pay this much at once right now.'
@@ -371,7 +370,7 @@ export async function attempt(self: Swarm, row: Store.Row, source: Source, input
     mark(marks, 'room', rooming)
     const deposit = Payer.min(Payer.max(step, price), room.amount)
     if (deposit < price)
-      return { failed: `It can put in ${Memo.decimal(room.amount)} now, less than the ${Memo.decimal(price)} this request holds.`, price, room, small: room.amount >= perCall }
+      return { failed: `It can put in ${Memo.decimal(room.amount)} now, less than the ${Memo.decimal(price)} this request holds.`, price, room, small: room.amount >= Store.callOf(row) }
     const authorization = await mppx.createCredential(offered.response, { depositRaw: String(deposit) })
     const entry = Payer.opened(self.kv, source.id)
     if (!entry) throw new Error('mppx stored no channel for the open')
@@ -408,11 +407,11 @@ export async function attempt(self: Swarm, row: Store.Row, source: Source, input
     if (additional < shortfall) {
       const unspent = spent === undefined ? 0n : deposit - BigInt(spent)
       return {
-        busy: Date.now() - (self.kv.get<number>('paid:' + source.id) ?? 0) < (unspent >= perCall ? heldMs : holdMs),
+        busy: Date.now() - (self.kv.get<number>('paid:' + source.id) ?? 0) < (unspent >= Store.callOf(row) ? heldMs : holdMs),
         failed: `It can add ${Memo.decimal(room.amount)} now, less than the ${Memo.decimal(shortfall)} its channel needs (deposit ${Memo.decimal(deposit)}, spent ${Memo.decimal(BigInt(spent ?? '0'))}, accepted ${Memo.decimal(accepted)}, required ${Memo.decimal(BigInt(snapshot?.requiredCumulative ?? '0'))}, in flight ${Memo.decimal(pending)} over ${recent.length}, this request ${Memo.decimal(price)}).`,
         price,
         room,
-        small: room.amount + Payer.max(unspent, 0n) >= perCall,
+        small: room.amount + Payer.max(unspent, 0n) >= Store.callOf(row),
       }
     }
     topUp = await mppx.createCredential(offered.response, { action: 'topUp', additionalDepositRaw: String(additional), channelId: channel.id, descriptor: channel.descriptor })

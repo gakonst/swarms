@@ -52,7 +52,7 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
     const inside = Payer.inside(channel, spent)
     const room = balances ? Payer.max(Vault.total(balances) - Vault.dust * 3n, 0n) : 0n
     const available = inside + room
-    if (room >= Paying.perCall) self.kv.delete('exhausted:' + source.id)
+    if (room >= Store.callOf(row)) self.kv.delete('exhausted:' + source.id)
     pooled = available
     if ((self.kv.get<number>('exhausted:' + source.id) ?? 0) > Date.now()) continue
     left += available

@@ -1,6 +1,7 @@
 import type { Account, Answer, Contribution, Currency, Member, Note, Summary, Way } from '../shared/Api.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
+import * as Setup from '../shared/Setup.ts'
 import * as Replica from './Replica.ts'
 import * as Search from './Search.ts'
 
@@ -22,6 +23,7 @@ export type Row = {
   repo: string | null
   rounds: number
   sealed_wallet: string | null
+  setup: string | null
   spent: number
   sponsor_left: number
   sponsor_spent: number
@@ -58,6 +60,14 @@ export const headroom = 100_000n
 
 export const perCall = 20_000n
 
+export function reserveOf(row: Pick<Row, 'setup'>) {
+  return Setup.reserve(setup(row))
+}
+
+export function callOf(row: Pick<Row, 'setup'>) {
+  return Setup.call(setup(row), perCall)
+}
+
 const totals = `select s.*,
   coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) as raised,
   s.pool_spent + s.sponsor_spent + s.spent_before as spent,
@@ -69,6 +79,15 @@ function answer(text: string | null): Answer | null {
   if (!text) return null
   const parsed = JSON.parse(text) as Answer
   return { at: parsed.at, done: parsed.done, text: parsed.text }
+}
+
+export function setup(row: Pick<Row, 'setup'>): Setup.Setup | null {
+  if (!row.setup) return null
+  try {
+    return JSON.parse(row.setup) as Setup.Setup
+  } catch {
+    return null
+  }
 }
 
 export function summary(row: Row): Summary {
@@ -83,6 +102,7 @@ export function summary(row: Row): Summary {
     problem: row.problem ?? null,
     raised: Memo.decimal(BigInt(row.raised)),
     remaining: Memo.decimal(BigInt(row.remaining)),
+    setup: setup(row),
     spent: Memo.decimal(BigInt(row.spent)),
     status: row.status,
     steering: row.steering ?? 'open',
@@ -161,13 +181,13 @@ export async function repo(env: Cloudflare.Env, id: string) {
 
 export async function insert(
   env: Cloudflare.Env,
-  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'title'> & { sealed_wallet: string; wallet: string },
+  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'title'> & Partial<Pick<Row, 'setup'>> & { sealed_wallet: string; wallet: string },
 ) {
   const now = Date.now()
   const row = await env.DB.prepare(
-    'insert into swarms (id, title, goal, problem, wallet, sealed_wallet, creator, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as raised, pool_spent + sponsor_spent + spent_before as spent, pool_left + sponsor_left as remaining, 0 as contributors',
+    'insert into swarms (id, title, goal, problem, wallet, sealed_wallet, creator, created_at, updated_at, setup) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as raised, pool_spent + sponsor_spent + spent_before as spent, pool_left + sponsor_left as remaining, 0 as contributors',
   )
-    .bind(input.id, input.title, input.goal, input.problem, input.wallet, input.sealed_wallet, input.creator, now, now)
+    .bind(input.id, input.title, input.goal, input.problem, input.wallet, input.sealed_wallet, input.creator, now, now, input.setup ?? null)
     .first<Row>().finally(() => wrote(input.id))
   if (row) known.add(row.id)
   return row

@@ -14,6 +14,7 @@ import { remembered, useLive, useMedia, usePoll, useStable, useVisible } from '.
 import { Lost } from './Lost.tsx'
 import { Presence } from './Ideas.tsx'
 import { Machines } from './Machines.tsx'
+import { Facts } from './Models.tsx'
 import { Room } from './Room.tsx'
 import { Link } from './router.tsx'
 import { Transcript } from './Transcript.tsx'
@@ -323,6 +324,7 @@ function About(props: { config: Config | undefined; swarm: Detail }) {
         <div><dt>Raised</dt><dd>{Answer.cash(Number(swarm.raised))}</dd></div>
         <div><dt>Spent</dt><dd>{Answer.cash(Number(swarm.spent))}</dd></div>
         <div><dt>Backers</dt><dd>{swarm.contributors}</dd></div>
+        <Facts setup={swarm.setup} />
         {swarm.wallet && (
           <div className="about-wide">
             <dt>Its wallet</dt>

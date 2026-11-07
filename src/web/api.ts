@@ -1,5 +1,6 @@
 import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, Posted, Problem, Room, Roster, Snapshot, Steering, Summary } from '../shared/Api.ts'
 import type * as Btw from '../shared/Btw.ts'
+import type * as Setup from '../shared/Setup.ts'
 import type { Machine } from '../shared/Fleet.ts'
 import { seeded } from './boot.ts'
 import { visitor } from './stage.ts'
@@ -145,7 +146,7 @@ export function live(id: string, after: () => number, listener: (event: Live | {
   }
 }
 
-export function create(input: { goal: string; problem?: string; title: string }) {
+export function create(input: { goal: string; problem?: string; title: string } & Partial<Setup.Choice>) {
   return fixture ? staged((fixtures) => fixtures.create(input)) : request<Summary>('/api/swarms', input)
 }
 

@@ -4,6 +4,7 @@ import { redact } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
+import * as Setup from '../shared/Setup.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Persona from './Persona.ts'
@@ -22,7 +23,8 @@ import * as Chat from './Chat.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
 
 function brief(row: Store.Row, notes: Note[]) {
-  return [row.title, row.goal, ...notes.map(weighed)].filter(Boolean).join('\n\n')
+  const setup = Store.setup(row)
+  return [row.title, row.goal, setup ? Setup.told(setup) : '', ...notes.map(weighed)].filter(Boolean).join('\n\n')
 }
 
 function next(notes: Note[]) {
@@ -77,9 +79,9 @@ export async function advance(self: Swarm, row: Store.Row) {
   const worked = self.turned()
   await Money.fund(self, row)
   const money = await Money.refresh(self, row, { chain: true, hands: Follow.handsDue(self, Date.now()), sponsors: true })
-  if (run.state !== 'starting' && money.left < Store.reserve) {
+  if (run.state !== 'starting' && money.left < Store.reserveOf(money.row)) {
     const wake = Paying.rested(self)
-    await pause(self, money.row, worked || money.row.contributors ? { left: String(money.left), wake, why: 'money' } : { why: 'unfunded' })
+    await pause(self, money.row, worked || money.row.contributors ? { left: String(money.left), needs: String(Store.reserveOf(money.row)), wake, why: 'money' } : { why: 'unfunded' })
     return wake
   }
   const repo = await Repo.located(self, row)
@@ -183,7 +185,7 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
   }
 
   const styled = await Persona.ensure(self.env, self.kv)
-  const named = { name: row.title.slice(0, 60), payer }
+  const named = { name: row.title.slice(0, 60), payer, setup: Store.setup(row) }
   let created = await Gateway.agent(self.env, row.id, styled ? { ...named, persona: Persona.name } : named)
   const persona = styled && created.ok
   if (!created.ok && styled && created.status === 409) created = await Gateway.agent(self.env, row.id, named)
@@ -263,9 +265,9 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   if (kinds.size) await expose(self, row, kinds).catch((error: unknown) => console.error('Making the swarm data public failed', error))
   const latest = self.run()
   const wanted = BigInt(latest.state === 'working' ? (latest.wanted ?? '0') : '0')
-  if (status !== 'completed' && (money.left < Store.reserve || wanted > money.biggest)) {
+  if (status !== 'completed' && (money.left < Store.reserveOf(money.row) || wanted > money.biggest)) {
     const wake = Paying.rested(self)
-    await pause(self, money.row, wanted > money.biggest ? { wanted: String(wanted), why: 'costly' } : { left: String(money.left), wake, why: 'money' })
+    await pause(self, money.row, wanted > money.biggest ? { wanted: String(wanted), why: 'costly' } : { left: String(money.left), needs: String(Store.reserveOf(money.row)), wake, why: 'money' })
     return wanted > money.biggest ? null : wake
   }
   if (status === 'completed') {
@@ -310,9 +312,9 @@ async function squeeze(self: Swarm, row: Store.Row, run: Turning) {
   if (step === 'sweep') {
     await sweep(self, row, ` to return its prepaid time: the gateway found no room on the swarm's contributions for the agent's next model call ${count} times in a row`)
     const money = await Money.refresh(self, row)
-    if (money.left < Store.reserve) {
+    if (money.left < Store.reserveOf(money.row)) {
       const wake = Paying.rested(self)
-      await pause(self, money.row, { left: String(money.left), wake, why: 'money' })
+      await pause(self, money.row, { left: String(money.left), needs: String(Store.reserveOf(money.row)), wake, why: 'money' })
       return wake
     }
   }

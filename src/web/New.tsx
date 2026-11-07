@@ -3,6 +3,9 @@ import type { Config } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { Fund, type Target } from './Contribute.tsx'
+import * as Setup from '../shared/Setup.ts'
+import { Models, price, ready } from './Models.tsx'
+import { decimal } from '../shared/Memo.ts'
 import { brief, open, problems } from './research.ts'
 import { Link, navigate } from './router.tsx'
 import * as Wire from './wire.ts'
@@ -29,6 +32,8 @@ export function New(props: { config: Config | undefined }) {
   const [goal, setGoal] = useState<string>(picked?.goal ?? '')
   const [problem, setProblem] = useState<string | undefined>(picked?.id)
   const [note, setNote] = useState('')
+  const [choice, setChoice] = useState<Setup.Choice>({ template: Setup.fallback })
+  const priced = price(props.config, choice)
   const [created, setCreated] = useState<Target>()
   const heading = useRef<HTMLHeadingElement>(null)
   const questionReady = question.trim().length >= 10
@@ -39,7 +44,7 @@ export function New(props: { config: Config | undefined }) {
   const target = async (step: (step: 'create') => void) => {
     if (created) return created
     step('create')
-    const swarm = await Api.create({ goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}) })
+    const swarm = await Api.create({ ...choice, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}) })
     const next = { id: swarm.id, wallet: swarm.wallet }
     setCreated(next)
     return next
@@ -98,10 +103,12 @@ export function New(props: { config: Config | undefined }) {
           </ol>
         </div>}
         {stage === 1 && <div className="quest-budget">
+          <Models config={props.config} onChange={(next) => { setChoice(next); setCreated(undefined) }} value={choice} />
           <Fund
             action={(label) => (label === 'Pay' ? 'Launch' : `Launch · ${label.replace('Pay ', '')}`)}
             config={props.config}
-            locked={!briefReady}
+            least={priced ? decimal(BigInt(priced.most)) : undefined}
+            locked={!briefReady || !ready(choice)}
             note={note}
             onChange={() => { setCreated(undefined); setStage(0) }}
             onDone={(swarm) => navigate(`/s/${swarm.id}`)}

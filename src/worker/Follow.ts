@@ -99,7 +99,7 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
     Turns.abandon(self, agent.id, detail)
     return Turns.finish(self, row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
   }
-  if (money && plan.chain && (money.left < Store.reserve + Store.headroom || BigInt(self.kv.get<string>('loose') ?? '0') >= Money.smallestSwap)) await Money.fund(self, money.row)
+  if (money && plan.chain && (money.left < Store.reserveOf(money.row) + Store.headroom || BigInt(self.kv.get<string>('loose') ?? '0') >= Money.smallestSwap)) await Money.fund(self, money.row)
   return window ? Date.now() : now + Clock.followMs
 }
 

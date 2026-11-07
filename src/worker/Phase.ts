@@ -5,7 +5,7 @@ import * as Store from './Store.ts'
 
 export type Pause =
   | { why: 'unfunded' }
-  | { left: string; wake: number | null; why: 'money' }
+  | { left: string; needs?: string | undefined; wake: number | null; why: 'money' }
   | { wanted: string; why: 'costly' }
   | { failures: number; why: 'rest' }
 
@@ -58,7 +58,7 @@ export function project(run: Run, n: number): { status: Status; why: Why | null 
 export function reason(pause: Pause) {
   const cash = (units: string) => Answer.cash(Number(Memo.decimal(BigInt(units))))
   if (pause.why === 'unfunded') return 'Not started: nobody has funded it yet.'
-  if (pause.why === 'money') return `Out of money: ${cash(pause.left)} left, and one step can cost up to ${cash(String(Store.reserve))}. Fund it to keep going.`
+  if (pause.why === 'money') return `Out of money: ${cash(pause.left)} left, and one step can cost up to ${cash(pause.needs ?? String(Store.reserve))}. Fund it to keep going.`
   if (pause.why === 'costly') return `Paused: its next step needs about ${cash(pause.wanted)} at once, more than any one backer has left in it. Fund it to keep going.`
   return `Stopped after ${pause.failures} errors in a row. New money or a note restarts it.`
 }

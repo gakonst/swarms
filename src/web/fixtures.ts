@@ -3,6 +3,7 @@ import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contri
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
+import * as Setup from '../shared/Setup.ts'
 import { usd } from './format.ts'
 import { pace, scene, visitor } from './stage.ts'
 
@@ -13,6 +14,32 @@ type Backing = { amount: string; contributor: `0x${string}`; note: string }
 type Live = Omit<Detail, 'answer' | 'reason' | 'updates' | 'why' | 'working'> & { updates: Update[]; chat: Said[]; cursor: number; flicker: readonly string[]; next: number; resting: boolean; script: readonly Line[]; since: number | null; steered: Set<string>; steers: Backing[] }
 
 const minute = 60_000
+
+const models: Setup.Price[] = [
+  { cached: 0.19, id: '@cf/moonshotai/kimi-k2.7-code', input: 0.95, output: 4 },
+  { cached: 0.14, id: '@cf/zai-org/glm-5.3', input: 1.12, output: 3.52 },
+  { cached: 0.024, id: '@cf/zai-org/glm-5.3-flash', input: 0.12, output: 0.4 },
+  { cached: 0.0048, id: '@cf/deepseek-ai/deepseek-v4.1-flash-1017', input: 0.24, output: 0.96 },
+  { cached: 0.25, id: 'vercel/anthropic/claude-fable-5.1', input: 10, output: 50 },
+  { cached: 0.01, id: 'vercel/anthropic/claude-haiku-5.5', input: 0.1, output: 0.5 },
+  { cached: 0.2, id: 'vercel/anthropic/claude-opus-5.5', input: 4, output: 20 },
+  { cached: 0.1, id: 'vercel/anthropic/claude-sonnet-5.5', input: 2, output: 10 },
+  { cached: 0.075, id: 'vercel/google/gemini-3.8-flash', input: 0.75, output: 3.75 },
+  { cached: 0.1, id: 'vercel/google/gemini-4-argon', input: 2, output: 10 },
+  { cached: 0.23, id: 'vercel/moonshotai/kimi-k3', input: 2.3, output: 11.4 },
+  { cached: 1, id: 'vercel/openai/gpt-6-astra', input: 10, output: 50 },
+  { cached: 0.01, id: 'vercel/openai/gpt-6-luna', input: 0.1, output: 0.5 },
+  { cached: 0.1, id: 'vercel/openai/gpt-6.1-sol', input: 2, output: 10 },
+  { cached: 0.05, id: 'vercel/openai/gpt-6.1-terra', input: 1, output: 5 },
+  { cached: 0.5, id: 'vercel/spacexai/grok-4.7', input: 2, output: 6 },
+]
+
+function setup(choice: Setup.Choice) {
+  const resolved = Setup.resolve(choice)
+  const priced = typeof resolved === 'string' ? resolved : Setup.priced(resolved, new Map(models.map((model) => [model.id, model])))
+  if (typeof priced === 'string') throw fail(400, 'invalid_request', priced)
+  return priced
+}
 
 const started = Date.now()
 
@@ -58,6 +85,7 @@ function build(input: {
   problem?: string | undefined
   resting?: boolean
   script?: readonly Line[]
+  setup?: Setup.Setup | null
   since?: number
   spent: string
   status: Status
@@ -102,6 +130,7 @@ function build(input: {
     resting: input.resting ?? false,
     raised: '0',
     remaining: '0',
+    setup: input.setup === undefined ? setup({ template: 'frontier-mix' }) : input.setup,
     wallet,
     script: input.script ?? [],
     since: input.status === 'running' ? at(input.since ?? 30) : null,
@@ -405,6 +434,7 @@ function summary(swarm: Live): Summary {
     problem: swarm.problem,
     raised: swarm.raised,
     remaining: swarm.remaining,
+    setup: swarm.setup,
     spent: swarm.spent,
     status: swarm.status,
     steering: swarm.steering,
@@ -437,6 +467,7 @@ export function config(): Promise<Config> {
     channel: { escrow: '0x4d50500000000000000000000000000000000000', least: '0.050000', operator: '0x4cC7C5c526B16a0137270C48D84f826E16C99965', recipient: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE', signer: '0xa47b45c12b7588b56e3a11fe3e808fc1b72577b2' },
     explorer: 'https://explore.tempo.xyz',
     gateway: 'https://gateway.tempo-dev.workers.dev',
+    models,
     reserve: '0.050000',
     rpc: 'https://rpc.tempo.xyz',
     tokens: [
@@ -561,9 +592,9 @@ export function live(key: string, after: number, listener: (event: LiveEvent | {
   }
 }
 
-export function create(input: { goal: string; problem?: string; title: string }) {
+export function create(input: { goal: string; problem?: string; title: string } & Partial<Setup.Choice>) {
   const key = id(`${input.title}:${Date.now()}`)
-  const swarm = build({ age: 0, goal: input.goal, id: key, problem: input.problem, lines: [['status', 'Created. The first contribution starts its agent.']], spent: '0', status: 'funding', title: input.title, updates: [] })
+  const swarm = build({ age: 0, goal: input.goal, id: key, problem: input.problem, setup: setup({ ...input, template: input.template ?? Setup.fallback }), lines: [['status', 'Created. The first contribution starts its agent.']], spent: '0', status: 'funding', title: input.title, updates: [] })
   fixtures.unshift(swarm)
   return delay(summary(swarm), 400)
 }

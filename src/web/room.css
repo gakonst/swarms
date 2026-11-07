@@ -341,6 +341,19 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 .fuel-go { width:100%; min-height:52px; border-radius:12px; font-size:15px; }
 .quest-budget { max-width:480px; }
 .quest-budget .fuel { margin-top:12px; }
+.models { margin:0 0 16px; }
+.models-head { margin:0 0 8px; font:11px var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--grey-600); }
+.models-list li[data-open='true'] > .tile-swarm { background:var(--grey-100); }
+.models-hint,.models-note { margin:0; padding:0 14px 12px 36px; font-size:13px; line-height:1.45; color:var(--grey-700); }
+.models-note { padding:8px 0 0; font:11px var(--mono); color:var(--grey-600); }
+.models-custom { display:grid; gap:10px; padding:4px 14px 12px 36px; font-size:13px; }
+.models-custom label { display:grid; gap:4px; }
+.models-custom select { min-height:36px; padding:6px 8px; border:1px solid var(--grey-300); border-radius:8px; background:var(--white); font:inherit; }
+.models-custom fieldset { display:flex; flex-wrap:wrap; gap:6px 14px; margin:0; padding:0; border:0; }
+.models-custom legend { margin-bottom:4px; color:var(--grey-600); }
+.models-custom .models-check { display:flex; align-items:center; gap:6px; }
+.models-custom .models-check em { font:11px var(--mono); font-style:normal; color:var(--grey-600); }
+.models-custom .models-hint { padding:0; }
 .board { position:fixed; inset:0; overflow-y:auto; overscroll-behavior:contain; padding:28px 32px 80px; background:#eef1ea; -webkit-overflow-scrolling:touch; }
 .board-head { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px; margin:-28px -32px 28px; padding:22px 32px 16px; border-bottom:1px solid #dbe2d0; }
 .board-head h1 { font-size:34px; font-weight:400; letter-spacing:-.03em; }

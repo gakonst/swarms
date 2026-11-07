@@ -1,3 +1,4 @@
+import type * as Setup from '../shared/Setup.ts'
 import { redact } from '../shared/Trail.ts'
 import * as Edge from './Edge.ts'
 import * as Timing from './Timing.ts'
@@ -150,6 +151,28 @@ export async function sponsorship(env: Cloudflare.Env) {
   return value
 }
 
+let pricing: { at: number; value: Map<string, Setup.Price> } | undefined
+
+export async function prices(env: Cloudflare.Env) {
+  if (pricing && Date.now() - pricing.at < 600_000) return pricing.value
+  const value = await Promise.race([
+    call(env, '/v1/models')
+      .then((response) => (response.ok ? (response.json() as Promise<{ data?: { capabilities?: { tools?: boolean }; id: string; kind?: string; pricing?: { cached?: number; input?: number; output?: number } }[] }>) : undefined))
+      .then((listed) => {
+        const found = new Map<string, Setup.Price>()
+        for (const model of listed?.data ?? []) {
+          const price = model.pricing
+          if (model.kind !== 'generate' || model.capabilities?.tools === false || price?.input === undefined || price.output === undefined) continue
+          found.set(model.id, { cached: price.cached ?? price.input, id: model.id, input: price.input, output: price.output })
+        }
+        return found.size ? found : undefined
+      }),
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 3000)),
+  ]).catch(() => undefined)
+  if (value) pricing = { at: Date.now(), value }
+  return value ?? pricing?.value
+}
+
 export function sponsor(env: Cloudflare.Env, swarm: string, body: { descriptor: unknown; transaction?: string }) {
   return send<Sponsored>(env, '/api/keys/sponsors', { app: app(swarm), body: { ...body, passThrough: false } })
 }
@@ -180,10 +203,16 @@ export function allowance(env: Cloudflare.Env, team: string, memberBudget: numbe
   return send<unknown>(env, '/v1/teams/update', { body: { memberBudget, team } })
 }
 
-export function agent(env: Cloudflare.Env, swarm: string, input: { name: string; payer: { secret: string; url: string }; persona?: string }) {
+export function agent(env: Cloudflare.Env, swarm: string, input: { name: string; payer: { secret: string; url: string }; persona?: string; setup?: Setup.Setup | null }) {
+  const setup = input.setup
   return send<{ id: string }>(env, '/v1/agents', {
     app: app(swarm),
-    body: { name: input.name, payer: input.payer, ...(input.persona ? { persona: input.persona } : {}) },
+    body: {
+      name: input.name,
+      payer: input.payer,
+      ...(input.persona ? { persona: input.persona } : {}),
+      ...(setup ? { harness: setup.harness, model: setup.model, ...(setup.subagents ? { subagents: setup.subagents } : {}) } : {}),
+    },
   })
 }
 

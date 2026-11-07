@@ -6,12 +6,12 @@ export type Mood = 'live' | 'money' | 'resting' | 'errors' | 'new'
 
 export type Standing = { action: string | null; mood: Mood; word: Word }
 
-export type Stood = Pick<Summary, 'raised' | 'remaining' | 'status'> & { why?: Summary['why'] | undefined }
+export type Stood = Pick<Summary, 'raised' | 'remaining' | 'status'> & { setup?: Summary['setup'] | undefined; why?: Summary['why'] | undefined }
 
 export const fuel = 0.05
 
-export function fueled(swarm: Pick<Summary, 'remaining'>) {
-  return Number(swarm.remaining) >= fuel
+export function fueled(swarm: Pick<Summary, 'remaining'> & { setup?: Summary['setup'] | undefined }) {
+  return Number(swarm.remaining) >= (swarm.setup ? Number(swarm.setup.most) / 1_000_000 : fuel)
 }
 
 export function standing(swarm: Stood): Standing {

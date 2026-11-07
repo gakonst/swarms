@@ -1,3 +1,5 @@
+import type * as Setup from './Setup.ts'
+
 export type Status = 'funding' | 'running' | 'paused' | 'done'
 
 export type Token = 'ousd' | 'pathusd' | 'usdce'
@@ -17,6 +19,7 @@ export type Summary = {
   problem: string | null
   raised: string
   remaining: string
+  setup: Setup.Setup | null
   spent: string
   status: Status
   steering: Steering
@@ -159,6 +162,7 @@ export type Config = {
   chainId: number
   explorer: string
   gateway: string
+  models: Setup.Price[]
   reserve: string
   rpc: string
   channel: Channel | null
