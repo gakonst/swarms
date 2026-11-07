@@ -643,7 +643,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const score = terms.map(() => "(instr(lower(text || ' ' || coalesce(detail, '')), ?) > 0)").join(' + ')
     const [query, ...values]: [string, ...(string | number)[]] = indexed
       ? [
-          'SELECT f.seq, f.at, f.kind, f.text, f.detail, f.who, f.event FROM (SELECT rowid, rank FROM feed_search WHERE feed_search MATCH ? ORDER BY rank LIMIT ?) s JOIN feed f ON f.seq = s.rowid ORDER BY s.rank, f.seq DESC',
+          'SELECT f.seq, f.at, f.kind, f.text, f.detail, f.who, f.event FROM (SELECT rowid, rank FROM feed_search WHERE feed_search MATCH ? ORDER BY rank, rowid DESC LIMIT ?) s JOIN feed f ON f.seq = s.rowid ORDER BY s.rank, f.seq DESC',
           terms.map((term) => `"${term}"`).join(' OR '),
           limit,
         ]
