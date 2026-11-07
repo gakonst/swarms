@@ -20,6 +20,7 @@ import type { Why } from '../shared/Api.ts'
 import * as Seal from './Seal.ts'
 import * as Search from './Search.ts'
 import * as Sessions from './Sessions.ts'
+import * as Lobby from './Lobby.ts'
 import * as Store from './Store.ts'
 import * as Vault from './Vault.ts'
 
@@ -431,6 +432,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   beacon(row: Store.Row) {
+    const summary = Store.summary(row)
+    const told = JSON.stringify(summary)
+    if (!(row as Store.Row & { hidden?: number }).hidden && this.kv.get<string>('lobby') !== told) {
+      this.kv.put('lobby', told)
+      this.ctx.waitUntil(Lobby.tell(this.env, summary))
+    }
     if (!this.listened()) return
     this.pending.pulse = row
     this.soon()
