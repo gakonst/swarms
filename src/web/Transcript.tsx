@@ -7,9 +7,9 @@ import { decimal, units } from '../shared/Memo.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
-import { BranchBar, ended, label, root, tree } from './Branches.tsx'
+import { BranchBar, ended, label, relist, root, tree, useBranches } from './Branches.tsx'
 import { clock, usd } from './format.ts'
-import { agent, type Live, message, speaker, type Stream, usePoll, useWallet } from './hooks.ts'
+import { agent, type Live, message, speaker, type Stream, useWallet } from './hooks.ts'
 import { useCredit } from './money.ts'
 import * as Wallet from './wallet.ts'
 import { Markdown } from './Markdown.tsx'
@@ -481,7 +481,7 @@ export function Transcript(props: {
   useEffect(() => {
     if (props.draft.at) setWho((current) => (current === 'all' || current === agent ? current : 'all'))
   }, [props.draft])
-  const [listed, relist] = usePoll(() => Api.branches(swarm.id), who === 'all' || who === agent ? 60_000 : 15_000, `branches:${swarm.id}`)
+  const listed = useBranches(swarm.id, swarm.status === 'running')
   const branches = useMemo(() => listed.data?.branches ?? [], [listed.data])
   const picked = branches.find((branch) => branch.who === who)
   const lead = picked && root(branches, picked)
@@ -501,9 +501,9 @@ export function Transcript(props: {
   const pinned = useRef(0)
   const [below, setBelow] = useState(false)
   const working = swarm.working
-  const since = props.live.since ?? working?.since
   const onAir = !!working
-  const streamed = onAir && props.live.connected
+  const streams = props.live.at === 'live' ? props.live.streams : {}
+  const streamed = onAir && props.live.at === 'live'
 
   const speakers = useMemo(() => {
     const seen = tree(branches).map((branch) => branch.who)
@@ -547,7 +547,7 @@ export function Transcript(props: {
     return [kept, counts] as const
   }, [props.entries, who])
   const stood = useStanding(swarm)
-  const streaming = Object.entries(props.live.streams)
+  const streaming = Object.entries(streams)
     .map(([name, stream]) => ({ name, now: now(stream), stream }))
     .filter((item) => item.now && streamed && (who === 'all' || who === item.name))
     .sort((a, b) => (a.name === agent ? -1 : b.name === agent ? 1 : b.stream.at - a.stream.at))
@@ -655,7 +655,7 @@ export function Transcript(props: {
               const branch = branches.find((item) => item.who === name)
               return (
                 <button aria-pressed={who === name} data-ended={!!branch && (ended(branch) || branch.state === 'completed')} key={name} onClick={() => setWho(name)} title={branch ? `${label(branch)}: ${branch.task}` : undefined} type="button">
-                  {name !== 'all' && <i data-live={streamed && !!now(props.live.streams[name])} style={{ background: hue(name) }} />}
+                  {name !== 'all' && <i data-live={streamed && !!now(streams[name])} style={{ background: hue(name) }} />}
                   {name === 'all' ? 'All' : name === agent ? 'Agent' : name}
                 </button>
               )
@@ -665,7 +665,7 @@ export function Transcript(props: {
         {speakers.length > 0 && swarm.status !== 'done' && <button className="transcript-new" onClick={() => props.onFund('Start a new branch to ')} title="Propose a branch to the agent" type="button">+ Branch</button>}
         {props.people && <button className="transcript-people" onClick={props.onPeople} type="button">People →</button>}
       </header>
-      {picked && <BranchBar all={branches} branch={picked} key={picked.id} onChanged={relist} onPick={setWho} swarm={swarm} />}
+      {picked && <BranchBar all={branches} branch={picked} key={picked.id} onChanged={() => relist(swarm.id)} onPick={setWho} swarm={swarm} />}
       <div className="timeline-box">
         <ol
           className="timeline"
@@ -734,7 +734,7 @@ export function Transcript(props: {
           {props.tray}
         </div>
       ) : (
-        swarm.status !== 'done' && <Composer branch={target} config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onDirected={relist} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} onSide={props.onSide} steering={swarm.steering} swarm={swarm.id} />
+        swarm.status !== 'done' && <Composer branch={target} config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onDirected={() => relist(swarm.id)} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} onSide={props.onSide} steering={swarm.steering} swarm={swarm.id} />
       )}
     </section>
   )

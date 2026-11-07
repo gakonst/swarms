@@ -3,9 +3,10 @@ import type { Config, Detail, Said } from '../shared/Api.ts'
 import * as Btw from '../shared/Btw.ts'
 import { decimal, units } from '../shared/Memo.ts'
 import { Alert, explain } from './Alert.tsx'
+import { useBranches } from './Branches.tsx'
 import * as Api from './api.ts'
 import { usd } from './format.ts'
-import { message, usePoll, useWallet } from './hooks.ts'
+import { message, useWallet } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
 import { useCredit } from './money.ts'
 import { seated, useRoster } from './Steering.tsx'
@@ -51,7 +52,7 @@ export function Side(props: {
   const roster = useRoster(props.swarm.id, props.swarm.steering)
   const team = props.swarm.steering === 'team'
   const seat = seated(roster, wallet.session?.address)
-  const [listed] = usePoll(() => Api.branches(props.swarm.id), 30_000, `branches:${props.swarm.id}`)
+  const listed = useBranches(props.swarm.id, props.swarm.status === 'running')
   const branches = (listed.data?.branches ?? []).filter((branch) => branch.parent === null)
   const target = branches.find((branch) => branch.id === props.branch)
   const name = target ? target.who : 'the agent'

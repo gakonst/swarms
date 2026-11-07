@@ -5,6 +5,7 @@ import * as Mention from '../shared/Mention.ts'
 import * as Api from './api.ts'
 import { usd } from './format.ts'
 import { message, useWallet } from './hooks.ts'
+import * as Wire from './wire.ts'
 
 const rosters = new Map<string, Roster>()
 const listeners = new Set<() => void>()
@@ -21,8 +22,10 @@ function watch(listener: () => void) {
   }
 }
 
-const loops = new Map<string, { count: number; timer: ReturnType<typeof setInterval> }>()
+const loops = new Map<string, { count: number; leave: () => void; timer: ReturnType<typeof setInterval> | undefined }>()
 const flights = new Map<string, Promise<void>>()
+
+const rosterMs = 60_000
 
 function fetched(id: string) {
   const flying = flights.get(id)
@@ -36,12 +39,20 @@ function fetched(id: string) {
 
 export function useRoster(id: string, steering: Policy) {
   const roster = useSyncExternalStore(watch, () => rosters.get(id), () => undefined)
+  const wired = Wire.useWire(id, 'room')
   useEffect(() => {
     const loop = loops.get(id)
     if (loop) loop.count += 1
     else {
       void fetched(id)
-      loops.set(id, { count: 1, timer: setInterval(() => void fetched(id), 60_000) })
+      loops.set(id, {
+        count: 1,
+        leave: Wire.join(id, 'room', (signal) => {
+          if (signal.type === 'roster') share(id, signal.roster)
+          else if (Wire.stirred(signal, 'roster')) void fetched(id)
+        }),
+        timer: undefined,
+      })
     }
     return () => {
       const current = loops.get(id)
@@ -49,9 +60,16 @@ export function useRoster(id: string, steering: Policy) {
       current.count -= 1
       if (current.count > 0) return
       clearInterval(current.timer)
+      current.leave()
       loops.delete(id)
     }
   }, [id, steering])
+  useEffect(() => {
+    const loop = loops.get(id)
+    if (!loop) return
+    clearInterval(loop.timer)
+    loop.timer = wired === 'down' ? setInterval(() => void fetched(id), rosterMs) : undefined
+  }, [id, wired, steering])
   return roster
 }
 

@@ -6,13 +6,14 @@ import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { type Change, Clone, type Commit, local, patch, prefetch, read, seed as keepSnapshot, peek, unified, Viewer, warm } from './Code.tsx'
 import { ago, short, stamp } from './format.ts'
-import { message, useMedia, useNow, usePoll } from './hooks.ts'
+import { message, useMedia, useNow, usePoll, useVisible } from './hooks.ts'
 import { Link } from './router.tsx'
 import { Status } from './Visual.tsx'
+import * as Wire from './wire.ts'
 
 type Mark = 'added' | 'deleted' | 'modified' | 'renamed'
 
-const pollMs = 15_000
+const pollMs = 60_000
 
 const flashMs = 12_000
 
@@ -126,7 +127,7 @@ function Timeline(props: {
   )
 }
 
-function Browser(props: { base: string; detail: Detail; live: boolean }) {
+function Browser(props: { base: string; detail: Detail; live: boolean; stirs: number; wired: Wire.State }) {
   const initial = useRef(query())
   const [seed] = useState(() => {
     const known = Api.coded(props.detail.id)
@@ -142,13 +143,20 @@ function Browser(props: { base: string; detail: Detail; live: boolean }) {
   const [tree, setTree] = useState<{ error?: string; paths?: string[]; ref?: string }>(() => (seed?.commits[0] && !initial.current.ref ? { paths: seed.files, ref: seed.commits[0].sha } : {}))
   const [diff, setDiff] = useState<{ changes?: Change[]; error?: string; ref?: string }>(() => (seed?.diff && seed.commits[0] && !initial.current.ref ? { changes: seed.diff, ref: seed.commits[0].sha } : {}))
   const known = useRef(new Set<string>())
+  const logged = useRef({ at: 0, stirs: -1 })
+  const visible = useVisible()
 
   useEffect(() => {
     let alive = true
     let timer: ReturnType<typeof setTimeout> | undefined
+    const every = props.wired === 'down' && visible && props.live ? pollMs : null
+    const plan = () => {
+      if (every !== null) timer = setTimeout(() => void run(), Math.max(0, logged.current.at + every - Date.now()))
+    }
     const run = async () => {
+      logged.current = { at: Date.now(), stirs: props.stirs }
       try {
-        const page = await read<{ commits: Commit[]; cursor: string | null }>(`${props.base}/log?ref=main&limit=50&at=${Math.floor(Date.now() / pollMs)}`)
+        const page = await read<{ commits: Commit[]; cursor: string | null }>(`${props.base}/log?ref=main&limit=50&at=${Math.floor(Date.now() / pollMs)}.${props.stirs}`)
         if (!alive) return
         const added = known.current.size ? page.commits.filter((commit) => !known.current.has(commit.sha)).map((commit) => commit.sha) : []
         for (const commit of page.commits) known.current.add(commit.sha)
@@ -164,14 +172,15 @@ function Browser(props: { base: string; detail: Detail; live: boolean }) {
       } catch (error) {
         if (alive) setLog((previous) => previous ?? { commits: [], cursor: null, error: message(error) })
       }
-      if (alive && props.live) timer = setTimeout(() => void run(), pollMs)
+      if (alive) plan()
     }
-    void run()
+    if (logged.current.stirs !== props.stirs) void run()
+    else plan()
     return () => {
       alive = false
       clearTimeout(timer)
     }
-  }, [props.base, props.live])
+  }, [props.base, props.live, props.stirs, props.wired, visible])
 
   const head = log?.commits[0]?.sha
   const ref = pinned ?? head
@@ -308,7 +317,13 @@ function Browser(props: { base: string; detail: Detail; live: boolean }) {
 }
 
 export function Repo(props: { config: Config | undefined; id: string }) {
-  const [detail] = usePoll(() => Api.swarm(props.id, false), pollMs, props.id)
+  const [stirs, setStirs] = useState(0)
+  const wired = Wire.useWire(props.id, 'listen', (signal) => {
+    if (signal.type === 'pulse') setDetail((data) => Wire.pulsed(data, signal))
+    if (Wire.stirred(signal, 'detail')) reload()
+    if (Wire.stirred(signal, 'code')) setStirs((count) => count + 1)
+  })
+  const [detail, reload, setDetail] = usePoll(() => Api.swarm(props.id, false), wired === 'down' ? pollMs : null, props.id)
   const swarm = detail.data
   const code = swarm?.code
 
@@ -334,7 +349,7 @@ export function Repo(props: { config: Config | undefined; id: string }) {
       ) : (
         <>
           <Clone repo={code} />
-          <Browser base={local(swarm.id)} detail={swarm} live={swarm.status !== 'done'} />
+          <Browser base={local(swarm.id)} detail={swarm} live={swarm.status !== 'done'} stirs={stirs} wired={wired} />
         </>
       )}
     </section>

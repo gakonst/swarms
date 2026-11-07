@@ -20,6 +20,7 @@ import { Room } from './Room.tsx'
 import { Link } from './router.tsx'
 import { Transcript } from './Transcript.tsx'
 import { Dot, Energy } from './Visual.tsx'
+import * as Wire from './wire.ts'
 
 let loaded: typeof import('./Code.tsx') | undefined
 
@@ -30,6 +31,12 @@ function load() {
 const Code = lazy(() => load().then((module) => ({ default: module.Code })))
 
 const trails = new Map<string, { entries: readonly Entry[]; seq: number }>()
+
+const detailMs = 10_000
+
+const feedMs = 5000
+
+const shelfMs = 60_000
 
 const tabs = ['transcript', 'room', 'artifacts', 'contributors', 'code', 'machines', 'about'] as const
 
@@ -62,12 +69,18 @@ function useTab() {
 export function Swarm(props: { config: Config | undefined; id: string }) {
   const [entries, setEntries] = useState<readonly Entry[]>(() => trails.get(props.id)?.entries ?? remembered<Detail>(props.id)?.feed ?? seeded<Detail>(props.id)?.feed ?? [])
   const first = useRef(entries.length === 0)
-  const streaming = useRef(false)
-  const [detail, reload] = usePoll(() => {
+  const wired = Wire.useWire(props.id, 'room', (signal) => {
+    if (signal.type === 'pulse') setDetail((data) => Wire.pulsed(data, signal))
+    if (signal.type === 'artifacts') setShelf(() => ({ artifacts: signal.artifacts.map((artifact) => (artifact.url.startsWith('/') ? { ...artifact, url: location.origin + artifact.url } : artifact)) }))
+    if (Wire.stirred(signal, 'detail')) reload()
+    if (Wire.stirred(signal, 'artifacts')) reshelve()
+    if (Wire.stirred(signal, 'feed') && stream.at === 'off') void read()
+  })
+  const [detail, reload, setDetail] = usePoll(() => {
     const full = first.current
     first.current = false
     return Api.swarm(props.id, full)
-  }, (data) => (data?.status !== 'running' ? 10_000 : streaming.current ? 10_000 : 5000), props.id)
+  }, wired === 'down' ? detailMs : null, props.id)
   const last = useRef(trails.get(props.id)?.seq ?? highest(entries))
   useEffect(() => {
     if (entries.length) trails.set(props.id, { entries: entries.slice(-400), seq: last.current })
@@ -92,9 +105,11 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const phone = useMedia('(max-width: 799px)')
   const running = detail.data?.status === 'running'
   const loaded = detail.data !== undefined
-  const [shelf] = usePoll(() => Api.artifacts(props.id), running ? 30_000 : 60_000, `artifacts:${props.id}`)
-  const stream = useLive(props.id, running && visible, (entry) => setEntries((previous) => merge(previous, [entry])), () => last.current)
-  streaming.current = stream.pushed
+  const [shelf, reshelve, setShelf] = usePoll(() => Api.artifacts(props.id), wired === 'down' ? shelfMs : null, `artifacts:${props.id}`)
+  const stream = useLive(props.id, running && visible, (entry) => {
+    last.current = Math.max(last.current, entry.seq)
+    setEntries((previous) => merge(previous, [entry]))
+  }, () => last.current)
   const coded = !!detail.data?.code
   useEffect(() => {
     if (!coded) return
@@ -120,29 +135,31 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
     history.replaceState(null, '', url)
   }, [artifact])
 
-  const pace = running ? (stream.pushed ? 15_000 : 2000) : 10_000
-  const stamp = running && stream.pushed ? 'pushed' : `${detail.data?.status}:${detail.data?.updatedAt}`
-  const polled = useRef(false)
+  const pace = stream.at !== 'off' || (wired !== 'down' && !running) ? null : running ? feedMs : detailMs
+  const fed = useRef({ at: Date.now(), reading: false })
+  const read = useStable(async () => {
+    if (fed.current.reading) return
+    fed.current = { at: Date.now(), reading: true }
+    try {
+      const { entries: next } = await Api.feed(props.id, last.current)
+      last.current = Math.max(last.current, highest(next))
+      setEntries((previous) => merge(previous, next))
+    } catch {}
+    fed.current = { ...fed.current, reading: false }
+  })
   useEffect(() => {
-    if (!loaded || !visible) return
+    if (!loaded || !visible || pace === null) return
     let alive = true
     let timer: ReturnType<typeof setTimeout> | undefined
-    const run = async () => {
-      try {
-        const { entries: next } = await Api.feed(props.id, last.current)
-        if (!alive) return
-        last.current = Math.max(last.current, highest(next))
-        setEntries((previous) => merge(previous, next))
-      } catch {}
-      if (alive) timer = setTimeout(() => void run(), pace)
+    const loop = () => {
+      timer = setTimeout(() => void read().then(() => alive && loop()), Math.max(0, fed.current.at + pace - Date.now()))
     }
-    timer = setTimeout(() => void run(), polled.current ? 0 : 2000)
-    polled.current = true
+    loop()
     return () => {
       alive = false
       clearTimeout(timer)
     }
-  }, [loaded, props.id, pace, stamp, visible])
+  }, [loaded, props.id, pace, visible])
 
   const back = useStable((text: string) => {
     setTab('transcript')

@@ -1,13 +1,14 @@
-import { useState } from 'react'
-import type { Branch, Detail } from '../shared/Api.ts'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import type { Branch, Branches, Detail } from '../shared/Api.ts'
 import * as Mention from '../shared/Mention.ts'
 import { decimal, units } from '../shared/Memo.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
 import { usd } from './format.ts'
-import { message, useWallet } from './hooks.ts'
+import { message, useVisible, useWallet } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
 import { useRoster } from './Steering.tsx'
+import * as Wire from './wire.ts'
 
 const states: Record<Branch['state'], string> = {
   closed: 'Stopped',
@@ -40,6 +41,101 @@ function under(all: readonly Branch[], id: number, depth = 1): { branch: Branch;
 export function tree(all: readonly Branch[]) {
   const ordered = all.filter((branch) => branch.parent === null).flatMap((branch) => [branch, ...under(all, branch.id).map((child) => child.branch)])
   return [...ordered, ...all.filter((branch) => !ordered.includes(branch))]
+}
+
+type Listed = { data?: Branches | undefined; error?: string | undefined }
+
+type Kept = { flight: Promise<void> | undefined; leave: (() => void) | undefined; running: boolean; shown: Listed; soon: ReturnType<typeof setTimeout> | undefined; started: number; timer: ReturnType<typeof setTimeout> | undefined; users: number }
+
+const lists = new Map<string, Kept>()
+
+const told = new Set<() => void>()
+
+const unlisted: Listed = {}
+
+const settleMs = 5000
+
+const branchMs = 60_000
+
+function tell() {
+  for (const listener of told) listener()
+}
+
+export function relist(id: string) {
+  const kept = lists.get(id)
+  if (!kept || kept.flight) return
+  clearTimeout(kept.soon)
+  kept.started = Date.now()
+  kept.flight = Api.branches(id)
+    .then(
+      (data) => {
+        kept.shown = { data }
+      },
+      (error: unknown) => {
+        kept.shown = { ...kept.shown, error: message(error) }
+      },
+    )
+    .finally(() => {
+      kept.flight = undefined
+      tell()
+      plan(id)
+    })
+}
+
+function plan(id: string) {
+  const kept = lists.get(id)
+  if (!kept) return
+  clearTimeout(kept.timer)
+  const state = Wire.state(id, 'room')
+  const every = state === 'down' || (state === 'live' && kept.running) ? branchMs : null
+  if (!kept.users || every === null || kept.flight || document.visibilityState === 'hidden') return
+  kept.timer = setTimeout(() => relist(id), Math.max(0, kept.started + every - Date.now()))
+}
+
+function shown(id: string) {
+  return lists.get(id)?.shown ?? unlisted
+}
+
+function listen(listener: () => void) {
+  told.add(listener)
+  return () => {
+    told.delete(listener)
+  }
+}
+
+export function useBranches(id: string, running: boolean) {
+  const wired = Wire.useWire(id, 'room')
+  const visible = useVisible()
+  const listed = useSyncExternalStore(listen, () => shown(id), () => unlisted)
+
+  useEffect(() => {
+    const kept = lists.get(id) ?? { flight: undefined, leave: undefined, running, shown: unlisted, soon: undefined, started: 0, timer: undefined, users: 0 }
+    lists.set(id, kept)
+    kept.users += 1
+    kept.leave ??= Wire.join(id, 'room', (signal) => {
+      if (!Wire.stirred(signal, 'branches')) return
+      if (signal.type === 'stir' && signal.cause === 'welcome') return relist(id)
+      clearTimeout(kept.soon)
+      kept.soon = setTimeout(() => relist(id), settleMs)
+    })
+    if (Date.now() - kept.started > settleMs) relist(id)
+    return () => {
+      kept.users -= 1
+      if (kept.users > 0) return
+      clearTimeout(kept.timer)
+      clearTimeout(kept.soon)
+      kept.leave?.()
+      kept.leave = undefined
+    }
+  }, [id])
+
+  useEffect(() => {
+    const kept = lists.get(id)
+    if (kept) kept.running = running
+    plan(id)
+  }, [id, running, wired, visible])
+
+  return listed
 }
 
 function valid(stake: string) {
