@@ -885,7 +885,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async styled(row: Store.Row, agent: Lead): Promise<Lead> {
-    if (agent.persona || !(await Persona.ensure(this.env))) return agent
+    if (!(await Persona.ensure(this.env)) || agent.persona) return agent
     const patched = await Gateway.restyle(this.env, row.id, agent.id, Persona.name)
     if (!patched.ok && patched.status !== 409) {
       console.error('Giving the agent the swarm persona failed', patched.status, patched.detail)
@@ -1356,16 +1356,25 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
 
     if (busy) return { code: 'busy', detail: "The swarm's contributions are holding other calls' reservations; try again shortly.", retry: 2, status: 429 }
+    const held = BigInt(row.sponsor_left ?? 0)
+    const most = BigInt(this.kv.get<string>('sponsoredMost') ?? '0')
+    const scarce = !passing && held >= perCall && price !== undefined && most < price
+    if (scarce) wanted = Payer.max(wanted, price)
     const run = this.run()
     if (wanted && run.state === 'working') this.set({ ...run, wanted: String(wanted) })
     const wake = this.rested()
+    const spent = wake ? `Every contribution to this swarm is spent for now; the next one comes back at ${new Date(wake).toISOString()}.` : 'Every contribution to this swarm is spent.'
     return {
       code: 'limit_reached',
-      detail: small
-        ? 'No single contribution to this swarm can pay this much at once right now.'
-        : wake
-          ? `Every contribution to this swarm is spent for now; the next one comes back at ${new Date(wake).toISOString()}.`
-          : 'Every contribution to this swarm is spent.',
+      detail: scarce
+        ? `No channel of this swarm holds ${dollars(price)} at once: the MACH channels the gateway spends for it hold ${dollars(held)} in all, the largest ${dollars(most)}. Ask for less at once, such as a shorter lease or a smaller machine.`
+        : held >= perCall && passing
+          ? `Payments to outside services come only from the swarm's wallet, which cannot pay this; the MACH channels the gateway spends for the swarm (${dollars(held)} left) pay only for the gateway's own requests.`
+          : held >= perCall
+            ? `The swarm's wallet cannot pay this, though the MACH channels the gateway spends for it still hold ${dollars(held)}; try again in a moment.`
+            : small
+              ? 'No single contribution to this swarm can pay this much at once right now.'
+              : spent,
       ...(wake ? { retry: Math.max(1, Math.ceil((wake - Date.now()) / 1000)) } : {}),
       status: 402,
     }
@@ -1524,6 +1533,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const sponsored = plan.sponsors ? this.pledged : { biggest: this.pledged.biggest, left: BigInt(row.sponsor_left ?? 0), spent: BigInt(row.sponsor_spent ?? 0) }
     left += sponsored.left
     biggest = Payer.max(biggest, sponsored.biggest)
+    this.kv.put('sponsoredMost', String(sponsored.biggest))
 
     const previous = this.kv.get<Hand[]>('hands') ?? []
     const connected = hands ? (hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []) : undefined
