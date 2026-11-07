@@ -94,7 +94,9 @@ export function summary(row: Row): Summary {
 
 export async function list(env: Cloudflare.Env, status?: Summary['status']) {
   const { results } = await env.DB.prepare(
-    `select * from (${totals}) where hidden = 0 and raised > 0${status ? ' and status = ?' : ''} order by updated_at desc limit 100`,
+    `select s.*, c.raised, s.pool_spent + s.sponsor_spent + s.spent_before as spent, s.pool_left + s.sponsor_left as remaining, c.contributors
+    from swarms s join (select swarm, sum(cast(amount as integer)) as raised, count(distinct contributor) as contributors from contributions group by swarm) c on c.swarm = s.id
+    where s.hidden = 0 and c.raised > 0${status ? ' and s.status = ?' : ''} order by s.updated_at desc limit 100`,
   )
     .bind(...(status ? [status] : []))
     .all<Row>()
