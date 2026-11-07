@@ -1,10 +1,11 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import type { Detail, Roster, Steering as Policy } from '../shared/Api.ts'
+import type { Detail, Me, Roster, Steering as Policy } from '../shared/Api.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Mention from '../shared/Mention.ts'
 import * as Api from './api.ts'
 import { usd } from './format.ts'
 import { message, useWallet } from './hooks.ts'
+import type { State } from './wallet.ts'
 import * as Wire from './wire.ts'
 
 const rosters = new Map<string, Roster>()
@@ -75,6 +76,27 @@ export function useRoster(id: string, steering: Policy) {
 
 export function seated(roster: Roster | undefined, address: string | undefined) {
   return address ? roster?.seats.find((seat) => seat.address === address.toLowerCase()) : undefined
+}
+
+export type Gate = 'checking' | 'signed-out' | 'unnamed' | { at: 'not-member'; team: boolean } | { at: 'open'; from: 'backing' | 'team'; left: string | null }
+
+export function gate(wallet: State, steering: Policy, roster: Roster | undefined, room?: { me: Me | null }): Gate {
+  if (!wallet.session) return wallet.pending ? 'checking' : 'signed-out'
+  if (wallet.account && !wallet.account.name) return 'unnamed'
+  const team = steering === 'team'
+  const seat = seated(roster, wallet.session.address)
+  if (team && seat) return { at: 'open', from: 'team', left: seat.left }
+  if (room) {
+    if (!room.me) return 'checking'
+    return room.me.member || seat ? { at: 'open', from: 'backing', left: room.me.available } : { at: 'not-member', team }
+  }
+  if (!team) return { at: 'open', from: 'backing', left: null }
+  return roster ? { at: 'not-member', team } : 'checking'
+}
+
+export function useGate(swarm: Pick<Detail, 'id' | 'steering'>) {
+  const wallet = useWallet()
+  return gate(wallet, swarm.steering, useRoster(swarm.id, swarm.steering))
 }
 
 export function Steering(props: { onChange: () => void; swarm: Detail }) {

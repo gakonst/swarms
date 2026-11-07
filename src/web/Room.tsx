@@ -8,7 +8,7 @@ import * as Api from './api.ts'
 import { percent, usd, minute } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
 import { code } from './Contribute.tsx'
-import { seated, Steering, useRoster } from './Steering.tsx'
+import { gate as gated, seated, Steering, useRoster } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 import * as Wire from './wire.ts'
@@ -211,8 +211,8 @@ export const Room = memo(function Room(props: {
   const roster = useRoster(id, props.swarm.steering)
   const team = props.swarm.steering === 'team'
   const seat = seated(roster, me?.address)
-  const unnamed = !!token && !!wallet.account && !wallet.account.name
-  const mine = me && (me.member || seat) && !unnamed ? me : undefined
+  const door = gated(wallet, props.swarm.steering, roster, { me })
+  const mine = typeof door === 'object' && door.at === 'open' ? (me ?? undefined) : undefined
   const query = mine && !closed ? /(^|\s)@([a-z0-9_-]*)$/i.exec(text.slice(0, caret)) : null
   const options = query
     ? [
@@ -342,8 +342,8 @@ export const Room = memo(function Room(props: {
   const here = online.filter((address) => members.some((member) => member.address === address))
 
   let gate: ReactNode = null
-  if (!token && wallet.pending) gate = <div aria-busy="true" className="room-gate room-gate-wait" />
-  else if (!token)
+  if (door === 'checking') gate = <div aria-busy="true" className="room-gate room-gate-wait" />
+  else if (door === 'signed-out')
     gate = (
       <div className="room-gate room-gate-one">
         <div className="room-cta">
@@ -352,13 +352,13 @@ export const Room = memo(function Room(props: {
         </div>
       </div>
     )
-  else if (unnamed)
+  else if (door === 'unnamed')
     gate = (
       <div className="room-gate room-gate-one">
         <Username why="Pick a username to talk here. People see it beside everything you say and steer." />
       </div>
     )
-  else if (me && !mine)
+  else if (door.at === 'not-member')
     gate = (
       <div className="room-gate room-gate-one">
         {done ? (

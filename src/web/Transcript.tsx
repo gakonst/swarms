@@ -9,11 +9,11 @@ import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { BranchBar, ended, label, relist, root, tree, useBranches } from './Branches.tsx'
 import { clock, usd } from './format.ts'
-import { agent, type Live, message, speaker, type Stream, useWallet } from './hooks.ts'
+import { agent, type Live, message, speaker, type Stream } from './hooks.ts'
 import { useCredit } from './money.ts'
 import * as Wallet from './wallet.ts'
 import { Markdown } from './Markdown.tsx'
-import { seated, useRoster } from './Steering.tsx'
+import { useGate } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import { key, named, trouble } from '../shared/Trail.ts'
 import { useStanding } from './Visual.tsx'
@@ -283,10 +283,7 @@ const Funded = pure(function Funded(props: { item: Backed; name: string; onBack:
 const stakes = ['0.5', '1', '5'] as const
 
 function Composer(props: { branch: Branch | undefined; config: Config | undefined; draft: { at: number; text: string }; me: Me | null; onDirected: () => void; onFund: (note?: string) => void; onSaid: (said: Said) => void; onSide: (question: string, branch: number | null) => void; steering: Steering; swarm: string; wallet: `0x${string}` | null }) {
-  const wallet = useWallet()
-  const roster = useRoster(props.swarm, props.steering)
-  const team = props.steering === 'team'
-  const seat = seated(roster, wallet.session?.address)
+  const door = useGate({ id: props.swarm, steering: props.steering })
   const [text, setText] = useState('')
   const [stake, setStake] = useState<string>('0.5')
   const [busy, setBusy] = useState<string>()
@@ -314,6 +311,11 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
   const steering = words.length >= 3
   const ready = ok && (steering || (!!target && !words))
 
+  const pay = async (config: Config, need: bigint) => {
+    if (typeof door !== 'object' || door.at !== 'open') throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
+    if (door.from === 'backing') await credit.cover(config, { id: props.swarm, wallet: props.wallet }, need, setBusy)
+  }
+
   const submit = () => {
     if (command) {
       props.onSide(command.rest, target?.id ?? null)
@@ -331,9 +333,7 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
     setDone(undefined)
     try {
       const need = units(stake)
-      if (team) {
-        if (!seat) throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
-      } else await credit.cover(config, { id: props.swarm, wallet: props.wallet }, need, setBusy)
+      await pay(config, need)
       setBusy(steering ? 'Steering…' : 'Raising its budget…')
       const funded = await Api.fund(props.swarm, branch.id, { amount: decimal(need), ...(steering ? { message: words } : {}) })
       credit.spend(need)
@@ -355,9 +355,7 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
     setDone(undefined)
     try {
       const need = units(stake)
-      if (team) {
-        if (!seat) throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
-      } else await credit.cover(config, { id: props.swarm, wallet: props.wallet }, need, setBusy)
+      await pay(config, need)
       setBusy('Sending…')
       const posted = await Api.say(props.swarm, { steer: decimal(need), text: `@swarm ${idea}` })
       credit.spend(need)
@@ -369,14 +367,14 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
       setBusy(undefined)
     }
   }
-  if (!wallet.session && wallet.pending)
+  if (door === 'checking')
     return (
       <div className="say">
         <div aria-busy="true" className="say-box say-wait"><span className="mention" data-swarm="true">@swarm</span><span className="say-hold">Steer the agent</span><span className="say-send" aria-hidden="true">↑</span></div>
       </div>
     )
 
-  if (!wallet.session)
+  if (door === 'signed-out')
     return (
       <div className="say say-gate">
         <div className="room-cta">
@@ -398,14 +396,14 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
       </div>
     )
 
-  if (wallet.account && !wallet.account.name)
+  if (door === 'unnamed')
     return (
       <div className="say say-gate">
         <Username why="Pick a username to steer the agent and ask it side questions. People see it beside every note you back." />
       </div>
     )
 
-  if (team && roster && !seat)
+  if (door.at === 'not-member')
     return (
       <div className="say say-gate">
         <p className="say-team"><b>Only its team steers this swarm.</b> Anyone can fund it and talk in the room; its admins add who steers.</p>
@@ -421,7 +419,7 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
             <button aria-checked={stake === value} disabled={!!busy} key={value} onClick={() => setStake(value)} role="radio" type="button">${value === '0.5' ? '0.50' : value}</button>
           ))}
           <label className="say-own">$<input aria-label="Your amount" disabled={!!busy} inputMode="decimal" onChange={(event) => setStake(event.target.value.replace(',', '.').replace('$', ''))} onFocus={(event) => event.target.select()} value={(stakes as readonly string[]).includes(stake) ? '' : stake} placeholder="…" /></label>
-          {busy ? <span className="say-note">{busy}</span> : done ? <span className="say-note say-done">{done}</span> : seat && <span className="say-note">from the swarm's money{seat.left === null ? '' : ` · ${usd(seat.left)} of your team budget left`}</span>}
+          {busy ? <span className="say-note">{busy}</span> : done ? <span className="say-note say-done">{done}</span> : door.from === 'team' && <span className="say-note">from the swarm's money{door.left === null ? '' : ` · ${usd(door.left)} of your team budget left`}</span>}
         </div>
       )}
       <form className="say-box" onSubmit={(event) => { event.preventDefault(); submit() }}>
