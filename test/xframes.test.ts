@@ -89,6 +89,30 @@ test('card image escapes its title', async () => {
   assert.doesNotMatch(svg, /Explore <science>/)
 })
 
+test('the Telegram Mini App serves the card at its own origin with Telegram links', async () => {
+  const response = XFrames.start('https://swarms.example', [{ ...overview, id: 'def456', status: 'running' }], new URL('https://swarms.example/tg'), 'SwarmsBot')
+  const html = await response.text()
+  assert.doesNotMatch(response.headers.get('content-security-policy') ?? '', /sandbox/)
+  assert.match(response.headers.get('content-security-policy') ?? '', /https:\/\/telegram\.org/)
+  assert.match(html, /<script src="https:\/\/telegram\.org\/js\/telegram-web-app\.js/)
+  assert.match(html, /<body class="tg">/)
+  assert.doesNotMatch(html, /xframe-player/)
+  assert.match(html, /href="\/tg\/s\/def456"/)
+  assert.match(html, /name="twitter:player" content="https:\/\/swarms\.example\/x"/)
+  assert.match(html, /"base":"\/tg","bot":"SwarmsBot","hosted":false,"telegram":true,"url":"https:\/\/swarms\.example\/tg"/)
+
+  const room = await XFrames.swarm('https://swarms.example', overview, new URL('https://swarms.example/tg/s/abc123'), 'SwarmsBot').text()
+  assert.match(room, /"url":"https:\/\/swarms\.example\/tg\/s\/abc123"/)
+  assert.match(room, /t\.me\/share\/url/)
+
+  const lost = await XFrames.lost('https://swarms.example', new URL('https://swarms.example/tg/s/nope')).text()
+  assert.match(lost, /href="\/tg\?view=join"/)
+
+  const card = await XFrames.start('https://swarms.example', [{ ...overview, id: 'def456', status: 'running' }], new URL('https://swarms.example/x?xframes-content='), 'SwarmsBot').text()
+  assert.match(card, /href="\/x\/s\/def456"/)
+  assert.match(card, /"bot":null/)
+})
+
 test('a frame is served as a trusted player around its sandboxed card, as xframes does', async () => {
   const outer = XFrames.swarm('https://swarms.example', overview, new URL('https://swarms.example/x/s/abc123?view=fund'))
   const html = await outer.text()

@@ -95,7 +95,7 @@ const Beat = pure(function Beat(props: { entry: Entry; onFund: (() => void) | un
   const detail = entry.detail && entry.detail !== entry.text ? entry.detail : null
   const aside = entry.kind === 'status' || entry.kind === 'funds' || entry.kind === 'machine' || entry.kind === 'steer'
   const problem = entry.kind === 'error' ? trouble(entry) : null
-  const text = problem ? problem.text : aside ? (Answer.spoken(entry.text) ?? entry.text) : entry.text
+  const text = problem ? problem.text : aside ? (Answer.spoken(entry.text) ?? entry.text) : entry.kind === 'thinking' ? plain(entry.text) : entry.text
   const long = entry.kind === 'message' ? entry.text.length > 700 || entry.text.split('\n').length > 10 : entry.kind === 'thinking' ? entry.text.length > 180 : !!detail || (!!problem && text !== entry.text)
   const toggle = long ? () => setOpen(!open) : undefined
   return (
@@ -122,6 +122,10 @@ const Beat = pure(function Beat(props: { entry: Entry; onFund: (() => void) | un
     </li>
   )
 })
+
+function plain(text: string) {
+  return text.replace(/\*\*(.+?)\*\*|__(.+?)__|`([^`\n]+)`/g, (_, bold?: string, under?: string, code?: string) => bold ?? under ?? code ?? '')
+}
 
 const shelf = /^(Published|Updated) the artifact "(.+)"(?: \(version (\d+)\))?$/
 
@@ -519,12 +523,19 @@ export function Transcript(props: {
     const kept: Entry[] = []
     const counts = new Map<Entry, number>()
     let burst = new Map<string, Entry>()
+    let broke = false
     for (const entry of props.entries) {
       if (entry.kind === 'funds' || (who !== 'all' && speaker(entry.who) !== who)) continue
       if (entry.kind === 'status' && Answer.settled(entry.text)) continue
       const tool = entry.kind === 'error' && failure(entry.text)
-      if (entry.kind !== 'error' || tool) burst = new Map()
-      const said = entry.kind === 'error' && !tool ? trouble(entry).text : undefined
+      if ((entry.kind !== 'error' && entry.kind !== 'machine') || tool) {
+        burst = new Map()
+        broke = false
+      }
+      if (entry.kind === 'error' && !tool && broke && /^The run failed|stopped with an error/.test(entry.text)) continue
+      const problem = entry.kind === 'error' && !tool ? trouble(entry) : undefined
+      if (problem?.money) broke = true
+      const said = problem?.text
       const first = said ? burst.get(said) : undefined
       if (first) {
         counts.set(first, (counts.get(first) ?? 1) + 1)
@@ -698,7 +709,7 @@ export function Transcript(props: {
               {item.now?.kind === 'text' ? (
                 <div className="beat-say"><Markdown streaming text={Answer.unround(item.now.text)} /><span className="caret" /></div>
               ) : (
-                <p className="beat-text">{item.now?.kind === 'input' && <span aria-hidden="true" className="beat-mark">›</span>}{item.now?.text}<span className="caret" /></p>
+                <p className="beat-text">{item.now?.kind === 'input' && <span aria-hidden="true" className="beat-mark">›</span>}{item.now?.kind === 'thinking' ? plain(item.now.text) : item.now?.text}<span className="caret" /></p>
               )}
             </li>
           ))}

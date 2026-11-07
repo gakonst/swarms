@@ -1,5 +1,6 @@
 import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Posted, Problem, Room, Roster, Snapshot, Steering, Summary } from '../shared/Api.ts'
 import type * as Btw from '../shared/Btw.ts'
+import type { Machine } from '../shared/Fleet.ts'
 import { seeded } from './boot.ts'
 import { visitor } from './stage.ts'
 
@@ -135,6 +136,10 @@ export function hands(id: string) {
   return fixture ? staged((fixtures) => fixtures.lent(id)) : request<{ hands: Lent[] }>(`${path(id)}/hands`)
 }
 
+export function machines(id: string) {
+  return fixture ? Promise.resolve({ machines: [] as Machine[] }) : request<{ machines: Machine[] }>(`/v1/swarms/${encodeURIComponent(id)}/machines`)
+}
+
 export function hand(id: string, label: string) {
   return fixture
     ? Promise.resolve({ cli: "nc hand 'https://gateway.tempo.xyz/v1/hands/attach' --token hand_demo_4f2a", command: 'curl -fsSL https://nanocode.xyz/install | sh && nc hand ...', label: label ?? '', library: "import { Hand } from 'nanocode'\nawait Hand.connect(url, { token })", name: (label || 'my-machine') + '-3c1f', npm: 'npm i nanocode@build-20f97e0', swarm: id, tab: null, token: 'hand_demo_4f2a', url: 'https://gateway.tempo.xyz/v1/hands/attach' } as Issued)
@@ -184,7 +189,7 @@ export function branches(id: string) {
   return fixture ? staged((fixtures) => fixtures.branches(id)) : request<Branches>(`${path(id)}/branches`)
 }
 
-export function fund(id: string, branch: number, input: { amount: string; message?: string }) {
+export function fund(id: string, branch: number, input: { amount: string; artifact?: boolean; message?: string }) {
   return fixture ? staged((fixtures) => fixtures.fund(id, branch, input, bearer ? visitor : undefined)) : request<Branch>(`${path(id)}/branches/${branch}/fund`, input)
 }
 

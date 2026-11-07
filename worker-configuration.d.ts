@@ -6,6 +6,7 @@ interface __BaseEnv_Env {
 	ASSETS: Fetcher;
 	GATEWAY_URL: "https://gateway.tempo-dev.workers.dev";
 	SWARMS_URL: "https://swarms.tempo-dev.workers.dev";
+	TELEGRAM_BOT: "TempoSwarmsBot";
 	TEMPO_RPC: "https://rpc.tempo.xyz";
 	SWARMS_GATEWAY_KEY: string;
 	SWARMS_SECRET: string;
@@ -24,7 +25,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "GATEWAY_URL" | "SWARMS_URL" | "TEMPO_RPC" | "SWARMS_GATEWAY_KEY" | "SWARMS_SECRET">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "GATEWAY_URL" | "SWARMS_URL" | "TELEGRAM_BOT" | "TEMPO_RPC" | "SWARMS_GATEWAY_KEY" | "SWARMS_SECRET">> {}
 }
 declare module "*.txt" {
 	const value: string;

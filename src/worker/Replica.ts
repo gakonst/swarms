@@ -6,7 +6,7 @@ const primaries = new WeakMap<Cloudflare.Env, Cloudflare.Env>()
 
 const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|hands|answer|updates|search|wait|machines|backers|team|branches))?)?$/
 
-const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|s\/[^/]+|s\/[^/]+\/code)$/
+const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|tg|tg\/s\/[^/]+|s\/[^/]+|s\/[^/]+\/code)$/
 
 export function readable(method: string, path: string) {
   if (method !== 'GET' && method !== 'HEAD') return false
