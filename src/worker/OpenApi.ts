@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import * as Feedback from './Feedback.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Sessions from './Sessions.ts'
@@ -336,6 +337,16 @@ export function document(origin: string) {
     openapi: '3.1.0',
     paths: {
       '/v1/config': { get: { operationId: 'config', responses: ok(ref('Config'), 'Chain and tokens.'), summary: 'Configuration' } },
+      '/v1/feedback': {
+        post: {
+          description:
+            "Files a bug report, feature request or question about Swarms with the team that runs it, as an issue of the site's feedback board, and answers its id and a link where its status and resolution show. Free; never send credentials. Problems with the gateway's own tools go to the gateway's send_feedback.",
+          operationId: 'feedback',
+          requestBody: { content: { 'application/json': { schema: input(Feedback.schema) } }, required: true },
+          responses: { ...ok(object({ id: string, link: string }), 'The issue was filed.', '201'), ...failures(400, 404, 502) },
+          summary: 'Report a problem',
+        },
+      },
       '/v1/me': {
         get: {
           description: 'The signed-in account, from Authorization: Bearer <token>.',

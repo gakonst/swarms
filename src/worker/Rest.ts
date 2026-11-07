@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { Contributed } from '../shared/Api.ts'
+import * as Feedback from './Feedback.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
@@ -34,6 +35,8 @@ app.get('/openapi.json', async (c) => c.json((await import('./OpenApi.ts')).docu
 app.all('/mcp', async (c) => (await import('./Mcp.ts')).handle(c.req.raw, c.env))
 
 app.get('/v1/config', async (c) => c.json(await Operations.config(c.env)))
+
+app.post('/v1/feedback', async (c) => Problem.respond(await Feedback.file(c.env, await body(c.req.raw)), 201))
 
 app.get('/v1/me', async (c) => Problem.respond(await Operations.account(c.env, await Sessions.who(c.env, c.req.raw))))
 
