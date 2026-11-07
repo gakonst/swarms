@@ -23,6 +23,7 @@ import * as Sessions from './Sessions.ts'
 import * as Lobby from './Lobby.ts'
 import * as Store from './Store.ts'
 import * as Vault from './Vault.ts'
+import * as Words from './Words.ts'
 
 export type Contributed = {
   amount: string
@@ -228,7 +229,6 @@ const snapshotMs = 60_000
 const snapshotFiles = 2_000
 const snapshotText = 64_000
 
-
 const restMs = 10 * 60_000
 
 const smallestSwap = 10_000n
@@ -360,18 +360,18 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.put('id', input.swarm)
     this.kv.delete('exhausted:pool')
     if (input.kind === 'noted') {
-      this.log('funds', `${short(input.contributor)} put the ${trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
-      this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} put the ${trim(input.amount)} ${Chain.symbol(input.token)} they sent behind "${input.note ?? ''}".`)
+      this.log('funds', `${Words.short(input.contributor)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
+      this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind "${input.note ?? ''}".`)
       if (input.noteId) await this.steer(input.swarm, input.noteId)
       this.changed('detail', 'members')
       return this.wake('note')
     }
     this.log(
       'funds',
-      `${short(input.contributor)} sent ${trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
+      `${Words.short(input.contributor)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
       [input.note, input.hash].filter(Boolean).join('\n'),
     )
-    this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ` behind "${input.note}"` : ''}.`)
+    this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ` behind "${input.note}"` : ''}.`)
     if (input.noteId) await this.steer(input.swarm, input.noteId)
     this.cue('chain')
     this.changed('detail', 'members')
@@ -810,7 +810,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (run.state === 'working') this.ctx.storage.sql.exec("UPDATE turns SET status = 'cancelled', ended_at = ? WHERE n = ? AND status = 'running'", Date.now(), run.n)
     if (run.state === 'working' || run.state === 'starting') this.set({ since: null, state: 'waiting', until: Date.now() })
     this.kv.delete('agent')
-    this.kv.put('secret', hex(crypto.getRandomValues(new Uint8Array(32))))
+    this.kv.put('secret', Words.hex(crypto.getRandomValues(new Uint8Array(32))))
   }
 
   async advance(row: Store.Row) {
@@ -1117,7 +1117,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const pushed = commits.length ? ` and pushed ${commits.length} commit${commits.length === 1 ? '' : 's'} to ${repo.name}` : ''
     this.log(
       status === 'completed' ? 'status' : 'error',
-      status === 'completed' ? `Posted an update after spending ${dollars(spent > 0n ? spent : 0n)}${pushed}.` : `The agent stopped with an error after spending ${dollars(spent > 0n ? spent : 0n)}${pushed}.`,
+      status === 'completed' ? `Posted an update after spending ${Words.dollars(spent > 0n ? spent : 0n)}${pushed}.` : `The agent stopped with an error after spending ${Words.dollars(spent > 0n ? spent : 0n)}${pushed}.`,
       status === 'completed' ? (commits.length ? commits.map((commit) => `${commit.sha.slice(0, 7)} ${commit.message.split('\n')[0]}`).join('\n') : null) : message,
     )
     await this.publish(row.id)
@@ -1195,7 +1195,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       amount === 0n ||
       amount > vendorCap
     )
-      return refused(`The swarm pays a service directly only for a Tempo USDC.e charge of at most ${dollars(vendorCap)}.`)
+      return refused(`The swarm pays a service directly only for a Tempo USDC.e charge of at most ${Words.dollars(vendorCap)}.`)
     const wallet = row.wallet
     const authorization = await this.locked(async () => {
       const account = await Vault.account(this.env, row)
@@ -1218,7 +1218,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         return challenge.realm
       }
     })()
-    this.log('funds', `Paid ${host} ${dollars(amount)} in USDC.e from the swarm's wallet, because the gateway's treasury could not front it.`)
+    this.log('funds', `Paid ${host} ${Words.dollars(amount)} in USDC.e from the swarm's wallet, because the gateway's treasury could not front it.`)
     return { authorization }
   }
 
@@ -1299,11 +1299,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const host = passHost(input)
     const used = recent.reduce((sum, item) => sum + BigInt(item.amount), 0n)
     const there = recent.filter((item) => item.host === host).reduce((sum, item) => sum + BigInt(item.amount), 0n)
-    if (amount > passCall) return { code: 'limit_reached', detail: `The swarm pays an outside service at most ${dollars(passCall)} a call; ${host} asked ${dollars(amount)}.`, status: 402 }
+    if (amount > passCall) return { code: 'limit_reached', detail: `The swarm pays an outside service at most ${Words.dollars(passCall)} a call; ${host} asked ${Words.dollars(amount)}.`, status: 402 }
     if (used + amount > hourly)
-      return { code: 'limit_reached', detail: `The swarm pays outside services at most ${dollars(hourly)} an hour, and ${dollars(used)} went to them in the last hour.`, retry: 60, status: 402 }
+      return { code: 'limit_reached', detail: `The swarm pays outside services at most ${Words.dollars(hourly)} an hour, and ${Words.dollars(used)} went to them in the last hour.`, retry: 60, status: 402 }
     if (there + amount > hourly / 2n)
-      return { code: 'limit_reached', detail: `The swarm pays one outside service at most ${dollars(hourly / 2n)} an hour, and ${host} had ${dollars(there)} of it.`, retry: 60, status: 402 }
+      return { code: 'limit_reached', detail: `The swarm pays one outside service at most ${Words.dollars(hourly / 2n)} an hour, and ${host} had ${Words.dollars(there)} of it.`, retry: 60, status: 402 }
     return undefined
   }
 
@@ -1313,13 +1313,13 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const now = Date.now()
     const host = passHost(input)
     this.kv.put('passed', [...(this.kv.get<Passed[]>('passed') ?? []).filter((item) => item.at > now - hourMs), { amount: String(amount), at: now, host }])
-    if (input.operation === 'agent.fetch') this.log('funds', `The agent paid ${dollars(amount)} to an outside service through the gateway, from the swarm's money.`, input.path ?? null)
+    if (input.operation === 'agent.fetch') this.log('funds', `The agent paid ${Words.dollars(amount)} to an outside service through the gateway, from the swarm's money.`, input.path ?? null)
     return paid
   }
 
   async budget(secret: string, app: string | undefined): Promise<Paid> {
     const known = this.kv.get<string>('secret')
-    if (!known || !same(known, secret)) return { code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 }
+    if (!known || !Words.same(known, secret)) return { code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 }
     const row = await this.found(this.kv.get<string>('id') ?? '')
     if (!row) return { code: 'unauthorized', detail: 'No swarm has this id.', status: 401 }
     if (app !== undefined && app !== Gateway.app(row.id)) return { code: 'unauthorized', detail: 'This payer pays only for its own swarm.', status: 401 }
@@ -1329,7 +1329,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   pay(input: Pay): Promise<Paid> {
     const secret = this.kv.get<string>('secret')
-    if (!secret || !same(secret, input.secret)) return Promise.resolve({ code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 })
+    if (!secret || !Words.same(secret, input.secret)) return Promise.resolve({ code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 })
     const run = this.paying.then(() => this.charge(input))
     this.paying = run.catch(() => undefined)
     return run
@@ -1348,7 +1348,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     const price = Payer.priced(input.challenge)
     if (price !== undefined && price > Chain.cap)
-      return { code: 'limit_reached', detail: `This request costs ${dollars(price)}, more than the ${dollars(Chain.cap)} the swarm pays for any one request; ask for less at once, such as a shorter lease or fewer machines.`, status: 402 }
+      return { code: 'limit_reached', detail: `This request costs ${Words.dollars(price)}, more than the ${Words.dollars(Chain.cap)} the swarm pays for any one request; ask for less at once, such as a shorter lease or fewer machines.`, status: 402 }
 
     const snapshots = input.channels ?? []
     const known = [...this.kv.list<Payer.Channel>({ prefix: 'channel:' })]
@@ -1403,7 +1403,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       }
       const until = result.room?.resets ?? Date.now() + restMs
       this.kv.put('exhausted:' + source.id, until)
-      this.log('funds', `${capital(source.label)} cannot pay right now, so the swarm moves on until ${clock(until)} UTC.`, result.failed)
+      this.log('funds', `${Words.capital(source.label)} cannot pay right now, so the swarm moves on until ${Words.clock(until)} UTC.`, result.failed)
     }
 
     if (busy) return { code: 'busy', detail: "The swarm's contributions are holding other calls' reservations; try again shortly.", retry: 2, status: 429 }
@@ -1418,11 +1418,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return {
       code: 'limit_reached',
       detail: scarce
-        ? `No channel of this swarm holds ${dollars(price)} at once: the MACH channels the gateway spends for it hold ${dollars(held)} in all, the largest ${dollars(most)}. Ask for less at once, such as a shorter lease or a smaller machine.`
+        ? `No channel of this swarm holds ${Words.dollars(price)} at once: the MACH channels the gateway spends for it hold ${Words.dollars(held)} in all, the largest ${Words.dollars(most)}. Ask for less at once, such as a shorter lease or a smaller machine.`
         : held >= perCall && passing
-          ? `Payments to outside services come only from the swarm's wallet, which cannot pay this; the MACH channels the gateway spends for the swarm (${dollars(held)} left) pay only for the gateway's own requests.`
+          ? `Payments to outside services come only from the swarm's wallet, which cannot pay this; the MACH channels the gateway spends for the swarm (${Words.dollars(held)} left) pay only for the gateway's own requests.`
           : held >= perCall
-            ? `The swarm's wallet cannot pay this, though the MACH channels the gateway spends for it still hold ${dollars(held)}; try again in a moment.`
+            ? `The swarm's wallet cannot pay this, though the MACH channels the gateway spends for it still hold ${Words.dollars(held)}; try again in a moment.`
             : small
               ? 'No single contribution to this swarm can pay this much at once right now.'
               : spent,
@@ -1455,7 +1455,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.kv.put('spent:' + source.id, String(price))
       this.kv.put('paid:' + source.id, Date.now())
       this.cue('chain')
-      if (payee) this.log('funds', `Opened a channel from the swarm's wallet to the owner of hand ${input.hand ?? 'a lent machine'} (${short(payee)}), which the gateway settles straight to them.`)
+      if (payee) this.log('funds', `Opened a channel from the swarm's wallet to the owner of hand ${input.hand ?? 'a lent machine'} (${Words.short(payee)}), which the gateway settles straight to them.`)
       return { authorization }
     }
 
@@ -1684,7 +1684,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.cue('chain')
       this.log(
         'funds',
-        `Swapped ${trim(Memo.decimal(amount))} ${Chain.tokens[id].symbol} to ${trim(Memo.decimal(result.received))} OUSD on the stablecoin DEX (quote ${trim(Memo.decimal(result.quote))}, at least ${trim(Memo.decimal(result.minimum))}, fee ${trim(Memo.decimal(result.fee))}).`,
+        `Swapped ${Words.trim(Memo.decimal(amount))} ${Chain.tokens[id].symbol} to ${Words.trim(Memo.decimal(result.received))} OUSD on the stablecoin DEX (quote ${Words.trim(Memo.decimal(result.quote))}, at least ${Words.trim(Memo.decimal(result.minimum))}, fee ${Words.trim(Memo.decimal(result.fee))}).`,
         result.hash,
       )
     }
@@ -1840,7 +1840,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.log(
       'steer',
       `Steered the agent toward "${clip(note.note, 120)}"`,
-      `${dollars(Memo.units(note.weight))} behind it, ${percent(note.share)} of everything contributed`,
+      `${Words.dollars(Memo.units(note.weight))} behind it, ${Words.percent(note.share)} of everything contributed`,
     )
     return note
   }
@@ -2011,7 +2011,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const branch of closed.filter((found) => claimed.has(found.agent_id))) {
       const returned = await Store.settle(this.env, { agent, branch: branch.agent_id, claimed: true, left: unspent(branch), swarm: row.id })
       const back = returned.reduce((sum, item) => sum + item.amount, 0n)
-      if (back > 0n) this.announce(`${branch.role} (branch ${branch.agent_id}) closed with ${dollars(back)} of its backers' money unspent, which is theirs to put behind something else again.`)
+      if (back > 0n) this.announce(`${branch.role} (branch ${branch.agent_id}) closed with ${Words.dollars(back)} of its backers' money unspent, which is theirs to put behind something else again.`)
     }
   }
 
@@ -2025,7 +2025,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         const returned = await Store.settle(this.env, { agent: old.agent, branch, claimed: true, left: found ? unspent(found) : null, swarm })
         back += returned.reduce((sum, item) => sum + item.amount, 0n)
       }
-      if (back > 0n) this.announce(`The swarm started a new agent, so ${dollars(back)} that backers had put behind the old agent's branches went back to them, to put behind the new agent's work.`)
+      if (back > 0n) this.announce(`The swarm started a new agent, so ${Words.dollars(back)} that backers had put behind the old agent's branches went back to them, to put behind the new agent's work.`)
     }
   }
 
@@ -2052,11 +2052,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const recent = (this.kv.get<number[]>(key) ?? []).filter((at) => at > now - hourMs)
     const oldest = recent[0]
     if (recent.length >= Btw.perHour && oldest !== undefined)
-      return { detail: `At most ${Btw.perHour} side questions an hour; the next one opens at ${clock(oldest + hourMs)} UTC.`, ok: false, status: 429 }
+      return { detail: `At most ${Btw.perHour} side questions an hour; the next one opens at ${Words.clock(oldest + hourMs)} UTC.`, ok: false, status: 429 }
     const everyone = (this.kv.get<number[]>('btw:*') ?? []).filter((at) => at > now - hourMs)
     const first = everyone[0]
     if (everyone.length >= Btw.perSwarmHour && first !== undefined)
-      return { detail: `This swarm answers at most ${Btw.perSwarmHour} side questions an hour, from everyone; the next one opens at ${clock(first + hourMs)} UTC.`, ok: false, status: 429 }
+      return { detail: `This swarm answers at most ${Btw.perSwarmHour} side questions an hour, from everyone; the next one opens at ${Words.clock(first + hourMs)} UTC.`, ok: false, status: 429 }
     this.kv.put(key, [...recent, now])
     this.kv.put('btw:*', [...everyone, now])
 
@@ -2282,7 +2282,7 @@ function pool(): Source {
 }
 
 function owing(payee: Address): Source {
-  return { currency: Chain.tokens.ousd.address, id: 'hand:' + payee.toLowerCase(), label: `the swarm's wallet to hand owner ${short(payee)}` }
+  return { currency: Chain.tokens.ousd.address, id: 'hand:' + payee.toLowerCase(), label: `the swarm's wallet to hand owner ${Words.short(payee)}` }
 }
 
 function owner(source: Source) {
@@ -2389,16 +2389,6 @@ function cues(payload: Record<string, unknown>): Cue[] {
   ]
 }
 
-function same(a: string, b: string) {
-  const left = new TextEncoder().encode(a)
-  const right = new TextEncoder().encode(b)
-  return left.length === right.length && crypto.subtle.timingSafeEqual(left, right)
-}
-
-function hex(bytes: Uint8Array) {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
-}
-
 function slug(title: string) {
   return (
     title
@@ -2433,7 +2423,7 @@ function unspent(branch: Gateway.Subagent) {
 
 function weighed(note: Note) {
   const backers = note.backers === 1 ? '1 backer' : `${note.backers} backers`
-  return `[${dollars(Memo.units(note.weight))} behind this, from ${backers}] ${Mention.claimed(note.note)}`
+  return `[${Words.dollars(Memo.units(note.weight))} behind this, from ${backers}] ${Mention.claimed(note.note)}`
 }
 
 function updates(turns: readonly Search.Turn[]): Update[] {
@@ -2471,28 +2461,4 @@ function entry(row: Record<string, SqlStorageValue>): Entry {
     text: String(row['text']),
     who: row['who'] === null || row['who'] === undefined ? null : String(row['who']),
   }
-}
-
-function short(address: string) {
-  return `${address.slice(0, 6)}…${address.slice(-4)}`
-}
-
-function trim(amount: string) {
-  return amount.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
-}
-
-function dollars(atomics: bigint) {
-  return '$' + trim(Memo.decimal(atomics))
-}
-
-function capital(text: string) {
-  return text.charAt(0).toUpperCase() + text.slice(1)
-}
-
-function clock(at: number) {
-  return new Date(at).toISOString().slice(11, 16)
-}
-
-function percent(share: number) {
-  return `${Math.round(share * 1000) / 10}%`
 }
