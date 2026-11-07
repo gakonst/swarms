@@ -42,7 +42,7 @@ test('D1 status and why come from one projection', () => {
   assert.deepEqual(Phase.project({ since: 5, state: 'waiting', until: 0 }, 4), { status: 'running', why: null })
   assert.deepEqual(Phase.project({ since: null, state: 'waiting', until: 0 }, 0), { status: 'funding', why: null })
   assert.deepEqual(Phase.project({ id: 'a:1', n: 1, since: null, state: 'starting', told: [] }, 1), { status: 'running', why: null })
-  assert.deepEqual(Phase.project({ n: 2, since: 1, started: 1, state: 'working', turn: 't' }, 2), { status: 'running', why: null })
+  assert.deepEqual(Phase.project({ from: 0, n: 2, since: 1, started: 1, state: 'working', turn: 't' }, 2), { status: 'running', why: null })
 })
 
 test('a pause is stored as data and its sentence rendered when read', () => {
@@ -55,7 +55,7 @@ test('a pause is stored as data and its sentence rendered when read', () => {
 
 test('old storage becomes one run', () => {
   assert.deepEqual(Phase.migrated(keys({}), 0, 9), { state: 'new' })
-  assert.deepEqual(Phase.migrated(keys({ n: 3, since: 2, started: 4, turn: 'r3', wanted: '5' }), 3, 9), { n: 3, since: 2, started: 4, state: 'working', turn: 'r3', wanted: '5' })
+  assert.deepEqual(Phase.migrated(keys({ n: 3, since: 2, started: 4, turn: 'r3', wanted: '5' }), 3, 9), { from: 0, n: 3, since: 2, started: 4, state: 'working', turn: 'r3', wanted: '5' })
   assert.deepEqual(Phase.migrated(keys({ agent: 'agt', since: 2 }), 3, 9), { since: 2, state: 'waiting', until: 9 })
   assert.deepEqual(Phase.migrated(keys({ left: '0.021000', paused: 'Out of money: $0.021 left', why: 'money' }), 3, 9), { from: money, since: null, state: 'waiting', until: 9 })
   assert.deepEqual(Phase.migrated(keys({ paused: 'Stopped after 3 errors in a row.', why: 'rest' }), 3, 9), { at: 9, pause: { failures: 3, why: 'rest' }, state: 'paused' })

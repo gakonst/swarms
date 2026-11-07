@@ -95,7 +95,7 @@ type Turning = Extract<Phase.Run, { state: 'working' }>
 
 const version = 1
 
-const dead = ['turn', 'started', 'since', 'paused', 'why', 'failures', 'wanted', 'checked', 'n', 'fresh', 'unreachable', 'url', 'persona', 'cursor', 'shelved', 'terms', 'left', 'expected', 'poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'round', 'resting', 'stuck', 'kicked', 'rechecked', 'retired', 'retiring', 'tallied', 'workers', 'refundAt', 'refunded', 'closing', 'returning', 'open', 'source', 'pledge']
+const dead = ['turn', 'started', 'since', 'paused', 'why', 'failures', 'wanted', 'checked', 'n', 'fresh', 'unreachable', 'url', 'persona', 'cursor', 'shelved', 'terms', 'left', 'expected', 'poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'round', 'resting', 'stuck', 'kicked', 'rechecked', 'retired', 'retiring', 'tallied', 'workers', 'refundAt', 'refunded', 'closing', 'returning', 'open', 'source', 'pledge', 'swept']
 
 const gone = ['owed:', 'sent:', 'seen:', 'closing:', 'available:']
 
@@ -142,6 +142,16 @@ const columns = [
   ['chat', 'artifact', 'ALTER TABLE chat ADD COLUMN artifact TEXT'],
   ['steered', 'weight', 'ALTER TABLE steered ADD COLUMN weight TEXT'],
 ] as const
+
+const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)']
+
+const pushedTurns = "WHERE n IN (SELECT n FROM turns WHERE commits != '[]' UNION ALL SELECT n FROM (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL ORDER BY n DESC LIMIT 3))"
+
+const newerTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL AND ended_at > ? ORDER BY n DESC LIMIT 5)"
+
+const lastTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL AND ended_at IS NOT NULL ORDER BY n DESC LIMIT ?)"
+
+const searched = 5_000
 
 const followMs = 2_000
 
@@ -277,6 +287,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const [table, column, statement] of columns)
       if (!ctx.storage.sql.exec<{ name: string }>(`PRAGMA table_info(${table})`).toArray().some((row) => row.name === column))
         ctx.storage.sql.exec(statement)
+    for (const statement of indexes) sql.exec(statement)
     if ((ctx.storage.kv.get<number>('v') ?? 0) < version) migrate(ctx.storage)
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
   }
@@ -290,7 +301,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   stamp(): Stamp {
-    const tuple = `${Store.epoch()}.${this.marked}.${this.touches}`
+    const tuple = `${Store.epoch(this.kv.get<string>('id') ?? '')}.${this.marked}.${this.touches}`
     const now = Date.now()
     if (tuple !== this.stamped.tuple) this.stamped = { at: now, tuple }
     return { quiet: now - this.stamped.at >= stillMs, version: `${this.boot}.${tuple}` }
@@ -302,14 +313,18 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   found(id: string) {
-    return this.memo(`row:${id}`, () => Store.find(this.env, id), (row) => !!row?.wallet)
+    return this.memo(`row:${id}`, id, () => Store.find(this.env, id), (row) => !!row?.wallet)
   }
 
-  async memo<T>(key: string, read: () => Promise<T>, keep: (value: T) => boolean = () => true): Promise<T> {
+  remember(row: Store.Row) {
+    this.memos.set(`row:${row.id}`, { at: Date.now(), epoch: Store.epoch(row.id), marked: this.marked, value: structuredClone(row) })
+  }
+
+  async memo<T>(key: string, swarm: string, read: () => Promise<T>, keep: (value: T) => boolean = () => true): Promise<T> {
     const held = this.memos.get(key)
-    if (held && held.epoch === Store.epoch() && held.marked === this.marked && Date.now() - held.at < rowMs) return structuredClone(held.value) as T
+    if (held && held.epoch === Store.epoch(swarm) && held.marked === this.marked && Date.now() - held.at < rowMs) return structuredClone(held.value) as T
     const at = Date.now()
-    const epoch = Store.epoch()
+    const epoch = Store.epoch(swarm)
     const marked = this.marked
     const value = await read()
     if (keep(value)) this.memos.set(key, { at, epoch, marked, value: structuredClone(value) })
@@ -349,6 +364,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   turn() {
     const run = this.run()
     return run.state === 'working' ? run.turn : undefined
+  }
+
+  last() {
+    return Number(this.ctx.storage.sql.exec<{ seq: number | null }>('SELECT MAX(seq) AS seq FROM feed').one().seq ?? 0)
   }
 
   turned() {
@@ -428,7 +447,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const id = this.kv.get<string>('id')
     const repo = this.kv.get<string>('repo')
     const owner = this.kv.get<string>('owner')
-    const turns = shape.pushed ? this.rows("WHERE commits != '[]' OR n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL ORDER BY n DESC LIMIT 3)") : this.turns()
+    const turns = shape.pushed ? this.rows(pushedTurns) : this.turns()
     const shown = shape.pushed ? updates(turns).filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) : updates(turns)
     const paused = Phase.paused(this.run())
     return {
@@ -451,6 +470,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   pulse() {
     const turns = this.turns()
     return { turns, updates: updates(turns), working: this.working() }
+  }
+
+  latest(after: number): { update: Update | null; working: Working | null } {
+    return { update: updates(this.rows(newerTurns, after)).at(-1) ?? null, working: this.working() }
+  }
+
+  recent(limit: number): { updates: Update[]; working: Working | null } {
+    return { updates: updates(this.rows(lastTurns, limit + 10)).slice(-limit), working: this.working() }
   }
 
   working(): Working | null {
@@ -480,18 +507,20 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   feed(
     after: number,
-    filter: { before?: number | undefined; kind?: Kind | undefined; limit?: number | undefined; who?: string | undefined } = {},
+    filter: { before?: number | undefined; kind?: Kind | undefined; kinds?: readonly Kind[] | undefined; limit?: number | undefined; who?: string | undefined } = {},
   ): Entry[] {
     const where = [
       'seq > ?',
       ...(filter.before === undefined ? [] : ['seq < ?']),
       ...(filter.kind ? ['kind = ?'] : []),
+      ...(filter.kinds?.length ? [`kind IN (${filter.kinds.map(() => '?').join(', ')})`] : []),
       ...(filter.who === undefined ? [] : [filter.who === 'agent' ? 'who IS NULL' : 'who = ?']),
     ]
     const values = [
       after,
       ...(filter.before === undefined ? [] : [filter.before]),
       ...(filter.kind ? [filter.kind] : []),
+      ...(filter.kinds ?? []),
       ...(filter.who === undefined || filter.who === 'agent' ? [] : [filter.who]),
     ]
     const rows = this.ctx.storage.sql
@@ -506,7 +535,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   page(
     after: number,
-    filter: { before?: number | undefined; kind?: Kind | undefined; limit?: number | undefined; who?: string | undefined } = {},
+    filter: { before?: number | undefined; kind?: Kind | undefined; kinds?: readonly Kind[] | undefined; limit?: number | undefined; who?: string | undefined } = {},
   ) {
     const last = this.ctx.storage.sql.exec<{ seq: number | null }>('SELECT MAX(seq) AS seq FROM feed').one().seq ?? 0
     return { entries: this.feed(after, filter), last: Number(last) }
@@ -517,7 +546,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const score = terms.map(() => "(instr(lower(text || ' ' || coalesce(detail, '')), ?) > 0)").join(' + ')
     return this.ctx.storage.sql
       .exec<Record<string, SqlStorageValue>>(
-        `SELECT seq, at, kind, text, detail, who, event FROM (SELECT *, ${score} AS score FROM feed) WHERE score > 0 ORDER BY score DESC, seq DESC LIMIT ?`,
+        `SELECT seq, at, kind, text, detail, who, event FROM (SELECT *, ${score} AS score FROM (SELECT * FROM feed ORDER BY seq DESC LIMIT ${searched})) WHERE score > 0 ORDER BY score DESC, seq DESC LIMIT ?`,
         ...terms,
         limit,
       )
@@ -736,7 +765,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
     for (const note of notes.filter((found) => told.get(found.id) === null)) this.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
     this.touch()
-    await this.move(money.row, { n, since: start.since ?? now, started: now, state: 'working', turn }, { rounds: n })
+    await this.move(money.row, { from: this.last(), n, since: start.since ?? now, started: now, state: 'working', turn }, { rounds: n })
     this.attach()
     this.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
     if (start.since === null) this.announce(`${worked ? 'Back at work' : 'Started working'}.`)
@@ -895,7 +924,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     await this.publish(row.id)
     if (answer?.text) this.announce(`Update: ${Answer.excerpt(answer.text, 280)}`)
 
-    const stored = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE at >= ? AND kind = 'tool' AND ((text || coalesce(detail, '')) LIKE '%kv_set%' OR (text || coalesce(detail, '')) LIKE '%bucket_put%' OR (text || coalesce(detail, '')) LIKE '%git_create%')", run.started).one().n
+    const stored = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'tool' AND ((text || coalesce(detail, '')) LIKE '%kv_set%' OR (text || coalesce(detail, '')) LIKE '%bucket_put%' OR (text || coalesce(detail, '')) LIKE '%git_create%')", run.from).one().n
     if (stored > 0 || !this.kv.get<number>('published')) await this.expose(row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
     const latest = this.run()
     const wanted = BigInt(latest.state === 'working' ? (latest.wanted ?? '0') : '0')
@@ -994,11 +1023,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async sweep(row: Store.Row) {
-    const started = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE at >= ? AND kind = 'machine' AND text LIKE 'Starting machine%'", this.kv.get<number>('swept') ?? 0).one().n
+    const started = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'machine' AND text LIKE 'Starting machine%'", this.kv.get<number>('sweptSeq') ?? 0).one().n
     if (!started && !(this.kv.get<Hand[]>('hands') ?? []).length) return
     const listed = await Gateway.sandboxes(this.env, row.id)
     if (!listed.ok) return
-    this.kv.put('swept', Date.now())
+    this.kv.put('sweptSeq', this.last())
     for (const sandbox of listed.value.sandboxes.filter((found) => found.status !== 'terminated')) {
       const ended = await Gateway.terminate(this.env, row.id, sandbox.sandboxId)
       if (ended.ok) this.log('machine', `Shut down ${sandbox.hand ?? sandbox.sandboxId}, which was still running when the swarm stopped.`)
@@ -1343,7 +1372,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     const connected = hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []
     const previous = new Set((this.kv.get<Hand[]>('hands') ?? []).map((hand) => hand.name))
-    const issued = new Map(connected.length ? (await Hands.list(this.env, row.id)).map((hand) => [hand.name, hand]) : [])
+    const issued = new Map(connected.some((hand) => !previous.has(hand.name)) ? (await Hands.list(this.env, row.id)).map((hand) => [hand.name, hand]) : [])
     const joined: Guest[] = []
     for (const hand of connected) {
       if (previous.has(hand.name)) continue
@@ -1368,8 +1397,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       Number(row.pool_spent) !== pool.pool_spent ||
       Number(row.sponsor_left) !== pool.sponsor_left ||
       Number(row.sponsor_spent) !== pool.sponsor_spent
-    )
+    ) {
       await Store.update(this.env, row.id, pool)
+      const updated = { ...row, ...pool, remaining: pool.pool_left + pool.sponsor_left, spent: Number(row.spent) - Number(row.pool_spent) - Number(row.sponsor_spent) + pool.pool_spent + pool.sponsor_spent }
+      this.remember(updated)
+      return { biggest, left, row: updated }
+    }
     return { biggest, left, row: (await this.found(row.id)) ?? row }
   }
 
@@ -1385,6 +1418,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (channel.endedAt !== null || channel.closing) {
         if (this.kv.get<string>('delivered:' + channel.channel) !== String(used)) {
           await Store.delivered(this.env, channel.channel, used)
+          this.marked += 1
           this.kv.put('delivered:' + channel.channel, String(used))
         }
         continue
@@ -1629,7 +1663,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       const spent = Memo.units(input.steer.amount)
       const sent = await this.steer(input.swarm, input.steer.noteId, `put ${dollars(spent)} of their backing, from the swarm's room,`)
       const row = sent ? null : await this.found(input.swarm)
-      const note = sent ?? (row ? (await this.notes(row)).find((found) => found.id === input.steer?.noteId) : undefined)
+      const note = sent ?? (row ? await Store.note(this.env, row.id, input.steer.noteId, BigInt(row.raised), new Set(this.steered())) : undefined)
       steer = {
         amount: input.steer.amount,
         backers: note?.backers ?? 1,
@@ -1737,8 +1771,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!agent) return
     const listed = await Gateway.subagents(this.env, row.id, agent)
     if (!listed.ok) return
-    for (const branch of listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed')) {
-      const returned = await Store.settle(this.env, { agent, branch: branch.agent_id, left: unspent(branch), swarm: row.id })
+    const closed = listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed')
+    if (!closed.length) return
+    const { settled } = await Store.funds(this.env, row.id, agent)
+    const claimed = await Store.claim(this.env, row.id, agent, closed.filter((branch) => !settled.has(branch.agent_id)).map((branch) => branch.agent_id))
+    for (const branch of closed.filter((found) => claimed.has(found.agent_id))) {
+      const returned = await Store.settle(this.env, { agent, branch: branch.agent_id, claimed: true, left: unspent(branch), swarm: row.id })
       const back = returned.reduce((sum, item) => sum + item.amount, 0n)
       if (back > 0n) this.announce(`${branch.role} (branch ${branch.agent_id}) closed with ${dollars(back)} of its backers' money unspent, which is theirs to put behind something else again.`)
     }
@@ -1748,9 +1786,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const old of await Store.replaced(this.env, swarm, current)) {
       const listed = old.agent ? await Gateway.subagents(this.env, swarm, old.agent).catch(() => undefined) : undefined
       let back = 0n
-      for (const branch of old.branches) {
+      const claimed = await Store.claim(this.env, swarm, old.agent, old.branches)
+      for (const branch of old.branches.filter((id) => claimed.has(id))) {
         const found = listed?.ok ? listed.value.find((agent) => agent.agent_id === branch) : undefined
-        const returned = await Store.settle(this.env, { agent: old.agent, branch, left: found ? unspent(found) : null, swarm })
+        const returned = await Store.settle(this.env, { agent: old.agent, branch, claimed: true, left: found ? unspent(found) : null, swarm })
         back += returned.reduce((sum, item) => sum + item.amount, 0n)
       }
       if (back > 0n) this.announce(`The swarm started a new agent, so ${dollars(back)} that backers had put behind the old agent's branches went back to them, to put behind the new agent's work.`)

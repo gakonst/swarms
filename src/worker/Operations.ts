@@ -478,9 +478,7 @@ export async function updates(env: Cloudflare.Env, input: Input<'updates'>): Pro
   const swarm = parsed.value.swarm
   if (!(await Store.exists(env, swarm))) return missing()
 
-  const pulse = await stub(env, swarm).pulse()
-  await logged(Search.sync(env, swarm, pulse.turns))
-  return Problem.ok({ updates: pulse.updates.slice(-parsed.value.limit), working: pulse.working })
+  return Problem.ok(await stub(env, swarm).recent(parsed.value.limit))
 }
 
 export async function code(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ snapshot: Snapshot | null }>> {
@@ -552,33 +550,24 @@ export async function wait(env: Cloudflare.Env, input: Input<'wait'>, signal?: A
   const started = Date.now()
   const deadline = started + parsed.value.timeout * 1000
   if (!(await Store.exists(env, swarm))) return missing()
-  let pulse = await stub(env, swarm).pulse()
-  const since = parsed.value.after ?? pulse.updates.at(-1)?.at ?? 0
+  const since = parsed.value.after ?? (await stub(env, swarm).latest(0)).update?.at ?? 0
 
   for (;;) {
-    const row = await Store.find(env, swarm)
-    if (!row) return missing()
-    const posted = pulse.updates.findLast((update) => update.at > since) ?? null
-    const reason = posted
-      ? 'updated'
-      : !pulse.working && row.status !== 'running'
-        ? 'idle'
-        : Date.now() >= deadline || signal?.aborted
-          ? 'timeout'
-          : undefined
+    const pulse = await stub(env, swarm).latest(since)
+    const reason = pulse.update ? 'updated' : !pulse.working ? 'idle' : Date.now() >= deadline || signal?.aborted ? 'timeout' : undefined
     if (reason) {
-      if (posted) await logged(Search.sync(env, swarm, pulse.turns))
+      const row = await Store.find(env, swarm)
+      if (!row) return missing()
       return Problem.ok({
-        changed: posted !== null,
+        changed: pulse.update !== null,
         reason,
         swarm: Store.summary(row),
-        update: posted,
+        update: pulse.update,
         waited: Date.now() - started,
         working: pulse.working,
       })
     }
     await sleep(Math.min(2000, deadline - Date.now()), signal)
-    pulse = await stub(env, swarm).pulse()
   }
 }
 

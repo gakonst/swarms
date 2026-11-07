@@ -15,7 +15,7 @@ export type Run =
   | { state: 'new' }
   | { from?: Pause | undefined; retry?: Retry | undefined; since: number | null; state: 'waiting'; until: number }
   | { id: string; n: number; since: number | null; state: 'starting'; told: Told[] }
-  | { n: number; since: number; started: number; state: 'working'; turn: string; wanted?: string | undefined }
+  | { from: number; n: number; since: number; started: number; state: 'working'; turn: string; wanted?: string | undefined }
   | { at: number; pause: Pause; state: 'paused' }
 
 export type Retry = { count: number; error: string; logged: number }
@@ -84,7 +84,7 @@ export function migrated(kv: Old, n: number, now: number): Run {
   const started = kv.get<number>('started') ?? now
   const since = kv.get<number>('since') ?? null
   const wanted = kv.get<string>('wanted')
-  if (turn) return { n, since: since ?? started, started, state: 'working', turn, ...(wanted ? { wanted } : {}) }
+  if (turn) return { from: 0, n, since: since ?? started, started, state: 'working', turn, ...(wanted ? { wanted } : {}) }
   const paused = kv.get<string>('paused')
   const why = kv.get<string>('why')
   if (paused || kv.get<boolean>('refunded') || kv.get<number>('refundAt') !== undefined) {
