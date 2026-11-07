@@ -1103,15 +1103,24 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
 
     if (busy) return { code: 'busy', detail: "The swarm's contributions are holding other calls' reservations; try again shortly.", retry: 2, status: 429 }
+    const held = BigInt(row.sponsor_left ?? 0)
+    const most = BigInt(this.kv.get<string>('sponsoredMost') ?? '0')
+    const scarce = !passing && held >= perCall && price !== undefined && most < price
+    if (scarce) wanted = Payer.max(wanted, price)
     if (wanted) this.kv.put('wanted', String(wanted))
     const wake = this.wake()
+    const spent = wake ? `Every contribution to this swarm is spent for now; the next one comes back at ${new Date(wake).toISOString()}.` : 'Every contribution to this swarm is spent.'
     return {
       code: 'limit_reached',
-      detail: small
-        ? 'No single contribution to this swarm can pay this much at once right now.'
-        : wake
-          ? `Every contribution to this swarm is spent for now; the next one comes back at ${new Date(wake).toISOString()}.`
-          : 'Every contribution to this swarm is spent.',
+      detail: scarce
+        ? `No channel of this swarm holds ${dollars(price)} at once: the MACH channels the gateway spends for it hold ${dollars(held)} in all, the largest ${dollars(most)}. Ask for less at once, such as a shorter lease or a smaller machine.`
+        : held >= perCall && passing
+          ? `Payments to outside services come only from the swarm's wallet, which cannot pay this; the MACH channels the gateway spends for the swarm (${dollars(held)} left) pay only for the gateway's own requests.`
+          : held >= perCall
+            ? `The swarm's wallet cannot pay this, though the MACH channels the gateway spends for it still hold ${dollars(held)}; try again in a moment.`
+            : small
+              ? 'No single contribution to this swarm can pay this much at once right now.'
+              : spent,
       ...(wake ? { retry: Math.max(1, Math.ceil((wake - Date.now()) / 1000)) } : {}),
       status: 402,
     }
@@ -1260,6 +1269,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const sponsored = this.kv.get<boolean>('sponsored') ? await this.sponsorships(row) : { biggest: 0n, left: 0n, spent: 0n }
     left += sponsored.left
     biggest = Payer.max(biggest, sponsored.biggest)
+    this.kv.put('sponsoredMost', String(sponsored.biggest))
 
     const connected = hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []
     const previous = new Set((this.kv.get<Hand[]>('hands') ?? []).map((hand) => hand.name))
