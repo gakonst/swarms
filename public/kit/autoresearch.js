@@ -114,7 +114,8 @@ body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-va
     const head = lines[0].split('\t').map((cell) => cell.trim())
     const names = head.map((cell) => cell.toLowerCase())
     const at = (name) => names.indexOf(name)
-    const column = metric ? at(String(metric).toLowerCase()) : 1
+    const named = metric ? at(String(metric).toLowerCase()) : -1
+    const column = named >= 0 ? named : at('metric') >= 0 ? at('metric') : head.length > 1 ? 1 : -1
     if (column < 0) return { missing: true, rows: [] }
     const status = at('status')
     const rows = lines.slice(1).map((line, index) => {
@@ -372,7 +373,7 @@ body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-va
             ),
             branch.explores && node('p', { class: 'meta' }, branch.explores),
             branch.found && node('p', { class: 'meta' }, branch.found),
-            branch.rows.length > 0 && node('p', { class: 'meta' }, facts.join(' · ')),
+            (branch.rows.length > 0 || branch.missing) && node('p', { class: 'meta' }, facts.join(' · ')),
           )
         }),
       ),
