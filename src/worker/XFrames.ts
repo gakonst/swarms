@@ -443,19 +443,23 @@ if(frame.kind==='swarm'){
   };
   if(demo||query.has('demo')){samples();const goal=document.querySelector('[data-view=fund] .goal');if(goal&&!document.querySelector('[data-view=fund] .notes'))goal.insertAdjacentHTML('afterend','<ol class="list notes">'+[['Report cost per solved task, not per token','3.30'],['Include Qwen3-Coder even if slow','1.55'],['Publish the harness as a repo','0.90']].map(([text,amount])=>'<li class="row-item"><span>'+text+'</span><em>$'+amount+'</em></li>').join('')+'</ol>')}
   else{
-    fetch('/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/feed?limit=40').then(response=>response.json()).then(page=>{const shown=(page.entries||[]).slice(-30);if(shown.length)document.getElementById('empty-feed').remove();shown.forEach(entry);panes.transcript.scrollTop=panes.transcript.scrollHeight}).catch(()=>{});
+    fetch('/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/feed?before='+Number.MAX_SAFE_INTEGER+'&limit=40').then(response=>response.json()).then(page=>{const entries=page.entries||[];const shown=entries.slice(-30);if(shown.length)document.getElementById('empty-feed').remove();shown.forEach(entry);panes.transcript.scrollTop=panes.transcript.scrollHeight;follow(entries)}).catch(()=>follow([]));
     fetch('/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/chat').then(response=>response.json()).then(room=>{const names=Object.fromEntries((room.members||[]).map(member=>[member.address,member.handle]));if((room.messages||[]).length)document.getElementById('empty-chat').remove();(room.messages||[]).slice(-40).forEach(message=>chat(message,names));if((room.members||[]).length)document.getElementById('watching').textContent=String(room.members.length)}).catch(()=>{});
   }
-  if(frame.live&&!demo&&!query.has('demo')){
-    let stream={item:'',text:'',who:null};
+  function follow(known){
+    if(demo||query.has('demo'))return;
+    let stream={item:'',text:'',who:null},seen=known.reduce((most,item)=>Math.max(most,item.seq||0),0);
+    const events=new Set(known.flatMap(item=>item.event===null||item.event===undefined?[]:[item.event]));
+    const clear=()=>{nowLine.hidden=true;stream={item:'',text:'',who:null}};
     const write=(who,delta,item,offset)=>{const base=stream.item===item&&stream.who===who?stream.text:'';stream={item,text:(offset===null||offset===undefined?base+delta:base.slice(0,offset)+delta),who};nowLine.hidden=false;nowWho.textContent=who||'Agent';nowText.textContent=stream.text;stick(panes.transcript)};
     const open=()=>{
-      const source=new EventSource('/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/live');
+      const opened=Date.now();let fed=false;
+      const source=new EventSource('/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/live?after='+seen);
       source.onmessage=message=>{const event=JSON.parse(message.data);
         if(event.type==='delta'&&event.channel==='text')write(event.who,event.delta,event.item,event.offset);
-        else if(event.type==='entry'){if(event.entry.kind==='message'){nowLine.hidden=true;stream={item:'',text:'',who:null}}entry(event.entry)}
-        else if(event.type==='end'||event.type==='idle'){source.close();setTimeout(open,event.type==='end'?1500:5000)}};
-      source.onerror=()=>{source.close();setTimeout(open,4000)};
+        else if(event.type==='entry'){const item=event.entry;if(item.seq>0){if(item.seq<=seen)return;seen=item.seq;fed=true}if(item.event!==null&&item.event!==undefined){if(events.has(item.event))return;events.add(item.event)}if(item.kind==='message')clear();entry(item)}
+        else if(event.type==='end')clear()};
+      source.onerror=()=>{source.close();setTimeout(open,fed||Date.now()-opened>30000?0:4000)};
     };
     open();
   }
