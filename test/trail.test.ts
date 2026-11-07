@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Entry } from '../src/shared/Api.ts'
-import { call, crew, memory, merge, named, narrate, redact, step, subagent, trouble } from '../src/shared/Trail.ts'
+import { call, clip, crew, memory, merge, named, narrate, redact, step, subagent, thought, trouble } from '../src/shared/Trail.ts'
 
 function entry(input: Partial<Entry>): Entry {
   return { at: 1000, detail: null, event: null, kind: 'tool', seq: 0, text: '', who: null, ...input }
@@ -94,4 +94,20 @@ test('payer and protocol errors read as one plain sentence', () => {
   assert.equal(trouble({ detail: '{"status":"failed"}', text: 'The run failed.' }).text, "The agent's turn stopped on an error.")
   assert.equal(trouble({ detail: null, text: "The channel for 0x364e…7c19's pledge never opened on Tempo, so the next payment opens another." }).text, 'A payment channel did not open; the next payment tries again.')
   assert.equal(trouble({ detail: '429 busy', text: 'A model call failed.' }).money, false)
+})
+
+test('a thought stops growing once it is longer than what its line shows, and reads the same', () => {
+  for (const words of ['   ', 'word '.repeat(10), 'a\n'.repeat(400)]) {
+    for (const tail of ['', '   ', 'more text '.repeat(800)]) {
+      const buffers = memory()
+      const deltas = [...(words + 'x'.repeat(1490) + 'y'.repeat(20) + tail).matchAll(/[\s\S]{1,7}/g)].map((found) => found[0])
+      for (const delta of deltas) narrate(buffers, null, 'reasoning.summary.delta', { text: delta })
+      const whole = deltas.join('').trim()
+      const said = narrate(buffers, null, 'assistant.message', { text: 'done' })
+      assert.equal(said[0]?.text, clip(whole, thought))
+    }
+  }
+  const buffers = memory()
+  for (let index = 0; index < 5000; index++) narrate(buffers, null, 'reasoning.summary.delta', { text: 'abcdefgh' })
+  assert.ok(buffers.take(null).length <= thought + 8)
 })

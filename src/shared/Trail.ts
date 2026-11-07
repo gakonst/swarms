@@ -6,6 +6,12 @@ export type Buffers = { add(who: string | null, text: string): void; take(who: s
 
 const quiet = new Set(['write_stdin', 'wait', 'wait_agent', 'list_agents', 'spawn_agent'])
 
+export const thought = 1500
+
+export function appended(held: string, text: string) {
+  return held.trim().length > thought ? held : held + text
+}
+
 export function clip(text: string, length: number) {
   return text.length > length ? text.slice(0, length - 1) + '…' : text
 }
@@ -101,7 +107,7 @@ export function narrate(buffers: Buffers, who: string | null, type: string | und
   const steps: Step[] = []
   if (type === 'assistant.message' || type === 'model.call.completed') {
     const thinking = buffers.take(who).trim()
-    if (thinking) steps.push({ detail: null, kind: 'thinking', text: clip(thinking, 1500) })
+    if (thinking) steps.push({ detail: null, kind: 'thinking', text: clip(thinking, thought) })
   }
   const found = step(type, payload)
   if (found) steps.push(found)
@@ -152,7 +158,7 @@ export function subagent(buffers: Buffers, crew: Crew, scope: string, update: un
 export function memory(): Buffers {
   const texts = new Map<string, string>()
   return {
-    add: (who, text) => texts.set(who ?? '', (texts.get(who ?? '') ?? '') + text),
+    add: (who, text) => texts.set(who ?? '', appended(texts.get(who ?? '') ?? '', text)),
     take: (who) => {
       const text = texts.get(who ?? '') ?? ''
       texts.delete(who ?? '')

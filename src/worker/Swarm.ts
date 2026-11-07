@@ -4,7 +4,7 @@ import { isAddress } from 'viem'
 import { Challenge } from 'mppx'
 import { Mppx, tempo } from 'mppx/client'
 import type { Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Shown, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
-import { type Buffers, type Crew, clip, crew, narrate, redact, subagent, tool } from '../shared/Trail.ts'
+import { type Buffers, type Crew, appended, clip, crew, narrate, redact, subagent, thought, tool } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Memo from '../shared/Memo.ts'
@@ -2200,8 +2200,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       const known = this.crew()
       const found = subagent(this.buffers, known, outer.root_session_id ?? this.agent()?.id ?? 'session', outer.update)
       if (!found) return false
-      this.kv.put('crew', known)
       const update = outer.update as { event?: { payload?: Record<string, unknown>; type?: string }; type?: string }
+      if (update.type !== 'event') this.kv.put('crew', known)
       if (update.type === 'added' || update.type === 'status' || update.type === 'completion') this.changed('branches')
       if (update.type === 'event') {
         if (update.event?.type === 'tool.call') for (const found of cues(update.event.payload ?? {})) this.cue(found)
@@ -2225,7 +2225,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   get buffers(): Buffers {
     const name = (who: string | null) => (who === null ? 'thinking' : `thinking:${who}`)
     return {
-      add: (who, text) => this.kv.put(name(who), (this.kv.get<string>(name(who)) ?? '') + text),
+      add: (who, text) => {
+        const held = this.kv.get<string>(name(who)) ?? ''
+        const next = appended(held, text)
+        if (next !== held) this.kv.put(name(who), next)
+      },
       take: (who) => {
         const text = this.kv.get<string>(name(who)) ?? ''
         this.kv.delete(name(who))
@@ -2238,7 +2242,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const speakers = [null, ...[...this.kv.list({ prefix: 'thinking:' })].map(([name]) => name.slice('thinking:'.length))]
     for (const who of speakers) {
       const thinking = this.buffers.take(who).trim()
-      if (thinking) this.log('thinking', clip(thinking, 1500), null, { who })
+      if (thinking) this.log('thinking', clip(thinking, thought), null, { who })
     }
   }
 
