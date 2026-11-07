@@ -94,6 +94,8 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
   })
   for (const header of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified'])
     if (upstream.headers.get(header)) answer.set(header, upstream.headers.get(header) ?? '')
+  const typed = Shelf.scriptedType(file)
+  if (typed && answer.get('content-type')?.startsWith('text/plain')) answer.set('content-type', typed)
   return new Response(upstream.status === 304 ? null : upstream.body, { headers: answer, status: upstream.status })
 }
 

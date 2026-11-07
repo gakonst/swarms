@@ -26,6 +26,19 @@ export function form(path: string): Form {
   return forms[path.split('.').pop()?.toLowerCase() ?? ''] ?? 'text'
 }
 
+const scripted: Record<string, string> = {
+  htm: 'text/html; charset=utf-8',
+  html: 'text/html; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
+  mjs: 'text/javascript; charset=utf-8',
+  svg: 'image/svg+xml',
+  xml: 'application/xml',
+}
+
+export function scriptedType(path: string) {
+  return scripted[path.split('.').pop()?.toLowerCase() ?? '']
+}
+
 export function path(value: unknown) {
   if (typeof value !== 'string' || value.length > 300) return undefined
   const parts = value.replace(/^\.\//, '').split('/')
