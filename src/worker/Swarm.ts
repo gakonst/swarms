@@ -490,7 +490,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return this.rows('WHERE n > ?', after)
   }
 
-  private rows(where: string, ...bindings: SqlStorageValue[]): Search.Turn[] {
+  rows(where: string, ...bindings: SqlStorageValue[]): Search.Turn[] {
     return this.ctx.storage.sql
       .exec<Record<string, SqlStorageValue>>(`SELECT n, started_at, ended_at, status, message, spent, commits, base FROM turns ${where} ORDER BY n`, ...bindings)
       .toArray()
