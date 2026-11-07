@@ -257,6 +257,10 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
     await pause(self, money.row, wanted > money.biggest ? { wanted: String(wanted), why: 'costly' } : { left: String(money.left), wake, why: 'money' })
     return wanted > money.biggest ? null : wake
   }
+  if (status === 'completed') {
+    self.kv.delete('squeezes')
+    self.kv.delete('squeezedTurns')
+  } else if ((self.kv.get<number>('squeezed') ?? 0) >= run.started) return squeeze(self, money.row, run)
   const failures = status === 'completed' ? 0 : failing(self, run.since)
   if (failures >= maxFailures) {
     await pause(self, money.row, { failures, why: 'rest' })
@@ -268,12 +272,42 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
 }
 
 export function failing(self: Swarm, since: number) {
+  const squeezed = new Set(self.kv.get<number[]>('squeezedTurns') ?? [])
   let count = 0
-  for (const row of self.ctx.storage.sql.exec<{ status: string }>('SELECT status FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, maxFailures).toArray()) {
+  for (const row of self.ctx.storage.sql.exec<{ n: number; status: string }>('SELECT n, status FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, maxFailures + squeezed.size).toArray()) {
     if (row.status === 'completed') break
-    count += 1
+    if (!squeezed.has(row.n)) count += 1
   }
   return count
+}
+
+export function squeezing(count: number): { wait: number } | 'sweep' | 'rest' {
+  if (count >= 2 * maxFailures) return 'rest'
+  if (count === maxFailures) return 'sweep'
+  return { wait: count < maxFailures ? Clock.minuteMs * 2 ** (count - 1) : settleMs }
+}
+
+async function squeeze(self: Swarm, row: Store.Row, run: Turning) {
+  const count = (self.kv.get<number>('squeezes') ?? 0) + 1
+  self.kv.put('squeezes', count)
+  self.kv.put('squeezedTurns', [...(self.kv.get<number[]>('squeezedTurns') ?? []), run.n])
+  const step = squeezing(count)
+  if (step === 'rest') {
+    await pause(self, row, { failures: count, why: 'rest' })
+    return null
+  }
+  if (step === 'sweep') {
+    await sweep(self, row, ` to return its prepaid time: the gateway found no room on the swarm's contributions for the agent's next model call ${count} times in a row`)
+    const money = await Money.refresh(self, row)
+    if (money.left < Store.reserve) {
+      const wake = Paying.rested(self)
+      await pause(self, money.row, { left: String(money.left), wake, why: 'money' })
+      return wake
+    }
+  }
+  const until = Date.now() + (step === 'sweep' ? settleMs : step.wait)
+  await self.move(row, { since: run.since, state: 'waiting', until })
+  return until
 }
 
 export async function expose(self: Swarm, row: Store.Row) {
@@ -297,7 +331,7 @@ export async function expose(self: Swarm, row: Store.Row) {
   if (shown) self.log('status', `Made ${shown} private item${shown === 1 ? '' : 's'} the agent stored public, so everything the swarm produces can be read by anyone.`, hidden.map(([kind, name]) => `${kind} ${name}`).join('\n'))
 }
 
-export async function sweep(self: Swarm, row: Store.Row) {
+export async function sweep(self: Swarm, row: Store.Row, why = ', which was still running when the swarm stopped') {
   const started = self.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'machine' AND text LIKE 'Starting machine%'", self.kv.get<number>('sweptSeq') ?? 0).one().n
   if (!started && !(self.kv.get<Hand[]>('hands') ?? []).length) return
   const listed = await Gateway.sandboxes(self.env, row.id)
@@ -305,7 +339,7 @@ export async function sweep(self: Swarm, row: Store.Row) {
   self.kv.put('sweptSeq', self.last())
   for (const sandbox of listed.value.sandboxes.filter((found) => found.status !== 'terminated')) {
     const ended = await Gateway.terminate(self.env, row.id, sandbox.sandboxId)
-    if (ended.ok) self.log('machine', `Shut down ${sandbox.hand ?? sandbox.sandboxId}, which was still running when the swarm stopped.`)
+    if (ended.ok) self.log('machine', `Shut down ${sandbox.hand ?? sandbox.sandboxId}${why}.`)
   }
 }
 

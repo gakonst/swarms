@@ -329,6 +329,8 @@ export async function charge(self: Swarm, input: Pay, marks: Marks = {}): Promis
   const most = BigInt(self.kv.get<string>('sponsoredMost') ?? '0')
   const scarce = !passing && held >= perCall && price !== undefined && most < price
   if (scarce) wanted = Payer.max(wanted, price)
+  const squeezed = !passing && !scarce && held >= perCall
+  if (squeezed) self.kv.put('squeezed', Date.now())
   const run = self.run()
   if (wanted && run.state === 'working') self.set({ ...run, wanted: String(wanted) })
   const wake = rested(self)
@@ -340,7 +342,7 @@ export async function charge(self: Swarm, input: Pay, marks: Marks = {}): Promis
       : held >= perCall && passing
         ? `Payments to outside services come only from the swarm's wallet, which cannot pay this; the MACH channels the gateway spends for the swarm (${Words.dollars(held)} left) pay only for the gateway's own requests.`
         : held >= perCall
-          ? `The swarm's wallet cannot pay this, though the MACH channels the gateway spends for it still hold ${Words.dollars(held)}; try again in a moment.`
+          ? `The swarm's wallet cannot pay this, and the gateway found no room for it on the MACH channels it spends for the swarm (${Words.dollars(held)} in all, the largest ${Words.dollars(most)}): it reserves a model call's worst case on one channel, and prepaid machine time stays on its channel until the machine ends. The swarm backs off before it tries again.`
           : small
             ? 'No single contribution to this swarm can pay this much at once right now.'
             : spent,

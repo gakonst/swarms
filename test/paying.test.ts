@@ -169,6 +169,24 @@ test("a model call is paid from the swarm row the object already holds, read aga
   assert.match(answer.detail, /hold \$3 in all/)
 })
 
+test("a model call the gateway could not fit on any contribution channel, though they hold money, is refused as squeezed and recorded so the swarm backs off", async () => {
+  const before = Date.now()
+  const refused = swarm({ kv: { id: 'abc123abc123', sponsoredMost: '244000' } })
+  const held = refused.self as unknown as { found: () => Promise<unknown>; steady: unknown }
+  held.steady = { ...refused.row, sponsor_left: 0 }
+  held.found = async () => ({ ...refused.row, sponsor_left: 584_992 })
+  const answer = (await Paying.charge(refused.self, { challenge: challenge(28_451), operation: 'model.responses', secret: '' })) as { code: string; detail: string }
+  assert.equal(answer.code, 'limit_reached')
+  assert.match(answer.detail, /no room for it on the MACH channels it spends for the swarm \(\$0\.584992 in all, the largest \$0\.244\)/)
+  assert.ok((refused.store.get('squeezed') as number) >= before)
+  const scarce = swarm({ kv: { id: 'abc123abc123', sponsoredMost: '1000' } })
+  const short = scarce.self as unknown as { found: () => Promise<unknown>; steady: unknown }
+  short.steady = { ...scarce.row, sponsor_left: 0 }
+  short.found = async () => ({ ...scarce.row, sponsor_left: 584_992 })
+  await Paying.charge(scarce.self, { challenge: challenge(28_451), operation: 'model.responses', secret: '' })
+  assert.equal(scarce.store.get('squeezed'), undefined)
+})
+
 function quiet<T>(work: () => Promise<T>) {
   const said: string[] = []
   const log = console.log
