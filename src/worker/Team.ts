@@ -62,8 +62,8 @@ export async function roster(env: Cloudflare.Env, row: Store.Row, loaded?: reado
   return value
 }
 
-export async function seat(env: Cloudflare.Env, row: Store.Row, address: Address) {
-  return (await roster(env, row)).seats.find((found) => found.address === address.toLowerCase())
+export async function seat(env: Cloudflare.Env, row: Store.Row, address: Address, loaded?: readonly Member[]) {
+  return (await roster(env, row, loaded)).seats.find((found) => found.address === address.toLowerCase())
 }
 
 export async function admin(env: Cloudflare.Env, row: Store.Row, address: Address) {

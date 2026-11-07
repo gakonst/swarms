@@ -164,11 +164,13 @@ export async function insert(
   input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'title'> & { sealed_wallet: string; wallet: string },
 ) {
   const now = Date.now()
-  await env.DB.prepare(
-    'insert into swarms (id, title, goal, problem, wallet, sealed_wallet, creator, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  const row = await env.DB.prepare(
+    'insert into swarms (id, title, goal, problem, wallet, sealed_wallet, creator, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as raised, pool_spent + sponsor_spent + spent_before as spent, pool_left + sponsor_left as remaining, 0 as contributors',
   )
     .bind(input.id, input.title, input.goal, input.problem, input.wallet, input.sealed_wallet, input.creator, now, now)
-    .run().finally(wrote)
+    .first<Row>().finally(wrote)
+  if (row) known.add(row.id)
+  return row
 }
 
 export async function provision(env: Cloudflare.Env, id: string, input: { sealed_wallet: string; wallet: string }) {
@@ -187,8 +189,8 @@ export async function update(env: Cloudflare.Env, id: string, fields: Fields) {
 }
 
 export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>) {
-  const result = await env.DB.prepare(
-    "insert or ignore into contributions (id, swarm, kind, budget, channel, contributor, token, amount, note, note_id, created_at) values (?, ?, ?, null, ?, ?, ?, ?, ?, ?, ?)",
+  return env.DB.prepare(
+    "insert or ignore into contributions (id, swarm, kind, budget, channel, contributor, token, amount, note, note_id, created_at) values (?, ?, ?, null, ?, ?, ?, ?, ?, ?, ?) returning *",
   )
     .bind(
       input.id.toLowerCase(),
@@ -202,8 +204,7 @@ export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>)
       input.note_id,
       Date.now(),
     )
-    .run().finally(wrote)
-  return result.meta.changes > 0
+    .first<Gift>().finally(wrote)
 }
 
 export async function gift(env: Cloudflare.Env, id: string) {
@@ -221,12 +222,9 @@ export async function delivered(env: Cloudflare.Env, channel: string, amount: bi
 }
 
 export async function annotate(env: Cloudflare.Env, id: string, input: { note: string; note_id: string }) {
-  const result = await env.DB.prepare(
-    "update contributions set note = ?, note_id = ? where id = ? and note is null",
-  )
+  return env.DB.prepare('update contributions set note = ?, note_id = ? where id = ? and note is null returning *')
     .bind(input.note, input.note_id, id.toLowerCase())
-    .run().finally(wrote)
-  return result.meta.changes > 0
+    .first<Gift>().finally(wrote)
 }
 
 export function contribution(row: Gift): Contribution {
@@ -299,7 +297,11 @@ export type Ledger = {
 }
 
 export async function ledger(env: Cloudflare.Env, id: string): Promise<Ledger | undefined> {
-  return (await tally(env, id)) ?? (Replica.replicated(env) ? tally(Replica.primary(env), id) : undefined)
+  return settled(env, (from) => tally(from, id))
+}
+
+async function settled<T>(env: Cloudflare.Env, read: (from: Cloudflare.Env) => Promise<T | undefined>) {
+  return (await read(env)) ?? (Replica.replicated(env) ? read(Replica.primary(env)) : undefined)
 }
 
 async function tally(env: Cloudflare.Env, id: string): Promise<Ledger | undefined> {
@@ -344,19 +346,23 @@ export async function members(env: Cloudflare.Env, swarm: string): Promise<Membe
 }
 
 export async function backed(env: Cloudflare.Env, id: string) {
-  const [found, listed, weights] = await env.DB.batch<Record<string, unknown>>([env.DB.prepare(totals + ' where s.id = ?').bind(id), backers(env, id), weighing(env, id)])
-  const row = found?.results[0] as Row | undefined
-  if (!row) return undefined
-  known.add(row.id)
-  return { members: membered(listed?.results as Backer[]), notes: (steered: ReadonlySet<string>) => weighed(weights?.results as Weighed[], BigInt(row.raised), steered), row }
+  return settled(env, async (from) => {
+    const [found, listed, weights] = await from.DB.batch<Record<string, unknown>>([from.DB.prepare(totals + ' where s.id = ?').bind(id), backers(from, id), weighing(from, id)])
+    const row = found?.results[0] as Row | undefined
+    if (!row) return undefined
+    known.add(row.id)
+    return { members: membered(listed?.results as Backer[]), notes: (steered: ReadonlySet<string>) => weighed(weights?.results as Weighed[], BigInt(row.raised), steered), row }
+  })
 }
 
 export async function rostered(env: Cloudflare.Env, id: string) {
-  const [found, listed] = await env.DB.batch<Record<string, unknown>>([env.DB.prepare(totals + ' where s.id = ?').bind(id), backers(env, id)])
-  const row = found?.results[0] as Row | undefined
-  if (!row) return undefined
-  known.add(row.id)
-  return { members: membered(listed?.results as Backer[]), row }
+  return settled(env, async (from) => {
+    const [found, listed] = await from.DB.batch<Record<string, unknown>>([from.DB.prepare(totals + ' where s.id = ?').bind(id), backers(from, id)])
+    const row = found?.results[0] as Row | undefined
+    if (!row) return undefined
+    known.add(row.id)
+    return { members: membered(listed?.results as Backer[]), row }
+  })
 }
 
 function membered(results: readonly Backer[]): Member[] {

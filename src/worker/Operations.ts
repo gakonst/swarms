@@ -398,9 +398,10 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   if (!parsed.ok) return parsed
 
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
-  await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, ...(await Vault.create(env.SWARMS_SECRET)) })
-  const [row] = await Promise.all([Store.find(env, swarm.id), logged(Search.swarm(env, swarm))])
-  return row ? Problem.ok(Store.summary(row)) : Problem.fail(502, 'unavailable', 'The swarm was not saved.')
+  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, ...(await Vault.create(env.SWARMS_SECRET)) })
+  if (!row) return Problem.fail(502, 'unavailable', 'The swarm was not saved.')
+  await logged(Search.swarm(env, swarm))
+  return Problem.ok(Store.summary(row))
 }
 
 const firstFeed = 80
@@ -636,14 +637,15 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   if (!parsed.ok) return parsed
   const request = parsed.value
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to post in a room.')
-  const [row, account] = await Promise.all([Store.find(env, request.swarm), Store.account(env, address)])
-  if (!row) return missing()
+  const [found, account] = await Promise.all([Store.rostered(env, request.swarm), Store.account(env, address)])
+  if (!found) return missing()
   if (!account.name) return unnamed()
 
-  let members = await Store.members(env, row.id)
+  const row = found.row
+  let members = found.members
   let author = members.find((member) => member.address === address)
   const policed = row.steering === 'team'
-  const seat = policed ? await Team.seat(env, row, address).catch(() => undefined) : undefined
+  const seat = policed ? await Team.seat(env, row, address, members).catch(() => undefined) : undefined
   if (!author && !seat && (await lender(env, row.id, address))) {
     members = await Store.members(env, row.id)
     author = members.find((member) => member.address === address)
@@ -661,6 +663,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   if (request.btw && !(await stub(env, row.id).vouched(address, await Promise.all(request.btw.map(Btw.seal)))))
     return Problem.fail(400, 'invalid_request', 'Only questions this swarm answered for you on the side, with its answers as it gave them, can be collapsed into a steer. Ask them again.')
   let steer: { amount: string; note: string; noteId: string } | null = null
+  let backing = 0n
   if (steering) {
     const note = Mention.idea(request.text)
     if (note.length < 3) return Problem.fail(400, 'invalid_request', 'Say what the swarm should do after @swarm.')
@@ -687,6 +690,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
           : `You have ${dollars(author?.available ?? '0')} of backing not yet behind a note, less than ${dollars(Memo.decimal(amount))}. Put new money behind this idea instead.`,
       )
     if (seat) Team.forget(row.id)
+    else backing = amount
     await logged(Search.note(env, row.id, noteId, note))
     steer = { amount: Memo.decimal(amount), note, noteId, ...(request.btw ? { context: Btw.collapse(request.btw, request.artifact) } : {}) }
   }
@@ -699,7 +703,13 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
     swarm: row.id,
     text: request.text,
   })
-  return Problem.ok({ me: await self(env, steer ? await Store.members(env, row.id) : members, address), message })
+  return Problem.ok({ me: await self(env, backing ? spend(members, address, backing) : members, address), message })
+}
+
+function spend(members: readonly Member[], address: Address, amount: bigint) {
+  return members.map((member) =>
+    member.address === address ? { ...member, available: Memo.decimal(units(member.available) - amount), steered: Memo.decimal(units(member.steered) + amount) } : member,
+  )
 }
 
 async function lender(env: Cloudflare.Env, swarm: string, address: Address) {
@@ -1010,13 +1020,14 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
   if (!parsed.ok) return parsed
   const request = parsed.value
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to ask the swarm side questions.')
-  const [row, account] = await Promise.all([Store.find(env, request.swarm), Store.account(env, address)])
-  if (!row) return missing()
+  const [found, account] = await Promise.all([Store.rostered(env, request.swarm), Store.account(env, address)])
+  if (!found) return missing()
   if (!account.name) return unnamed()
+  const row = found.row
   if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
-  if (row.steering === 'team' && !(await Team.seat(env, row, address).catch(() => undefined)))
+  if (row.steering === 'team' && !(await Team.seat(env, row, address, found.members).catch(() => undefined)))
     return Problem.fail(403, 'not_member', "Only this swarm's team asks it side questions, as only its team steers it.")
-  if (row.steering !== 'team' && !(await Store.members(env, row.id)).some((member) => member.address === address && units(member.backed) >= Mention.smallestSteer))
+  if (row.steering !== 'team' && !found.members.some((member) => member.address === address && units(member.backed) >= Mention.smallestSteer))
     return Problem.fail(
       403,
       'not_member',
@@ -1311,15 +1322,15 @@ async function channeled(
   if (!hash) return Problem.fail(502, 'upstream_failed', 'The gateway took the channel but answered no transaction.')
 
   const noteId = note ? await Store.noteId(note) : null
-  const counted = await Store.give(env, { amount: String(read.deposit), channel: read.id, contributor: descriptor.payer, id: hash, note, note_id: noteId, swarm: row.id, token: 'mach' })
-  if (counted) {
+  const given = await Store.give(env, { amount: String(read.deposit), channel: read.id, contributor: descriptor.payer, id: hash, note, note_id: noteId, swarm: row.id, token: 'mach' })
+  if (given) {
     await stub(env, row.id).contributed({ amount: Memo.decimal(read.deposit), contributor: descriptor.payer, hash, note, noteId, swarm: row.id, token: 'mach' })
     if (note && noteId) await logged(Search.note(env, row.id, noteId, note))
   }
 
-  const [gift, updated] = await Promise.all([Store.gift(env, hash), Store.find(env, row.id)])
+  const [gift, updated] = await Promise.all([given ?? Store.gift(env, hash), Store.find(env, row.id)])
   if (!gift) return Problem.fail(502, 'unavailable', 'The contribution was not saved.')
-  return Problem.ok({ contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) }, created: counted })
+  return Problem.ok({ contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) }, created: given !== null })
 }
 
 export async function pay(env: Cloudflare.Env, swarm: string, authorization: string, input: Record<string, unknown>): Promise<Paid> {
@@ -1362,7 +1373,7 @@ export async function contribute(
   if (!request.hash)
     return Problem.fail(400, 'invalid_request', 'Send hash, the hash of a transfer or of a MACH channel opened for the swarm, or transaction, a MACH channel open signed for a fee payer.')
 
-  const receipt = await getTransactionReceipt(Chain.client(env), { hash: request.hash as Hex }).catch(() => undefined)
+  const [receipt, existing] = await Promise.all([getTransactionReceipt(Chain.client(env), { hash: request.hash as Hex }).catch(() => undefined), Store.gift(env, request.hash)])
   if (!receipt) return Problem.fail(404, 'not_found', 'Tempo has no receipt for this transaction yet.')
   if (receipt.status !== 'success') return Problem.fail(400, 'invalid_request', 'The transaction reverted.')
 
@@ -1404,14 +1415,13 @@ export async function contribute(
 
   const total = transfers.reduce((sum, transfer) => sum + transfer.amount, 0n)
   const noteId = text ? await Store.noteId(text) : null
-  const existing = await Store.gift(env, request.hash)
-  let counted: boolean
+  let written: Store.Gift | null
   if (existing) {
     if (!text || existing.note || !noteId)
       return Problem.fail(409, 'conflict', 'This transaction is already counted.')
-    counted = await Store.annotate(env, request.hash, { note: text, note_id: noteId })
+    written = await Store.annotate(env, request.hash, { note: text, note_id: noteId })
   } else {
-    counted = await Store.give(env, {
+    written = await Store.give(env, {
       amount: String(total),
       channel: null,
       contributor: sender as Address,
@@ -1422,7 +1432,7 @@ export async function contribute(
       token: first.token,
     })
   }
-  if (counted) {
+  if (written) {
     await stub(env, row.id).contributed({
       amount: Memo.decimal(total),
       contributor: sender as Address,
@@ -1435,11 +1445,11 @@ export async function contribute(
     if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
   }
 
-  const [gift, updated] = await Promise.all([Store.gift(env, request.hash), Store.find(env, row.id)])
+  const [gift, updated] = await Promise.all([written ?? Store.gift(env, request.hash), Store.find(env, row.id)])
   if (!gift) return Problem.fail(502, 'unavailable', 'The contribution was not saved.')
   return Problem.ok({
     contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) },
-    created: !existing && counted,
+    created: !existing && written !== null,
   })
 }
 
@@ -1467,10 +1477,13 @@ export async function machines(env: Cloudflare.Env, input: Input<'swarm'>): Prom
   if (!parsed.ok) return parsed
   const cached = fleets.get(parsed.value.swarm)
   if (cached && Date.now() - cached.at < lendingMs) return Problem.ok({ machines: cached.machines })
-  const loaded = await load(env, parsed.value.swarm, { feed: 0, texts: false })
-  if (!loaded) return missing()
-  const [entries, lent] = await Promise.all([stub(env, parsed.value.swarm).feed(0, { before: Number.MAX_SAFE_INTEGER, limit: 2000 }), hands(env, input)])
-  const machines = Fleet.fleet(entries, loaded.view.hands, lent.ok ? lent.value.hands : [])
+  if (!(await Store.exists(env, parsed.value.swarm))) return missing()
+  const [view, entries, lent] = await Promise.all([
+    stub(env, parsed.value.swarm).view({ feed: 0, pushed: true, texts: false }),
+    stub(env, parsed.value.swarm).feed(0, { before: Number.MAX_SAFE_INTEGER, limit: 2000 }),
+    hands(env, input),
+  ])
+  const machines = Fleet.fleet(entries, view.hands, lent.ok ? lent.value.hands : [])
   fleets.set(parsed.value.swarm, { at: Date.now(), machines })
   return Problem.ok({ machines })
 }

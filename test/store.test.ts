@@ -72,6 +72,23 @@ test('a steer spends only backing not yet behind a note, looked up by its author
   assert.deepEqual([member?.backed, member?.steered, member?.available], ['0.000130', '0.000130', '0.000000'])
 })
 
+test('a contribution comes back from its own insert, and a repeat inserts nothing', async () => {
+  const db = open()
+  swarm(db, 'a')
+  const input = { amount: '1000', channel: null, contributor: '0xAB' as const, id: '0xFEED', note: null, note_id: null, swarm: 'a', token: 'ousd' as const }
+  const given = await Store.give(db.env, input)
+  assert.deepEqual([given?.id, given?.contributor, given?.amount], ['0xfeed', '0xab', '1000'])
+  assert.equal(await Store.give(db.env, input), null)
+  const noted = await Store.annotate(db.env, '0xFEED', { note: 'a note', note_id: 'n' })
+  assert.equal(noted?.note, 'a note')
+  assert.equal(await Store.annotate(db.env, '0xFEED', { note: 'another', note_id: 'm' }), null)
+  assert.equal((await Store.gift(db.env, '0xfeed'))?.note, 'a note')
+
+  const inserted = await Store.insert(db.env, { creator: null, goal: 'A goal long enough', id: 'new', problem: null, sealed_wallet: 's', title: 'New', wallet: '0x99' })
+  assert.deepEqual([inserted?.id, inserted?.raised, inserted?.contributors, inserted?.spent, inserted?.remaining, inserted?.status], ['new', 0, 0, 0, 0, 'funding'])
+  assert.equal(Store.seen('new'), true)
+})
+
 test('branch ledgers say whether rows from before agents still wait to be adopted', async () => {
   const db = open()
   swarm(db, 'a')
