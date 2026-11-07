@@ -257,7 +257,18 @@ export type Room = { me: Me | null; members: Member[]; messages: Said[]; next: n
 
 export type Posted = { me: Me; message: Said }
 
+export type Part = 'artifacts' | 'branches' | 'code' | 'detail' | 'feed' | 'hands' | 'members' | 'roster'
+
+export type Pulse = { hands: Hand[]; reason: string | null; swarm: Summary; why: Why | null; working: Working | null }
+
 export type Chatter =
   | { message: Said; type: 'said' }
   | { online: `0x${string}`[]; type: 'presence'; watching: number }
   | { address: `0x${string}`; type: 'typing' }
+  | { type: 'welcome'; version: string }
+  | ({ type: 'pulse'; version: string } & Pulse)
+  | { parts: Part[]; type: 'changed'; version: string }
+  | { artifacts: Artifact[]; type: 'artifacts' }
+  | { roster: Roster; type: 'roster' }
+
+export type Lobby = { swarm: Summary; type: 'swarm' } | { type: 'welcome' }
