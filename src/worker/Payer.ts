@@ -6,7 +6,9 @@ import { prepareTransactionRequest, readContract, sendRawTransactionSync, signTr
 import { Transaction } from 'viem/tempo'
 import * as Chain from './Chain.ts'
 
-export type Channel = { at: number; confirmed: boolean; deposit: string; descriptor: unknown; id: Hex; signed: string }
+export type Channel = { at: number; confirmed: boolean; deposit: string; descriptor: unknown; id: Hex; signed: string; topUp?: { amount: string; at: number } | undefined }
+
+export const confirmMs = 8_000
 
 export type Snapshot = {
   acceptedCumulative: string
@@ -160,8 +162,31 @@ export function forget(kv: SyncKvStorage, id: string) {
   kv.delete(`pending:${id}`)
 }
 
-export function state(env: Cloudflare.Env, channel: Hex) {
-  return readContract(Chain.client(env), { abi: escrowAbi, address: Chain.escrow, args: [channel], functionName: 'getChannelState' })
+export function state(env: Cloudflare.Env, channel: Hex, client = Chain.client(env)) {
+  return readContract(client, { abi: escrowAbi, address: Chain.escrow, args: [channel], functionName: 'getChannelState' })
+}
+
+export function held(channel: Channel) {
+  return BigInt(channel.deposit) + BigInt(channel.topUp?.amount ?? '0')
+}
+
+export function inside(channel: Channel | undefined, spent: bigint) {
+  return channel?.confirmed ? max(BigInt(channel.deposit) - spent, 0n) : 0n
+}
+
+export function unsure(channel: Channel) {
+  return !channel.confirmed || !!channel.topUp
+}
+
+export function topped(channel: Channel, deposit: bigint, additional: bigint, signed: bigint, now: number): Channel {
+  if (additional <= 0n) return { ...channel, signed: String(signed) }
+  return { ...channel, signed: String(signed), topUp: { amount: String(deposit + additional - BigInt(channel.deposit)), at: now } }
+}
+
+export function confirm(channel: Channel, deposit: bigint, now: number): Channel {
+  const old = now - (channel.topUp?.at ?? channel.at) > confirmMs
+  if (deposit <= 0n || (deposit < held(channel) && !old)) return channel
+  return { at: channel.at, confirmed: true, deposit: String(deposit), descriptor: channel.descriptor, id: channel.id, signed: channel.signed }
 }
 
 export function max(a: bigint, b: bigint) {

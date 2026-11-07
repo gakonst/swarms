@@ -26,8 +26,7 @@ export async function account(env: Cloudflare.Env, row: Pick<Store.Row, 'sealed_
   return Account.fromSecp256k1((await Seal.open(env.SWARMS_SECRET, row.sealed_wallet)) as Hex)
 }
 
-export async function balances(env: Cloudflare.Env, address: Address): Promise<Balances> {
-  const client = Chain.client(env)
+export async function balances(env: Cloudflare.Env, address: Address, client = Chain.client(env)): Promise<Balances> {
   const read = (id: Token) =>
     readContract(client, { abi: erc20Abi, address: Chain.tokens[id].address, args: [address], functionName: 'balanceOf' })
   const [ousd, pathusd, usdce] = await Promise.all([read('ousd'), read('pathusd'), read('usdce')])

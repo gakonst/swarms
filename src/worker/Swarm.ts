@@ -187,8 +187,6 @@ const holdMs = 90_000
 
 const heldMs = 10 * 60_000
 
-const confirmMs = 8_000
-
 const shelfMs = 30_000
 
 const rowMs = 10_000
@@ -971,18 +969,22 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!channel || channel.confirmed) return channel
     for (;;) {
       const state = await Payer.state(this.env, channel.id).catch(() => undefined)
-      const deposit = state?.deposit ?? 0n
-      if (deposit >= BigInt(channel.deposit) || (deposit > 0n && Date.now() - channel.at > confirmMs)) {
-        const confirmed = { ...channel, confirmed: true, deposit: String(deposit) }
-        this.kv.put(`channel:${source.id}`, confirmed)
-        return confirmed
+      const old = Date.now() - channel.at > Payer.confirmMs
+      if (state) {
+        const confirmed = Payer.confirm(channel, state.deposit, Date.now())
+        if (confirmed.confirmed) {
+          this.kv.put(`channel:${source.id}`, confirmed)
+          return confirmed
+        }
+        if (old && state.deposit === 0n) {
+          Payer.forget(this.kv, source.id)
+          this.clients.delete(source.id)
+          if (Date.now() - (this.kv.get<number>(`unopened:${source.id}`) ?? 0) > quietMs) this.log('error', `The channel for ${source.label} never opened on Tempo, so the next payment opens another.`)
+          this.kv.put(`unopened:${source.id}`, Date.now())
+          return undefined
+        }
       }
-      if (Date.now() - channel.at > confirmMs) {
-        Payer.forget(this.kv, source.id)
-        if (Date.now() - (this.kv.get<number>(`unopened:${source.id}`) ?? 0) > quietMs) this.log('error', `The channel for ${source.label} never opened on Tempo, so the next payment opens another.`)
-        this.kv.put(`unopened:${source.id}`, Date.now())
-        return undefined
-      }
+      if (old) return channel
       await new Promise((resolve) => setTimeout(resolve, 750))
     }
   }
@@ -1054,7 +1056,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         const id = key.slice('channel:'.length)
         this.kv.put('spent:' + id, snapshot.spent)
         if (snapshot.closing || (index === 0 && input.rejected?.status === 410)) this.drop(id)
-        else if (!channel.confirmed && BigInt(snapshot.deposit) >= BigInt(channel.deposit)) this.kv.put(key, { ...channel, confirmed: true, deposit: snapshot.deposit })
+        else if (Payer.unsure(channel) && BigInt(snapshot.deposit) >= Payer.held(channel)) this.kv.put(key, Payer.confirm(channel, BigInt(snapshot.deposit), Date.now()))
         if (index === 0 && input.rejected && (input.attempt ?? 0) >= 2) {
           this.kv.put('exhausted:' + id, Date.now() + restMs)
           this.log('funds', `The gateway refused ${id === 'pool' ? "the swarm wallet's" : 'a contribution\'s'} payment again, so the swarm moves on to the next contribution.`, input.rejected.detail)
@@ -1157,7 +1159,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       spent === undefined
         ? signed + price
         : [BigInt(snapshot?.requiredCumulative ?? '0'), floor + 1n, BigInt(spent) + pending + price].reduce(Payer.max)
-    const deposit = BigInt(snapshot?.deposit ?? channel.deposit)
+    const deposit = BigInt(snapshot?.deposit ?? Payer.held(channel))
     let topUp: string | undefined
     let additional = 0n
     if (need > deposit) {
@@ -1177,7 +1179,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       topUp = await mppx.createCredential(offered.response, { action: 'topUp', additionalDepositRaw: String(additional), channelId: channel.id, descriptor: channel.descriptor })
     }
     const authorization = await mppx.createCredential(offered.response, { action: 'voucher', channelId: channel.id, cumulativeAmountRaw: String(need), descriptor: channel.descriptor })
-    this.kv.put(`channel:${source.id}`, { ...channel, ...(topUp ? { at: Date.now(), confirmed: false } : {}), deposit: String(deposit + additional), signed: String(need) })
+    this.kv.put(`channel:${source.id}`, Payer.topped(channel, deposit, additional, need, Date.now()))
     this.kv.put('pending:' + source.id, [...recent, { amount: String(price), at: Date.now(), cumulative: String(need) }])
     this.kv.put('paid:' + source.id, Date.now())
     return topUp ? { authorization, topUp } : { authorization }
@@ -1236,17 +1238,25 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async refresh(row: Store.Row): Promise<Money> {
     const sources = this.sources(row, true)
-    const [hands, balances] = await Promise.all([
+    const client = Chain.client(this.env)
+    const unsure = [...this.kv.list<Payer.Channel>({ prefix: 'channel:' })].filter(([, channel]) => Payer.unsure(channel))
+    const [hands, balances, states] = await Promise.all([
       Gateway.hands(this.env, row.id),
-      row.wallet ? Vault.balances(this.env, row.wallet) : Promise.resolve(undefined),
+      row.wallet ? Vault.balances(this.env, row.wallet, client) : Promise.resolve(undefined),
+      Promise.all(unsure.map(([, channel]) => Payer.state(this.env, channel.id, client).catch(() => undefined))),
     ])
+    for (const [index, [key, channel]] of unsure.entries()) {
+      const state = states[index]
+      const confirmed = state ? Payer.confirm(channel, state.deposit, Date.now()) : channel
+      if (confirmed !== channel) this.kv.put(key, confirmed)
+    }
     let left = 0n
     let biggest = 0n
     let pooled = 0n
     for (const source of sources) {
       const channel = this.kv.get<Payer.Channel>(`channel:${source.id}`)
       const spent = BigInt(this.kv.get<string>('spent:' + source.id) ?? channel?.signed ?? '0')
-      const inside = channel?.confirmed ? Payer.max(BigInt(channel.deposit) - spent, 0n) : 0n
+      const inside = Payer.inside(channel, spent)
       const room = balances ? Payer.max(Vault.total(balances) - Vault.dust * 3n, 0n) : 0n
       const available = inside + room
       this.kv.put('available:' + source.id, String(available))
