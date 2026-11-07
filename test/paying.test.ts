@@ -19,7 +19,7 @@ function challenge(amount: number, to = recipient) {
   return Challenge.serialize(Challenge.from({ id: 'c' + amount, intent: 'session', method: 'tempo', realm: 'gateway', request: { amount: String(amount), currency: ousd, methodDetails: { chainId: 4217 }, recipient: to } }))
 }
 
-function swarm(fields: { raised?: number; kv?: Record<string, unknown> } = {}) {
+function swarm(fields: { clients?: string[]; raised?: number; kv?: Record<string, unknown> } = {}) {
   const store = new Map<string, unknown>(Object.entries(fields.kv ?? { id: 'abc123abc123' }))
   const kv = {
     delete: (key: string) => store.delete(key),
@@ -32,7 +32,8 @@ function swarm(fields: { raised?: number; kv?: Record<string, unknown> } = {}) {
   const reads = { count: 0 }
   const row = { id: 'abc123abc123', raised: fields.raised ?? 0, sealed_wallet: 'sealed', sponsor_left: 0, wallet }
   const self = {
-    clients: new Map([['pool', { createCredential: async (_response: Response, context: unknown) => (credentials.push(context), 'Payment voucher') }]]),
+    clients: new Map(['pool', ...(fields.clients ?? [])].map((id) => [id, { createCredential: async (_response: Response, context: unknown) => (credentials.push({ ...(context as object), source: id }), 'Payment voucher') }])),
+    paying: Promise.resolve() as Promise<unknown>,
     cue: () => {},
     env: { TEMPO_RPC: 'http://127.0.0.1:9' },
     found: async () => {
@@ -166,4 +167,61 @@ test("a model call is paid from the swarm row the object already holds, read aga
   refusedHeld.found = async () => ({ ...refused.row, sponsor_left: 3_000_000 })
   const answer = (await Paying.charge(refused.self, { challenge: challenge(5000), operation: 'model.responses', secret: '' })) as { detail: string }
   assert.match(answer.detail, /hold \$3 in all/)
+})
+
+function quiet<T>(work: () => Promise<T>) {
+  const said: string[] = []
+  const log = console.log
+  console.log = (line: string) => void said.push(line)
+  return work().then((value) => ({ said: said.map((line) => JSON.parse(line) as Record<string, unknown>), value })).finally(() => (console.log = log))
+}
+
+test('a lead and its explorers asking at once on one channel get vouchers in arrival order, each its price above the one before', async () => {
+  const channel = { at: 0, confirmed: true, deposit: '1000000', descriptor: {}, id: '0x' + '0f'.repeat(32), signed: '100000' }
+  const { credentials, self, store } = swarm({ kv: { 'channel:pool': channel, id: 'abc123abc123' } })
+  const prices = [5000, 7000, 3000, 9000, 4000, 6000]
+  const { said, value } = await quiet(() => Promise.all(prices.map((price) => Paying.queued(self, { challenge: challenge(price), operation: 'model.responses', secret: '' }))))
+  assert.ok(value.every((paid) => 'authorization' in paid))
+  const signed = credentials.map((item) => Number((item as { cumulativeAmountRaw: string }).cumulativeAmountRaw))
+  let total = 100000
+  assert.deepEqual(signed, prices.map((price) => (total += price)))
+  assert.equal((store.get('channel:pool') as { signed: string }).signed, String(total))
+  assert.deepEqual((store.get('pending:pool') as { cumulative: string }[]).map((item) => Number(item.cumulative)), signed)
+  assert.equal(said.length, prices.length)
+  assert.ok(said.every((line) => typeof line['waited'] === 'number' && typeof line['worked'] === 'number' && line['paid'] === 'voucher'))
+})
+
+test("asks that all carry the gateway's same snapshot still sign increasing vouchers, each covering what was spent, the asks before it and its own price", async () => {
+  const channel = { at: 0, confirmed: true, deposit: '1000000', descriptor: {}, id: '0x' + '1f'.repeat(32), signed: '300000' }
+  const { credentials, self } = swarm({ kv: { 'channel:pool': channel, id: 'abc123abc123' } })
+  const snapshot = { acceptedCumulative: '300000', channelId: channel.id, deposit: '1000000', requiredCumulative: '290000', spent: '280000' }
+  const prices = [20000, 10000, 15000, 5000]
+  await quiet(() => Promise.all(prices.map((price) => Paying.queued(self, { challenge: challenge(price), channels: [snapshot], operation: 'model.responses', secret: '' }))))
+  const signed = credentials.map((item) => Number((item as { cumulativeAmountRaw: string }).cumulativeAmountRaw))
+  assert.deepEqual(signed, [300001, 310000, 325000, 330000])
+  for (let index = 1; index < signed.length; index++) assert.ok(signed[index]! > signed[index - 1]!)
+  let held = 280000
+  prices.forEach((price, index) => {
+    held += price
+    assert.ok(signed[index]! >= held)
+  })
+})
+
+test("a hand owner's ask during the lead's asks is signed on the owner's own channel, and neither channel's vouchers move the other's", async () => {
+  const owner = '0x5555555555555555555555555555555555555555'
+  const pool = { at: 0, confirmed: true, deposit: '1000000', descriptor: {}, id: '0x' + '2f'.repeat(32), signed: '50000' }
+  const hand = { at: 0, confirmed: true, deposit: '500000', descriptor: {}, id: '0x' + '3f'.repeat(32), signed: '20000' }
+  const { credentials, self, store } = swarm({ clients: ['hand:' + owner], kv: { ['channel:hand:' + owner]: hand, 'channel:pool': pool, id: 'abc123abc123' } })
+  const asks = [
+    { challenge: challenge(5000), operation: 'model.responses', secret: '' },
+    { challenge: [challenge(8000, owner), challenge(8000)], hand: 'box', operation: 'hand.use', recipient: owner as `0x${string}`, secret: '' },
+    { challenge: challenge(5000), operation: 'model.responses', secret: '' },
+    { challenge: [challenge(8000, owner), challenge(8000)], hand: 'box', operation: 'hand.use', recipient: owner as `0x${string}`, secret: '' },
+  ]
+  await quiet(() => Promise.all(asks.map((input) => Paying.queued(self, input))))
+  const by = (source: string) => credentials.filter((item) => (item as { source: string }).source === source).map((item) => Number((item as { cumulativeAmountRaw: string }).cumulativeAmountRaw))
+  assert.deepEqual(by('pool'), [55000, 60000])
+  assert.deepEqual(by('hand:' + owner), [28000, 36000])
+  assert.equal((store.get('channel:pool') as { signed: string }).signed, '60000')
+  assert.equal((store.get('channel:hand:' + owner) as { signed: string }).signed, '36000')
 })

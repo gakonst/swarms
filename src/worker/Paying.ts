@@ -237,6 +237,19 @@ export function outcome(paid: Paid) {
   return paid.status
 }
 
+export function queued(self: Swarm, input: Pay): Promise<Paid> {
+  const asked = Date.now()
+  const marks: Marks = {}
+  const run = self.paying.then(async () => {
+    const started = Date.now()
+    const paid = await charge(self, input, marks)
+    console.log(JSON.stringify({ ...marks, operation: input.operation ?? null, paid: outcome(paid), pay: self.kv.get<string>('id'), waited: started - asked, worked: Date.now() - started }))
+    return paid
+  })
+  self.paying = run.catch(() => undefined)
+  return run
+}
+
 export async function charge(self: Swarm, input: Pay, marks: Marks = {}): Promise<Paid> {
   const id = self.kv.get<string>('id') ?? ''
   const reading = Date.now()

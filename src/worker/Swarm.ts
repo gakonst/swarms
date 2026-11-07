@@ -906,16 +906,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   pay(input: Paying.Pay): Promise<Paying.Paid> {
     const secret = this.kv.get<string>('secret')
     if (!secret || !Words.same(secret, input.secret)) return Promise.resolve({ code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 })
-    const asked = Date.now()
-    const marks: Paying.Marks = {}
-    const run = this.paying.then(async () => {
-      const started = Date.now()
-      const paid = await Paying.charge(this, input, marks)
-      console.log(JSON.stringify({ ...marks, operation: input.operation ?? null, paid: Paying.outcome(paid), pay: this.kv.get<string>('id'), waited: started - asked, worked: Date.now() - started }))
-      return paid
-    })
-    this.paying = run.catch(() => undefined)
-    return run
+    return Paying.queued(this, input)
   }
 
   async pause(row: Store.Row, pause: Phase.Pause) {
