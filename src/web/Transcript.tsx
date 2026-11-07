@@ -3,7 +3,7 @@ import type { Artifact, Branch, Config, Detail, Entry, Me, Said, Steering } from
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Mention from '../shared/Mention.ts'
-import { decimal, units } from '../shared/Memo.ts'
+import { decimal, maxNote, units } from '../shared/Memo.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
@@ -311,9 +311,9 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
   const steering = words.length >= 3
   const ready = ok && (steering || (!!target && !words))
 
-  const pay = async (config: Config, need: bigint) => {
+  const pay = async (config: Config, need: bigint, note = '') => {
     if (typeof door !== 'object' || door.at !== 'open') throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
-    if (door.from === 'backing') await credit.cover(config, { id: props.swarm, wallet: props.wallet }, need, setBusy)
+    if (door.from === 'backing') await credit.cover(config, { id: props.swarm, wallet: props.wallet }, need, setBusy, note)
   }
 
   const submit = () => {
@@ -336,7 +336,6 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
       await pay(config, need)
       setBusy(steering ? 'Steering…' : 'Raising its budget…')
       const funded = await Api.fund(props.swarm, branch.id, { amount: decimal(need), ...(steering ? { message: words } : {}) })
-      credit.spend(need)
       setDone(funded.budget === null ? `${usd(funded.funded)} behind ${branch.who}` : `${branch.who}'s budget is ${usd(funded.budget)}`)
       setText('')
       props.onDirected()
@@ -351,15 +350,20 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
     const config = props.config
     const idea = text.trim()
     if (!config || busy || idea.length < 3 || !ok) return
+    if (idea.length > maxNote) return setError(`Keep the idea to ${maxNote} characters; it becomes a note the agent keeps reading.`)
     setError(undefined)
     setDone(undefined)
     try {
       const need = units(stake)
-      await pay(config, need)
-      setBusy('Sending…')
-      const posted = await Api.say(props.swarm, { steer: decimal(need), text: `@swarm ${idea}` })
-      credit.spend(need)
-      props.onSaid(posted.message)
+      if (typeof door === 'object' && door.at === 'open' && door.from === 'backing') {
+        await pay(config, need, idea)
+        setDone(`Added ${usd(decimal(need))} behind it`)
+      } else {
+        await pay(config, need)
+        setBusy('Sending…')
+        const posted = await Api.say(props.swarm, { steer: decimal(need), text: `@swarm ${idea}` })
+        props.onSaid(posted.message)
+      }
       setText('')
     } catch (reason) {
       setError(message(reason))
@@ -419,7 +423,7 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
             <button aria-checked={stake === value} disabled={!!busy} key={value} onClick={() => setStake(value)} role="radio" type="button">${value === '0.5' ? '0.50' : value}</button>
           ))}
           <label className="say-own">$<input aria-label="Your amount" disabled={!!busy} inputMode="decimal" onChange={(event) => setStake(event.target.value.replace(',', '.').replace('$', ''))} onFocus={(event) => event.target.select()} value={(stakes as readonly string[]).includes(stake) ? '' : stake} placeholder="…" /></label>
-          {busy ? <span className="say-note">{busy}</span> : done ? <span className="say-note say-done">{done}</span> : door.from === 'team' && <span className="say-note">from the swarm's money{door.left === null ? '' : ` · ${usd(door.left)} of your team budget left`}</span>}
+          {busy ? <span className="say-note">{busy}</span> : done ? <span className="say-note say-done">{done}</span> : door.from === 'team' ? <span className="say-note">from the swarm's money{door.left === null ? '' : ` · ${usd(door.left)} of your team budget left`}</span> : ok && <span className="say-note">adds {usd(decimal(units(stake)))} from your wallet</span>}
         </div>
       )}
       <form className="say-box" onSubmit={(event) => { event.preventDefault(); submit() }}>
@@ -437,7 +441,7 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
               submit()
             }
           }}
-          placeholder={target ? `Steer ${target.who}, or just fund it` : 'Steer the agent, with money behind it'}
+          placeholder={target ? `Steer ${target.who}, or just fund it` : door.from === 'team' ? 'Steer the agent' : 'Steer the agent: adds money to the swarm'}
           ref={area}
           rows={1}
           value={text}
@@ -445,7 +449,7 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
         {target && !command ? (
           <button className="say-send say-go" disabled={!!busy || !ready} type="submit">{words ? 'Steer' : 'Fund'}{ok ? ` ${usd(decimal(units(stake)))}` : ''}</button>
         ) : (
-          <button aria-label="Send" className="say-send" disabled={!!busy || (command ? false : !ready)} type="submit">↑</button>
+          <button aria-label={command || door.from === 'team' ? 'Send' : ok ? `Add ${usd(decimal(units(stake)))} and steer` : 'Add money and steer'} className="say-send" disabled={!!busy || (command ? false : !ready)} title={command || door.from === 'team' || !ok ? undefined : `Add ${usd(decimal(units(stake)))} to the swarm behind this`} type="submit">↑</button>
         )}
       </form>
       <button className="say-side" onClick={() => props.onSide('', target?.id ?? null)} type="button">{target ? `Ask ${target.who} on the side` : 'Ask on the side'} <span aria-hidden="true">→</span></button>

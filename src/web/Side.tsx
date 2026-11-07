@@ -123,7 +123,6 @@ export function Side(props: {
         const posted = await Api.say(props.swarm.id, { artifact, btw: kept, steer: decimal(need), text: `@swarm ${Btw.note(kept, artifact)}` })
         props.onSaid(posted.message)
       } else await Api.fund(props.swarm.id, props.branch, { amount: decimal(need), artifact, message: Btw.collapse(kept, artifact) })
-      credit.spend(need)
       setDone(artifact ? `Asked ${name} for an artifact, with ${usd(decimal(need))} behind it.` : `Steered ${name} with this thread and ${usd(decimal(need))}.`)
       remember([])
     } catch (reason) {
