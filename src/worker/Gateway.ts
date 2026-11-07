@@ -208,7 +208,7 @@ export function repay(env: Cloudflare.Env, swarm: string, agent: string, payer: 
   return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { payer }, method: 'PATCH' })
 }
 
-export function prompt(env: Cloudflare.Env, swarm: string, agent: string, input: { prompt: string; steer: boolean }) {
+export function prompt(env: Cloudflare.Env, swarm: string, agent: string, input: { id?: string; prompt: string; steer: boolean }) {
   return send<{ request_id: string; status: string }>(env, `/v1/agents/${agent}/turns`, { app: app(swarm), body: input })
 }
 

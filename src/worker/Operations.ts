@@ -788,7 +788,6 @@ async function steerable(env: Cloudflare.Env, input: { address: Address | undefi
   const [row, account] = await Promise.all([Store.find(env, input.swarm), Store.account(env, input.address)])
   if (!row) return missing()
   if (!account.name) return unnamed()
-  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
   const seat = row.steering === 'team' ? await Team.seat(env, row, input.address).catch(() => undefined) : undefined
   if (row.steering === 'team' && !seat)
     return Problem.fail(403, 'not_member', "Only this swarm's team directs its money. Its admins add who may: ask one of them in the room.")
@@ -919,7 +918,6 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
   const [row, account] = await Promise.all([Store.find(env, request.swarm), Store.account(env, address)])
   if (!row) return missing()
   if (!account.name) return unnamed()
-  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
 
   const found = await directed(env, row, reached(stub(env, row.id).subagents(row.id, true)))
   if (!found.ok) return found
@@ -1011,7 +1009,6 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
   const [row, account] = await Promise.all([Store.find(env, request.swarm), Store.account(env, address)])
   if (!row) return missing()
   if (!account.name) return unnamed()
-  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
   if (row.steering === 'team' && !(await Team.seat(env, row, address).catch(() => undefined)))
     return Problem.fail(403, 'not_member', "Only this swarm's team asks it side questions, as only its team steers it.")
   if (row.steering !== 'team' && !(await Store.members(env, row.id)).some((member) => member.address === address && units(member.backed) >= Mention.smallestSteer))
@@ -1045,7 +1042,6 @@ async function governed(env: Cloudflare.Env, swarm: string, address: Address | u
   if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo Wallet to manage who steers a swarm.")
   const row = await Store.find(env, swarm)
   if (!row) return missing()
-  if (row.status === 'done') return Problem.fail(409, 'conflict', 'This swarm is finished.')
   if (!(await Team.admin(env, row, address).catch(() => false)))
     return Problem.fail(403, 'access_denied', "Only this swarm's admins choose who steers it: whoever started it signed in, or else its first backer, and the admins they add.")
   return Problem.ok(row)
@@ -1425,6 +1421,7 @@ export async function contribute(
       amount: Memo.decimal(total),
       contributor: sender as Address,
       hash: request.hash,
+      kind: existing ? 'noted' : 'new',
       note: text,
       noteId,
       swarm: row.id,

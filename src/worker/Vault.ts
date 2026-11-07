@@ -75,23 +75,6 @@ export async function buy(env: Cloudflare.Env, owner: ReturnType<typeof Account.
   return { fee: fee(receipt), hash: receipt.transactionHash, quote }
 }
 
-export async function send(
-  env: Cloudflare.Env,
-  owner: ReturnType<typeof Account.fromSecp256k1>,
-  input: { amount: bigint; memo: Hex; to: Address },
-) {
-  const { receipt } = await Actions.token.transferSync(Chain.client(env), {
-    account: owner,
-    amount: input.amount,
-    feeToken: Chain.tokens.ousd.address,
-    memo: input.memo,
-    nonceKey: 'expiring',
-    to: input.to,
-    token: Chain.tokens.ousd.address,
-  })
-  return { fee: fee(receipt), hash: receipt.transactionHash }
-}
-
 export function fee(receipt: { effectiveGasPrice: bigint; gasUsed: bigint }) {
   return (receipt.gasUsed * receipt.effectiveGasPrice + 999_999_999_999n) / 1_000_000_000_000n
 }
