@@ -3,9 +3,11 @@
 
 /fonts/*
   Cache-Control: public, max-age=2592000
+  Access-Control-Allow-Origin: *
 
 /kit/*
   Cache-Control: public, max-age=300
+  Access-Control-Allow-Origin: *
 
 /favicon.svg
   Cache-Control: public, max-age=86400

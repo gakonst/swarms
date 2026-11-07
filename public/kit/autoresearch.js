@@ -1,60 +1,56 @@
 (() => {
   const here = new URL('.', location.href)
+  const theme = new URL('swarm.css', document.currentScript?.src ?? location.href).href
   const svg = 'http://www.w3.org/2000/svg'
   const colors = [
-    ['#2ecc71', '#1a7a3a', '#6fe3a1'],
-    ['#3b82f6', '#1d4ed8', '#9dbcfb'],
-    ['#f59e0b', '#9a5b06', '#f8cd7a'],
-    ['#a855f7', '#7e22ce', '#d3adfb'],
-    ['#ef4444', '#b91c1c', '#f7a3a3'],
-    ['#14b8a6', '#0f766e', '#80e1d5'],
+    ['#3f7d4e', '#2f5f37'],
+    ['#2f6690', '#22496a'],
+    ['#b07a1e', '#7a5412'],
+    ['#7a4f9a', '#55376c'],
+    ['#b3261e', '#8a1d17'],
+    ['#2a8a86', '#1d605d'],
   ]
   const states = { 'dead end': 'dead', 'dead-end': 'dead', done: 'done', exploring: 'exploring', promising: 'promising' }
 
   const css = `
-:root{color-scheme:light dark;--bg:#fff;--fg:#141414;--muted:#6b6b6b;--line:#ececec;--rule:#dcdcdc;--faint:#c9c9c9;--chip:#f3f3f3;--accent:#1f9d55}
-@media (prefers-color-scheme:dark){:root{--bg:#111;--fg:#ececec;--muted:#9b9b9b;--line:#222;--rule:#2e2e2e;--faint:#4d4d4d;--chip:#1c1c1c;--accent:#4ade80}}
-*{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--fg)}
-body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums;-webkit-text-size-adjust:100%}
 .ar{max-width:1040px;margin:0 auto;padding:20px 16px 28px}
-.ar h1{margin:0;font-size:15px;font-weight:600;letter-spacing:-.005em}
-.ar .eyebrow{margin:14px 0 0;color:var(--muted);font-size:12px}
-.ar .big{margin:2px 0 0;font-size:40px;line-height:1.1;font-weight:600;letter-spacing:-.02em}
-.ar .sub{margin:6px 0 0;color:var(--muted)}
-.ar .sub b{color:var(--fg);font-weight:600}
-.ar .goal{margin:14px 0 0;max-width:420px}
-.ar .bar{height:6px;border-radius:3px;background:var(--chip);overflow:hidden}
+.ar h1{margin:0;font-size:22px;font-weight:400;line-height:1.15;letter-spacing:-.01em}
+.ar .eyebrow{margin:18px 0 0;font:11px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.ar .big{margin:6px 0 0;font-size:56px;line-height:1;font-weight:400;letter-spacing:-.02em}
+.ar .sub{margin:10px 0 0;color:var(--muted)}
+.ar .sub b{color:var(--fg);font-weight:400}
+.ar .goal{margin:16px 0 0;max-width:420px}
+.ar .bar{height:6px;border-radius:3px;background:var(--wash);overflow:hidden}
 .ar .bar i{display:block;height:100%;background:var(--accent)}
-.ar .goal p{margin:6px 0 0;color:var(--muted);font-size:12px}
-.ar section{margin-top:26px}
-.ar h2{margin:0 0 8px;font-size:13px;font-weight:600}
-.ar h2 span{color:var(--muted);font-weight:400}
-.ar .plot{position:relative;width:100%;overflow:hidden}
+.ar .goal p{margin:8px 0 0;color:var(--muted);font-size:14px}
+.ar section{margin-top:28px}
+.ar h2{margin:0 0 10px;font:11px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--fg)}
+.ar h2 span{color:var(--muted);text-transform:none;letter-spacing:0}
+.ar .plot{position:relative;width:100%;overflow:hidden;padding:12px 8px 4px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
 .ar .plot svg{display:block;width:100%}
-.ar .plot text{font:11px system-ui,-apple-system,sans-serif;fill:var(--muted)}
+.ar .plot text{font:11px var(--mono);fill:var(--muted)}
 .ar .plot .label{fill:var(--t)}
-@media (prefers-color-scheme:dark){.ar .plot .label{fill:var(--d)}}
-.ar .legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 0 0;padding:0;list-style:none;color:var(--muted);font-size:12px}
+.ar .legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:10px 0 0;padding:0;list-style:none;color:var(--muted);font:11px var(--mono)}
 .ar .legend li{display:flex;align-items:center;gap:6px}
 .ar .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--c);flex:none}
 .ar .dot.grey{background:var(--faint)}
 .ar .dash{display:inline-block;width:16px;border-top:2px solid var(--c);flex:none}
 .ar .dash.goal{border-top-style:dashed;border-color:var(--muted)}
-.ar .note{margin:6px 0 0;color:var(--muted);font-size:12px}
-.ar ol{margin:0;padding:0;list-style:none;border:1px solid var(--rule);border-radius:10px;overflow:hidden}
-.ar ol li{padding:10px 12px;border-top:1px solid var(--rule)}
+.ar .note{margin:8px 0 0;color:var(--muted);font-size:14px}
+.ar ol{margin:0;padding:0;list-style:none;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.ar ol li{padding:12px 14px;border-top:1px solid var(--line)}
 .ar ol li:first-child{border-top:0}
 .ar .row{display:flex;align-items:baseline;gap:8px;min-width:0}
-.ar .row .name{font-weight:600;overflow-wrap:anywhere}
-.ar .row .end{margin-left:auto;white-space:nowrap}
-.ar .chip{display:inline-block;padding:0 7px;border-radius:9px;background:var(--chip);color:var(--muted);font-size:11px;line-height:18px;white-space:nowrap}
-.ar .chip.promising{color:var(--accent)}
+.ar .row .name{font-size:17px;overflow-wrap:anywhere}
+.ar .row .end{margin-left:auto;white-space:nowrap;font-family:var(--mono)}
+.ar .chip{display:inline-block;padding:0 8px;border-radius:999px;background:var(--wash);color:var(--muted);font:11px/20px var(--mono);white-space:nowrap}
+.ar .chip.promising{color:var(--good)}
+.ar .chip.done{color:var(--accent)}
 .ar .chip.dead{text-decoration:line-through}
-.ar .meta{margin:2px 0 0;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
-.ar .delta{font-weight:600;color:var(--accent);min-width:64px}
+.ar .meta{margin:3px 0 0;color:var(--muted);font-size:14px;overflow-wrap:anywhere}
+.ar .delta{font-family:var(--mono);color:var(--good);min-width:72px}
 .ar .what{overflow-wrap:anywhere}
-.ar footer{margin-top:22px;color:var(--muted);font-size:12px}
+.ar footer{margin-top:24px;color:var(--muted);font-size:14px}
 .ar footer a{color:inherit}
 .ar .empty{margin:18px 0 0;color:var(--muted)}
 `
@@ -162,12 +158,11 @@ body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-va
         const first = parsed.rows.find((row) => row.status !== 'crash')
         if (first) start = first.value
       }
-      const [dot, text, dark] = colors[index % colors.length]
+      const [dot, text] = colors[index % colors.length]
       return {
         best,
         color: dot,
         crashed: parsed.rows.filter((row) => row.status === 'crash').length,
-        dark,
         explores: typeof branch.explores === 'string' ? branch.explores : '',
         found: typeof branch.found === 'string' ? branch.found : '',
         kept: parsed.rows.filter((row) => row.status === 'keep').length,
@@ -324,7 +319,7 @@ body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-va
         })
         if (clash || placed.length >= 24) continue
         placed.push(at)
-        labels.push(shape('text', { class: 'label', style: `--t:${branch.text};--d:${branch.dark}`, transform: `translate(${at.x.toFixed(1)} ${at.y.toFixed(1)}) rotate(-30)` }, text))
+        labels.push(shape('text', { class: 'label', style: `--t:${branch.text}`, transform: `translate(${at.x.toFixed(1)} ${at.y.toFixed(1)}) rotate(-30)` }, text))
       }
     }
     const hidden = valid.filter((row) => !inside(row.value)).length
@@ -467,6 +462,7 @@ body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-va
   }
 
   function start() {
+    if (![...document.querySelectorAll('link[rel=stylesheet]')].some((link) => link.href === theme)) document.head.append(node('link', { href: theme, rel: 'stylesheet' }))
     document.head.append(node('style', null, css))
     root = document.querySelector('main.ar') ?? document.body.appendChild(node('main', { class: 'ar' }))
     let width = 0

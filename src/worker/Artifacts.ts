@@ -96,7 +96,33 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
     if (upstream.headers.get(header)) answer.set(header, upstream.headers.get(header) ?? '')
   const typed = Shelf.scriptedType(file)
   if (typed && answer.get('content-type')?.startsWith('text/plain')) answer.set('content-type', typed)
-  return new Response(upstream.status === 304 ? null : upstream.body, { headers: answer, status: upstream.status })
+  if (upstream.status !== 200 || !answer.get('content-type')?.startsWith('text/html')) return new Response(upstream.status === 304 ? null : upstream.body, { headers: answer, status: upstream.status })
+  answer.delete('content-length')
+  answer.delete('accept-ranges')
+  return themed(new Response(upstream.body, { headers: answer, status: 200 }))
+}
+
+const theme = '<link rel="stylesheet" href="/kit/swarm.css">'
+
+const kept = "<style>html,body{color-scheme:light;background:#ffffff!important;color:#000000!important}body{font-family:'Paradigm Serif',Georgia,'Times New Roman',serif!important}</style>"
+
+function themed(response: Response) {
+  let placed = false
+  return new HTMLRewriter()
+    .onDocument({
+      end(end) {
+        end.append(kept, { html: true })
+      },
+    })
+    .on('*', {
+      element(element) {
+        if (placed || element.tagName === 'html') return
+        placed = true
+        if (element.tagName === 'head') element.prepend(theme, { html: true })
+        else element.before(theme, { html: true })
+      },
+    })
+    .transform(response)
 }
 
 function text(status: number, detail: string) {
