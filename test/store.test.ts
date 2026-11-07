@@ -14,7 +14,7 @@ function swarm(db: Opened, id: string, fields: { hidden?: number; rounds?: numbe
 
 function give(db: Opened, swarm: string, contributor: string, amount: number, note: string | null = null) {
   db.sqlite
-    .prepare("insert into contributions (id, swarm, kind, contributor, token, amount, note, note_id, created_at) values (?, ?, 'transfer', ?, 'ousd', ?, ?, ?, ?)")
+    .prepare("insert into contributions (id, swarm, contributor, token, amount, note, note_id, created_at) values (?, ?, ?, 'ousd', ?, ?, ?, ?)")
     .run(crypto.randomUUID(), swarm, contributor, String(amount), note, note ? note.slice(0, 16) : null, Date.now())
 }
 
@@ -87,6 +87,22 @@ test('a contribution comes back from its own insert, and a repeat inserts nothin
   const inserted = await Store.insert(db.env, { creator: null, goal: 'A goal long enough', id: 'new', problem: null, sealed_wallet: 's', title: 'New', wallet: '0x99' })
   assert.deepEqual([inserted?.id, inserted?.raised, inserted?.contributors, inserted?.spent, inserted?.remaining, inserted?.status], ['new', 0, 0, 0, 0, 'funding'])
   assert.equal(Store.seen('new'), true)
+})
+
+test("a swarm's channels come from its own channel contributions, through the sponsored index", async () => {
+  const db = open()
+  swarm(db, 'a')
+  swarm(db, 'b')
+  give(db, 'a', '0x01', 100)
+  const channel = { amount: '50000', contributor: '0x02' as const, note: null, note_id: null, swarm: 'a', token: 'mach' as const }
+  await Store.give(db.env, { ...channel, channel: '0xC1', id: '0xA1' })
+  await Store.give(db.env, { ...channel, channel: '0xC2', id: '0xA2', swarm: 'b' })
+
+  assert.deepEqual(await Store.channels(db.env, 'a'), [{ amount: '50000', channel: '0xc1' }])
+  assert.match(planned(db, /channel is not null/), /SEARCH contributions USING COVERING INDEX contributions_sponsored \(swarm=\? AND channel>\?\)/)
+  assert.deepEqual(await Store.channels(db.env, 'c'), [])
+  await Store.delivered(db.env, '0xC1', 1234n)
+  assert.deepEqual(await Store.channels(db.env, 'a'), [{ amount: '1234', channel: '0xc1' }])
 })
 
 test("a branch's money is only what was put behind its own agent's branch", async () => {

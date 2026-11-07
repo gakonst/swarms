@@ -92,7 +92,7 @@ type Lead = { briefed: boolean; cursor: number; id: string; persona: boolean; un
 
 type Turning = Extract<Phase.Run, { state: 'working' }>
 
-const version = 1
+const version = 2
 
 const dead = ['turn', 'started', 'since', 'paused', 'why', 'failures', 'wanted', 'checked', 'n', 'fresh', 'unreachable', 'url', 'persona', 'cursor', 'shelved', 'terms', 'left', 'expected', 'poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'round', 'resting', 'stuck', 'kicked', 'rechecked', 'retired', 'retiring', 'tallied', 'workers', 'refundAt', 'refunded', 'closing', 'returning', 'open', 'source', 'pledge', 'swept']
 
@@ -100,29 +100,37 @@ const gone = ['owed:', 'sent:', 'seen:', 'closing:', 'available:']
 
 const sourced = ['banked:', 'spent:', 'paid:', 'pending:', 'exhausted:', 'unopened:', 'owing:', 'channel:', 'mppx:']
 
-function migrate(storage: DurableObjectStorage) {
+function migrate(storage: DurableObjectStorage, from: number) {
   const kv = storage.kv
   const sql = storage.sql
-  const n = Number(sql.exec<{ n: number | null }>('SELECT MAX(n) AS n FROM turns').one().n ?? kv.get<number>('n') ?? 0)
-  if (kv.get<Phase.Run>('run') === undefined) kv.put('run', Phase.migrated(kv, n, Date.now()))
-  const agent = kv.get<unknown>('agent')
-  if (typeof agent === 'string')
-    kv.put('agent', {
-      briefed: !kv.get<boolean>('fresh'),
-      cursor: kv.get<number>('cursor') ?? 0,
-      id: agent,
-      persona: kv.get<string>('persona') === Persona.name,
-      unreachable: kv.get<number>('unreachable') ?? null,
-      url: kv.get<string>('url') ?? '',
-    } satisfies Lead)
-  for (const key of dead) kv.delete(key)
-  for (const prefix of gone) for (const [key] of [...kv.list({ prefix })]) kv.delete(key)
-  for (const prefix of sourced)
-    for (const [key] of [...kv.list({ prefix })]) {
-      const id = key.slice(prefix.length)
-      if (!id.startsWith('pool') && !id.startsWith('hand:')) kv.delete(key)
-    }
-  if (sql.exec<{ name: string }>('PRAGMA table_info(feed)').toArray().some((row) => row.name === 'round')) sql.exec('ALTER TABLE feed DROP COLUMN round')
+  if (from < 1) {
+    const n = Number(sql.exec<{ n: number | null }>('SELECT MAX(n) AS n FROM turns').one().n ?? kv.get<number>('n') ?? 0)
+    if (kv.get<Phase.Run>('run') === undefined) kv.put('run', Phase.migrated(kv, n, Date.now()))
+    const agent = kv.get<unknown>('agent')
+    if (typeof agent === 'string')
+      kv.put('agent', {
+        briefed: !kv.get<boolean>('fresh'),
+        cursor: kv.get<number>('cursor') ?? 0,
+        id: agent,
+        persona: kv.get<string>('persona') === Persona.name,
+        unreachable: kv.get<number>('unreachable') ?? null,
+        url: kv.get<string>('url') ?? '',
+      } satisfies Lead)
+    for (const key of dead) kv.delete(key)
+    for (const prefix of gone) for (const [key] of [...kv.list({ prefix })]) kv.delete(key)
+    for (const prefix of sourced)
+      for (const [key] of [...kv.list({ prefix })]) {
+        const id = key.slice(prefix.length)
+        if (!id.startsWith('pool') && !id.startsWith('hand:')) kv.delete(key)
+      }
+    if (sql.exec<{ name: string }>('PRAGMA table_info(feed)').toArray().some((row) => row.name === 'round')) sql.exec('ALTER TABLE feed DROP COLUMN round')
+  }
+  if (from < 2) {
+    kv.delete('sponsored')
+    for (const [key] of [...kv.list({ prefix: 'delivered:' })]) kv.delete(key)
+    const last = sql.exec<{ seq: number | null }>('SELECT MAX(seq) AS seq FROM feed').one().seq
+    if (last !== null) kv.put('unindexed', Number(last))
+  }
   kv.put('v', version)
 }
 
@@ -131,6 +139,7 @@ const schema = [
   "CREATE TABLE IF NOT EXISTS turns (n INTEGER PRIMARY KEY, turn TEXT NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, status TEXT NOT NULL, message TEXT, spent_before TEXT NOT NULL, spent TEXT NOT NULL DEFAULT '0')",
   'CREATE TABLE IF NOT EXISTS steered (note TEXT PRIMARY KEY, at INTEGER NOT NULL)',
   "CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, author TEXT, text TEXT NOT NULL, mentions TEXT NOT NULL DEFAULT '[]', steer TEXT)",
+  "CREATE VIRTUAL TABLE IF NOT EXISTS feed_search USING fts5(body, content='', contentless_delete=1, tokenize='porter unicode61 remove_diacritics 2')",
 ]
 
 const columns = [
@@ -151,6 +160,12 @@ const newerTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'completed' A
 const lastTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL AND ended_at IS NOT NULL ORDER BY n DESC LIMIT ?)"
 
 const searched = 5_000
+
+const searchable = "text || ' ' || substr(coalesce(detail, ''), 1, 4000)"
+
+const indexChunk = 1_000
+
+const indexMs = 1_000
 
 const followMs = 2_000
 
@@ -295,7 +310,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (!ctx.storage.sql.exec<{ name: string }>(`PRAGMA table_info(${table})`).toArray().some((row) => row.name === column))
         ctx.storage.sql.exec(statement)
     for (const statement of indexes) sql.exec(statement)
-    if ((ctx.storage.kv.get<number>('v') ?? 0) < version) migrate(ctx.storage)
+    const from = ctx.storage.kv.get<number>('v') ?? 0
+    if (from < version) migrate(ctx.storage, from)
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
   }
 
@@ -343,7 +359,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.marked += 1
     this.kv.put('id', input.swarm)
     this.kv.delete('exhausted:pool')
-    if (input.token === 'mach') this.kv.put('sponsored', true)
     if (input.kind === 'noted') {
       this.log('funds', `${short(input.contributor)} put the ${trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
       this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} put the ${trim(input.amount)} ${Chain.symbol(input.token)} they sent behind "${input.note ?? ''}".`)
@@ -502,6 +517,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (row) await this.expose(row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
       this.kv.delete('exposing')
     }
+    await this.reindex()
     const run = this.run()
     if (run.state === 'paused' || run.state === 'new' || now - (this.kv.get<number>('healed') ?? 0) < healMs) return
     const alarm = await this.ctx.storage.getAlarm()
@@ -622,15 +638,41 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   search(terms: string[], limit: number): Entry[] {
     if (!terms.length) return []
+    const indexed = this.kv.get<number>('unindexed') === undefined
+    if (!indexed) this.ctx.waitUntil(this.reindex())
     const score = terms.map(() => "(instr(lower(text || ' ' || coalesce(detail, '')), ?) > 0)").join(' + ')
-    return this.ctx.storage.sql
-      .exec<Record<string, SqlStorageValue>>(
-        `SELECT seq, at, kind, text, detail, who, event FROM (SELECT *, ${score} AS score FROM (SELECT * FROM feed ORDER BY seq DESC LIMIT ${searched})) WHERE score > 0 ORDER BY score DESC, seq DESC LIMIT ?`,
-        ...terms,
-        limit,
-      )
-      .toArray()
-      .map(entry)
+    const [query, ...values]: [string, ...(string | number)[]] = indexed
+      ? [
+          'SELECT f.seq, f.at, f.kind, f.text, f.detail, f.who, f.event FROM (SELECT rowid, rank FROM feed_search WHERE feed_search MATCH ? ORDER BY rank LIMIT ?) s JOIN feed f ON f.seq = s.rowid ORDER BY s.rank, f.seq DESC',
+          terms.map((term) => `"${term}"`).join(' OR '),
+          limit,
+        ]
+      : [
+          `SELECT seq, at, kind, text, detail, who, event FROM (SELECT *, ${score} AS score FROM (SELECT * FROM feed ORDER BY seq DESC LIMIT ${searched})) WHERE score > 0 ORDER BY score DESC, seq DESC LIMIT ?`,
+          ...terms,
+          limit,
+        ]
+    return this.ctx.storage.sql.exec<Record<string, SqlStorageValue>>(query, ...values).toArray().map(entry)
+  }
+
+  index() {
+    const below = this.kv.get<number>('unindexed')
+    if (below === undefined) return false
+    const sql = this.ctx.storage.sql
+    const edge = sql.exec<{ low: number | null; n: number }>('SELECT MIN(seq) AS low, COUNT(*) AS n FROM (SELECT seq FROM feed WHERE seq <= ? ORDER BY seq DESC LIMIT ?)', below, indexChunk).one()
+    if (edge.low !== null) sql.exec(`INSERT INTO feed_search (rowid, body) SELECT seq, ${searchable} FROM feed WHERE seq BETWEEN ? AND ?`, edge.low, below)
+    if (edge.low === null || edge.n < indexChunk) {
+      this.kv.delete('unindexed')
+      return false
+    }
+    this.kv.put('unindexed', edge.low - 1)
+    return true
+  }
+
+  async reindex() {
+    if (this.kv.get<number>('unindexed') === undefined || this.run().state !== 'paused') return
+    const alarm = await this.ctx.storage.getAlarm()
+    if (alarm === null || alarm > Date.now() + indexMs) await this.ctx.storage.setAlarm(Date.now())
   }
 
   override async fetch(request: Request) {
@@ -731,6 +773,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   override async alarm() {
+    const indexing = this.index()
     this.stepping ??= this.step()
       .catch((error: unknown) => {
         this.log('error', 'The swarm hit an error and will retry.', String(error))
@@ -739,7 +782,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       .finally(() => {
         this.stepping = undefined
       })
-    const next = await this.stepping
+    const stepped = await this.stepping
+    const next = indexing && this.run().state === 'paused' ? Math.min(stepped ?? Infinity, Date.now() + indexMs) : stepped
     if (next === null) return
     const pending = await this.ctx.storage.getAlarm()
     await this.ctx.storage.setAlarm(pending !== null && pending < next ? pending : next)
@@ -1034,7 +1078,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       chain: this.due('chain', minuteMs, now),
       git: this.due('git', this.kv.get<string>('repo') ? minuteMs : fallbackMs, now),
       hands: this.due('hands', lent ? refreshMs : minuteMs, now),
-      sponsors: !!this.kv.get<boolean>('sponsored') && this.due('sponsors', this.listened() ? refreshMs : 3 * refreshMs, now),
+      sponsors: this.due('sponsors', this.listened() ? refreshMs : 3 * refreshMs, now),
       turn: this.due('turn', minuteMs, now),
     }
   }
@@ -1508,10 +1552,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const client = Chain.client(this.env)
     const unsure = plan.chain ? [...this.kv.list<Payer.Channel>({ prefix: 'channel:' })].filter(([, channel]) => Payer.unsure(channel)) : []
     const reading = plan.chain || !this.held
-    const [hands, balances, states] = await Promise.all([
+    const [hands, balances, states, pledged] = await Promise.all([
       plan.hands ? Gateway.hands(this.env, row.id) : undefined,
       row.wallet ? (reading ? Vault.balances(this.env, row.wallet, client) : Promise.resolve(this.held)) : Promise.resolve(undefined),
       Promise.all(unsure.map(([, channel]) => Payer.state(this.env, channel.id, client).catch(() => undefined))),
+      plan.sponsors ? this.sponsorships(row) : undefined,
     ])
     if (reading && balances) this.held = balances
     for (const [index, [key, channel]] of unsure.entries()) {
@@ -1536,7 +1581,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
     const loose = String(balances ? balances.pathusd + balances.usdce - Vault.dust * 2n : 0n)
     if (this.kv.get<string>('loose') !== loose) this.kv.put('loose', loose)
-    if (plan.sponsors) this.pledged = this.kv.get<boolean>('sponsored') ? await this.sponsorships(row) : { biggest: 0n, left: 0n, spent: 0n }
+    if (pledged) this.pledged = pledged
     const sponsored = plan.sponsors ? this.pledged : { biggest: this.pledged.biggest, left: BigInt(row.sponsor_left ?? 0), spent: BigInt(row.sponsor_spent ?? 0) }
     left += sponsored.left
     biggest = Payer.max(biggest, sponsored.biggest)
@@ -1584,6 +1629,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async sponsorships(row: Store.Row) {
+    const counted = new Map<string, bigint>((await Store.channels(this.env, row.id)).map((gift) => [gift.channel, BigInt(gift.amount)]))
+    if (!counted.size) return { biggest: 0n, left: 0n, spent: 0n }
     const listed = await Gateway.sponsors(this.env, row.id)
     if (!listed.ok) return { biggest: 0n, left: BigInt(row.sponsor_left ?? 0), spent: BigInt(row.sponsor_spent ?? 0) }
     let biggest = 0n
@@ -1593,10 +1640,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       const used = Memo.units(channel.spent)
       spent += used
       if (channel.endedAt !== null || channel.closing) {
-        if (this.kv.get<string>('delivered:' + channel.channel) !== String(used)) {
+        const amount = counted.get(channel.channel.toLowerCase())
+        if (amount !== undefined && amount !== used) {
           await Store.delivered(this.env, channel.channel, used)
           this.marked += 1
-          this.kv.put('delivered:' + channel.channel, String(used))
         }
         continue
       }
@@ -2216,6 +2263,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         logged.event,
       )
       .one()
+    this.ctx.storage.sql.exec(`INSERT INTO feed_search (rowid, body) SELECT seq, ${searchable} FROM feed WHERE seq = ?`, row.seq)
     this.touch()
     if (!this.turn()) this.changed('feed')
     if (!this.watchers.size) return

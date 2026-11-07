@@ -190,12 +190,11 @@ export async function update(env: Cloudflare.Env, id: string, fields: Fields) {
 
 export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>) {
   return env.DB.prepare(
-    "insert or ignore into contributions (id, swarm, kind, budget, channel, contributor, token, amount, note, note_id, created_at) values (?, ?, ?, null, ?, ?, ?, ?, ?, ?, ?) returning *",
+    'insert or ignore into contributions (id, swarm, channel, contributor, token, amount, note, note_id, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?) returning *',
   )
     .bind(
       input.id.toLowerCase(),
       input.swarm,
-      input.channel ? 'channel' : 'transfer',
       input.channel?.toLowerCase() ?? null,
       input.contributor.toLowerCase(),
       input.token,
@@ -213,6 +212,11 @@ export async function gift(env: Cloudflare.Env, id: string) {
 
 export async function channel(env: Cloudflare.Env, id: string) {
   return env.DB.prepare('select * from contributions where channel = ?').bind(id.toLowerCase()).first<Gift>()
+}
+
+export async function channels(env: Cloudflare.Env, swarm: string) {
+  const { results } = await env.DB.prepare('select channel, amount from contributions where swarm = ? and channel is not null').bind(swarm).all<{ amount: string; channel: string }>()
+  return results
 }
 
 export async function delivered(env: Cloudflare.Env, channel: string, amount: bigint) {
