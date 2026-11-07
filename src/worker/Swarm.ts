@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { Address } from 'viem'
-import type { Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Shown, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
+import type { Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
 import { clip, redact } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
@@ -27,6 +27,7 @@ import * as Money from './Money.ts'
 import * as Follow from './Follow.ts'
 import * as Repo from './Repo.ts'
 import * as Branching from './Branching.ts'
+import * as Chat from './Chat.ts'
 
 export type Contributed = {
   amount: string
@@ -263,7 +264,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.delete('exhausted:pool')
     if (input.kind === 'noted') {
       this.log('funds', `${Words.short(input.contributor)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
-      this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind "${input.note ?? ''}".`)
+      Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind "${input.note ?? ''}".`)
       if (input.noteId) await this.steer(input.swarm, input.noteId)
       this.changed('detail', 'members')
       return this.wake('note')
@@ -273,7 +274,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       `${Words.short(input.contributor)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
       [input.note, input.hash].filter(Boolean).join('\n'),
     )
-    this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ` behind "${input.note}"` : ''}.`)
+    Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ` behind "${input.note}"` : ''}.`)
     if (input.noteId) await this.steer(input.swarm, input.noteId)
     this.cue('chain')
     this.changed('detail', 'members')
@@ -369,8 +370,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const { parts, pulse } = this.pending
     this.pending = { at: Date.now(), parts: new Set(), pulse: undefined, timer: undefined }
     const version = this.stamp().version
-    if (pulse) this.broadcast({ ...this.pulsed(pulse), type: 'pulse', version })
-    if (parts.size) this.broadcast({ parts: [...parts].sort(), type: 'changed', version })
+    if (pulse) Chat.broadcast(this, { ...this.pulsed(pulse), type: 'pulse', version })
+    if (parts.size) Chat.broadcast(this, { parts: [...parts].sort(), type: 'changed', version })
   }
 
   pulsed(row: Store.Row): Pulse {
@@ -379,7 +380,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   rostered(roster: Roster) {
-    this.broadcast({ roster, type: 'roster' })
+    Chat.broadcast(this, { roster, type: 'roster' })
   }
 
   async wake(reason: Phase.Reason) {
@@ -704,7 +705,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     await this.move(money.row, { from: this.last(), n, since: start.since ?? now, started: now, state: 'working', turn }, { rounds: n })
     Relay.begin(this)
     this.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
-    if (start.since === null) this.announce(`${worked ? 'Back at work' : 'Started working'}.`)
+    if (start.since === null) Chat.announce(this, `${worked ? 'Back at work' : 'Started working'}.`)
     return now + Clock.followMs
   }
 
@@ -826,7 +827,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     )
     await this.publish(row.id)
     this.changed('detail')
-    if (answer?.text) this.announce(`Update: ${Answer.excerpt(answer.text, 280)}`)
+    if (answer?.text) Chat.announce(this, `Update: ${Answer.excerpt(answer.text, 280)}`)
 
     const stored = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'tool' AND ((text || coalesce(detail, '')) LIKE '%kv_set%' OR (text || coalesce(detail, '')) LIKE '%bucket_put%' OR (text || coalesce(detail, '')) LIKE '%git_create%')", run.from).one().n
     if (stored > 0 || !this.kv.get<number>('published')) await this.expose(row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
@@ -913,7 +914,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const text = Phase.reason(pause)
     if (Phase.since(run) !== null) {
       if (pause.why === 'rest') await this.sweep(row)
-      if (this.turned()) this.announce(text)
+      if (this.turned()) Chat.announce(this, text)
     }
     const shown = Phase.paused(run)
     await this.move(row, { at: Date.now(), pause, state: 'paused' })
@@ -970,7 +971,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       const changed = !!seen && seen.version !== artifact.version && seen.turn !== turn
       if (!seen) {
         this.log('status', `Published the artifact "${artifact.title}"`, [artifact.summary, `${Artifacts.base(swarm)}/${artifact.slug}/${artifact.entry}`].filter(Boolean).join('\n'))
-        this.announce(`New artifact: ${artifact.title}${artifact.summary ? `, ${artifact.summary}` : ''}`, { slug: artifact.slug, title: artifact.title })
+        Chat.announce(this, `New artifact: ${artifact.title}${artifact.summary ? `, ${artifact.summary}` : ''}`, { slug: artifact.slug, title: artifact.title })
       }
       if (changed) this.log('status', `Updated the artifact "${artifact.title}" (version ${artifact.version})`, artifact.summary)
       next[artifact.slug] = { title: artifact.title, turn: !seen || changed ? turn : seen.turn, version: artifact.version }
@@ -978,24 +979,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const moved = Object.keys(next).length !== Object.keys(known).length || Object.entries(next).some(([slug, seen]) => known[slug]?.version !== seen.version)
     if (!moved) return
     this.kv.put('artifacts', next)
-    if (this.listened()) this.broadcast({ artifacts: found, type: 'artifacts' })
-  }
-
-  messages(query: { after: number; before?: number | undefined; limit: number }): Said[] {
-    const sql = this.ctx.storage.sql
-    const columns = 'SELECT id, at, author, text, mentions, steer, artifact FROM chat'
-    const rows =
-      query.before !== undefined
-        ? sql.exec<Record<string, SqlStorageValue>>(`${columns} WHERE id < ? ORDER BY id DESC LIMIT ?`, query.before, query.limit).toArray().reverse()
-        : query.after > 0
-          ? sql.exec<Record<string, SqlStorageValue>>(`${columns} WHERE id > ? ORDER BY id LIMIT ?`, query.after, query.limit).toArray()
-          : sql.exec<Record<string, SqlStorageValue>>(`${columns} ORDER BY id DESC LIMIT ?`, query.limit).toArray().reverse()
-    return rows.map(said)
+    if (this.listened()) Chat.broadcast(this, { artifacts: found, type: 'artifacts' })
   }
 
   chat(query: { after: number; before?: number | undefined; limit: number }) {
     const stamp = this.stamp()
-    return { messages: this.messages(query), stamp }
+    return { messages: Chat.messages(this, query), stamp }
   }
 
   async say(input: Spoken): Promise<Said> {
@@ -1018,7 +1007,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       }
     }
     if (steer) this.changed('detail', 'members')
-    return this.speak(input.author, redact(input.text), input.mentions, steer)
+    return Chat.speak(this, input.author, redact(input.text), input.mentions, steer)
   }
 
   tell(notes: Note[]): Note[] {
@@ -1062,7 +1051,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     } else if (input.wake) await Gateway.tell(this.env, swarm, agent, input.branch, input.wake)
     if (input.said) {
       if (!input.steer) this.log('funds', input.said)
-      this.announce(input.said)
+      Chat.announce(this, input.said)
     }
     this.touch()
     this.changed('branches', 'members')
@@ -1071,7 +1060,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async voice(swarm: string, text: string): Promise<Gateway.Result<true>> {
     this.kv.put('id', swarm)
-    this.announce(text)
+    Chat.announce(this, text)
     return { ok: true, value: true }
   }
 
@@ -1084,7 +1073,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (this.turn())
       await Gateway.prompt(this.env, swarm, agent, { prompt: `${input.said} Backers stopped this branch: do not restart it, or give its work to another subagent, unless backers ask for it again.`, steer: true })
     this.log('status', input.said)
-    this.announce(input.said)
+    Chat.announce(this, input.said)
     this.touch()
     this.changed('branches', 'members')
     return { ok: true, value: closed.value.agents.map(Gateway.subagent) }
@@ -1094,7 +1083,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const now = Date.now()
     const key = 'said:' + address.toLowerCase()
     const recent = (this.kv.get<number[]>(key) ?? []).filter((at) => at > now - Clock.minuteMs)
-    if (recent.length >= postsPerMinute) return false
+    if (recent.length >= Chat.postsPerMinute) return false
     this.kv.put(key, [...recent, now])
     return true
   }
@@ -1133,38 +1122,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return { ok: true, value: answer }
   }
 
-  announce(text: string, artifact: Shown | null = null) {
-    this.speak(null, redact(text), [], null, artifact)
-  }
-
-  speak(author: Address | null, text: string, mentions: Address[], steer: Steer | null, artifact: Shown | null = null): Said {
-    const at = Date.now()
-    const row = this.ctx.storage.sql
-      .exec<{ id: number }>(
-        'INSERT INTO chat (at, author, text, mentions, steer, artifact) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
-        at,
-        author,
-        text,
-        JSON.stringify(mentions),
-        steer ? JSON.stringify(steer) : null,
-        artifact ? JSON.stringify(artifact) : null,
-      )
-      .one()
-    const message: Said = { artifact, at, author, id: Number(row.id), mentions, steer, text }
-    this.touch()
-    this.broadcast({ message, type: 'said' })
-    return message
-  }
-
   socket(request: Request) {
     if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('Open the room as a WebSocket.', { status: 426 })
-    if (this.ctx.getWebSockets().length >= socketsMost) return new Response('This room is full right now; read it over HTTP.', { status: 503 })
+    if (this.ctx.getWebSockets().length >= Chat.socketsMost) return new Response('This room is full right now; read it over HTTP.', { status: 503 })
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket]
     const listening = new URL(request.url).searchParams.get('listen') === '1'
     this.ctx.acceptWebSocket(server, listening ? ['listen'] : [])
     server.serializeAttachment({ address: null })
     server.send(JSON.stringify({ type: 'welcome', version: this.stamp().version } satisfies Chatter))
-    if (!listening) this.presence()
+    if (!listening) Chat.presence(this)
     return new Response(null, { status: 101, webSocket: client })
   }
 
@@ -1177,23 +1143,23 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       return
     }
     const now = Date.now()
-    const state = (socket.deserializeAttachment() ?? {}) as Attached
+    const state = (socket.deserializeAttachment() ?? {}) as Chat.Attached
     if (event.type === 'hello') {
-      if (now - (state.hello ?? 0) < helloMs || this.ctx.getTags(socket).includes('listen')) return
+      if (now - (state.hello ?? 0) < Chat.helloMs || this.ctx.getTags(socket).includes('listen')) return
       socket.serializeAttachment({ ...state, hello: now })
       const token = typeof event.token === 'string' ? event.token.slice(0, 200) : ''
       const known = this.holders.get(token)
-      const address = known && now - known.at < holderMs ? known.address : token ? await Sessions.holder(this.env, token) : undefined
+      const address = known && now - known.at < Chat.holderMs ? known.address : token ? await Sessions.holder(this.env, token) : undefined
       if (token) this.holders.set(token, { address, at: now })
       if (this.holders.size > 1000) this.holders.delete(this.holders.keys().next().value as string)
       socket.serializeAttachment({ ...state, address: address ?? null, hello: now })
-      this.presence()
+      Chat.presence(this)
     }
     if (event.type === 'typing') {
-      const address = attached(socket)
-      if (!address || now - (state.typing ?? 0) < typingMs) return
+      const address = Chat.attached(socket)
+      if (!address || now - (state.typing ?? 0) < Chat.typingMs) return
       socket.serializeAttachment({ ...state, typing: now })
-      this.broadcast({ address, type: 'typing' }, socket)
+      Chat.broadcast(this, { address, type: 'typing' }, socket)
     }
   }
 
@@ -1201,26 +1167,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     try {
       socket.close(code === 1005 || code === 1006 ? 1000 : code, 'Closed')
     } catch {}
-    this.presence(socket)
+    Chat.presence(this, socket)
   }
 
   override async webSocketError(socket: WebSocket) {
-    this.presence(socket)
-  }
-
-  presence(gone?: WebSocket) {
-    const sockets = this.ctx.getWebSockets().filter((socket) => socket !== gone && !this.ctx.getTags(socket).includes('listen'))
-    const online = [...new Set(sockets.flatMap((socket) => attached(socket) ?? []))]
-    this.broadcast({ online, type: 'presence', watching: sockets.length }, gone)
-  }
-
-  broadcast(event: Chatter, except?: WebSocket) {
-    const data = JSON.stringify(event)
-    for (const socket of this.ctx.getWebSockets())
-      if (socket !== except)
-        try {
-          socket.send(data)
-        } catch {}
+    Chat.presence(this, socket)
   }
 
   async notes(row: Store.Row) {
@@ -1280,18 +1231,6 @@ const coalesceMs = 2_000
 
 const viewKeys = new Set(['run', 'hands', 'repo', 'owner', 'id'])
 
-type Attached = { address?: Address | null; hello?: number; typing?: number }
-
-const helloMs = 10_000
-
-const holderMs = 300_000
-
-const typingMs = 2_000
-
-const socketsMost = 500
-
-const postsPerMinute = 10
-
 function touched(kv: SyncKvStorage, touch: () => void): SyncKvStorage {
   return {
     delete(key) {
@@ -1333,23 +1272,6 @@ function updates(turns: readonly Search.Turn[]): Update[] {
     const answer = Answer.parse(turn.message, turn.endedAt)
     return answer.text ? [{ at: turn.endedAt, base: turn.base, commits: turn.commits, done: answer.done, spent: turn.spent, text: answer.text }] : []
   })
-}
-
-function said(row: Record<string, SqlStorageValue>): Said {
-  return {
-    artifact: row['artifact'] === null || row['artifact'] === undefined ? null : (JSON.parse(String(row['artifact'])) as Shown),
-    at: Number(row['at']),
-    author: row['author'] === null ? null : (String(row['author']) as Address),
-    id: Number(row['id']),
-    mentions: JSON.parse(String(row['mentions'] ?? '[]')) as Address[],
-    steer: row['steer'] === null ? null : (JSON.parse(String(row['steer'])) as Steer),
-    text: String(row['text']),
-  }
-}
-
-function attached(socket: WebSocket) {
-  const attachment = socket.deserializeAttachment() as { address: Address | null } | null
-  return attachment?.address ?? undefined
 }
 
 function entry(row: Record<string, SqlStorageValue>): Entry {
