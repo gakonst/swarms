@@ -26,6 +26,7 @@ import * as Paying from './Paying.ts'
 import * as Money from './Money.ts'
 import * as Follow from './Follow.ts'
 import * as Repo from './Repo.ts'
+import * as Branching from './Branching.ts'
 
 export type Contributed = {
   amount: string
@@ -155,12 +156,6 @@ const quickMs = 60_000
 const rowMs = 10_000
 
 const stillMs = 2_000
-
-const listingMs = 2_000
-
-const keptMs = 10 * 60_000
-
-const keptBytes = 1_000_000
 
 export class Swarm extends DurableObject<Cloudflare.Env> {
   declare ctx: DurableObjectState<{}>
@@ -771,7 +766,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, persona, unreachable: null, url: payer.url }
     this.kv.put('agent', agent)
     this.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it pays for is paid from the contributions, one at a time.", created.value.id)
-    await this.release(row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
+    await Branching.release(this, row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
     return agent
   }
 
@@ -805,7 +800,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const found = this.ctx.storage.sql
       .exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n)
       .toArray()[0]
-    await this.settled(money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
+    await Branching.settled(this, money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
     const repo = await Repo.located(this, money.row)
     const commits = repo.state === 'ready' ? await Repo.pushed(this, row.id, repo.name, found?.base ?? null) : []
     const spent = BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
@@ -1036,37 +1031,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async subagents(swarm: string, fresh = false): Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> {
     const agent = this.agent()?.id
     if (!agent) return { ok: true, value: { agent: null, list: [] } }
-    if (fresh) return this.list(swarm, agent)
+    if (fresh) return Branching.list(this, swarm, agent)
     const known = this.listing?.agent === agent ? this.listing : undefined
-    if (known && !known.pending && Date.now() - known.at < listingMs) return known.value
+    if (known && !known.pending && Date.now() - known.at < Branching.listingMs) return known.value
     const kept = this.kv.get<{ agent: string; at: number; list: Gateway.Subagent[] }>('subagents')
-    if (kept?.agent === agent && Date.now() - kept.at < keptMs) {
-      if (!known?.pending) this.ctx.waitUntil(this.list(swarm, agent).catch(() => undefined))
+    if (kept?.agent === agent && Date.now() - kept.at < Branching.keptMs) {
+      if (!known?.pending) this.ctx.waitUntil(Branching.list(this, swarm, agent).catch(() => undefined))
       return { ok: true, value: { agent, list: kept.list } }
     }
-    return known?.pending ? known.value : this.list(swarm, agent)
-  }
-
-  async list(swarm: string, agent: string): Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> {
-    const value = Gateway.subagents(this.env, swarm, agent).then((listed): Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }> => (listed.ok ? { ok: true, value: { agent, list: listed.value } } : listed))
-    const flight = { agent, at: Date.now(), pending: true, value }
-    this.listing = flight
-    const result = await value.catch((error: unknown) => ({ detail: error instanceof Error ? error.message : String(error), ok: false as const, status: 503 }))
-    if (this.listing !== flight) return result
-    this.listing = result.ok ? { ...flight, at: Date.now(), pending: false } : undefined
-    if (result.ok && JSON.stringify(result.value.list).length < keptBytes) this.ctx.storage.kv.put('subagents', { agent, at: flight.at, list: result.value.list })
-    return result
-  }
-
-  rebudget(swarm: string, agent: string, branch: number) {
-    const run = this.budgeting.then(async () => {
-      const money = await Store.funds(this.env, swarm, agent)
-      const funded = [...(money.shares.get(branch)?.values() ?? [])].reduce((sum, amount) => sum + amount, 0n)
-      const total = (money.bases.get(branch) ?? 0n) + funded
-      return Gateway.budget(this.env, swarm, agent, branch, Number(total > 0n ? total : 1n) / 1_000_000)
-    })
-    this.budgeting = run.catch(() => undefined)
-    return run
+    return known?.pending ? known.value : Branching.list(this, swarm, agent)
   }
 
   async direct(
@@ -1076,7 +1049,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const agent = this.agent()?.id
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
     if (agent !== input.agent) return { detail: "The swarm started a new agent since its branches were listed; list them again.", ok: false, status: 409 }
-    const set = input.usd === null ? undefined : await this.rebudget(swarm, agent, input.branch)
+    const set = input.usd === null ? undefined : await Branching.rebudget(this, swarm, agent, input.branch)
     if (set && !set.ok) return set
 
     if (input.steer) {
@@ -1115,36 +1088,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.touch()
     this.changed('branches', 'members')
     return { ok: true, value: closed.value.agents.map(Gateway.subagent) }
-  }
-
-  async settled(row: Store.Row) {
-    const agent = this.agent()?.id
-    if (!agent) return
-    const listed = await Gateway.subagents(this.env, row.id, agent)
-    if (!listed.ok) return
-    const closed = listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed')
-    if (!closed.length) return
-    const { settled } = await Store.funds(this.env, row.id, agent)
-    const claimed = await Store.claim(this.env, row.id, agent, closed.filter((branch) => !settled.has(branch.agent_id)).map((branch) => branch.agent_id))
-    for (const branch of closed.filter((found) => claimed.has(found.agent_id))) {
-      const returned = await Store.settle(this.env, { agent, branch: branch.agent_id, claimed: true, left: unspent(branch), swarm: row.id })
-      const back = returned.reduce((sum, item) => sum + item.amount, 0n)
-      if (back > 0n) this.announce(`${branch.role} (branch ${branch.agent_id}) closed with ${Words.dollars(back)} of its backers' money unspent, which is theirs to put behind something else again.`)
-    }
-  }
-
-  async release(swarm: string, current: string) {
-    for (const old of await Store.replaced(this.env, swarm, current)) {
-      const listed = old.agent ? await Gateway.subagents(this.env, swarm, old.agent).catch(() => undefined) : undefined
-      let back = 0n
-      const claimed = await Store.claim(this.env, swarm, old.agent, old.branches)
-      for (const branch of old.branches.filter((id) => claimed.has(id))) {
-        const found = listed?.ok ? listed.value.find((agent) => agent.agent_id === branch) : undefined
-        const returned = await Store.settle(this.env, { agent: old.agent, branch, claimed: true, left: found ? unspent(found) : null, swarm })
-        back += returned.reduce((sum, item) => sum + item.amount, 0n)
-      }
-      if (back > 0n) this.announce(`The swarm started a new agent, so ${Words.dollars(back)} that backers had put behind the old agent's branches went back to them, to put behind the new agent's work.`)
-    }
   }
 
   paced(address: Address) {
@@ -1377,12 +1320,6 @@ function grown(told: bigint | null | undefined, weight: bigint) {
   if (told === undefined) return true
   if (told === null) return false
   return weight >= told + (told / 4n > 100_000n ? told / 4n : 100_000n)
-}
-
-function unspent(branch: Gateway.Subagent) {
-  if (branch.budget_usd === undefined) return null
-  const left = Memo.units(branch.budget_usd.toFixed(6)) - Memo.units((branch.spent_usd ?? 0).toFixed(6))
-  return left > 0n ? left : 0n
 }
 
 function weighed(note: Note) {
