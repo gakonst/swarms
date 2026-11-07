@@ -139,7 +139,7 @@ const wallet = `<section class="view center" data-view="approve" hidden>
 export function start(origin: string, swarms: readonly Summary[] = [], request?: URL, bot?: string) {
   const base = shell(request)
   const title = 'Start a breakthrough, or be part of one'
-  const description = 'Fund research an AI does in the open. Start one, or join one already running.'
+  const description = 'Fund AI agents that research and build in the open. Start one, or join one already running.'
   const free = open(swarms)
   const ideas = free.slice(0, 4)
   const latest = Math.max(0, ...swarms.map((item) => item.updatedAt))
@@ -237,7 +237,7 @@ export function lost(origin: string, request?: URL, bot?: string) {
     <h2>This swarm drifted off.</h2>
     <div class="row"><a class="go" href="${base}?view=start">Start a swarm</a><a class="ghost" href="${base}?view=join">Join a swarm</a></div>
   </section>`
-  return document(origin, '', 'Swarms', 'Fund research an AI does in the open.', content, { kind: 'lost' }, 404, request, bot)
+  return document(origin, '', 'Swarms', 'Fund AI agents that research and build in the open.', content, { kind: 'lost' }, 404, request, bot)
 }
 
 export function card(title: string) {

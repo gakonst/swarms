@@ -15,6 +15,8 @@
 .door-join .door-kicker { color:#b8d3a6; }
 .door-join .chip-live { background:#7dff7d; }
 .door-title { font-size:clamp(40px,4.4vw,64px); line-height:.98; letter-spacing:-.045em; }
+.door-text { max-width:46ch; font-size:16px; line-height:1.4; color:#3d5232; }
+.door-join .door-text { color:#d6e6cb; }
 .door-arrow { display:inline-block; margin-left:.25em; transition:transform .25s var(--ease); }
 .door:hover .door-arrow { transform:translateX(8px); }
 .door-cards { position:relative; z-index:1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:auto; }
@@ -222,6 +224,7 @@ a.quest-step { text-decoration:none; }
   .doors { display:flex; flex-direction:column; gap:10px; height:100%; min-height:0; margin-block:0; padding:12px; }
   .door { flex:1; min-height:0; gap:6px; padding:20px; border-radius:22px; }
   .door-title { font-size:32px; }
+  .door-text { font-size:13px; line-height:1.35; }
   .door-cards { gap:8px; }
   .door-card { min-height:64px; gap:8px; padding:10px 12px; border-radius:12px; }
   .door-card b { font-size:14px; }
@@ -976,6 +979,12 @@ button.said-backed:not(:disabled):hover { background:#2f5f37; }
 .side-buttons button { height:30px; padding:0 12px; border:1px solid #1a3d2c; border-radius:15px; background:#1a3d2c; color:var(--white); font:12px var(--mono); cursor:pointer; }
 .side-buttons button.side-quiet { border-color:#e3e9dd; background:var(--white); color:#1a3d2c; }
 .side-buttons button:disabled { opacity:.5; cursor:default; }
+.side-buttons button.side-send { font-weight:600; }
+.side-modes { display:flex; flex-wrap:wrap; gap:6px; }
+.side-modes button { height:28px; padding:0 11px; border:1px solid #e3e9dd; border-radius:14px; background:var(--white); color:#1a3d2c; font:12px var(--mono); cursor:pointer; }
+.side-modes button[aria-checked="true"] { border-color:#1a3d2c; box-shadow:inset 0 0 0 1px #1a3d2c; }
+.side-what { margin:0; font-size:13px; line-height:1.45; color:#24301f; overflow-wrap:anywhere; }
+.side-how b { color:#24301f; font-weight:600; }
 .side-note,.side-done { margin:0; font:11px var(--mono); color:var(--grey-600); }
 .side-done { color:#1a3d2c; }
 .side-box { display:flex; align-items:flex-end; gap:8px; padding:8px 8px 8px 12px; border:1px solid #e3e9dd; border-radius:16px; background:var(--white); }

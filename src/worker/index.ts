@@ -83,7 +83,7 @@ function framed(env: Cloudflare.Env, id: string | undefined): Edge.Draw {
 
 app.get('/x', (c) => Edge.page(c.req.raw, '', framed(c.env, undefined)))
 
-app.get('/x/card.svg', (c) => XFrames.card(c.req.query('title') ?? 'Fund a research swarm'))
+app.get('/x/card.svg', (c) => XFrames.card(c.req.query('title') ?? 'Fund a swarm'))
 
 app.get('/x/s/:id', (c) => Edge.page(c.req.raw, '', framed(c.env, c.req.param('id'))))
 

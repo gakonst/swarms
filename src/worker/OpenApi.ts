@@ -330,7 +330,7 @@ export function document(origin: string) {
       schemas,
     },
     info: {
-      description: `Swarms are crowdfunded, long-running AI agents on the Tempo gateway. Backers send USDC.e, OUSD or pathUSD to a swarm's wallet, or MACH into a channel the gateway spends for it, and record it by hash; notes on money steer the agent, weighted by the money behind them. Each swarm's backers talk in its room, where an @swarm message puts part of its author's backing behind an idea. Reading needs no account; posting needs a Tempo Wallet session from /v1/auth. Errors are problem JSON with a stable code. The same operations are MCP tools at ${origin}/mcp.`,
+      description: `Swarms are crowdfunded, long-running AI agents on the Tempo gateway that research or build whatever their goal asks, in public. Backers send USDC.e, OUSD or pathUSD to a swarm's wallet, or MACH into a channel the gateway spends for it, and record it by hash; notes on money steer the agent, weighted by the money behind them. Each swarm's backers talk in its room, where an @swarm message puts part of its author's backing behind an idea. Reading needs no account; posting needs a Tempo Wallet session from /v1/auth. Errors are problem JSON with a stable code. The same operations are MCP tools at ${origin}/mcp.`,
       title: 'Swarms',
       version: '1',
     },

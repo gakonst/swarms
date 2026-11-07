@@ -86,9 +86,9 @@ export function New(props: { config: Config | undefined }) {
                   <i className="tile-mark" data-tone="own" />
                   <label className="tile-title" htmlFor="question">Your own idea</label>
                   <span className="tile-more">
-                    <textarea autoFocus id="question" maxLength={1000} onChange={(event) => { setQuestion(event.target.value); setTitle(''); setGoal(''); setProblem(undefined) }} placeholder="What should we crack?" rows={3} value={question} />
+                    <textarea autoFocus id="question" maxLength={1000} onChange={(event) => { setQuestion(event.target.value); setTitle(''); setGoal(''); setProblem(undefined) }} placeholder="What should it find out or build?" rows={3} value={question} />
                     <button aria-describedby={questionReady ? undefined : 'question-why'} className="btn btn-high quest-next" disabled={!questionReady} type="submit">Next <span aria-hidden="true">→</span></button>
-                    {!questionReady && <span className="tile-why" id="question-why">{question.trim().length === 0 ? 'Say what to crack in at least 10 characters.' : `${10 - question.trim().length} more character${10 - question.trim().length === 1 ? '' : 's'} to go.`}</span>}
+                    {!questionReady && <span className="tile-why" id="question-why">{question.trim().length === 0 ? 'Say what you want done in at least 10 characters.' : `${10 - question.trim().length} more character${10 - question.trim().length === 1 ? '' : 's'} to go.`}</span>}
                   </span>
                 </div>
               ) : (

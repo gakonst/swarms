@@ -32,7 +32,7 @@ export function answer(body: unknown, origin: string) {
     reply_markup: { inline_keyboard: [[{ text: swarm ? 'Open this swarm' : 'Open Swarms', web_app: { url: `${origin}${path}` } }]] },
     text: swarm
       ? 'Watch this swarm work live, steer it, or fund it.'
-      : 'Swarms are research projects an AI works on in the open, funded by the people who want the answer. Start a breakthrough, or be part of one already running.',
+      : 'Swarms are AI agents that research and build in the open, funded by the people who want the result. Start a breakthrough, or be part of one already running.',
   }
 }
 

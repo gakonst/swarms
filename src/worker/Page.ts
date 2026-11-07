@@ -87,7 +87,7 @@ type Head = { description: string; image: string; player?: string; title: string
 
 async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
   const path = url.pathname.replace(/\/$/, '') || '/'
-  const head: Head = { description: 'Fund research breakthroughs. Start or back AI research swarms, watch them work live and steer them together.', image: `${url.origin}/xframe-card.jpg?v=3`, title: 'Swarms · Fund breakthroughs' }
+  const head: Head = { description: 'Fund breakthroughs. Start or back swarms, AI agents that research and build in the open, watch them work live and steer them together.', image: `${url.origin}/xframe-card.jpg?v=3`, title: 'Swarms · Fund breakthroughs' }
   const data: Record<string, unknown> = {}
   if (path === '/' || path === '/join' || path === '/new') {
     const list = await within(Operations.list(env, {}), 1500)
