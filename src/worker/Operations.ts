@@ -58,6 +58,7 @@ import type { Snapshot } from './Payer.ts'
 import type { Paid } from './Paying.ts'
 import type { Stamp, Swarm } from './Swarm.ts'
 import * as Vault from './Vault.ts'
+import * as Words from './Words.ts'
 import * as Fleet from '../shared/Fleet.ts'
 import * as Brief from '../shared/ResearchBrief.ts'
 import * as Channels from '../shared/Channel.ts'
@@ -1108,7 +1109,7 @@ export async function chatter(env: Cloudflare.Env, input: Input<'swarm'>, reques
 }
 
 function dollars(amount: string) {
-  return '$' + amount.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
+  return '$' + Words.trim(amount)
 }
 
 async function self(env: Cloudflare.Env, members: readonly Member[], address: Address): Promise<Me> {

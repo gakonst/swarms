@@ -631,10 +631,7 @@ export function Transcript(props: {
     return (
       <section aria-label="Transcript" className="transcript transcript-empty">
         {props.tray ? (
-          <div className="tray" role="dialog" aria-label="Fund">
-            <button aria-label="Close" className="tray-x" onClick={props.onClose} type="button">×</button>
-            {props.tray}
-          </div>
+          <Tray onClose={props.onClose}>{props.tray}</Tray>
         ) : (
           <button className="transcript-start" disabled={!props.onEmpty} onClick={props.onEmpty} type="button">
             <h2>{unfunded ? 'Nobody has funded this yet.' : 'Nothing yet.'}</h2>
@@ -727,13 +724,19 @@ export function Transcript(props: {
         )}
       </div>
       {props.tray ? (
-        <div className="tray" role="dialog" aria-label="Fund">
-          <button aria-label="Close" className="tray-x" onClick={props.onClose} type="button">×</button>
-          {props.tray}
-        </div>
+        <Tray onClose={props.onClose}>{props.tray}</Tray>
       ) : (
         <Composer branch={target} config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onDirected={() => relist(swarm.id)} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} onSide={props.onSide} steering={swarm.steering} swarm={swarm.id} />
       )}
     </section>
+  )
+}
+
+function Tray(props: { children: ReactNode; onClose: () => void }) {
+  return (
+    <div className="tray" role="dialog" aria-label="Fund">
+      <button aria-label="Close" className="tray-x" onClick={props.onClose} type="button">×</button>
+      {props.children}
+    </div>
   )
 }

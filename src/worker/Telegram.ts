@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import * as Words from './Words.ts'
 
 type Hooked = Cloudflare.Env & { TELEGRAM_WEBHOOK_SECRET?: string }
 
@@ -37,13 +38,7 @@ export function answer(body: unknown, origin: string) {
 
 export async function hook(env: Hooked, request: Request) {
   const secret = env.TELEGRAM_WEBHOOK_SECRET
-  if (!secret || !same(request.headers.get('x-telegram-bot-api-secret-token') ?? '', secret)) return new Response('Forbidden', { status: 403 })
+  if (!secret || !Words.same(request.headers.get('x-telegram-bot-api-secret-token') ?? '', secret)) return new Response('Forbidden', { status: 403 })
   const reply = answer(await request.json().catch(() => null), env.SWARMS_URL)
   return reply ? Response.json(reply) : new Response(null, { status: 200 })
-}
-
-function same(a: string, b: string) {
-  const left = new TextEncoder().encode(a)
-  const right = new TextEncoder().encode(b)
-  return left.length === right.length && crypto.subtle.timingSafeEqual(left, right)
 }

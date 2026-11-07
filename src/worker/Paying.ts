@@ -145,12 +145,6 @@ export function sources(self: Swarm, row: Store.Row): Source[] {
   return row.wallet ? [pool()] : []
 }
 
-export function source(self: Swarm, row: Store.Row, id: string) {
-  if (id === 'pool') return row.wallet ? pool() : undefined
-  if (id.startsWith('hand:')) return row.wallet ? owing(id.slice('hand:'.length) as Address) : undefined
-  return undefined
-}
-
 export function signer(self: Swarm, row: Store.Row, source: Source): Promise<Signer> {
   const cached = self.signers.get(source.id)
   if (cached) return cached
