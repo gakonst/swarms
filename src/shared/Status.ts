@@ -1,8 +1,8 @@
 import type { Summary } from './Api.ts'
 
-export type Word = 'Running' | 'Starting' | 'Resting' | 'Stopped after errors' | 'Needs money' | 'Not started' | 'Finished'
+export type Word = 'Running' | 'Starting' | 'Resting' | 'Stopped after errors' | 'Needs money' | 'Not started'
 
-export type Mood = 'live' | 'money' | 'resting' | 'errors' | 'new' | 'done'
+export type Mood = 'live' | 'money' | 'resting' | 'errors' | 'new'
 
 export type Standing = { action: string | null; mood: Mood; word: Word }
 
@@ -16,7 +16,6 @@ export function fueled(swarm: Pick<Summary, 'remaining'>) {
 
 export function standing(swarm: Stood): Standing {
   if (swarm.status === 'running') return { action: null, mood: 'live', word: 'Running' }
-  if (swarm.status === 'done') return { action: null, mood: 'done', word: 'Finished' }
   if (swarm.status === 'funding' && Number(swarm.raised) <= 0) return { action: 'Fund $2 to start it', mood: 'new', word: 'Not started' }
   if (swarm.status === 'funding' && !swarm.why) return { action: null, mood: 'live', word: 'Starting' }
   if (swarm.why === 'idle') return { action: null, mood: 'resting', word: 'Resting' }

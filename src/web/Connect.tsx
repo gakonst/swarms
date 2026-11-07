@@ -22,7 +22,6 @@ function Shell(props: { label: string; text: string }) {
 export function Connect(props: { swarm: Summary }) {
   const [step, setStep] = useState<Step>({ kind: 'closed' })
   const [form, setForm] = useState<'cli' | 'library'>('cli')
-  if (props.swarm.status === 'done') return null
 
   const issue = async (label: string) => {
     setStep({ kind: 'issuing', label })

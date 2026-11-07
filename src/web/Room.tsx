@@ -80,7 +80,6 @@ export const Room = memo(function Room(props: {
   visible: boolean
 }) {
   const id = props.swarm.id
-  const done = props.swarm.status === 'done'
   const wallet = useWallet()
   const token = wallet.session?.token
   const [seed] = useState(() => seeded<RoomState>(`room:${props.swarm.id}`))
@@ -276,7 +275,6 @@ export const Room = memo(function Room(props: {
     const body = text.trim()
     if (!body || sending || !mine) return
     if (Mention.steers(body)) {
-      if (done) return setProblem({ text: 'This swarm is done, so @swarm no longer steers it.' })
       if (team && !seat) return setProblem({ text: "Only this swarm's team steers it. Ask one of its admins here to add you." })
       if (idea.length < 3) return setProblem({ text: 'Say what the swarm should do after @swarm.' })
       if (idea.length > maxNote) return setProblem({ text: `Keep the idea to ${maxNote} characters; it becomes a note the agent keeps reading.` })
@@ -348,7 +346,7 @@ export const Room = memo(function Room(props: {
       <div className="room-gate room-gate-one">
         <div className="room-cta">
           <button className="room-cta-main" disabled={!props.config || signing} onClick={() => void signIn()} type="button">{signing ? 'Approve in Tempo Wallet…' : 'Sign in to chat'}</button>
-          {!done && <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund to steer</button>}
+          <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund to steer</button>
         </div>
       </div>
     )
@@ -361,14 +359,10 @@ export const Room = memo(function Room(props: {
   else if (door.at === 'not-member')
     gate = (
       <div className="room-gate room-gate-one">
-        {done ? (
-          <p className="room-gate-title">It's finished, so the room is read only.</p>
-        ) : (
-          <div className="room-cta">
-            <button className="room-cta-main" onClick={() => props.onBack('')} type="button">{team ? 'Fund it to talk here' : 'Fund $2 to steer'}</button>
-            <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund →</button>
-          </div>
-        )}
+        <div className="room-cta">
+          <button className="room-cta-main" onClick={() => props.onBack('')} type="button">{team ? 'Fund it to talk here' : 'Fund $2 to steer'}</button>
+          <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund →</button>
+        </div>
       </div>
     )
 
@@ -440,12 +434,12 @@ export const Room = memo(function Room(props: {
                     </button>
                     {author === me?.address && <span className="tag">you</span>}
                     <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
-                    {item.steer && <Backed onBack={done ? undefined : props.onBack} steer={item.steer} />}
+                    {item.steer && <Backed onBack={props.onBack} steer={item.steer} />}
                   </p>
                 )}
                 <p className="said-text">
                   <Words handles={handles} me={myNames} text={item.text} />
-                  {follow && item.steer && <> <Backed onBack={done ? undefined : props.onBack} steer={item.steer} /></>}
+                  {follow && item.steer && <> <Backed onBack={props.onBack} steer={item.steer} /></>}
                 </p>
               </div>
             </li>
@@ -507,13 +501,13 @@ export const Room = memo(function Room(props: {
               }}
               onKeyDown={keys}
               onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-              placeholder={done ? 'Talk about what it found…' : 'Say something. @swarm to steer'}
+              placeholder="Say something. @swarm to steer"
               ref={area}
               rows={2}
               value={text}
             />
             <button aria-label="Send" className="room-send" disabled={!text.trim() || sending} onClick={submit} type="button">
-              {steering && !done ? 'Steer…' : 'Send'}
+              {steering ? 'Steer…' : 'Send'}
             </button>
           </div>
         )}

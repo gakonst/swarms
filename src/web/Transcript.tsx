@@ -483,7 +483,7 @@ export function Transcript(props: {
   const branches = useMemo(() => listed.data?.branches ?? [], [listed.data])
   const picked = branches.find((branch) => branch.who === who)
   const lead = picked && root(branches, picked)
-  const target = lead && lead.parent === null && !ended(lead) && swarm.status !== 'done' ? lead : undefined
+  const target = lead && lead.parent === null && !ended(lead) ? lead : undefined
   const fetched = useRef(new Set<string>())
   useEffect(() => {
     if (who === 'all' || fetched.current.has(who)) return
@@ -660,7 +660,7 @@ export function Transcript(props: {
             })}
           </nav>
         )}
-        {speakers.length > 0 && swarm.status !== 'done' && <button className="transcript-new" onClick={() => props.onFund('Start a new branch to ')} title="Propose a branch to the agent" type="button">+ Branch</button>}
+        {speakers.length > 0 && <button className="transcript-new" onClick={() => props.onFund('Start a new branch to ')} title="Propose a branch to the agent" type="button">+ Branch</button>}
         {props.people && <button className="transcript-people" onClick={props.onPeople} type="button">People →</button>}
       </header>
       {picked && <BranchBar all={branches} branch={picked} key={picked.id} onChanged={() => relist(swarm.id)} onPick={setWho} swarm={swarm} />}
@@ -683,8 +683,8 @@ export function Transcript(props: {
           )}
           {rows.length === 0 && !streaming.length && <li className="timeline-empty">{onAir ? 'Tuning in…' : 'Nothing here yet.'}</li>}
           {rows.map((row, index) => {
-            if ('backed' in row) return <Funded item={row.backed} onBack={swarm.status === 'done' ? undefined : props.onFund} key={row.backed.id} name={props.handles.get(row.backed.who) ?? Mention.short(row.backed.who)} />
-            if ('said' in row) return <Voice item={row.said} onBack={swarm.status === 'done' ? undefined : props.onFund} key={`m${row.said.id}`} name={props.handles.get(row.said.author ?? '') ?? Mention.short(row.said.author ?? '')} />
+            if ('backed' in row) return <Funded item={row.backed} onBack={props.onFund} key={row.backed.id} name={props.handles.get(row.backed.who) ?? Mention.short(row.backed.who)} />
+            if ('said' in row) return <Voice item={row.said} onBack={props.onFund} key={`m${row.said.id}`} name={props.handles.get(row.said.author ?? '') ?? Mention.short(row.said.author ?? '')} />
             const head = voiced(row) !== undefined && voiced(row) !== voiced(rows[index - 1])
             const name = head ? <Who key={`w${rowKey(row)}`} who={'steps' in row ? (row.steps[0]?.entry.who ?? null) : 'step' in row ? row.step.entry.who : row.entry.who} /> : null
             if ('steps' in row) return [name, <Steps key={rowKey(row)} steps={row.steps} />]
@@ -694,7 +694,7 @@ export function Transcript(props: {
               const artifact = resolve(shelved, made)
               return <Shelved artifact={artifact} entry={row.entry} key={rowKey(row)} latest={latest.get(artifact?.slug ?? made.slug ?? made.title) === row.entry} onOpen={props.onArtifact} />
             }
-            return [name, <Beat entry={row.entry} key={rowKey(row)} onFund={swarm.status === 'done' ? undefined : () => props.onFund('')} times={repeats.get(row.entry)} />]
+            return [name, <Beat entry={row.entry} key={rowKey(row)} onFund={() => props.onFund('')} times={repeats.get(row.entry)} />]
           })}
           {(stood.mood === 'money' || stood.mood === 'new') && !streaming.length && (
             <li className="timeline-state" data-mood={stood.mood}>
@@ -732,7 +732,7 @@ export function Transcript(props: {
           {props.tray}
         </div>
       ) : (
-        swarm.status !== 'done' && <Composer branch={target} config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onDirected={() => relist(swarm.id)} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} onSide={props.onSide} steering={swarm.steering} swarm={swarm.id} />
+        <Composer branch={target} config={props.config} draft={props.draft} me={props.me} wallet={swarm.wallet} onDirected={() => relist(swarm.id)} onFund={(note) => props.onFund(note ?? '')} onSaid={props.onSaid} onSide={props.onSide} steering={swarm.steering} swarm={swarm.id} />
       )}
     </section>
   )

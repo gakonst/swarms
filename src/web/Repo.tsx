@@ -127,7 +127,7 @@ function Timeline(props: {
   )
 }
 
-function Browser(props: { base: string; detail: Detail; live: boolean; stirs: number; wired: Wire.State }) {
+function Browser(props: { base: string; detail: Detail; stirs: number; wired: Wire.State }) {
   const initial = useRef(query())
   const [seed] = useState(() => {
     const known = Api.coded(props.detail.id)
@@ -149,7 +149,7 @@ function Browser(props: { base: string; detail: Detail; live: boolean; stirs: nu
   useEffect(() => {
     let alive = true
     let timer: ReturnType<typeof setTimeout> | undefined
-    const every = props.wired === 'down' && visible && props.live ? pollMs : null
+    const every = props.wired === 'down' && visible ? pollMs : null
     const plan = () => {
       if (every !== null) timer = setTimeout(() => void run(), Math.max(0, logged.current.at + every - Date.now()))
     }
@@ -180,7 +180,7 @@ function Browser(props: { base: string; detail: Detail; live: boolean; stirs: nu
       alive = false
       clearTimeout(timer)
     }
-  }, [props.base, props.live, props.stirs, props.wired, visible])
+  }, [props.base, props.stirs, props.wired, visible])
 
   const head = log?.commits[0]?.sha
   const ref = pinned ?? head
@@ -233,7 +233,7 @@ function Browser(props: { base: string; detail: Detail; live: boolean; stirs: nu
   if (!ref)
     return (
       <p className="empty">
-        No commits yet. {props.live ? 'The swarm is working: each commit appears here as it lands.' : 'Each commit the agent pushes shows up here.'}
+        No commits yet. Each commit the agent pushes shows up here as it lands.
       </p>
     )
 
@@ -280,7 +280,7 @@ function Browser(props: { base: string; detail: Detail; live: boolean; stirs: nu
                   </button>
                 </>
               ) : (
-                <> · main{props.live ? ', live' : ''}</>
+                <> · main, live</>
               )}
             </p>
           </div>
@@ -349,7 +349,7 @@ export function Repo(props: { config: Config | undefined; id: string }) {
       ) : (
         <>
           <Clone repo={code} />
-          <Browser base={local(swarm.id)} detail={swarm} live={swarm.status !== 'done'} stirs={stirs} wired={wired} />
+          <Browser base={local(swarm.id)} detail={swarm} stirs={stirs} wired={wired} />
         </>
       )}
     </section>

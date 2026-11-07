@@ -15,7 +15,6 @@ import { remembered, useLive, useMedia, usePoll, useStable, useVisible } from '.
 import { Lost } from './Lost.tsx'
 import { Presence } from './Ideas.tsx'
 import { Machines } from './Machines.tsx'
-import { Markdown } from './Markdown.tsx'
 import { Room } from './Room.tsx'
 import { Link } from './router.tsx'
 import { Transcript } from './Transcript.tsx'
@@ -88,7 +87,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const [note, setNote] = useState(() => asked().note)
   const [tab, setTab] = useTab()
   const [unread, setUnread] = useState(0)
-  const [result, setResult] = useState(false)
   const [titled, setTitled] = useState(false)
   const [prefill] = useState(() => asked())
   const [draft, setDraft] = useState({ at: 0, text: '' })
@@ -235,13 +233,11 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
           <Link aria-label="All swarms" className="swarm-home" to="/join">←</Link>
           <Dot swarm={swarm} />
           <h1 data-open={titled} onClick={() => setTitled(!titled)} title={swarm.title}>{swarm.title}</h1>
-          {swarm.status === 'done' && swarm.answer && <button className="btn btn-high swarm-back" onClick={() => setResult(true)} type="button">Result</button>}
         </div>
-        <Energy onFund={swarm.status === 'done' ? undefined : () => back(note)} swarm={swarm} />
+        <Energy onFund={() => back(note)} swarm={swarm} />
         {!phone && tablist('room-tabs')}
         {!phone && <button className="side-open" onClick={() => (side.open ? setSide((current) => ({ ...current, open: false })) : ask(null))} type="button">{side.open ? 'Close the side pane' : 'Ask on the side'}</button>}
       </header>
-      {result && <Result onClose={() => setResult(false)} swarm={swarm} />}
       <div className="room-layout">
         <section className="room-main">
           {phone && tablist('phone-views')}
@@ -256,7 +252,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
               live={stream}
               me={chat.me}
               onClose={() => setFunding(false)}
-              onEmpty={swarm.status !== 'done' ? () => back(note) : undefined}
+              onEmpty={() => back(note)}
               onFund={backNote}
               onArtifact={open}
               onEntries={(next) => setEntries((previous) => merge(previous, next))}
@@ -271,7 +267,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
               people={!phone && !wide}
               said={chat.said}
               swarm={swarm}
-              tray={funding && swarm.status !== 'done' ? fund : undefined}
+              tray={funding ? fund : undefined}
             />
           </div>
           {shown !== 'transcript' && shown !== 'room' && (
@@ -352,28 +348,6 @@ function About(props: { config: Config | undefined; swarm: Detail }) {
         <Link className="lost-row" to="/docs">Use it from code or MCP <span aria-hidden="true">→</span></Link>
         <Link className="lost-row" to="/about">How swarms work <span aria-hidden="true">→</span></Link>
       </nav>
-    </div>
-  )
-}
-
-function Result(props: { onClose: () => void; swarm: Detail }) {
-  const close = props.onClose
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => event.key === 'Escape' && close()
-    addEventListener('keydown', listener)
-    return () => removeEventListener('keydown', listener)
-  }, [close])
-  const answer = props.swarm.answer
-  return (
-    <div className="sheet" role="dialog" aria-label="The result">
-      <button aria-label="Close" className="sheet-scrim" onClick={close} type="button" />
-      <article className="sheet-card">
-        <header className="sheet-head">
-          <p className="label">{answer?.done ? 'The result' : 'Latest update'}</p>
-          <button className="btn btn-low" onClick={close} type="button">Close</button>
-        </header>
-        <div className="sheet-body">{answer ? <Markdown text={Answer.unround(answer.text)} /> : <p className="empty">No result yet.</p>}</div>
-      </article>
     </div>
   )
 }

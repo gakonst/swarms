@@ -205,7 +205,7 @@ export function Side(props: {
       {done && <p className="side-done">{done}</p>}
       {gate ?? (
         <>
-          {(thread.length > 0 || !!text.trim()) && props.swarm.status !== 'done' && (
+          {(thread.length > 0 || !!text.trim()) && (
             <div className="side-act">
               <div className="say-stake" role="radiogroup" aria-label="How much behind it">
                 {stakes.map((value) => (

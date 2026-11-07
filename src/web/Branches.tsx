@@ -150,7 +150,7 @@ export function BranchBar(props: { all: readonly Branch[]; branch: Branch; onCha
   const spent = branch.spent === null ? 0n : units(branch.spent)
   const filled = budget && budget > 0n ? Math.min(100, (Number(spent) / Number(budget)) * 100) : 0
   const below = under(props.all, branch.id)
-  const live = props.swarm.status !== 'done' && branch.parent === null && !ended(branch)
+  const live = branch.parent === null && !ended(branch)
 
   return (
     <section aria-label={branch.who} className="lane" data-open={open} data-starved={branch.starved} data-state={branch.state}>
