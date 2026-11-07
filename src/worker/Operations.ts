@@ -348,8 +348,10 @@ async function ledgered(env: Cloudflare.Env, id: string, shape: Shape) {
   const row = await provisioned(env, ledger.row)
   const view = await (viewing ?? stub(env, id).view(shape))
   await backfill(env, row, view.updates.at(-1), shape)
-  if (Search.lags(view.ended, ledger.reports))
-    waitUntil(logged(Promise.resolve(stub(env, id).turns()).then((turns) => Search.sync(env, id, turns))))
+  if (Search.lags(view.ended, ledger.reports)) {
+    const after = Math.min(...view.ended.map((turn) => turn.n)) - 1
+    waitUntil(logged(Promise.resolve(stub(env, id).turns(after)).then((turns) => Search.sync(env, id, turns, after))))
+  }
   return { ledger, row, view }
 }
 
@@ -520,11 +522,10 @@ export async function search(env: Cloudflare.Env, input: Input<'search'>): Promi
   const query = parsed.value
   const terms = Search.terms(query.query)
   if (!terms.length) return Problem.fail(400, 'invalid_request', 'The query has no words to search for.')
-  const row = query.swarm === undefined ? undefined : await Store.find(env, query.swarm)
+  const [row, stale] = await Promise.all([query.swarm === undefined ? undefined : Store.find(env, query.swarm), Search.lagging(env, query.swarm)])
   if (row === null) return missing()
 
-  const stale = row ? [row.id] : await Search.lagging(env)
-  await Promise.all(stale.map(async (swarm) => logged(Search.sync(env, swarm, await stub(env, swarm).turns()))))
+  await Promise.all(stale.map(async (lag) => logged(Search.sync(env, lag.id, await stub(env, lag.id).turns(lag.after), lag.after))))
   const [indexed, entries] = await Promise.all([
     query.kind === 'feed' ? [] : Search.query(env, { kind: query.kind, limit: query.limit, swarm: row?.id, terms }),
     row && (query.kind === undefined || query.kind === 'feed') ? feedHits(env, row, terms, query.limit) : [],

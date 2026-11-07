@@ -69,6 +69,46 @@ test('a steer spends only backing not yet behind a note, looked up by its author
   assert.deepEqual([member?.backed, member?.steered, member?.available], ['0.000130', '0.000130', '0.000000'])
 })
 
+test('lagging finds swarms whose recent turns have no report, through the reports key', async () => {
+  const db = open()
+  swarm(db, 'gap', { rounds: 50, updated: 4 })
+  for (let round = 1; round <= 50; round++) if (round !== 45) report(db, 'gap', round)
+  swarm(db, 'working', { rounds: 51, status: 'running', updated: 3 })
+  for (let round = 1; round <= 50; round++) report(db, 'working', round)
+  swarm(db, 'between', { rounds: 50, status: 'running', updated: 2 })
+  for (let round = 1; round <= 50; round++) report(db, 'between', round)
+  swarm(db, 'old', { rounds: 100, updated: 1 })
+  for (let round = 1; round <= 100; round++) if (round !== 5) report(db, 'old', round)
+  swarm(db, 'young', { rounds: 3 })
+  report(db, 'young', 1)
+
+  assert.deepEqual(await Search.lagging(db.env), [{ after: 10, id: 'gap' }, { after: 0, id: 'young' }])
+  assert.match(planned(db, /max\(rounds - \?1, 0\)/), /SEARCH r USING COVERING INDEX sqlite_autoindex_reports_1 \(swarm=\? AND round>\?\)/)
+  assert.deepEqual(await Search.lagging(db.env, 'gap'), [{ after: 10, id: 'gap' }])
+  assert.deepEqual(await Search.lagging(db.env, 'working'), [])
+})
+
+test('a sync writes only the missing reports after where it starts', async () => {
+  const db = open()
+  swarm(db, 'gap', { rounds: 50 })
+  for (let round = 1; round <= 50; round++) if (round !== 45 && round !== 5) report(db, 'gap', round)
+  const turns = Array.from({ length: 50 }, (_, index): Search.Turn => ({
+    base: null,
+    commits: [],
+    endedAt: (index + 1) * 10 + 5,
+    message: 'update ' + (index + 1),
+    n: index + 1,
+    spent: '0',
+    startedAt: (index + 1) * 10,
+    status: 'completed',
+  }))
+  await Search.sync(db.env, 'gap', turns, 10)
+  const rounds = (db.sqlite.prepare("select round from reports where swarm = 'gap' and round in (5, 45) order by round").all() as { round: number }[]).map((row) => row.round)
+  assert.deepEqual(rounds, [45])
+  assert.match(planned(db, /from reports where swarm = \? and round > \?/), /\(swarm=\? AND round>\?\)/)
+  assert.deepEqual(await Search.lagging(db.env, 'gap'), [])
+})
+
 test('search ranks by the stored weights and stops at the limit instead of sorting every match', async () => {
   const db = open()
   for (const id of ['a', 'b', 'c']) {

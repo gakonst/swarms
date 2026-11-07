@@ -2,6 +2,7 @@ import type { Account, Answer, Contribution, Currency, Member, Note, Summary, Wa
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Replica from './Replica.ts'
+import * as Search from './Search.ts'
 
 const ways = ['transfer', 'machine'] as const satisfies readonly Way[]
 
@@ -300,7 +301,7 @@ async function tally(env: Cloudflare.Env, id: string): Promise<Ledger | undefine
     env.DB.prepare(totals + ' where s.id = ?').bind(id),
     weighing(env, id),
     gifts(env, id),
-    env.DB.prepare('select round, ended_at from reports where swarm = ? order by round desc limit 40').bind(id),
+    env.DB.prepare('select round, ended_at from reports where swarm = ? order by round desc limit ?').bind(id, Search.recent),
   ])
   const row = found?.results[0] as Row | undefined
   if (!row) return undefined

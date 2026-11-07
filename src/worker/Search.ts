@@ -90,29 +90,35 @@ export async function report(env: Cloudflare.Env, swarm: string, turn: Turn) {
   if (turn.endedAt !== null) await env.DB.batch(statements(env, swarm, turn))
 }
 
-export async function sync(env: Cloudflare.Env, swarm: string, turns: readonly Turn[]) {
-  const ended = turns.filter((turn) => turn.endedAt !== null)
+export async function sync(env: Cloudflare.Env, swarm: string, turns: readonly Turn[], after = 0) {
+  const ended = turns.filter((turn) => turn.endedAt !== null && turn.n > after)
   if (!ended.length) return
 
-  const { results } = await env.DB.prepare('select round, ended_at from reports where swarm = ?')
-    .bind(swarm)
+  const { results } = await env.DB.prepare('select round, ended_at from reports where swarm = ? and round > ?')
+    .bind(swarm, after)
     .all<{ ended_at: number; round: number }>()
   const known = new Map(results.map((row) => [row.round, row.ended_at]))
   const missing = ended.filter((turn) => known.get(turn.n) !== turn.endedAt)
   if (missing.length) await env.DB.batch(missing.flatMap((turn) => statements(env, swarm, turn)))
 }
 
+export const recent = 40
+
 export function lags(turns: readonly { endedAt: number | null; n: number }[], reports: readonly { ended_at: number; round: number }[]) {
   const known = new Map(reports.map((row) => [row.round, row.ended_at]))
   const oldest = Math.min(...reports.map((row) => row.round))
-  return turns.some((turn) => turn.endedAt !== null && (turn.n >= oldest || reports.length < 40) && known.get(turn.n) !== turn.endedAt)
+  return turns.some((turn) => turn.endedAt !== null && (turn.n >= oldest || reports.length < recent) && known.get(turn.n) !== turn.endedAt)
 }
 
-export async function lagging(env: Cloudflare.Env) {
+export async function lagging(env: Cloudflare.Env, swarm?: string) {
   const { results } = await env.DB.prepare(
-    "select id from swarms s where rounds > (select count(*) from reports r where r.swarm = s.id) + (status = 'running') order by updated_at desc limit 5",
-  ).all<{ id: string }>()
-  return results.map((row) => row.id)
+    `select id, max(rounds - ?1, 0) as after from swarms s
+    where ${swarm ? 'id = ?2 and ' : ''}rounds - (status = 'running') - max(rounds - ?1, 0) > (select count(*) from reports r where r.swarm = s.id and r.round > max(s.rounds - ?1, 0))
+    order by updated_at desc limit 5`,
+  )
+    .bind(recent, ...(swarm ? [swarm] : []))
+    .all<{ after: number; id: string }>()
+  return results
 }
 
 function statements(env: Cloudflare.Env, swarm: string, turn: Turn) {

@@ -382,8 +382,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return { since: since ?? this.kv.get<number>('started') ?? Date.now() }
   }
 
-  turns(): Search.Turn[] {
-    return this.rows('')
+  turns(after = 0): Search.Turn[] {
+    return this.rows('WHERE n > ?', after)
   }
 
   private rows(where: string, ...bindings: SqlStorageValue[]): Search.Turn[] {
