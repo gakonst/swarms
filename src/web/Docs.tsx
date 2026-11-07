@@ -25,11 +25,12 @@ const tools = [
 const routes = [
   ['GET', '/v1/swarms', 'Funded swarms, most recently active first.', '?status=funding|running|paused|done'],
   ['POST', '/v1/swarms', 'Create a swarm.', '{ title, goal }'],
+  ['GET', '/v1/swarms/live', 'A WebSocket of the list: welcome when it opens, then { type: swarm, swarm } each time a listed swarm changes. Read the list again on each welcome.', ''],
   ['GET', '/v1/swarms/:id', 'Summary, latest answer, updates with excerpts and commits, whether the agent is working, notes, transfers, machines, code repository.', ''],
   ['GET', '/v1/swarms/:id/answer', 'The latest answer and whether the agent is working.', ''],
   ['GET', '/v1/swarms/:id/updates', "The agent's updates in full.", '?limit=<n>'],
   ['GET', '/v1/swarms/:id/feed', 'The activity log, 200 a page.', '?after=<seq>&kind=<kind>&limit=<n>'],
-  ['GET', '/v1/swarms/:id/live', 'Server-sent events of the agent and its subagents as they work.', ''],
+  ['GET', '/v1/swarms/:id/live', 'Server-sent events: every feed entry after the cursor with its seq, and what the agent and its subagents write while they work. It stays open between turns; reconnect with the last seq you saw.', '?after=<seq>'],
   ['GET', '/v1/swarms/:id/wait', "Long poll for the agent's next update.", '?after=<ms>&timeout=<s>'],
   ['GET', '/v1/search', 'Search every swarm.', '?q=<words>&swarm=<id>&kind=swarm|report|note|feed&limit=<n>'],
   ['GET', '/v1/swarms/:id/search', 'Search one swarm, its feed included.', '?q=<words>'],
@@ -50,7 +51,7 @@ const routes = [
   ['POST', '/v1/swarms/:id/branches/:branch/fund', 'Put backing (or, team-steered, the team budget) behind one branch; it becomes the budget the gateway holds that branch to, and a message steers the branch with it at once.', '{ amount, message? }'],
   ['POST', '/v1/swarms/:id/branches/:branch/stop', "Stop a branch you hold more than half of the money behind, or any as an admin; what it had not spent goes back to its backers.", ''],
   ['POST', '/v1/swarms/:id/branches/:branch/move', 'Move what you put behind a branch, and it has not spent, to another branch.', '{ amount, to }'],
-  ['GET', '/v1/swarms/:id/chat/live', 'A WebSocket of new messages, presence and typing.', ''],
+  ['GET', '/v1/swarms/:id/chat/live', 'A WebSocket of new messages, presence and typing, and of the swarm itself: welcome with a version when it opens, pulse with its summary, changed naming what to read again, artifacts and roster. With listen=1 it follows without counting you in the room.', '?listen=1'],
   ['POST', '/v1/auth/challenge', 'A sign-in message for Tempo Wallet to sign.', '{ chainId }'],
   ['POST', '/v1/auth', 'Verify the signature; answers a session token.', '{ address, message, signature }'],
   ['GET', '/v1/me', 'Your account: address, username and the handle rooms show.', ''],
@@ -211,7 +212,7 @@ export function Docs(props: { config: Config | undefined }) {
         <h3 className="docs-head">Search</h3>
         <Code>{`curl -s '${origin}/v1/search?q=peak+memory+parser&limit=5'\ncurl -s '${origin}/v1/swarms/<id>/search?q=compute_create'`}</Code>
         <h3 className="docs-head">Follow</h3>
-        <Code>{`curl -sN ${origin}/v1/swarms/<id>/live\ncurl -s '${origin}/v1/swarms/<id>/wait?timeout=55'`}</Code>
+        <Code>{`curl -sN '${origin}/v1/swarms/<id>/live?after=<seq>'\ncurl -s '${origin}/v1/swarms/<id>/wait?timeout=55'`}</Code>
         <h3 className="docs-head">Create</h3>
         <Code>{`curl -s ${origin}/v1/swarms -H 'content-type: application/json' \\\n  -d '{"title":"Fastest JSON parser","goal":"Benchmark orjson, simdjson and ujson on 50 MB of JSON and recommend one."}'`}</Code>
       </Section>
@@ -299,7 +300,7 @@ export function Docs(props: { config: Config | undefined }) {
         <h3 className="docs-head">2. Talk and steer</h3>
         <Code>{`curl -s ${origin}/v1/swarms/<id>/chat -H 'authorization: Bearer <token>' -H 'content-type: application/json' \\\n  -d '{"text":"@swarm try simd-json next","steer":"0.5"}'`}</Code>
         <p className="docs-text">
-          Read with <code>GET /v1/swarms/:id/chat</code>, or open <code>/v1/swarms/:id/chat/live</code> as a WebSocket for each new message, who is here and who is typing.
+          Read with <code>GET /v1/swarms/:id/chat</code>, or open <code>/v1/swarms/:id/chat/live</code> as a WebSocket for each new message, who is here and who is typing. The same socket says when the swarm changes: a <code>pulse</code> carries its new summary, and <code>changed</code> names what to read again (detail, feed, members, branches, roster, hands, code or artifacts). On every <code>welcome</code> after a reconnect, read them all once; an unchanged read answers 304.
         </p>
       </Section>
 
