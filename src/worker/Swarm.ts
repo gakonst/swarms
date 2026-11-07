@@ -186,6 +186,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   waiters = new Set<() => void>()
   pending: Pending = { at: 0, parts: new Set(), pulse: undefined, timer: undefined }
   holders = new Map<string, { address: Address | undefined; at: number }>()
+  steady: Store.Row | undefined
   beating: ReturnType<typeof setInterval> | undefined
 
   budgeting: Promise<unknown> = Promise.resolve()
@@ -238,8 +239,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return this.stamp()
   }
 
-  found(id: string) {
-    return this.memo(`row:${id}`, id, () => Store.find(this.env, id), (row) => !!row?.wallet)
+  async found(id: string) {
+    const row = await this.memo(`row:${id}`, id, () => Store.find(this.env, id), (row) => !!row?.wallet)
+    if (row?.wallet) this.steady = structuredClone(row)
+    return row
   }
 
   remember(row: Store.Row) {
@@ -903,7 +906,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   pay(input: Paying.Pay): Promise<Paying.Paid> {
     const secret = this.kv.get<string>('secret')
     if (!secret || !Words.same(secret, input.secret)) return Promise.resolve({ code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 })
-    const run = this.paying.then(() => Paying.charge(this, input))
+    const asked = Date.now()
+    const marks: Paying.Marks = {}
+    const run = this.paying.then(async () => {
+      const started = Date.now()
+      const paid = await Paying.charge(this, input, marks)
+      console.log(JSON.stringify({ ...marks, operation: input.operation ?? null, paid: Paying.outcome(paid), pay: this.kv.get<string>('id'), waited: started - asked, worked: Date.now() - started }))
+      return paid
+    })
     this.paying = run.catch(() => undefined)
     return run
   }

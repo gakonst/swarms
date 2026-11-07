@@ -224,8 +224,24 @@ export function passed(self: Swarm, input: Pay, paid: Paid): Paid {
   return paid
 }
 
-export async function charge(self: Swarm, input: Pay): Promise<Paid> {
-  const row = await self.found(self.kv.get<string>('id') ?? '')
+export type Marks = { attempts?: number; confirm?: number; room?: number; row?: number; sign?: number }
+
+function mark(marks: Marks, name: 'confirm' | 'room' | 'sign', since: number) {
+  marks[name] = (marks[name] ?? 0) + Date.now() - since
+}
+
+export function outcome(paid: Paid) {
+  if ('authorization' in paid) return paid.topUp ? 'topUp' : 'voucher'
+  if ('feeToken' in paid) return 'feeToken'
+  if ('usd' in paid) return 'budget'
+  return paid.status
+}
+
+export async function charge(self: Swarm, input: Pay, marks: Marks = {}): Promise<Paid> {
+  const id = self.kv.get<string>('id') ?? ''
+  const reading = Date.now()
+  const row = self.steady?.id === id ? self.steady : await self.found(id)
+  marks.row = Date.now() - reading
   if (!row) return { code: 'limit_reached', detail: 'This swarm pays for nothing.', status: 402 }
   if (input.app !== undefined && input.app !== Gateway.app(row.id)) return { code: 'unauthorized', detail: 'This payer pays only for its own swarm.', status: 401 }
   const passing = input.operation === 'vendor' || input.operation === 'agent.fetch'
@@ -257,9 +273,12 @@ export async function charge(self: Swarm, input: Pay): Promise<Paid> {
   const owed = input.recipient ? owing(input.recipient) : undefined
   if (owed && row.wallet && [owed.id, 'pool'].every((id) => (self.kv.get<number>('exhausted:' + id) ?? 0) <= Date.now())) {
     const source = owed
-    const result = await attempt(self, row, source, input, snapshots).catch(
+    const signing = Date.now()
+    const result = await attempt(self, row, source, input, snapshots, marks).catch(
       (error: unknown): Failed => ({ failed: String(error).split('\n')[0]?.slice(0, 300) ?? 'The payment failed.', room: undefined }),
     )
+    mark(marks, 'sign', signing)
+    marks.attempts = (marks.attempts ?? 0) + 1
     if ('authorization' in result || 'feeToken' in result) return result
     if ((self.kv.get<number>('owing:' + source.id) ?? 0) <= Date.now()) {
       self.kv.put('owing:' + source.id, Date.now() + Clock.restMs)
@@ -273,9 +292,12 @@ export async function charge(self: Swarm, input: Pay): Promise<Paid> {
   let small = false
   let wanted = 0n
   for (const source of ordered) {
-    const result = await attempt(self, row, source, input, snapshots).catch(
+    const signing = Date.now()
+    const result = await attempt(self, row, source, input, snapshots, marks).catch(
       (error: unknown): Failed => ({ failed: String(error).split('\n')[0]?.slice(0, 300) ?? 'The payment failed.', room: { amount: 0n, resets: Date.now() + Clock.retryMs } }),
     )
+    mark(marks, 'sign', signing)
+    marks.attempts = (marks.attempts ?? 0) + 1
     if ('feeToken' in result) return result
     if ('authorization' in result) {
       if (current !== source.id) {
@@ -296,7 +318,7 @@ export async function charge(self: Swarm, input: Pay): Promise<Paid> {
   }
 
   if (busy) return { code: 'busy', detail: "The swarm's contributions are holding other calls' reservations; try again shortly.", retry: 2, status: 429 }
-  const held = BigInt(row.sponsor_left ?? 0)
+  const held = BigInt(((await self.found(row.id)) ?? row).sponsor_left ?? 0)
   const most = BigInt(self.kv.get<string>('sponsoredMost') ?? '0')
   const scarce = !passing && held >= perCall && price !== undefined && most < price
   if (scarce) wanted = Payer.max(wanted, price)
@@ -320,7 +342,7 @@ export async function charge(self: Swarm, input: Pay): Promise<Paid> {
   }
 }
 
-export async function attempt(self: Swarm, row: Store.Row, source: Source, input: Pay, snapshots: Payer.Snapshot[]): Promise<{ authorization: string; topUp?: string } | { feeToken: Address } | Failed> {
+export async function attempt(self: Swarm, row: Store.Row, source: Source, input: Pay, snapshots: Payer.Snapshot[], marks: Marks = {}): Promise<{ authorization: string; topUp?: string } | { feeToken: Address } | Failed> {
   const payee = owner(source)
   const offered = Payer.offer(input.challenge, source.currency, payee)
   if (!offered)
@@ -328,12 +350,16 @@ export async function attempt(self: Swarm, row: Store.Row, source: Source, input
       ? { failed: 'The hand owner is paid in a token other than OUSD, which the swarm\'s wallet holds.', room: undefined, small: true }
       : { failed: `The gateway offered no OUSD session to its recipient for at most ${Memo.decimal(Chain.cap)}.`, room: undefined, small: true }
   const mppx = await client(self, row, source)
+  const confirming = Date.now()
   const channel = await confirmed(self, source)
+  mark(marks, 'confirm', confirming)
   const price = offered.amount
   const step = payee ? handChunk : chunk
 
   if (!channel) {
+    const rooming = Date.now()
     const room = await headroom(self, row)
+    mark(marks, 'room', rooming)
     const deposit = Payer.min(Payer.max(step, price), room.amount)
     if (deposit < price)
       return { failed: `It can put in ${Memo.decimal(room.amount)} now, less than the ${Memo.decimal(price)} this request holds.`, price, room, small: room.amount >= perCall }
@@ -365,7 +391,9 @@ export async function attempt(self: Swarm, row: Store.Row, source: Source, input
   let topUp: string | undefined
   let additional = 0n
   if (need > deposit) {
+    const rooming = Date.now()
     const room = await headroom(self, row)
+    mark(marks, 'room', rooming)
     const shortfall = need - deposit
     additional = Payer.min(Payer.max(step, shortfall), room.amount)
     if (additional < shortfall) {

@@ -29,18 +29,22 @@ function swarm(fields: { raised?: number; kv?: Record<string, unknown> } = {}) {
   }
   const logs: [string, string][] = []
   const credentials: unknown[] = []
+  const reads = { count: 0 }
   const row = { id: 'abc123abc123', raised: fields.raised ?? 0, sealed_wallet: 'sealed', sponsor_left: 0, wallet }
   const self = {
     clients: new Map([['pool', { createCredential: async (_response: Response, context: unknown) => (credentials.push(context), 'Payment voucher') }]]),
     cue: () => {},
     env: { TEMPO_RPC: 'http://127.0.0.1:9' },
-    found: async () => structuredClone(row),
+    found: async () => {
+      reads.count += 1
+      return structuredClone(row)
+    },
     kv,
     log: (kind: string, text: string) => void logs.push([kind, text]),
     run: () => ({ state: 'new' }),
     set: () => {},
   }
-  return { credentials, kv, logs, row, self: self as never, store }
+  return { credentials, kv, logs, reads, row, self: self as never, store }
 }
 
 test("the payer refuses an outside service past the swarm's per-call, hourly and per-host limits", () => {
@@ -140,4 +144,26 @@ test('the swarm wakes when its earliest set-aside source comes back, within eigh
   const { self } = swarm({ kv: { 'exhausted:hand:0x1': now + 50_000, 'exhausted:pool': now + 90_000, 'exhausted:stale': now - 1, 'exhausted:far': now + 9 * 86_400_000 } })
   assert.equal(Paying.rested(self), now + 52_000)
   assert.equal(Paying.rested(swarm().self), null)
+})
+
+test("a model call is paid from the swarm row the object already holds, read again only to word a refusal", async () => {
+  const channel = { at: 0, confirmed: true, deposit: '1000000', descriptor: {}, id: '0x' + '0e'.repeat(32), signed: '0' }
+  const kept = swarm({ kv: { 'channel:pool': channel, id: 'abc123abc123' } })
+  const held = kept.self as unknown as { steady: unknown }
+  held.steady = { ...kept.row, raised: 0, sponsor_left: 0 }
+  const marks: { attempts?: number; row?: number; sign?: number } = {}
+  const paid = await Paying.charge(kept.self, { challenge: challenge(5000), operation: 'model.responses', secret: '' }, marks)
+  assert.ok('authorization' in paid)
+  assert.equal(kept.reads.count, 0)
+  assert.equal(marks.attempts, 1)
+  assert.equal(Paying.outcome(paid), 'voucher')
+  const fresh = swarm({ kv: { 'channel:pool': channel, id: 'abc123abc123' } })
+  await Paying.charge(fresh.self, { challenge: challenge(5000), operation: 'model.responses', secret: '' })
+  assert.equal(fresh.reads.count, 1)
+  const refused = swarm({ kv: { id: 'abc123abc123' } })
+  const refusedHeld = refused.self as unknown as { found: () => Promise<unknown>; steady: unknown }
+  refusedHeld.steady = { ...refused.row, sponsor_left: 0 }
+  refusedHeld.found = async () => ({ ...refused.row, sponsor_left: 3_000_000 })
+  const answer = (await Paying.charge(refused.self, { challenge: challenge(5000), operation: 'model.responses', secret: '' })) as { detail: string }
+  assert.match(answer.detail, /hold \$3 in all/)
 })
