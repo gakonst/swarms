@@ -27,12 +27,6 @@ export function money(value: string, token: Currency) {
   return `${mach(value)} ${symbols[token]}`
 }
 
-export function ratio(part: string, whole: string) {
-  const total = units(whole)
-  if (total <= 0n) return 0
-  return Math.min(1, Number((units(part) * 10_000n) / total) / 10_000)
-}
-
 export function percent(share: number) {
   const value = share * 100
   return value > 0 && value < 1 ? '<1%' : `${Math.round(value)}%`

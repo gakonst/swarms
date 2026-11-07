@@ -134,10 +134,6 @@ export function connected(id: string, mode: Mode = 'room') {
   return wires.get(named(id, mode))?.open ?? false
 }
 
-export function live(id: string, mode: Mode = 'room') {
-  return state(id, mode) === 'live'
-}
-
 export function line(id: string) {
   return wires.get(named(id, 'room'))?.line
 }

@@ -185,10 +185,6 @@ export function allowance(env: Cloudflare.Env, team: string, memberBudget: numbe
   return send<unknown>(env, '/v1/teams/update', { body: { memberBudget, team } })
 }
 
-export function revoke(env: Cloudflare.Env, key: string) {
-  return send<unknown>(env, '/api/keys/revoke', { body: {}, key })
-}
-
 export function agent(env: Cloudflare.Env, swarm: string, input: { name: string; payer: { secret: string; url: string }; persona?: string }) {
   return send<{ id: string }>(env, '/v1/agents', {
     app: app(swarm),

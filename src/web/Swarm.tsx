@@ -1,7 +1,6 @@
 import { type KeyboardEvent as Press, lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import * as Answer from '../shared/Answer.ts'
-import * as Memo from '../shared/Memo.ts'
-import type { Config, Detail, Entry, Me, Member, Note, Room as RoomState, Said } from '../shared/Api.ts'
+import type { Config, Detail, Entry, Me, Member, Room as RoomState, Said } from '../shared/Api.ts'
 import { merge } from '../shared/Trail.ts'
 import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
@@ -10,7 +9,7 @@ import { Side } from './Side.tsx'
 import { Connect } from './Connect.tsx'
 import { Contributors } from './Contributors.tsx'
 import { asked, Fund } from './Contribute.tsx'
-import { ago, duration, mach, percent, short, usd } from './format.ts'
+import { short } from './format.ts'
 import { remembered, useLive, useMedia, usePoll, useStable, useVisible } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Presence } from './Ideas.tsx'
@@ -187,9 +186,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const shown: Tab = wide && tab === 'room' ? 'transcript' : tab
   const connected = swarm.hands.filter((hand) => hand.connected).length
   const fund = <Fund config={props.config} note={note} onDone={() => { reload(); setFunding(false) }} onNote={setNote} prefill={prefill} target={() => Promise.resolve({ id: swarm.id, wallet: swarm.wallet })} title={swarm.title} />
-  const choose = (next: Tab) => {
-    setTab(next)
-  }
   const open = (slug: string) => {
     setArtifact(slug)
     setTab('artifacts')
@@ -364,10 +360,5 @@ function Repository(props: { config: Config | undefined; swarm: Detail }) {
       <Code gateway={props.config.gateway} repo={code} swarm={props.swarm.id} updates={props.swarm.updates} />
     </Suspense>
   )
-}
-
-function returned(swarm: Detail) {
-  const rest = BigInt(Memo.units(swarm.raised)) - BigInt(Memo.units(swarm.spent)) - BigInt(Memo.units(swarm.remaining))
-  return rest > 0n ? rest : 0n
 }
 

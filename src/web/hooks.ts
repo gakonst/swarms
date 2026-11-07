@@ -283,26 +283,3 @@ export function useMedia(query: string) {
 export function useWallet() {
   return useSyncExternalStore(Wallet.subscribe, Wallet.snapshot, Wallet.initial)
 }
-
-export function usePresence<T>(items: readonly T[], key: (item: T) => string, ms = 700) {
-  const [gone, setGone] = useState<{ at: number; item: T }[]>([])
-  const previous = useRef<readonly T[]>(items)
-
-  useEffect(() => {
-    const keys = new Set(items.map(key))
-    const left = previous.current.filter((item) => !keys.has(key(item)))
-    previous.current = items
-    if (left.length === 0) return
-    const now = Date.now()
-    setGone((list) => [...list.filter((entry) => !keys.has(key(entry.item))), ...left.map((item) => ({ at: now, item }))])
-  }, [items, key])
-
-  useEffect(() => {
-    if (gone.length === 0) return
-    const timer = setTimeout(() => setGone((list) => list.filter((entry) => Date.now() - entry.at < ms)), ms)
-    return () => clearTimeout(timer)
-  }, [gone, ms])
-
-  const keys = new Set(items.map(key))
-  return [...items.map((item) => ({ item, leaving: false })), ...gone.filter((entry) => !keys.has(key(entry.item))).map((entry) => ({ item: entry.item, leaving: true }))]
-}

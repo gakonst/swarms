@@ -3,7 +3,7 @@ import type { Account, Address, Hex } from 'viem'
 import { isAddress } from 'viem'
 import { Challenge } from 'mppx'
 import { Mppx, tempo } from 'mppx/client'
-import type { Artifact, Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Shown, Snapshot, Steer, Terms, Token, Update, Working } from '../shared/Api.ts'
+import type { Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Shown, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
 import { type Buffers, type Crew, clip, crew, narrate, redact, subagent, tool } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
@@ -362,7 +362,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (input.kind === 'noted') {
       this.log('funds', `${short(input.contributor)} put the ${trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
       this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} put the ${trim(input.amount)} ${Chain.symbol(input.token)} they sent behind "${input.note ?? ''}".`)
-      if (input.noteId) await this.steer(input.swarm, input.noteId, `put ${trim(input.amount)} ${Chain.symbol(input.token)} behind it`)
+      if (input.noteId) await this.steer(input.swarm, input.noteId)
       this.changed('detail', 'members')
       return this.wake('note')
     }
@@ -372,7 +372,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       [input.note, input.hash].filter(Boolean).join('\n'),
     )
     this.announce(`${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ` behind "${input.note}"` : ''}.`)
-    if (input.noteId) await this.steer(input.swarm, input.noteId, `sent ${trim(input.amount)} ${Chain.symbol(input.token)}`)
+    if (input.noteId) await this.steer(input.swarm, input.noteId)
     this.cue('chain')
     this.changed('detail', 'members')
     await this.wake('money')
@@ -1307,7 +1307,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return undefined
   }
 
-  passed(row: Store.Row, input: Pay, paid: Paid): Paid {
+  passed(input: Pay, paid: Paid): Paid {
     if (!('authorization' in paid)) return paid
     const amount = asked(input)
     const now = Date.now()
@@ -1344,7 +1344,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       const refused = this.passable(row, input)
       if (refused) return refused
     }
-    if (input.operation === 'vendor') return this.passed(row, input, await this.vendor(row, input))
+    if (input.operation === 'vendor') return this.passed(input, await this.vendor(row, input))
 
     const price = Payer.priced(input.challenge)
     if (price !== undefined && price > Chain.cap)
@@ -1393,7 +1393,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
           this.kv.put('payer', source.id)
           this.log('funds', `Paying from ${source.label} now.`)
         }
-        return passing ? this.passed(row, input, result) : result
+        return passing ? this.passed(input, result) : result
       }
       if (result.busy) busy = true
       if (result.busy || result.small) {
@@ -1818,7 +1818,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return left > 0n ? left : 0n
   }
 
-  async steer(swarm: string, noteId: string, what: string): Promise<Note | undefined> {
+  async steer(swarm: string, noteId: string): Promise<Note | undefined> {
     const row = await this.found(swarm)
     const agent = this.agent()?.id
     const turn = this.turn()
@@ -1891,8 +1891,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     let steer: Steer | null = null
     if (input.steer?.context) this.kv.put('collapse:' + input.steer.noteId, [...(this.kv.get<string[]>('collapse:' + input.steer.noteId) ?? []), input.steer.context])
     if (input.steer) {
-      const spent = Memo.units(input.steer.amount)
-      const sent = await this.steer(input.swarm, input.steer.noteId, `put ${dollars(spent)} of their backing, from the swarm's room,`)
+      const sent = await this.steer(input.swarm, input.steer.noteId)
       const row = sent ? null : await this.found(input.swarm)
       const note = sent ?? (row ? await Store.note(this.env, row.id, input.steer.noteId, BigInt(row.raised), new Set(this.steered())) : undefined)
       steer = {

@@ -1,15 +1,8 @@
 .game-header { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:14px var(--margin); min-height:68px; }
 .game-header .brand { margin:0; font-size:26px; min-width:0; }
 .game-header .header-end { align-items:center; gap:20px; flex-shrink:0; }
-.game-header .crumb,.game-header .crumb-slash { display:none; }
 .game-nav { font:12px var(--mono); text-decoration:none; padding:9px 0; }
 .game-nav-on { border-bottom:1px solid var(--black); }
-.game-details { border-top:1px solid var(--grey-200); padding:14px 0; font-size:14px; min-width:0; }
-.game-details > summary { cursor:pointer; color:var(--grey-600); font:12px var(--mono); padding:2px 0; }
-.game-details[open] > summary { margin-bottom:16px; color:var(--black); }
-.game-details > p { line-height:1.5; overflow-wrap:anywhere; }
-.game-details > p + p { margin-top:10px; }
-.game-details .bar { margin-top:20px; }
 .quest-onboarding { max-width:1000px; padding-top:max(36px,9vh); padding-bottom:48px; }
 .quest-steps { display:flex; max-width:540px; margin:0 auto 42px; gap:16px; }
 .quest-step { display:flex; flex:1; align-items:center; gap:10px; padding:10px 0; border:0; border-top:2px solid var(--grey-200); background:none; color:var(--grey-500); text-align:left; font:12px var(--mono); cursor:pointer; }
@@ -20,40 +13,14 @@
 .quest-heading h1 { font-size:clamp(34px,4vw,50px); font-weight:400; line-height:1.05; letter-spacing:-.035em; margin:12px 0; }
 .quest-heading h1:focus { outline:none; }
 .quest-onboarding form { max-width:860px; margin:auto; }
-.quest-emblem { display:flex; position:relative; align-items:center; justify-content:center; width:80px; height:74px; margin-bottom:14px; }
-.quest-emblem::before { content:''; position:absolute; inset:16px 4px 0; background:#d8e7bd; transform:rotate(-12deg) skewY(-8deg); border-radius:12px; }
-.quest-emblem i { position:relative; display:block; width:18px; height:28px; margin:0 2px; border-radius:6px 6px 3px 3px; background:#688545; box-shadow:3px 4px 0 #a2b888; }
-.quest-emblem i:nth-child(2) { height:42px; background:#96bc66; transform:translateY(-5px); }
-.quest-emblem-1 i { height:35px; transform:rotate(-8deg); }
-.quest-emblem-2 i { border-radius:50%; height:20px; width:20px; }
-.quest-custom { display:block; margin-top:28px; color:var(--grey-600); font:12px var(--mono); }
-.quest-custom input,.quest-custom textarea { display:block; width:100%; margin-top:10px; padding:16px; border:1px solid var(--grey-300); border-radius:10px; background:var(--white); color:var(--black); font:17px/1.4 var(--serif); resize:vertical; }
 .quest-next { display:flex; justify-content:center; width:100%; min-height:48px; margin-top:24px; border-radius:10px; font-size:14px; gap:16px; }
 .quest-budget { max-width:440px; margin:auto; }
-.quest-chosen { display:flex; align-items:center; gap:12px; margin-bottom:24px; padding:16px; background:#f2f5ec; border-radius:10px; font-size:18px; }
-.quest-chosen > span { color:#5c7b3c; }
-.quest-budget-hint,.quest-wallet-hint { color:var(--grey-600); font-size:13px; text-align:center; line-height:1.4; }
-.quest-wallet-hint { margin-top:12px; font:11px var(--mono); }
-.quest-review { max-width:540px; margin:auto; text-align:center; }
-.quest-review h2 { font-size:28px; font-weight:400; letter-spacing:-.02em; margin:8px 0 20px; }
-.quest-launch-emblem { display:flex; justify-content:center; }
-.quest-budget-value { font-size:48px; margin-bottom:8px; }
-.quest-budget-value span { font:13px var(--mono); color:var(--grey-600); }
-.quest-review .game-details { text-align:left; }
-.quest-review .game-details:first-of-type { margin-top:28px; }
 .quest-budget .field { margin:22px 0; }
-.quest-funding { max-width:480px; margin:32px auto; }
-.quest-funding .btn-wide { min-height:44px; }
-.quest-funding .game-details { margin-top:16px; }
-.quest-funding .game-details .field { margin:20px 0; }
-.quest-funding .fine { margin-top:12px; }
 @media (max-width:799px) {
-  .quest-emblem { grid-row:1 / span 2; width:64px; height:62px; margin:0; }
   .game-header .header-end { gap:14px; }
 }
 @media (max-width:400px) {
   .game-header .brand { font-size:23px; }
-  .game-header .crumb,.game-header .crumb-slash { display:none; }
   .quest-onboarding { padding-top:20px; }
   .quest-steps { gap:10px; margin-bottom:30px; }
   .quest-step { gap:6px; font-size:11px; }
@@ -63,8 +30,4 @@
 @keyframes broadcast-dot { 0%,100% { opacity:1; } 50% { opacity:.35; } }
 @keyframes caret { 50% { opacity:0; } }
 @keyframes moment-in { from { background:#eef8e2; } to { background:transparent; } }
-@media (max-width: 799px) {
-}
-@media (prefers-reduced-motion: reduce) {
-}
 

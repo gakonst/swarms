@@ -1,8 +1,8 @@
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { Config, Detail, Me, Member, Room as RoomState, Said, Way } from '../shared/Api.ts'
+import type { Config, Detail, Me, Member, Room as RoomState, Said } from '../shared/Api.ts'
 import { seeded } from './boot.ts'
 import * as Answer from '../shared/Answer.ts'
-import { decimal, maxNote, units } from '../shared/Memo.ts'
+import { maxNote } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Api from './api.ts'
 import { percent, usd, minute } from './format.ts'
@@ -14,8 +14,6 @@ import * as Wallet from './wallet.ts'
 import * as Wire from './wire.ts'
 
 const roomMs = { closed: 15_000, open: 60_000 }
-
-const ways = { machine: 'machine', transfer: 'transfer' } as const satisfies Record<Way, string>
 
 export function tint(address: string) {
   let value = 0
@@ -338,9 +336,6 @@ export const Room = memo(function Room(props: {
       element.scrollTop += element.scrollHeight - height
     })
   }
-
-  const ranked = [...members].sort((a, b) => Number(units(b.backed) - units(a.backed)))
-  const here = online.filter((address) => members.some((member) => member.address === address))
 
   let gate: ReactNode = null
   if (door === 'checking') gate = <div aria-busy="true" className="room-gate room-gate-wait" />

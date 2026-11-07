@@ -246,11 +246,6 @@ function gifts(env: Cloudflare.Env, swarm: string) {
   return env.DB.prepare('select * from contributions where swarm = ? order by created_at desc limit 200').bind(swarm)
 }
 
-export async function contributions(env: Cloudflare.Env, swarm: string): Promise<Contribution[]> {
-  const { results } = await gifts(env, swarm).all<Gift>()
-  return results.map(contribution)
-}
-
 type Weighed = { backers: number; id: string; note: string; weight: number }
 
 export async function notes(
