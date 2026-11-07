@@ -1051,7 +1051,12 @@ export async function steer(env: Cloudflare.Env, input: Input<'steering'>, addre
   if (request.steering) await Store.update(env, row.id, { steering: request.steering })
   Team.forget(row.id)
   const fresh = await Store.find(env, row.id)
-  return Team.roster(env, fresh ?? row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error)))
+  return told(env, row.id, await Team.roster(env, fresh ?? row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error))))
+}
+
+function told(env: Cloudflare.Env, swarm: string, result: Problem.Result<Roster>) {
+  if (result.ok) waitUntil(stub(env, swarm).rostered(result.value).catch(() => undefined))
+  return result
 }
 
 export async function seat(env: Cloudflare.Env, input: Input<'seat'>, address?: Address): Promise<Problem.Result<Roster>> {
@@ -1067,7 +1072,7 @@ export async function seat(env: Cloudflare.Env, input: Input<'seat'>, address?: 
   const added = await Gateway.enlist(env, row.team as string, { ...(request.budget !== undefined ? { budget: request.budget } : {}), member: request.member, role: request.role })
   if (!added.ok) return Problem.fail(added.status === 409 ? 409 : 502, added.status === 409 ? 'conflict' : 'upstream_failed', `The gateway did not add ${request.member} to the swarm's team: ${added.detail}`)
   Team.forget(row.id)
-  return Team.roster(env, row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error)))
+  return told(env, row.id, await Team.roster(env, row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error))))
 }
 
 export async function unseat(env: Cloudflare.Env, input: Input<'unseat'>, address?: Address): Promise<Problem.Result<Roster>> {
@@ -1089,7 +1094,7 @@ export async function unseat(env: Cloudflare.Env, input: Input<'unseat'>, addres
   const removed = await Gateway.dismiss(env, row.team, request.member)
   if (!removed.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not remove ${request.member}: ${removed.detail}`)
   Team.forget(row.id)
-  return Team.roster(env, row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error)))
+  return told(env, row.id, await Team.roster(env, row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error))))
 }
 
 export async function chatter(env: Cloudflare.Env, input: Input<'swarm'>, request: Request): Promise<Problem.Result<Response>> {
@@ -1450,7 +1455,7 @@ export async function machines(env: Cloudflare.Env, input: Input<'swarm'>): Prom
   if (!(await Store.exists(env, parsed.value.swarm))) return missing()
   const [view, entries, lent] = await Promise.all([
     stub(env, parsed.value.swarm).view({ feed: 0, pushed: true, texts: false }),
-    stub(env, parsed.value.swarm).feed(0, { before: Number.MAX_SAFE_INTEGER, limit: 2000 }),
+    stub(env, parsed.value.swarm).feed(0, { before: Number.MAX_SAFE_INTEGER, kinds: ['tool', 'output', 'error', 'machine'], limit: 2000 }),
     hands(env, input),
   ])
   const machines = Fleet.fleet(entries, view.hands, lent.ok ? lent.value.hands : [])
