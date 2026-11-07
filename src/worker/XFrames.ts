@@ -481,15 +481,23 @@ if(frame.kind==='swarm'){
     const events=new Set(known.flatMap(item=>item.event===null||item.event===undefined?[]:[item.event]));
     const clear=()=>{nowLine.hidden=true;stream={item:'',text:'',who:null}};
     const write=(who,delta,item,offset)=>{const base=stream.item===item&&stream.who===who?stream.text:'';stream={item,text:(offset===null||offset===undefined?base+delta:base.slice(0,offset)+delta),who};nowLine.hidden=false;nowWho.textContent=who||'Agent';nowText.textContent=stream.text;stick(panes.transcript)};
+    let source=null,retry=null,shown=!document.hidden,seenOnScreen=true;
+    const wanted=()=>shown&&seenOnScreen;
+    const shut=()=>{clearTimeout(retry);retry=null;if(source){source.close();source=null}clear()};
     const open=()=>{
+      if(source||!wanted())return;
       const opened=Date.now();let fed=false;
-      const source=new EventSource('/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/live?after='+seen);
-      source.onmessage=message=>{const event=JSON.parse(message.data);
+      const current=new EventSource('/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/live?after='+seen);
+      source=current;
+      current.onmessage=message=>{const event=JSON.parse(message.data);
         if(event.type==='delta'&&event.channel==='text')write(event.who,event.delta,event.item,event.offset);
         else if(event.type==='entry'){const item=event.entry;if(item.seq>0){if(item.seq<=seen)return;seen=item.seq;fed=true}if(item.event!==null&&item.event!==undefined){if(events.has(item.event))return;events.add(item.event)}if(item.kind==='message')clear();entry(item)}
         else if(event.type==='end')clear()};
-      source.onerror=()=>{source.close();setTimeout(open,fed||Date.now()-opened>30000?0:4000)};
+      current.onerror=()=>{current.close();if(source!==current)return;source=null;if(wanted())retry=setTimeout(open,fed||Date.now()-opened>30000?0:4000)};
     };
+    const sync=()=>wanted()?open():shut();
+    document.addEventListener('visibilitychange',()=>{shown=!document.hidden;sync()});
+    if('IntersectionObserver' in window)new IntersectionObserver(items=>{seenOnScreen=items.some(item=>item.isIntersecting);sync()}).observe(document.body);
     open();
   }
   const form=document.getElementById('steer');

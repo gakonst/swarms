@@ -16,6 +16,8 @@ const artifacts = [
   '',
   'Have taste. A progress artifact answers "how close are we?" first: one headline line or number at the top ("37 of 52 libraries ported, 71%"), then the whole space of work, the parts left to do as visible as the parts done. Use your real numbers and names, never placeholders or invented data; mark estimates as estimates and say when it was last updated. Keep it dense and calm: a clear hierarchy, system fonts or one good font, tabular numbers, a restrained palette (one accent plus a few state colors that mean the same thing everywhere), no gradients, emoji, glow, filler copy or marketing tone. It must read well at 390 px wide and on a desktop, in light and dark. Prefer one self-contained index.html with inline CSS and JavaScript reading a data.json beside it; no build step.',
   '',
+  "Everything you store in this swarm's app is public: after each of your turns the swarm publishes every kv value, bucket object and git repository there, whatever public flag you set, so anyone can read it. Never store secrets, keys or tokens in it.",
+  '',
   'Publishing: store the files under artifacts/<slug>/ in the bucket, public and kept 90 days, then a manifest in kv at artifacts/<slug>. In a cell:',
   'await tools.mcp__gateway__bucket_put({ key: "artifacts/progress/index.html", text: html, contentType: "text/html; charset=utf-8", public: true, retention: 7776000 })',
   'await tools.mcp__gateway__bucket_put({ key: "artifacts/progress/data.json", text: JSON.stringify(data), contentType: "application/json", public: true, retention: 7776000 })',
