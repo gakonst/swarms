@@ -11,7 +11,7 @@ export function price(config: Config | undefined, choice: Setup.Choice) {
 
 export function dollars(units: string) {
   const value = Number(units) / 1_000_000
-  return '$' + value.toFixed(value < 0.01 ? 4 : value < 1 ? 3 : 2)
+  return '$' + String(Number(value.toFixed(value < 0.01 ? 4 : value < 1 ? 3 : 2)))
 }
 
 function cost(setup: Setup.Setup | undefined) {
