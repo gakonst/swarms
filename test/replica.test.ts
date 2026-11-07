@@ -3,14 +3,18 @@ import test from 'node:test'
 import * as Replica from '../src/worker/Replica.ts'
 
 function db(log: string[], name: string): D1Database {
-  const session = (constraint?: string) => ({
-    batch: async () => [],
-    getBookmark: () => `${name}-bookmark`,
-    prepare: (query: string) => {
-      log.push(`${name}:${constraint}:${query}`)
-      return { first: async () => null } as unknown as D1PreparedStatement
-    },
-  })
+  const session = (constraint?: string) => {
+    let asked = false
+    return {
+      batch: async () => [],
+      getBookmark: () => (asked ? `${name}-bookmark` : null),
+      prepare: (query: string) => {
+        asked = true
+        log.push(`${name}:${constraint}:${query}`)
+        return { first: async () => null } as unknown as D1PreparedStatement
+      },
+    }
+  }
   return {
     batch: async () => [],
     dump: async () => new ArrayBuffer(0),
@@ -50,11 +54,20 @@ test('a visitor reads from their own bookmark, and a bad one is ignored', () => 
   assert.equal(log.at(-1), 'db:first-unconstrained:select 2')
 })
 
-test('a write hands back the primary bookmark in a header and a cookie', async () => {
-  const env = { DB: db([], 'db') } as unknown as Cloudflare.Env
-  const marked = await Replica.mark(env, Response.json({ ok: true }, { status: 201 }))
+test("a write hands back its own session's bookmark in a header and a cookie, with no query of its own", async () => {
+  const log: string[] = []
+  const env = { DB: db(log, 'db') } as unknown as Cloudflare.Env
+  const written = Replica.write(env)
+  assert.equal(Replica.primary(written), env)
+  const untouched = Response.json({ ok: true })
+  assert.equal(Replica.mark(written, untouched), untouched)
+  assert.equal(Replica.mark(env, untouched), untouched)
+
+  written.DB.prepare("insert into names (address, name, updated_at) values ('0x1', 'ada', 1)")
+  const marked = Replica.mark(written, Response.json({ ok: true }, { status: 201 }))
   assert.equal(marked.status, 201)
   assert.equal(marked.headers.get(Replica.header), 'db-bookmark')
   assert.match(marked.headers.get('set-cookie') ?? '', /^swarms_d1=db-bookmark; Path=\/; Max-Age=300/)
   assert.deepEqual(await marked.json(), { ok: true })
+  assert.deepEqual(log, ["db:first-primary:insert into names (address, name, updated_at) values ('0x1', 'ada', 1)"])
 })

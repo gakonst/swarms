@@ -4,6 +4,8 @@ export const header = 'x-d1-bookmark'
 
 const primaries = new WeakMap<Cloudflare.Env, Cloudflare.Env>()
 
+const sessions = new WeakMap<Cloudflare.Env, D1DatabaseSession>()
+
 const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|hands|answer|updates|search|wait|machines|backers|team|branches))?)?$/
 
 const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|s\/[^/]+|s\/[^/]+\/code)$/
@@ -30,6 +32,14 @@ export function read(env: Cloudflare.Env, request: Request): Cloudflare.Env {
   return replica
 }
 
+export function write(env: Cloudflare.Env): Cloudflare.Env {
+  const session = env.DB.withSession('first-primary')
+  const written: Cloudflare.Env = { ...env, DB: database(session, env.DB) }
+  primaries.set(written, env)
+  sessions.set(written, session)
+  return written
+}
+
 export function primary(env: Cloudflare.Env) {
   return primaries.get(env) ?? env
 }
@@ -38,10 +48,8 @@ export function replicated(env: Cloudflare.Env) {
   return primaries.has(env)
 }
 
-export async function mark(env: Cloudflare.Env, response: Response) {
-  const session = primary(env).DB.withSession('first-primary')
-  await session.prepare('select 1').first()
-  const bookmark = session.getBookmark()
+export function mark(env: Cloudflare.Env, response: Response) {
+  const bookmark = sessions.get(env)?.getBookmark()
   if (!bookmark) return response
   const marked = new Response(response.body, response)
   marked.headers.set(header, bookmark)

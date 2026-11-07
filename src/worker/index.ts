@@ -48,11 +48,13 @@ app.use('*', async (c, next) => {
 
 app.use('*', async (c, next) => {
   const path = new URL(c.req.url).pathname
+  const writing = Replica.writes(c.req.method, path)
   if (Replica.readable(c.req.method, path)) c.env = Replica.read(c.env, c.req.raw)
+  else if (writing) c.env = Replica.write(c.env)
   await next()
-  if (!Replica.writes(c.req.method, path) || !c.res.ok) return
-  const marked = await Replica.mark(c.env, c.res).catch(() => undefined)
-  if (!marked) return
+  if (!writing || !c.res.ok) return
+  const marked = Replica.mark(c.env, c.res)
+  if (marked === c.res) return
   c.res = undefined
   c.res = marked
 })
