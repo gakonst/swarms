@@ -67,7 +67,9 @@ const codes = [
   ['404', 'not_found', 'No swarm or route has this id, or Tempo has no receipt for the transaction yet.'],
   ['409', 'conflict', 'The transaction is already counted.'],
   ['409', 'insufficient_balance', "A steer asks for more of its author's backing than is not yet behind a note."],
+  ['429', 'rate_limited', 'Too many side questions, or the gateway already paid the fee of as many MACH channel opens today as it pays for your wallet; nothing was sent.'],
   ['502', 'upstream_failed', 'The Tempo gateway failed.'],
+  ['503', 'unavailable', 'The gateway cannot pay network fees right now; nothing was sent.'],
 ] as const
 
 export function Code(props: { children: string; label?: string }) {

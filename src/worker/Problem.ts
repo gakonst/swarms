@@ -14,7 +14,7 @@ export type Code =
   | 'upstream_failed'
   | 'username_required'
 
-export type Status = 400 | 401 | 403 | 404 | 405 | 409 | 410 | 429 | 502
+export type Status = 400 | 401 | 403 | 404 | 405 | 409 | 410 | 429 | 502 | 503
 
 export type Failure = { code: Code; detail: string; status: Status }
 
@@ -27,9 +27,9 @@ export const codes = {
   invalid_request: 'The input failed validation; detail says which field.',
   not_found: 'No swarm, branch or route has this id, or Tempo has no receipt for the transaction yet.',
   not_member: "Only the swarm's backers (who sent it money or lent it a machine) post in its room or ask it side questions, and on a team-steered swarm only its team steers it.",
-  rate_limited: 'Too many side questions from this backer in the last hour.',
+  rate_limited: "Too many side questions from this backer in the last hour, or the gateway already paid the network fee of as many MACH channel opens today as it pays for this wallet; nothing was sent, and it counts again from 00:00 UTC.",
   unauthorized: 'Sign in with Tempo Wallet at /v1/auth and send the session token as Authorization: Bearer <token>.',
-  unavailable: 'The swarm could not be saved.',
+  unavailable: 'The swarm could not be saved, or the gateway cannot pay network fees right now and sent nothing.',
   upstream_failed: 'The Tempo gateway or Tempo Wallet failed or refused.',
   username_required: 'The signed-in account has no username yet; set one with POST /v1/me { name } before posting, steering or asking side questions.',
 } as const satisfies Record<Code, string>

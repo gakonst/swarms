@@ -31,7 +31,7 @@ const approvalSeconds = 240
 
 function stored(): Session | undefined {
   if (server) return undefined
-  if (fixture) return scene.has('in') ? { address: visitor, token: 'fixture' } : undefined
+  if (fixture) return scene.has('in') ? { address: visitor, token: 'fixture' } : scene.has('expired') ? { address: visitor, token: 'expired' } : undefined
   try {
     const value = JSON.parse(localStorage.getItem(kept) ?? 'null') as Session | null
     return value?.address && value.token ? value : undefined
@@ -175,14 +175,38 @@ export async function connect(config: Config) {
   }
   const provider = await wallet()
   const listed = (await provider.request({ method: 'eth_accounts' }).catch(() => [] as readonly Address[]))[0]
-  const address = listed ?? (await provider.request({ method: 'eth_requestAccounts' }))[0]
-  if (!address) throw new Error('Tempo Wallet returned no account.')
+  const requested =
+    listed ??
+    (
+      await provider.request({ method: 'eth_requestAccounts' }).catch((error: unknown) => {
+        if (declined(error)) throw error
+        return [] as readonly Address[]
+      })
+    )[0]
+  const address = requested ?? (await signIn(config)).address
   if (address.toLowerCase() === state.address) return address
   const switched = !!state.session && state.session.address !== address.toLowerCase()
   set({ account: switched ? undefined : state.account, address, ...(switched ? { session: undefined } : {}) })
   void refresh(config).catch(() => {})
   return address
 }
+
+function declined(error: unknown) {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+  return code === 4001 || (error instanceof Error && /declined|rejected|denied|cancel/i.test(error.message))
+}
+
+let renewing: Promise<string> | undefined
+
+Api.renew(() => {
+  renewing ??= Api.config()
+    .then((config) => signIn(config))
+    .then((session) => session.token)
+    .finally(() => {
+      renewing = undefined
+    })
+  return renewing
+})
 
 export async function signIn(config: Config) {
   if (fixture) {

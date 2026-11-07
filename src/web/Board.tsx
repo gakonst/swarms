@@ -161,6 +161,7 @@ const flows: readonly Flow[] = [
       { name: 'Declined', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 1600 }], url: swarm('dex-guide', '&scene=deny,in') },
       { name: 'Not enough money', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 2600 }], url: swarm('dex-guide', '&scene=broke,in') },
       { name: 'Sent, not counted yet', note: 'the transfer left the wallet', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 2600 }], url: swarm('dex-guide', '&scene=uncounted,in') },
+      { name: 'MACH open refused, nothing sent', note: "the gateway's daily sponsored opens are used", steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 2600 }], url: swarm('dex-guide', '&scene=capped,in&token=mach') },
       { name: 'Counted on Record it', note: 'posts the same transaction again', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 2600 }, { click: '.alert-go' }, { wait: 1500 }], url: swarm('dex-guide', '&scene=uncounted,in') },
       { name: 'Funded, in the flow', note: 'shows as a $ row', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 3000 }], url: swarm('bench-coders', '&scene=in') },
     ],

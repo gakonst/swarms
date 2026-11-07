@@ -28,6 +28,27 @@ export function authorize(token: string | undefined) {
   bearer = token
 }
 
+function who() {
+  return bearer && bearer !== 'expired' ? visitor : undefined
+}
+
+let renewal: (() => Promise<string>) | undefined
+
+export function renew(handler: () => Promise<string>) {
+  renewal = handler
+}
+
+async function signed<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch (error) {
+    const status = typeof error === 'object' && error !== null && 'status' in error ? error.status : undefined
+    if (status !== 401 || !renewal) throw error
+    await renewal()
+    return run()
+  }
+}
+
 async function request<T>(path: string, body?: unknown, method?: 'DELETE'): Promise<T> {
   const headers: Record<string, string> = bearer ? { authorization: `Bearer ${bearer}` } : {}
   const response = await fetch(path, method ? { headers, method } : body === undefined ? { headers } : { body: JSON.stringify(body), headers: { ...headers, 'content-type': 'application/json' }, method: 'POST' })
@@ -141,9 +162,11 @@ export function machines(id: string) {
 }
 
 export function hand(id: string, label: string) {
-  return fixture
-    ? Promise.resolve({ cli: "nc hand 'https://gateway.tempo.xyz/v1/hands/attach' --token hand_demo_4f2a", command: 'curl -fsSL https://nanocode.xyz/install | sh && nc hand ...', label: label ?? '', library: "import { Hand } from 'nanocode'\nawait Hand.connect(url, { token })", name: (label || 'my-machine') + '-3c1f', npm: 'npm i nanocode@build-20f97e0', swarm: id, tab: null, token: 'hand_demo_4f2a', url: 'https://gateway.tempo.xyz/v1/hands/attach' } as Issued)
-    : request<Issued>(`${path(id)}/hands`, label ? { label } : {})
+  return signed(() =>
+    fixture
+      ? Promise.resolve({ cli: "nc hand 'https://gateway.tempo.xyz/v1/hands/attach' --token hand_demo_4f2a", command: 'curl -fsSL https://nanocode.xyz/install | sh && nc hand ...', label: label ?? '', library: "import { Hand } from 'nanocode'\nawait Hand.connect(url, { token })", name: (label || 'my-machine') + '-3c1f', npm: 'npm i nanocode@build-20f97e0', swarm: id, tab: null, token: 'hand_demo_4f2a', url: 'https://gateway.tempo.xyz/v1/hands/attach' } as Issued)
+      : request<Issued>(`${path(id)}/hands`, label ? { label } : {}),
+  )
 }
 
 export function artifacts(id: string) {
@@ -155,7 +178,7 @@ export function account() {
 }
 
 export function rename(name: string | null) {
-  return fixture ? staged((fixtures) => fixtures.rename(bearer ? visitor : undefined, name)) : request<Account>('/api/me', { name })
+  return signed(() => fixture ? staged((fixtures) => fixtures.rename(who(), name)) : request<Account>('/api/me', { name }))
 }
 
 export function room(id: string, query: { after?: number; before?: number } = {}) {
@@ -166,7 +189,7 @@ export function room(id: string, query: { after?: number; before?: number } = {}
 }
 
 export function say(id: string, input: { artifact?: boolean; btw?: readonly Btw.Exchange[]; steer?: string; text: string }) {
-  return fixture ? staged((fixtures) => fixtures.say(id, input, bearer ? visitor : undefined)) : request<Posted>(`${path(id)}/chat`, input)
+  return signed(() => fixture ? staged((fixtures) => fixtures.say(id, input, who())) : request<Posted>(`${path(id)}/chat`, input))
 }
 
 export function team(id: string) {
@@ -174,15 +197,15 @@ export function team(id: string) {
 }
 
 export function steering(id: string, input: { memberBudget?: number | null; steering?: Steering }) {
-  return fixture ? staged((fixtures) => fixtures.govern(id, input, bearer ? visitor : undefined)) : request<Roster>(`${path(id)}/team`, input)
+  return signed(() => fixture ? staged((fixtures) => fixtures.govern(id, input, who())) : request<Roster>(`${path(id)}/team`, input))
 }
 
 export function seat(id: string, input: { budget?: number | null; member: string; role: 'admin' | 'member' }) {
-  return fixture ? staged((fixtures) => fixtures.seat(id, input, bearer ? visitor : undefined)) : request<Roster>(`${path(id)}/team/members`, input)
+  return signed(() => fixture ? staged((fixtures) => fixtures.seat(id, input, who())) : request<Roster>(`${path(id)}/team/members`, input))
 }
 
 export function unseat(id: string, member: string) {
-  return fixture ? staged((fixtures) => fixtures.unseat(id, member, bearer ? visitor : undefined)) : request<Roster>(`${path(id)}/team/members/${encodeURIComponent(member)}`, undefined, 'DELETE')
+  return signed(() => fixture ? staged((fixtures) => fixtures.unseat(id, member, who())) : request<Roster>(`${path(id)}/team/members/${encodeURIComponent(member)}`, undefined, 'DELETE'))
 }
 
 export function branches(id: string) {
@@ -190,19 +213,19 @@ export function branches(id: string) {
 }
 
 export function fund(id: string, branch: number, input: { amount: string; artifact?: boolean; message?: string }) {
-  return fixture ? staged((fixtures) => fixtures.fund(id, branch, input, bearer ? visitor : undefined)) : request<Branch>(`${path(id)}/branches/${branch}/fund`, input)
+  return signed(() => fixture ? staged((fixtures) => fixtures.fund(id, branch, input, who())) : request<Branch>(`${path(id)}/branches/${branch}/fund`, input))
 }
 
 export function stop(id: string, branch: number) {
-  return fixture ? staged((fixtures) => fixtures.stop(id, branch, bearer ? visitor : undefined)) : request<Branch>(`${path(id)}/branches/${branch}/stop`, {})
+  return signed(() => fixture ? staged((fixtures) => fixtures.stop(id, branch, who())) : request<Branch>(`${path(id)}/branches/${branch}/stop`, {}))
 }
 
 export function move(id: string, branch: number, input: { amount: string; to: number }) {
-  return fixture ? staged((fixtures) => fixtures.move(id, branch, input, bearer ? visitor : undefined)) : request<Branch[]>(`${path(id)}/branches/${branch}/move`, input)
+  return signed(() => fixture ? staged((fixtures) => fixtures.move(id, branch, input, who())) : request<Branch[]>(`${path(id)}/branches/${branch}/move`, input))
 }
 
 export function btw(id: string, input: { branch?: number; question: string; thread: readonly Btw.Exchange[] }) {
-  return fixture ? staged((fixtures) => fixtures.btw(id, input, bearer ? visitor : undefined)) : request<Btw.Exchange>(`${path(id)}/btw`, input)
+  return signed(() => fixture ? staged((fixtures) => fixtures.btw(id, input, who())) : request<Btw.Exchange>(`${path(id)}/btw`, input))
 }
 
 export type Line = { close: () => void; hello: () => void; typing: () => void }

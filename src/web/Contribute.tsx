@@ -73,7 +73,7 @@ type Flow = { at: 'idle' } | { at: 'busy'; step: Working } | { at: 'done'; hash?
 const idle: Flow = { at: 'idle' }
 
 function strayed(paid: Unrecorded, error: unknown) {
-  return Object.assign(new Error(`Sent, but not counted yet. ${message(error)} Try again to count it; nothing is sent twice.`), { code: 'unrecorded', paid, reason: message(error) })
+  return Object.assign(new Error(`${paid.transaction ? 'Not counted yet.' : 'Sent, but not counted yet.'} ${message(error)} Try again to count it; nothing is sent twice.`), { code: 'unrecorded', paid, reason: message(error) })
 }
 
 export function stray(error: unknown) {
@@ -88,7 +88,8 @@ export async function record(paid: Unrecorded) {
     } catch (error) {
       if (code(error) === 'conflict') return paid.hash ?? ''
       if (paid.transaction && /validity|valid before|expired/i.test(message(error))) throw Object.assign(new Error('Tempo Wallet took too long to approve, so the gateway did not send it. Nothing was charged; approve again.'), { code: 'expired' })
-      if (paid.transaction && error instanceof Api.Failure && error.status < 500) throw error
+      const status = typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number' ? error.status : undefined
+      if (paid.transaction && status !== undefined && (status < 500 || status === 503)) throw error
       if (attempt < 3 && code(error) === 'not_found') {
         await new Promise((resolve) => setTimeout(resolve, 1500))
         continue
@@ -213,7 +214,7 @@ export function Fuel(props: {
       </button>
       {flow.at === 'done' && <Alert action={{ label: 'Send more', onClick: () => setFlow(idle) }} title={flow.text} tone="good">{flow.hash && props.config ? <a href={`${props.config.explorer}/tx/${flow.hash}`} rel="noreferrer" target="_blank">Receipt ↗</a> : undefined}</Alert>}
       {flow.at === 'unrecorded' && (
-        <Alert action={{ label: 'Record it', onClick: () => void retry(flow.paid, flow.target) }} title={`${dollars(decimal(flow.paid.amount))} went to the swarm, but it is not counted yet.`} tone="warn">
+        <Alert action={{ label: 'Record it', onClick: () => void retry(flow.paid, flow.target) }} title={flow.paid.transaction ? `${dollars(decimal(flow.paid.amount))} is not counted yet.` : `${dollars(decimal(flow.paid.amount))} went to the swarm, but it is not counted yet.`} tone="warn">
           {flow.reason} Record it sends the same {flow.paid.transaction ? 'channel' : 'transaction'} again; nothing is paid twice.
         </Alert>
       )}

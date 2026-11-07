@@ -1291,7 +1291,8 @@ async function channeled(
 
   const registered = await Gateway.sponsor(env, row.id, { descriptor, ...('transaction' in input ? { transaction: input.transaction } : {}) })
   if (!registered.ok) {
-    const [status, code] = registered.status === 400 ? ([400, 'invalid_request'] as const) : registered.status === 503 ? ([502, 'unavailable'] as const) : ([502, 'upstream_failed'] as const)
+    const [status, code] =
+      registered.status === 404 ? ([404, 'not_found'] as const) : registered.status === 409 ? ([409, 'conflict'] as const) : registered.status === 429 ? ([429, 'rate_limited'] as const) : registered.status < 500 ? ([400, 'invalid_request'] as const) : registered.status === 503 ? ([503, 'unavailable'] as const) : ([502, 'upstream_failed'] as const)
     return Problem.fail(status, code, `The gateway did not open the channel: ${registered.detail}`)
   }
   const hash = (registered.value.tx ?? ('hash' in input ? input.hash : undefined))?.toLowerCase() as Hex | undefined

@@ -442,7 +442,7 @@ export function document(origin: string) {
       '/v1/swarms/{id}/contributions': {
         post: {
           description:
-            'Counts money sent to the swarm: with hash, a transferWithMemo of USDC.e, pathUSD or OUSD from its sender to the swarm\'s wallet, or a MACH channel its sender opened for the swarm; with transaction, a MACH channel open signed for a fee payer and not sent, which the gateway sends, paying its fee. A MACH channel pays the gateway (config.channel.recipient), names config.channel.operator as operator and config.channel.signer as signer, holds at least config.channel.least MACH, and its salt is the memo; the gateway spends it for the swarm\'s agent and returns what is left to its payer when it closes. A note counts only when the memo is keccak256("note:<swarm>:<note>"); a counted transfer without a note can get one later. 201 when counted, 200 when a note was added.',
+            'Counts money sent to the swarm: with hash, a transferWithMemo of USDC.e, pathUSD or OUSD from its sender to the swarm\'s wallet, or a MACH channel its sender opened for the swarm; with transaction, a MACH channel open signed for a fee payer and not sent, which the gateway sends, paying its fee. A MACH channel pays the gateway (config.channel.recipient), names config.channel.operator as operator and config.channel.signer as signer, holds at least config.channel.least MACH, and its salt is the memo; the gateway spends it for the swarm\'s agent and returns what is left to its payer when it closes. A note counts only when the memo is keccak256("note:<swarm>:<note>"); a counted transfer without a note can get one later. 201 when counted, 200 when a note was added. A transaction the gateway refuses is never sent: 429 when it already paid the network fee of as many channel opens today as it pays for the sender\'s wallet (5, or more for a wallet that spent through the gateway; it counts again from 00:00 UTC), 503 when it cannot pay network fees right now, and the gateway\'s other refusals as 400, 404 or 409.',
           operationId: 'contribute',
           parameters: [swarm],
           requestBody: {
@@ -452,7 +452,7 @@ export function document(origin: string) {
           responses: {
             ...ok(ref('Contributed'), 'The note was added to a counted transfer.'),
             ...ok(ref('Contributed'), 'The transfer was counted.', '201'),
-            ...failures(400, 404, 409, 502),
+            ...failures(400, 404, 409, 429, 502, 503),
           },
           summary: 'Count money sent',
         },
