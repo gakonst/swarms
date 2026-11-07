@@ -27,8 +27,6 @@ const chain = () => Promise.all([import('viem'), import('viem/tempo'), import('v
 
 const kept = 'swarms.session'
 
-const approvalSeconds = 240
-
 function stored(): Session | undefined {
   if (server) return undefined
   if (fixture) return scene.has('in') ? { address: visitor, token: 'fixture' } : scene.has('expired') ? { address: visitor, token: 'expired' } : undefined
@@ -292,26 +290,13 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
     const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])
     if (fixtures.balances[input.token] < input.amount) throw Object.assign(new Error(`Your wallet holds less than this.`), { code: 'insufficient_balance' })
     const hash = `0x${Date.now().toString(16).padStart(64, '5')}` as Hex
-    fixtures.sent.set(hash, input.amount)
+    fixtures.sent.set(hash, { amount: input.amount, token: input.token })
     return hash
   }
-  const address = await connect(config)
   const token = config.tokens.find((item) => item.id === input.token)
   if (!token) throw new Error('That token is not offered.')
   const [{ encodeFunctionData }, { Abis }] = await chain()
-  const calls = [{ data: encodeFunctionData({ abi: Abis.tip20, args: [input.to, input.amount, input.memo], functionName: 'transferWithMemo' }), to: token.address }]
-  const receipt = (await (await wallet()).request({
-    method: 'eth_sendTransactionSync',
-    params: [{ calls, feeToken: token.address, from: address, ...expiring() }],
-  } as never)) as { status?: string; transactionHash?: Hex }
-  if (!receipt.transactionHash) throw new Error('Tempo Wallet returned no transaction.')
-  if (receipt.status && receipt.status !== 'success' && receipt.status !== '0x1') throw new Error('The transfer reverted.')
-  void refresh(config).catch(() => {})
-  return receipt.transactionHash
-}
-
-function expiring() {
-  return { nonce: '0x0', nonceKey: `0x${'f'.repeat(64)}`, validBefore: `0x${(Math.floor(Date.now() / 1000) + approvalSeconds).toString(16)}` }
+  return submit(config, [{ data: encodeFunctionData({ abi: Abis.tip20, args: [input.to, input.amount, input.memo], functionName: 'transferWithMemo' }), to: token.address }], token.address)
 }
 
 export async function open(config: Config, call: { data: Hex; to: Address }) {
@@ -319,18 +304,23 @@ export async function open(config: Config, call: { data: Hex; to: Address }) {
     const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])
     const amount = BigInt('0x' + call.data.slice(202, 266))
     if (fixtures.balances.mach < amount) throw Object.assign(new Error('Your wallet holds less than this.'), { code: 'insufficient_balance' })
-    const signed = `0x76${Date.now().toString(16).padStart(64, '7')}` as Hex
-    fixtures.sent.set(signed, amount)
-    return signed
+    const hash = `0x${Date.now().toString(16).padStart(64, '7')}` as Hex
+    fixtures.sent.set(hash, { amount, token: 'mach' })
+    return hash
   }
+  return submit(config, [call])
+}
+
+async function submit(config: Config, calls: readonly { data: Hex; to: Address }[], feeToken?: Address) {
   const address = await connect(config)
-  const signed = (await (await wallet()).request({
-    method: 'eth_signTransaction',
-    params: [{ calls: [call], feePayer: true, from: address, ...expiring() }],
-  } as never)) as Hex | undefined
-  if (!signed) throw new Error('Tempo Wallet returned no transaction.')
+  const receipt = (await (await wallet()).request({
+    method: 'eth_sendTransactionSync',
+    params: [{ calls, ...(feeToken ? { feeToken } : {}), from: address }],
+  } as never)) as { status?: string; transactionHash?: Hex }
+  if (!receipt.transactionHash) throw new Error('Tempo Wallet returned no transaction.')
+  if (receipt.status && receipt.status !== 'success' && receipt.status !== '0x1') throw new Error('The transaction reverted.')
   void refresh(config).catch(() => {})
-  return signed
+  return receipt.transactionHash
 }
 
 export async function refresh(config: Config) {

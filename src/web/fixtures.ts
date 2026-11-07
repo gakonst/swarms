@@ -607,22 +607,21 @@ function begin(swarm: Live) {
   if (swarm.script.length === 0) swarm.script = translation
 }
 
-export const sent = new Map<string, bigint>()
+export const sent = new Map<string, { amount: bigint; token: Currency }>()
 
 const dropped = new Set<string>()
 
-export async function contribute(key: string, input: { hash?: string; note?: string; transaction?: string }): Promise<Contributed> {
+export async function contribute(key: string, input: { hash: string; note?: string }): Promise<Contributed> {
   const swarm = await find(key)
-  const hash = (input.hash ?? input.transaction ?? '0x') as `0x${string}`
+  const hash = input.hash as `0x${string}`
   if (swarm.contributions.some((gift) => gift.hash === hash)) throw fail(409, 'conflict', 'This transaction is already counted.')
-  if (scene.has('capped') && input.transaction)
-    throw fail(429, 'rate_limited', 'The gateway did not open the channel: Nothing was sent or charged: the gateway already paid the network fee of 5 channel opens today for the paying wallet 0x9759…e122, the most it pays for it in a day. It counts again from 00:00 UTC, in 3 h 40 min. MACH cannot pay a network fee, so a wallet that holds only MACH has to try again after then; a wallet that also holds OUSD, pathUSD or USDC.e can open the channel itself, paying its fee in that, and register it with its descriptor alone.')
   if (scene.has('uncounted') && !dropped.has(hash)) {
     dropped.add(hash)
     throw fail(502, 'unavailable', 'Swarms could not reach Tempo to check the transfer.')
   }
-  const token = input.transaction ? 'mach' : 'usdce'
-  const contribution: Contribution = { amount: decimal(sent.get(hash) ?? 250_000n), at: Date.now(), contributor: visitor, hash, note: input.note?.trim() || null, token }
+  const paid = sent.get(hash)
+  const token = paid?.token ?? 'usdce'
+  const contribution: Contribution = { amount: decimal(paid?.amount ?? 250_000n), at: Date.now(), contributor: visitor, hash, note: input.note?.trim() || null, token }
   swarm.contributions.push(contribution)
   if (contribution.note) swarm.steered.add(contribution.note)
   push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} sent ${contribution.amount} ${token === 'mach' ? 'MACH' : 'USDC.e'}${contribution.note ? ' with a note' : ''}`, contribution.note, Date.now())

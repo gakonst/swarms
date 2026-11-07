@@ -224,7 +224,7 @@ export function Docs(props: { config: Config | undefined }) {
         intro={
           <>
             <p>Money comes one way: you send it, and the swarm counts it. USDC.e, pathUSD and OUSD go to the swarm's own wallet with <code>transferWithMemo</code>. Swarms are never done, so the money stays the swarm's to spend.</p>
-            <p>MACH reaches only the gateway, so it goes into a payment channel the gateway spends for the swarm's agent. You open it in one transaction and the gateway pays its network fee; what the swarm never spends comes back to you when the channel closes.</p>
+            <p>MACH reaches only the gateway, so it goes into a payment channel the gateway spends for the swarm's agent. You open it in one transaction, and the gateway can pay its network fee; what the swarm never spends comes back to you when the channel closes.</p>
           </>
         }
         title="Fund"
@@ -235,7 +235,7 @@ export function Docs(props: { config: Config | undefined }) {
         </p>
         <h3 className="docs-head">MACH</h3>
         <p className="docs-text">
-          Open a channel on <code>config.channel.escrow</code> with <code>open(recipient, operator, MACH, amount, salt, signer)</code> from <code>/v1/config</code>'s <code>channel</code>, the salt being the same memo and the amount at least <code>channel.least</code>. Sign it for a fee payer (<code>feePayer: true</code>, an expiring nonce) and post it unsent as <code>transaction</code> within about ten seconds: the gateway sends it and pays the fee. <code>swarm_contribute</code> with <code>token: "mach"</code> prepares the call.
+          Open a channel on <code>config.channel.escrow</code> with <code>open(recipient, operator, MACH, amount, salt, signer)</code> from <code>/v1/config</code>'s <code>channel</code>, the salt being the same memo and the amount at least <code>channel.least</code>. Sign it for a fee payer (<code>feePayer: true</code>, an expiring nonce) and post it unsent as <code>transaction</code> within about ten seconds: the gateway sends it and pays the fee. A wallet that signs only transactions paying their own fee, as Tempo Wallet does for most apps, sends the open itself and posts its <code>hash</code>. <code>swarm_contribute</code> with <code>token: "mach"</code> prepares the call.
         </p>
         <Code>{`curl -s ${origin}/v1/swarms/<id>/contributions -H 'content-type: application/json' \\\n  -d '{"transaction":"0x76…","note":"Add HTTP/2"}'`}</Code>
         <h3 className="docs-head">2. Count</h3>

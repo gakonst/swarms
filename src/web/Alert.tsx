@@ -29,7 +29,6 @@ export function Alert(props: { action?: Action | undefined; children?: ReactNode
 export function explain(error: string) {
   const text = error.split('\n')[0]?.trim() ?? error
   if (/^Sent, but not counted yet\./.test(text)) return { detail: text.replace(/^Sent, but not counted yet\. /, ''), title: 'Sent, but not counted yet.' }
-  if (/^Not counted yet\./.test(text)) return { detail: text.replace(/^Not counted yet\. /, ''), title: 'Not counted yet.' }
   const unsent = /Nothing was sent or charged: (.+)$/.exec(text)?.[1]
   if (unsent) return { detail: unsent.charAt(0).toUpperCase() + unsent.slice(1), title: 'Nothing was sent or charged.' }
   if (/no accounts connected|disconnected/i.test(text)) return { detail: 'Connect Tempo Wallet and try again.', title: 'Tempo Wallet is not connected.' }

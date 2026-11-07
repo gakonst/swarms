@@ -1264,18 +1264,22 @@ async function channeled(
   const terms = await Gateway.sponsorship(env)
   if (!terms) return Problem.fail(502, 'unavailable', unsponsored)
 
+  const parsed = (() => {
+    if (!('transaction' in input)) return undefined
+    try {
+      return Transaction.deserialize(input.transaction as never) as { calls?: readonly { data?: Hex; to?: Address | null }[]; feePayerSignature?: unknown; from?: Address }
+    } catch {
+      return undefined
+    }
+  })()
+  if (parsed && parsed.feePayerSignature === undefined)
+    return Problem.fail(400, 'invalid_request', 'This open was signed to pay its own network fee, not for a fee payer, so the gateway cannot send it. Send it from the wallet and post its hash.')
+
   const read = (() => {
     if ('opened' in input) {
       const { channelId, deposit, ...descriptor } = input.opened.args
       return { deposit, descriptor, id: channelId }
     }
-    const parsed = (() => {
-      try {
-        return Transaction.deserialize(input.transaction as never) as { calls?: readonly { data?: Hex; to?: Address | null }[]; from?: Address }
-      } catch {
-        return undefined
-      }
-    })()
     const call = parsed?.calls?.length === 1 ? parsed.calls[0] : undefined
     if (!parsed?.from || !call?.data || !call.to || call.to.toLowerCase() !== terms.escrow.toLowerCase()) return undefined
     const decoded = (() => {
