@@ -1,8 +1,6 @@
 import { type ReactNode, useState } from 'react'
 import type { Config, Currency } from '../shared/Api.ts'
-import * as Channel from '../shared/Channel.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
-import { memo } from '../shared/Transfer.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { mach, symbols } from './format.ts'
@@ -103,10 +101,12 @@ export async function record(paid: Unrecorded) {
 export async function send(config: Config, target: Target, amount: bigint, note: string, token: Currency) {
   if (token === 'mach') {
     if (!config.channel) throw new Error('MACH is not offered right now. Send USDC.e, OUSD or pathUSD instead.')
+    const Channel = await import('../shared/Channel.ts')
     const transaction = await Wallet.open(config, Channel.open(config.channel, target.id, amount, note))
     return record({ amount, note, swarm: target.id, token, transaction })
   }
   if (!target.wallet) throw new Error('This swarm has no wallet yet. Try again in a moment.')
+  const { memo } = await import('../shared/Transfer.ts')
   const hash = await Wallet.send(config, { amount, memo: memo(target.id, note), to: target.wallet, token })
   return record({ amount, hash, note, swarm: target.id, token })
 }

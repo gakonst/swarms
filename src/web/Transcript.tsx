@@ -153,7 +153,7 @@ function Peek(props: { artifact: Artifact }) {
   )
 }
 
-const Shelved = pure(function Shelved(props: { artifact: Artifact | undefined; entry: Entry; latest: boolean; onOpen: (slug: string) => void }) {
+const Shelved = pure(function Shelved(props: { artifact: Artifact | undefined; entry: Entry; latest: boolean; onOpen: (slug: string) => void; pending: boolean }) {
   const found = shelfOf(props.entry)
   const slug = props.artifact?.slug ?? found?.slug
   const summary = props.artifact?.summary ?? props.entry.detail?.split('\n').find((line) => line && !line.startsWith('/a/')) ?? null
@@ -177,7 +177,7 @@ const Shelved = pure(function Shelved(props: { artifact: Artifact | undefined; e
           <b>{props.artifact?.title ?? found?.title ?? props.entry.text}</b>
           {summary && <span className="shelved-summary">{summary}</span>}
         </span>
-        {props.latest && props.artifact && <Peek artifact={props.artifact} />}
+        {props.latest && (props.artifact ? <Peek artifact={props.artifact} /> : props.pending && <span className="shelved-peek" />)}
         <span aria-hidden="true" className="shelved-open">Open →</span>
       </div>
     </li>
@@ -692,7 +692,7 @@ export function Transcript(props: {
             const made = shelfOf(row.entry)
             if (made) {
               const artifact = resolve(shelved, made)
-              return <Shelved artifact={artifact} entry={row.entry} key={rowKey(row)} latest={latest.get(artifact?.slug ?? made.slug ?? made.title) === row.entry} onOpen={props.onArtifact} />
+              return <Shelved artifact={artifact} entry={row.entry} key={rowKey(row)} latest={latest.get(artifact?.slug ?? made.slug ?? made.title) === row.entry} onOpen={props.onArtifact} pending={!shelved} />
             }
             return [name, <Beat entry={row.entry} key={rowKey(row)} onFund={() => props.onFund('')} times={repeats.get(row.entry)} />]
           })}
