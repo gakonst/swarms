@@ -29,7 +29,7 @@ const fits: Record<Filter, (swarm: Summary) => boolean> = {
   open: (swarm) => swarm.status !== 'done',
   resting: (swarm) => Status.word(swarm) === 'Resting' || Status.word(swarm) === 'Stopped after errors',
   running: (swarm) => swarm.status === 'running',
-  waiting: (swarm) => Status.word(swarm) === 'Not started',
+  waiting: (swarm) => Status.word(swarm) === 'Not started' || Status.word(swarm) === 'Starting',
 }
 
 function sorted(swarms: readonly Summary[] | undefined) {

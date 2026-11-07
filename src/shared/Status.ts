@@ -1,6 +1,12 @@
 import type { Summary } from './Api.ts'
 
-export type Word = 'Running' | 'Resting' | 'Stopped after errors' | 'Needs money' | 'Not started' | 'Finished'
+export type Word = 'Running' | 'Starting' | 'Resting' | 'Stopped after errors' | 'Needs money' | 'Not started' | 'Finished'
+
+export type Mood = 'live' | 'money' | 'resting' | 'errors' | 'new' | 'done'
+
+export type Standing = { action: string | null; mood: Mood; word: Word }
+
+export type Stood = Pick<Summary, 'raised' | 'remaining' | 'status'> & { why?: Summary['why'] | undefined }
 
 export const fuel = 0.05
 
@@ -8,15 +14,20 @@ export function fueled(swarm: Pick<Summary, 'remaining'>) {
   return Number(swarm.remaining) >= fuel
 }
 
-export function word(swarm: Pick<Summary, 'raised' | 'remaining' | 'status'> & { why?: Summary['why'] | undefined }): Word {
-  if (swarm.status === 'running') return 'Running'
-  if (swarm.status === 'done') return 'Finished'
-  if (swarm.status === 'funding' && Number(swarm.raised) <= 0) return 'Not started'
-  if (swarm.why === 'idle') return 'Resting'
-  if (swarm.why === 'rest') return 'Stopped after errors'
-  if (swarm.status === 'funding') return 'Not started'
-  if (swarm.why) return 'Needs money'
-  return fueled(swarm) ? 'Resting' : 'Needs money'
+export function standing(swarm: Stood): Standing {
+  if (swarm.status === 'running') return { action: null, mood: 'live', word: 'Running' }
+  if (swarm.status === 'done') return { action: null, mood: 'done', word: 'Finished' }
+  if (swarm.status === 'funding' && Number(swarm.raised) <= 0) return { action: 'Fund $2 to start it', mood: 'new', word: 'Not started' }
+  if (swarm.status === 'funding' && !swarm.why) return { action: null, mood: 'live', word: 'Starting' }
+  if (swarm.why === 'idle') return { action: null, mood: 'resting', word: 'Resting' }
+  if (swarm.why === 'rest') return { action: null, mood: 'errors', word: 'Stopped after errors' }
+  if (swarm.status === 'funding') return { action: 'Add $2 to start it', mood: 'money', word: 'Not started' }
+  if (!swarm.why && fueled(swarm)) return { action: null, mood: 'resting', word: 'Resting' }
+  return { action: 'Add $2 to wake it', mood: 'money', word: 'Needs money' }
+}
+
+export function word(swarm: Stood): Word {
+  return standing(swarm).word
 }
 
 export function count(swarms: readonly Pick<Summary, 'remaining' | 'status'>[]) {
