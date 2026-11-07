@@ -7,6 +7,7 @@ import * as Api from './api.ts'
 import { ago, usd } from './format.ts'
 import { message, useMedia, useNow } from './hooks.ts'
 import { Link } from './router.tsx'
+import * as Wire from './wire.ts'
 
 export type Commit = { author?: { email: string | null; name: string | null }; date: string | null; message: string; parents?: string[]; sha: string }
 
@@ -229,7 +230,11 @@ export function Code(props: { gateway: string; repo: Repo; swarm: string; update
   })
   const [path, setPath] = useState<string>()
   const [open, setOpen] = useState<number>()
+  const [stirs, setStirs] = useState(0)
   const now = useNow(30_000)
+  Wire.useWire(props.swarm, 'room', (signal) => {
+    if (Wire.stirred(signal, 'code')) setStirs((count) => count + 1)
+  })
 
   useEffect(() => {
     let alive = true
@@ -239,7 +244,7 @@ export function Code(props: { gateway: string; repo: Repo; swarm: string; update
         read<{ files: { path: string; type: string }[] }>(`${base}/files?ref=main&v=${encodeURIComponent(version)}`),
       ]).then(([log, files]) => ({ commits: log.commits, files: files.files.filter((file) => file.type !== 'tree').map((file) => file.path), readme: null }))
     const latest = props.updates.findLast((update) => update.commits.length)?.commits[0]
-    Api.code(props.swarm, version !== '0' && Date.now() - Number(version) < 60_000)
+    Api.code(props.swarm, stirs > 0 || (version !== '0' && Date.now() - Number(version) < 60_000))
       .catch(() => null)
       .then((snapshot): Pick<Snapshot, 'commits' | 'files' | 'readme'> | Promise<Pick<Snapshot, 'commits' | 'files' | 'readme'>> => (snapshot && snapshot.name === props.repo.name && (!latest || snapshot.commits.some((commit) => commit.sha === latest)) ? snapshot : direct()))
       .then(
@@ -253,7 +258,7 @@ export function Code(props: { gateway: string; repo: Repo; swarm: string; update
     return () => {
       alive = false
     }
-  }, [base, version])
+  }, [base, version, stirs])
 
   const pushed = [...props.updates].filter((update) => update.commits.length).reverse()
   const commits = state.commits

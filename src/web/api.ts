@@ -1,4 +1,4 @@
-import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Posted, Problem, Room, Roster, Snapshot, Steering, Summary } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, Posted, Problem, Room, Roster, Snapshot, Steering, Summary } from '../shared/Api.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Machine } from '../shared/Fleet.ts'
 import { seeded } from './boot.ts'
@@ -81,12 +81,12 @@ export function feed(id: string, after: number, filter: { before?: number; who?:
   return fixture ? staged((fixtures) => fixtures.feed(id, after, filter)) : request<{ entries: Entry[]; next: number }>(`${path(id)}/feed?${query}`)
 }
 
-export function live(id: string, listener: (event: Live) => void, after?: () => number, lost?: () => void) {
+export function live(id: string, after: () => number, listener: (event: Live | { type: 'lost' | 'open' }) => void) {
   if (fixture) {
     let stop: (() => void) | undefined
     let alive = true
     void staged((fixtures) => {
-      if (alive) stop = fixtures.live(id, listener)
+      if (alive) stop = fixtures.live(id, after(), listener)
     })
     return () => {
       alive = false
@@ -97,23 +97,23 @@ export function live(id: string, listener: (event: Live) => void, after?: () => 
   let source: EventSource | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
   let seen = 0
-  const again = (ms: number) => {
-    source?.close()
-    if (alive) timer = setTimeout(open, ms)
-  }
   const open = () => {
-    const cursor = after ? Math.max(after(), seen) : undefined
-    source = new EventSource(cursor === undefined ? `${path(id)}/live` : `${path(id)}/live?after=${cursor}`)
+    const opened = Date.now()
+    let fed = false
+    source = new EventSource(`${path(id)}/live?after=${Math.max(after(), seen)}`)
+    source.onopen = () => listener({ type: 'open' })
     source.onmessage = (message) => {
       const event = JSON.parse(String(message.data)) as Live
-      if (event.type === 'entry') seen = Math.max(seen, event.entry.seq)
+      if (event.type === 'entry' && event.entry.seq > seen) {
+        seen = event.entry.seq
+        fed = true
+      }
       listener(event)
-      if (cursor === undefined && (event.type === 'end' || event.type === 'idle')) again(event.type === 'end' ? 1500 : 4000)
     }
     source.onerror = () => {
-      if (lost) lost()
-      else listener({ type: 'idle' })
-      again(3000)
+      source?.close()
+      listener({ type: 'lost' })
+      if (alive) timer = setTimeout(open, fed || Date.now() - opened > 30_000 ? 0 : 3000)
     }
   }
   open()
@@ -207,14 +207,50 @@ export function btw(id: string, input: { branch?: number; question: string; thre
 
 export type Line = { close: () => void; hello: () => void; typing: () => void }
 
-export function chatter(id: string, listener: (event: Chatter | { type: 'open' | 'closed' }) => void): Line {
+function socket(url: string, listener: (event: { data: string } | { type: 'open' | 'closed' }) => void, opened?: (send: (data: string) => void) => void) {
+  let alive = true
+  let line: WebSocket | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let ping: ReturnType<typeof setInterval> | undefined
+  const send = (data: string) => {
+    if (line?.readyState === WebSocket.OPEN) line.send(data)
+  }
+  const open = () => {
+    line = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${url}`)
+    line.onopen = () => {
+      opened?.(send)
+      listener({ type: 'open' })
+      ping = setInterval(() => send('ping'), 30_000)
+    }
+    line.onmessage = (message) => {
+      if (message.data !== 'pong') listener({ data: String(message.data) })
+    }
+    line.onclose = () => {
+      clearInterval(ping)
+      listener({ type: 'closed' })
+      if (alive) timer = setTimeout(open, 3000)
+    }
+  }
+  open()
+  return {
+    close: () => {
+      alive = false
+      clearTimeout(timer)
+      clearInterval(ping)
+      line?.close()
+    },
+    send,
+  }
+}
+
+export function chatter(id: string, listen: boolean, listener: (event: Chatter | { type: 'open' | 'closed' }) => void): Line {
   if (fixture) {
     let line: Line | undefined
     let closed = false
     let greeted = false
     void staged((fixtures) => {
       if (closed) return
-      line = fixtures.chatter(id, listener)
+      line = fixtures.chatter(id, listen, listener)
       if (greeted) line.hello()
     })
     return {
@@ -229,40 +265,30 @@ export function chatter(id: string, listener: (event: Chatter | { type: 'open' |
       typing: () => line?.typing(),
     }
   }
-  let alive = true
-  let socket: WebSocket | undefined
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let ping: ReturnType<typeof setInterval> | undefined
-  const send = (data: string) => {
-    if (socket?.readyState === WebSocket.OPEN) socket.send(data)
-  }
-  const hello = () => send(JSON.stringify({ token: bearer ?? '', type: 'hello' }))
-  const open = () => {
-    socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${path(id)}/chat/live`)
-    socket.onopen = () => {
-      if (bearer) hello()
-      listener({ type: 'open' })
-      ping = setInterval(() => send('ping'), 30_000)
-    }
-    socket.onmessage = (message) => {
-      if (message.data !== 'pong') listener(JSON.parse(String(message.data)) as Chatter)
-    }
-    socket.onclose = () => {
-      clearInterval(ping)
-      listener({ type: 'closed' })
-      if (alive) timer = setTimeout(open, 3000)
-    }
-  }
-  open()
+  const hello = (send: (data: string) => void) => send(JSON.stringify({ token: bearer ?? '', type: 'hello' }))
+  const line = socket(`${path(id)}/chat/live${listen ? '?listen=1' : ''}`, (event) => listener('data' in event ? (JSON.parse(event.data) as Chatter) : event), (send) => {
+    if (bearer && !listen) hello(send)
+  })
   return {
-    close: () => {
-      alive = false
-      clearTimeout(timer)
-      clearInterval(ping)
-      socket?.close()
+    close: line.close,
+    hello: () => {
+      if (!listen) hello(line.send)
     },
-    hello,
-    typing: () => send('{"type":"typing"}'),
+    typing: () => line.send('{"type":"typing"}'),
   }
 }
 
+export function lobby(listener: (event: Lobby | { type: 'open' | 'closed' }) => void) {
+  if (fixture) {
+    let stop: (() => void) | undefined
+    let alive = true
+    void staged((fixtures) => {
+      if (alive) stop = fixtures.lobby(listener)
+    })
+    return () => {
+      alive = false
+      stop?.()
+    }
+  }
+  return socket('/api/swarms/live', (event) => listener('data' in event ? (JSON.parse(event.data) as Lobby) : event)).close
+}

@@ -1,9 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { Entry, Hand, Lent } from '../shared/Api.ts'
 import { fleet, type Machine } from '../shared/Fleet.ts'
 import * as Api from './api.ts'
 import { ago, clock, duration, usd } from './format.ts'
 import { useNow, usePoll } from './hooks.ts'
+import * as Wire from './wire.ts'
+
+const lentMs = { down: 15_000, live: 60_000 }
+
+const servedMs = { idle: 60_000, working: 10_000 }
 
 const kinds = { browser: 'Browser', hand: 'Lent machine', sandbox: 'Sandbox' } as const
 
@@ -64,8 +69,22 @@ function Row(props: { machine: Machine; now: number; onPick: () => void; open: b
 
 export function Machines(props: { entries: readonly Entry[]; hands: readonly Hand[]; live: boolean; swarm: string }) {
   const now = useNow(1000)
-  const [lent] = usePoll(() => Api.hands(props.swarm), 15_000, `hands:${props.swarm}`)
-  const [served] = usePoll(() => Api.machines(props.swarm), props.live ? 10_000 : 60_000, `machines:${props.swarm}`)
+  const wired = Wire.useWire(props.swarm, 'room', (signal) => {
+    if (!Wire.stirred(signal, 'hands')) return
+    relend()
+    reserve()
+  })
+  const mark = useMemo(() => props.entries.reduce((most, entry) => (entry.kind === 'machine' || entry.kind === 'tool' || entry.kind === 'output' ? Math.max(most, entry.seq) : most), 0), [props.entries])
+  const read = useRef(mark)
+  const [lent, relend] = usePoll(() => Api.hands(props.swarm), wired === 'down' ? lentMs.down : lentMs.live, `hands:${props.swarm}`)
+  const [served, reserve] = usePoll(
+    () => {
+      read.current = mark
+      return Api.machines(props.swarm)
+    },
+    wired === 'down' ? (props.live ? servedMs.working : servedMs.idle) : mark > read.current ? servedMs.working : null,
+    `machines:${props.swarm}`,
+  )
   const local = useMemo(() => fleet(props.entries, props.hands, lent.data?.hands ?? ([] as Lent[])), [props.entries, props.hands, lent.data])
   const machines = served.data?.machines.length ? served.data.machines : local
   const [picked, setPicked] = useState<string>()

@@ -59,13 +59,17 @@ const session = stored()
 
 const same = (address: Address | undefined) => !!address && seen?.address.toLowerCase() === address.toLowerCase()
 
+function lower<T extends Address | undefined>(address: T) {
+  return address?.toLowerCase() as T
+}
+
 let state: State = {
   account: session && same(session.address) ? seen?.account : undefined,
-  address: session?.address ?? (fixture ? undefined : seen?.address),
+  address: lower(session?.address ?? (fixture ? undefined : seen?.address)),
   balance: same(session?.address ?? seen?.address) && seen?.balance !== undefined ? BigInt(seen.balance) : undefined,
   balances: {},
   pending: !session && !!seen && !fixture,
-  session,
+  session: session && { ...session, address: lower(session.address) },
 }
 
 function mirror() {
@@ -107,7 +111,8 @@ function wallet() {
 
 const remembered = 'swarms.wallet'
 
-function set(next: Partial<State>) {
+function set(change: Partial<State>) {
+  const next = { ...change, ...(change.address ? { address: lower(change.address) } : {}), ...(change.session ? { session: { ...change.session, address: lower(change.session.address) } } : {}) }
   state = { ...state, ...next }
   if (next.address && !fixture) localStorage.setItem(remembered, next.address)
   if ('session' in next) {
@@ -158,7 +163,7 @@ export async function restore(config: Config) {
     const address = accounts[0]
     if (state.pending) set({ pending: false })
     if (!address) return set({ account: undefined, address: undefined, balance: undefined, balances: {} })
-    if (address.toLowerCase() !== state.address?.toLowerCase()) set({ account: undefined, address, balance: undefined, balances: {} })
+    if (address.toLowerCase() !== state.address) set({ account: undefined, address, balance: undefined, balances: {} })
   }
   if (state.address) await refresh(config)
 }
@@ -172,8 +177,8 @@ export async function connect(config: Config) {
   const listed = (await provider.request({ method: 'eth_accounts' }).catch(() => [] as readonly Address[]))[0]
   const address = listed ?? (await provider.request({ method: 'eth_requestAccounts' }))[0]
   if (!address) throw new Error('Tempo Wallet returned no account.')
-  if (address.toLowerCase() === state.address?.toLowerCase()) return state.address
-  const switched = !!state.session && state.session.address.toLowerCase() !== address.toLowerCase()
+  if (address.toLowerCase() === state.address) return address
+  const switched = !!state.session && state.session.address !== address.toLowerCase()
   set({ account: switched ? undefined : state.account, address, ...(switched ? { session: undefined } : {}) })
   void refresh(config).catch(() => {})
   return address
@@ -183,7 +188,7 @@ export async function signIn(config: Config) {
   if (fixture) {
     await asked()
     const session = { address: visitor, token: 'fixture' } satisfies Session
-    set({ address: session.address, session })
+    set({ address: session.address, pending: false, session })
     void identify()
     return session
   }
@@ -194,8 +199,8 @@ export async function signIn(config: Config) {
   const account = result.accounts[0]
   const token = account?.capabilities?.auth?.token
   if (!account || !token) throw new Error('Tempo Wallet returned no session.')
-  const session = { address: account.address.toLowerCase() as Address, token }
-  set({ account: undefined, address: account.address, session })
+  const session = { address: account.address, token }
+  set({ account: undefined, address: account.address, pending: false, session })
   void refresh(config).catch(() => {})
   void identify()
   return session

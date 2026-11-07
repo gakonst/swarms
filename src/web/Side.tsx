@@ -3,12 +3,13 @@ import type { Config, Detail, Said } from '../shared/Api.ts'
 import * as Btw from '../shared/Btw.ts'
 import { decimal, units } from '../shared/Memo.ts'
 import { Alert, explain } from './Alert.tsx'
+import { useBranches } from './Branches.tsx'
 import * as Api from './api.ts'
 import { usd } from './format.ts'
-import { message, usePoll, useWallet } from './hooks.ts'
+import { message } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
 import { useCredit } from './money.ts'
-import { seated, useRoster } from './Steering.tsx'
+import { useGate } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 
@@ -47,11 +48,8 @@ export function Side(props: {
   question: { at: number; text: string }
   swarm: Detail
 }) {
-  const wallet = useWallet()
-  const roster = useRoster(props.swarm.id, props.swarm.steering)
-  const team = props.swarm.steering === 'team'
-  const seat = seated(roster, wallet.session?.address)
-  const [listed] = usePoll(() => Api.branches(props.swarm.id), 30_000, `branches:${props.swarm.id}`)
+  const door = useGate(props.swarm)
+  const listed = useBranches(props.swarm.id, props.swarm.status === 'running')
   const branches = (listed.data?.branches ?? []).filter((branch) => branch.parent === null)
   const target = branches.find((branch) => branch.id === props.branch)
   const name = target ? target.who : 'the agent'
@@ -118,9 +116,8 @@ export function Side(props: {
     const kept = Btw.fit(asked)
     try {
       const need = units(stake)
-      if (team) {
-        if (!seat) throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
-      } else await credit.cover(config, props.swarm, need, setBusy)
+      if (typeof door !== 'object' || door.at !== 'open') throw new Error("Only this swarm's team steers it. Ask one of its admins in the room to add you.")
+      if (door.from === 'backing') await credit.cover(config, props.swarm, need, setBusy)
       setBusy('Sending…')
       if (props.branch === null) {
         const posted = await Api.say(props.swarm.id, { artifact, btw: kept, steer: decimal(need), text: `@swarm ${Btw.note(kept, artifact)}` })
@@ -153,7 +150,8 @@ export function Side(props: {
   }
 
   const gate = (() => {
-    if (!wallet.session)
+    if (door === 'checking') return <p aria-busy="true" className="side-note" />
+    if (door === 'signed-out')
       return (
         <button
           className="side-go"
@@ -168,8 +166,8 @@ export function Side(props: {
           {busy ?? 'Sign in to ask on the side'}
         </button>
       )
-    if (wallet.account && !wallet.account.name) return <Username why="Pick a username to ask the swarm on the side and steer it." />
-    if (team && roster && !seat) return <p className="side-note"><b>Only its team asks this swarm on the side.</b> Its admins add who may.</p>
+    if (door === 'unnamed') return <Username why="Pick a username to ask the swarm on the side and steer it." />
+    if (door.at === 'not-member') return <p className="side-note"><b>Only its team asks this swarm on the side.</b> Its admins add who may.</p>
     return undefined
   })()
 
@@ -207,7 +205,7 @@ export function Side(props: {
       {done && <p className="side-done">{done}</p>}
       {gate ?? (
         <>
-          {(thread.length > 0 || !!text.trim()) && props.swarm.status !== 'done' && (
+          {(thread.length > 0 || !!text.trim()) && (
             <div className="side-act">
               <div className="say-stake" role="radiogroup" aria-label="How much behind it">
                 {stakes.map((value) => (
@@ -221,7 +219,7 @@ export function Side(props: {
                 {thread.length > 0 && <button className="side-quiet" disabled={!!busy} onClick={() => void share()} type="button">Share to room</button>}
                 {thread.length > 0 && <button className="side-quiet" disabled={!!busy} onClick={() => remember([])} type="button">Clear</button>}
               </div>
-              <p className="side-note">{busy ?? (team ? `From the swarm's money${seat?.left === null || seat?.left === undefined ? '' : ` · ${usd(seat.left)} of your team budget left`}.` : 'New money from your wallet goes behind it.')}</p>
+              <p className="side-note">{busy ?? (typeof door === 'object' && door.at === 'open' && door.from === 'team' ? `From the swarm's money${door.left === null ? '' : ` · ${usd(door.left)} of your team budget left`}.` : 'New money from your wallet goes behind it.')}</p>
             </div>
           )}
           <form className="side-box" onSubmit={(event) => { event.preventDefault(); void ask() }}>

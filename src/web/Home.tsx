@@ -2,12 +2,11 @@ import { useState } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
 import * as Status from '../shared/Status.ts'
-import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { ago, usd } from './format.ts'
-import { usePoll } from './hooks.ts'
 import { open, problems } from './research.ts'
 import { href, Link, navigate, prefetch } from './router.tsx'
+import * as Wire from './wire.ts'
 
 const order = { running: 0, paused: 1, funding: 2, done: 3 } as const
 
@@ -30,7 +29,7 @@ const fits: Record<Filter, (swarm: Summary) => boolean> = {
   open: (swarm) => swarm.status !== 'done',
   resting: (swarm) => Status.word(swarm) === 'Resting' || Status.word(swarm) === 'Stopped after errors',
   running: (swarm) => swarm.status === 'running',
-  waiting: (swarm) => Status.word(swarm) === 'Not started',
+  waiting: (swarm) => Status.word(swarm) === 'Not started' || Status.word(swarm) === 'Starting',
 }
 
 function sorted(swarms: readonly Summary[] | undefined) {
@@ -91,7 +90,7 @@ function Title(props: { text: string }) {
 }
 
 export function Home() {
-  const [list] = usePoll(() => Api.swarms(), 5000, 'swarms', { keep: true })
+  const list = Wire.useSwarms()
   const swarms = sorted(list.data?.swarms)
   const open = swarms.filter((swarm) => swarm.status !== 'done')
   const counted = Status.count(swarms)
@@ -142,7 +141,7 @@ export function Home() {
 }
 
 export function Join() {
-  const [list] = usePoll(() => Api.swarms(), 5000, 'swarms', { keep: true })
+  const list = Wire.useSwarms()
   const [start] = useState(asked)
   const [filter, setFilter] = useState<Filter>(start.filter)
   const [picked, setPicked] = useState<string | undefined>(start.open)

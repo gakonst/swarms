@@ -93,19 +93,24 @@ export function useStable<A extends unknown[], R>(run: (...args: A) => R) {
   return useCallback((...args: A) => current.current(...args), [])
 }
 
-export function usePoll<T>(load: () => Promise<T>, ms: number | ((data: T | undefined) => number), key: string, options: { keep?: boolean } = {}) {
+export function usePoll<T>(load: () => Promise<T>, ms: number | null | ((data: T | undefined) => number | null), key: string, options: { keep?: boolean } = {}) {
   const [state, setState] = useState<{ data?: T | undefined; error?: string }>(() => {
     const data = remembered<T>(key) ?? seeded<T>(key) ?? (options.keep ? recall<T>(key) : undefined)
     const failed = seeded<string>(`!${key}`)
     return data === undefined ? (failed ? { error: failed } : {}) : { data }
   })
-  const warm = useRef(remembered(key) === undefined && (seeded(key) !== undefined || seeded(`!${key}`) !== undefined))
   const [version, setVersion] = useState(0)
+  const [landed, setLanded] = useState(0)
   const current = useRef(load)
   const pace = useRef(ms)
   const held = useRef(state)
+  const keyed = useRef(key)
   const text = useRef<string | undefined>(undefined)
+  const started = useRef(remembered(key) !== undefined ? 0 : seeded(key) !== undefined || seeded(`!${key}`) !== undefined ? (boot()?.now ?? Date.now()) : undefined)
+  const asked = useRef(false)
+  const flight = useRef<Promise<void> | undefined>(undefined)
   const visible = useVisible()
+  const every = typeof ms === 'function' ? ms(state.data) : ms
 
   useEffect(() => {
     current.current = load
@@ -113,48 +118,80 @@ export function usePoll<T>(load: () => Promise<T>, ms: number | ((data: T | unde
     held.current = state
   })
 
-  useEffect(() => {
-    if (!visible) return
-    let alive = true
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const run = async () => {
-      let latest = held.current.data
-      try {
-        const data = await current.current()
-        if (!alive) return
-        latest = data
-        const json = JSON.stringify(data)
-        const before = text.current ?? (held.current.data === undefined ? undefined : JSON.stringify(held.current.data))
-        text.current = json
-        if (json !== before || held.current.error !== undefined) {
-          if (options.keep) keep(key, data)
-          else remember(key, data)
-          setState({ data })
-        }
-      } catch (error) {
-        if (alive) setState((previous) => ({ ...previous, error: message(error) }))
-      }
-      if (alive) timer = setTimeout(() => void run(), wait(latest))
-    }
-    const wait = (data: T | undefined) => (typeof pace.current === 'number' ? pace.current : pace.current(data))
-    if (warm.current) {
-      warm.current = false
-      const pace = wait(held.current.data)
-      timer = setTimeout(() => void run(), Math.min(pace, Math.max(0, pace - (Date.now() - (boot()?.now ?? Date.now())))))
-    } else void run()
-    return () => {
-      alive = false
-      clearTimeout(timer)
-    }
-  }, [key, typeof ms === 'number' ? ms : 0, version, visible])
+  const store = useStable((data: T) => {
+    if (options.keep) keep(key, data)
+    else remember(key, data)
+  })
 
-  const reload = useCallback(() => setVersion((value) => value + 1), [])
-  return [state, reload] as const
+  const fetched = useStable(() => {
+    if (flight.current) return flight.current
+    const wanted = keyed.current
+    started.current = Date.now()
+    const promise = current
+      .current()
+      .then(
+        (data) => {
+          if (keyed.current !== wanted) return
+          const json = JSON.stringify(data)
+          const before = text.current ?? (held.current.data === undefined ? undefined : JSON.stringify(held.current.data))
+          text.current = json
+          if (json === before && held.current.error === undefined) return
+          store(data)
+          setState({ data })
+        },
+        (error: unknown) => {
+          if (keyed.current === wanted) setState((previous) => ({ ...previous, error: message(error) }))
+        },
+      )
+      .finally(() => {
+        flight.current = undefined
+        setLanded((count) => count + 1)
+      })
+    flight.current = promise
+    return promise
+  })
+
+  useEffect(() => {
+    if (keyed.current !== key) {
+      keyed.current = key
+      text.current = undefined
+      asked.current = true
+    }
+    if (!visible || flight.current) return
+    if (asked.current || (started.current === undefined && held.current.data === undefined)) {
+      asked.current = false
+      void fetched()
+      return
+    }
+    const wait = typeof pace.current === 'function' ? pace.current(held.current.data) : pace.current
+    if (wait === null) return
+    const timer = setTimeout(() => void fetched(), Math.max(0, (started.current ?? 0) + wait - Date.now()))
+    return () => clearTimeout(timer)
+  }, [key, every, version, visible, landed])
+
+  const reload = useCallback(() => {
+    asked.current = true
+    setVersion((value) => value + 1)
+  }, [])
+
+  const set = useCallback(
+    (change: (data: T | undefined) => T | undefined) =>
+      setState((previous) => {
+        const data = change(previous.data)
+        if (data === undefined || data === previous.data) return previous
+        text.current = JSON.stringify(data)
+        store(data)
+        return { data }
+      }),
+    [store],
+  )
+
+  return [state, reload, set] as const
 }
 
 export type Stream = { at: number; input: string; inputItem: string; text: string; textItem: string; thinking: string; thinkingItem: string }
 
-export type Live = { connected: boolean; pushed: boolean; since: number | undefined; streams: Readonly<Record<string, Stream>> }
+export type Live = { at: 'off' } | { at: 'following' } | { at: 'live'; since: number | undefined; streams: Readonly<Record<string, Stream>> }
 
 const blank: Stream = { at: 0, input: '', inputItem: '', text: '', textItem: '', thinking: '', thinkingItem: '' }
 
@@ -177,11 +214,15 @@ export function speaker(who: string | null) {
   return who ?? agent
 }
 
-export function useLive(id: string, active: boolean, onEntry: (entry: Entry) => void, after?: () => number): Live {
-  const [connected, setConnected] = useState(false)
-  const [pushed, setPushed] = useState(false)
-  const [since, setSince] = useState<number>()
-  const [streams, setStreams] = useState<Readonly<Record<string, Stream>>>({})
+const off: Live = { at: 'off' }
+
+function streamed(live: Live, who: string, change: (stream: Stream) => Stream): Live {
+  const on = live.at === 'live' ? live : { at: 'live' as const, since: undefined, streams: {} }
+  return { ...on, streams: { ...on.streams, [who]: change(on.streams[who] ?? blank) } }
+}
+
+export function useLive(id: string, active: boolean, onEntry: (entry: Entry) => void, after: () => number): Live {
+  const [live, setLive] = useState<Live>(off)
   const handler = useRef(onEntry)
   const cursor = useRef(after)
 
@@ -191,37 +232,22 @@ export function useLive(id: string, active: boolean, onEntry: (entry: Entry) => 
   })
 
   useEffect(() => {
-    setStreams({})
-    setSince(undefined)
-  }, [id])
-
-  useEffect(() => {
+    setLive(off)
     if (!active) return
-    setPushed(false)
-    const stream = (who: string, change: (stream: Stream) => Stream) => setStreams((previous) => ({ ...previous, [who]: change(previous[who] ?? blank) }))
-    return Api.live(id, (event) => {
-      if (cursor.current) setPushed(true)
-      if (event.type === 'end' || event.type === 'idle') {
-        if (event.type === 'end') setStreams({})
-        if (cursor.current) return
-        setConnected(false)
-        setPushed(false)
-        return
-      }
-      setConnected(true)
-      if (event.type === 'start') setSince(event.at)
-      if (event.type === 'delta') stream(speaker(event.who), (current) => write(current, event.channel, event.item, event.delta, event.offset))
-      if (event.type === 'entry') {
-        stream(speaker(event.entry.who), (current) => settle(current, event.entry))
-        handler.current(event.entry)
-      }
-    }, cursor.current ? () => cursor.current?.() ?? 0 : undefined, cursor.current ? () => {
-      setConnected(false)
-      setPushed(false)
-    } : undefined)
+    return Api.live(id, () => cursor.current(), (event) => {
+      if (event.type === 'open') return setLive((previous) => (previous.at === 'off' ? { at: 'following' } : previous))
+      if (event.type === 'lost') return setLive(off)
+      if (event.type === 'end' || event.type === 'idle') return setLive({ at: 'following' })
+      if (event.type === 'start') return setLive((previous) => ({ at: 'live', since: event.at, streams: previous.at === 'live' ? previous.streams : {} }))
+      if (event.type === 'delta') return setLive((previous) => streamed(previous, speaker(event.who), (current) => write(current, event.channel, event.item, event.delta, event.offset)))
+      if (event.type !== 'entry') return
+      const entry = event.entry
+      setLive((previous) => (previous.at === 'live' ? streamed(previous, speaker(entry.who), (current) => settle(current, entry)) : previous.at === 'off' ? { at: 'following' } : previous))
+      handler.current(entry)
+    })
   }, [active, id])
 
-  return { connected: active && connected, pushed: active && pushed, since, streams }
+  return active ? live : off
 }
 
 export function useNow(ms = 1000, active = true) {

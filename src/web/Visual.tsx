@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Detail, Status as Kind, Summary } from '../shared/Api.ts'
 import * as Answer from '../shared/Answer.ts'
+import * as Statuses from '../shared/Status.ts'
 import { duration, minute, ratio, usd } from './format.ts'
 import { useNow } from './hooks.ts'
 
@@ -32,22 +33,25 @@ export function Bar(props: { swarm: Pick<Summary, 'raised' | 'remaining' | 'spen
   )
 }
 
-export type Mood = 'live' | 'money' | 'resting' | 'errors' | 'new' | 'done'
+export type Standing = Statuses.Standing & { line: string }
 
-export type Standing = { action: string | null; label: string; line: string; mood: Mood }
+type Stood = Statuses.Stood & Pick<Detail, 'reason' | 'updatedAt' | 'working'>
 
-type Stood = Pick<Detail, 'raised' | 'reason' | 'status' | 'updatedAt' | 'why' | 'working'>
+const lines: Record<Statuses.Word, string> = {
+  'Needs money': 'Out of money. Fund it to keep going.',
+  'Not started': 'Its funds cannot pay for a first step yet.',
+  Resting: 'Resting: a note or new money wakes it.',
+  Running: 'Starting up.',
+  Starting: 'Starting up: its agent gets the brief in a moment.',
+  'Stopped after errors': 'Stopped after errors. New money or a note restarts it.',
+}
 
 export function standing(swarm: Stood, now: number): Standing {
-  if (swarm.status === 'done') return { action: null, label: 'Finished', line: 'Finished. Its result stays here for anyone to read.', mood: 'done' }
-  if (swarm.status === 'running') return { action: null, label: 'Running', line: swarm.working ? `On it for ${duration(now - swarm.working.since)}.` : 'Starting up.', mood: 'live' }
-  const said = swarm.reason ? Answer.local(Answer.spoken(swarm.reason) ?? '', swarm.updatedAt, minute) : ''
-  if (swarm.status === 'funding' && Number(swarm.raised) <= 0) return { action: 'Fund $2 to start it', label: 'Not started', line: 'Nobody has funded this yet.', mood: 'new' }
-  if (swarm.status === 'funding' && !swarm.why) return { action: null, label: 'Starting', line: 'Starting up: its agent gets the brief in a moment.', mood: 'live' }
-  if (swarm.why === 'idle') return { action: null, label: 'Resting', line: said || 'Resting: a note or new money wakes it.', mood: 'resting' }
-  if (swarm.why === 'rest') return { action: null, label: 'Stopped after errors', line: said || 'Stopped after errors. New money or a note restarts it.', mood: 'errors' }
-  if (swarm.status === 'funding') return { action: 'Add $2 to start it', label: 'Not started', line: said || 'Its funds cannot pay for a first step yet.', mood: 'money' }
-  return { action: 'Add $2 to wake it', label: 'Needs money', line: said || 'Out of money. Fund it to keep going.', mood: 'money' }
+  const stood = Statuses.standing(swarm)
+  if (stood.word === 'Running') return { ...stood, line: swarm.working ? `On it for ${duration(now - swarm.working.since)}.` : lines.Running }
+  if (stood.mood === 'new') return { ...stood, line: 'Nobody has funded this yet.' }
+  const said = stood.word === 'Starting' || !swarm.reason ? '' : Answer.local(Answer.spoken(swarm.reason) ?? '', swarm.updatedAt, minute)
+  return { ...stood, line: said || lines[stood.word] }
 }
 
 export function useStanding(swarm: Stood) {
@@ -57,7 +61,7 @@ export function useStanding(swarm: Stood) {
 
 export function Dot(props: { swarm: Stood }) {
   const stood = useStanding(props.swarm)
-  return <i aria-label={stood.label} className="mood-dot" data-mood={stood.mood} role="img" title={stood.label} />
+  return <i aria-label={stood.word} className="mood-dot" data-mood={stood.mood} role="img" title={stood.word} />
 }
 
 export function Energy(props: { onFund?: (() => void) | undefined; swarm: Stood & Pick<Detail, 'remaining'> }) {
@@ -80,7 +84,7 @@ export function Energy(props: { onFund?: (() => void) | undefined; swarm: Stood 
   return (
     <div className="energy" data-charging={charging} data-low={fill < 0.15} data-mood={stood.mood} data-primary={primary} data-status={props.swarm.status}>
       <div className="energy-row">
-        <span className="energy-state">{stood.label}</span>
+        <span className="energy-state">{stood.word}</span>
         <span aria-label={`${Answer.cash(left)} left to spend of ${Answer.cash(raised)} raised`} className="energy-bar" onClick={props.onFund} role="img">
           <i style={{ width: `${fill * 100}%` }} />
           <b>{Answer.cash(left)} left</b>

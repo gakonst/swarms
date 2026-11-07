@@ -8,9 +8,12 @@ import * as Api from './api.ts'
 import { percent, usd, minute } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
 import { code } from './Contribute.tsx'
-import { seated, Steering, useRoster } from './Steering.tsx'
+import { gate as gated, seated, Steering, useRoster } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
+import * as Wire from './wire.ts'
+
+const roomMs = { closed: 15_000, open: 60_000 }
 
 const ways = { machine: 'machine', transfer: 'transfer' } as const satisfies Record<Way, string>
 
@@ -77,7 +80,6 @@ export const Room = memo(function Room(props: {
   visible: boolean
 }) {
   const id = props.swarm.id
-  const done = props.swarm.status === 'done'
   const wallet = useWallet()
   const token = wallet.session?.token
   const [seed] = useState(() => seeded<RoomState>(`room:${props.swarm.id}`))
@@ -101,11 +103,9 @@ export const Room = memo(function Room(props: {
   const [fresh, setFresh] = useState(0)
   const list = useRef<HTMLOListElement>(null)
   const area = useRef<HTMLTextAreaElement>(null)
-  const line = useRef<Api.Line | undefined>(undefined)
   const stick = useRef(true)
   const last = useRef(0)
   const typed = useRef(0)
-  const opened = useRef(false)
   const fetched = useRef(0)
 
   const load = useCallback(
@@ -131,14 +131,20 @@ export const Room = memo(function Room(props: {
     last.current = messages.at(-1)?.id ?? 0
   }, [messages])
 
-  useEffect(() => {
-    if (seed && !fetched.current && !token) {
-      const timer = setTimeout(() => {
-        if (!opened.current) void load(last.current)
-      }, 3000)
-      return () => clearTimeout(timer)
+  const [connected, setConnected] = useState(() => Wire.connected(id))
+  const wired = Wire.useWire(id, 'room', (signal) => {
+    if (signal.type === 'open' || signal.type === 'closed') setConnected(signal.type === 'open')
+    if (signal.type === 'said') setMessages((previous) => merge(previous, [signal.message]))
+    if (signal.type === 'presence') {
+      setOnline(signal.online)
+      setWatching(signal.watching)
     }
-    void load(seed || fetched.current ? last.current : 0)
+    if (signal.type === 'typing') setTyping((previous) => ({ ...previous, [signal.address]: Date.now() + 4000 }))
+    if (Wire.stirred(signal, 'members')) void load(last.current)
+  })
+
+  useEffect(() => {
+    if (!seed || token || fetched.current) void load(seed || fetched.current ? last.current : 0)
   }, [load])
 
   const shown = useVisible()
@@ -148,45 +154,24 @@ export const Room = memo(function Room(props: {
       away.current = true
       return
     }
-    if (away.current) void load(last.current)
+    if (wired !== 'down') return
+    const every = connected ? roomMs.open : roomMs.closed
+    if (away.current || Date.now() - fetched.current > every) void load(last.current)
     away.current = false
-    const timer = setInterval(() => {
-      if (!opened.current || Date.now() - fetched.current > 60_000) void load(last.current)
-    }, 15_000)
+    const timer = setInterval(() => void load(last.current), every)
     return () => clearInterval(timer)
-  }, [load, shown])
+  }, [connected, load, shown, wired])
 
   const backers = useRef(props.swarm.contributors)
   useEffect(() => {
     if (backers.current === props.swarm.contributors) return
     backers.current = props.swarm.contributors
-    if (loaded) void load(last.current)
-  }, [props.swarm.contributors, loaded, load])
+    if (loaded && wired !== 'live') void load(last.current)
+  }, [props.swarm.contributors, loaded, load, wired])
 
   useEffect(() => {
-    const connection = Api.chatter(id, (event) => {
-      if (event.type === 'open') {
-        opened.current = true
-        void load(last.current)
-      }
-      if (event.type === 'closed') opened.current = false
-      if (event.type === 'said') setMessages((previous) => merge(previous, [event.message]))
-      if (event.type === 'presence') {
-        setOnline(event.online)
-        setWatching(event.watching)
-      }
-      if (event.type === 'typing') setTyping((previous) => ({ ...previous, [event.address]: Date.now() + 4000 }))
-    })
-    line.current = connection
-    return () => {
-      connection.close()
-      line.current = undefined
-    }
-  }, [id, load])
-
-  useEffect(() => {
-    if (token) line.current?.hello()
-  }, [token])
+    if (token) Wire.line(id)?.hello()
+  }, [id, token])
 
   const onMessages = props.onMessages
   useEffect(() => {
@@ -228,8 +213,8 @@ export const Room = memo(function Room(props: {
   const roster = useRoster(id, props.swarm.steering)
   const team = props.swarm.steering === 'team'
   const seat = seated(roster, me?.address)
-  const unnamed = !!token && !!wallet.account && !wallet.account.name
-  const mine = me && (me.member || seat) && !unnamed ? me : undefined
+  const door = gated(wallet, props.swarm.steering, roster, { me })
+  const mine = typeof door === 'object' && door.at === 'open' ? (me ?? undefined) : undefined
   const query = mine && !closed ? /(^|\s)@([a-z0-9_-]*)$/i.exec(text.slice(0, caret)) : null
   const options = query
     ? [
@@ -293,7 +278,6 @@ export const Room = memo(function Room(props: {
     const body = text.trim()
     if (!body || sending || !mine) return
     if (Mention.steers(body)) {
-      if (done) return setProblem({ text: 'This swarm is done, so @swarm no longer steers it.' })
       if (team && !seat) return setProblem({ text: "Only this swarm's team steers it. Ask one of its admins here to add you." })
       if (idea.length < 3) return setProblem({ text: 'Say what the swarm should do after @swarm.' })
       if (idea.length > maxNote) return setProblem({ text: `Keep the idea to ${maxNote} characters; it becomes a note the agent keeps reading.` })
@@ -359,33 +343,29 @@ export const Room = memo(function Room(props: {
   const here = online.filter((address) => members.some((member) => member.address === address))
 
   let gate: ReactNode = null
-  if (!token && wallet.pending) gate = <div aria-busy="true" className="room-gate room-gate-wait" />
-  else if (!token)
+  if (door === 'checking') gate = <div aria-busy="true" className="room-gate room-gate-wait" />
+  else if (door === 'signed-out')
     gate = (
       <div className="room-gate room-gate-one">
         <div className="room-cta">
           <button className="room-cta-main" disabled={!props.config || signing} onClick={() => void signIn()} type="button">{signing ? 'Approve in Tempo Wallet…' : 'Sign in to chat'}</button>
-          {!done && <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund to steer</button>}
+          <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund to steer</button>
         </div>
       </div>
     )
-  else if (unnamed)
+  else if (door === 'unnamed')
     gate = (
       <div className="room-gate room-gate-one">
         <Username why="Pick a username to talk here. People see it beside everything you say and steer." />
       </div>
     )
-  else if (me && !mine)
+  else if (door.at === 'not-member')
     gate = (
       <div className="room-gate room-gate-one">
-        {done ? (
-          <p className="room-gate-title">It's finished, so the room is read only.</p>
-        ) : (
-          <div className="room-cta">
-            <button className="room-cta-main" onClick={() => props.onBack('')} type="button">{team ? 'Fund it to talk here' : 'Fund $2 to steer'}</button>
-            <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund →</button>
-          </div>
-        )}
+        <div className="room-cta">
+          <button className="room-cta-main" onClick={() => props.onBack('')} type="button">{team ? 'Fund it to talk here' : 'Fund $2 to steer'}</button>
+          <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund →</button>
+        </div>
       </div>
     )
 
@@ -457,12 +437,12 @@ export const Room = memo(function Room(props: {
                     </button>
                     {author === me?.address && <span className="tag">you</span>}
                     <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
-                    {item.steer && <Backed onBack={done ? undefined : props.onBack} steer={item.steer} />}
+                    {item.steer && <Backed onBack={props.onBack} steer={item.steer} />}
                   </p>
                 )}
                 <p className="said-text">
                   <Words handles={handles} me={myNames} text={item.text} />
-                  {follow && item.steer && <> <Backed onBack={done ? undefined : props.onBack} steer={item.steer} /></>}
+                  {follow && item.steer && <> <Backed onBack={props.onBack} steer={item.steer} /></>}
                 </p>
               </div>
             </li>
@@ -519,18 +499,18 @@ export const Room = memo(function Room(props: {
                 setClosed(false)
                 if (Date.now() - typed.current > 3000) {
                   typed.current = Date.now()
-                  line.current?.typing()
+                  Wire.line(id)?.typing()
                 }
               }}
               onKeyDown={keys}
               onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-              placeholder={done ? 'Talk about what it found…' : 'Say something. @swarm to steer'}
+              placeholder="Say something. @swarm to steer"
               ref={area}
               rows={2}
               value={text}
             />
             <button aria-label="Send" className="room-send" disabled={!text.trim() || sending} onClick={submit} type="button">
-              {steering && !done ? 'Steer…' : 'Send'}
+              {steering ? 'Steer…' : 'Send'}
             </button>
           </div>
         )}

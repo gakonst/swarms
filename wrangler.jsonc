@@ -27,8 +27,14 @@
   ],
   "services": [{ "binding": "GATEWAY", "service": "gateway" }],
   "durable_objects": {
-    "bindings": [{ "name": "SWARMS", "class_name": "Swarm" }]
+    "bindings": [
+      { "name": "SWARMS", "class_name": "Swarm" },
+      { "name": "LOBBY", "class_name": "Lobby" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Swarm"] }]
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Swarm"] },
+    { "tag": "v2", "new_sqlite_classes": ["Lobby"] }
+  ]
 }
 

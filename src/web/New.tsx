@@ -3,9 +3,9 @@ import type { Config } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { Fund, type Target } from './Contribute.tsx'
-import { usePoll } from './hooks.ts'
 import { brief, open, problems } from './research.ts'
 import { Link, navigate } from './router.tsx'
+import * as Wire from './wire.ts'
 
 const stages = ['Start', 'Fund'] as const
 const titles = ['Start a breakthrough.', 'Fund it.'] as const
@@ -18,7 +18,7 @@ function starter() {
 
 export function New(props: { config: Config | undefined }) {
   const [picked] = useState(starter)
-  const [list] = usePoll(() => Api.swarms(), 30_000, 'swarms', { keep: true })
+  const list = Wire.useSwarms()
   const [page, setPage] = useState(0)
   const [peek, setPeek] = useState<string | undefined>(() => (picked ? picked.id : undefined))
   const free = list.data ? open(list.data.swarms) : list.error ? [...problems] : []

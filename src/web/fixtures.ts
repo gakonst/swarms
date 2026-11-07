@@ -1,5 +1,5 @@
 import * as Answer from '../shared/Answer.ts'
-import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Me, Member, Note, Posted, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, Note, Part, Posted, Pulse, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -487,26 +487,41 @@ const doings: readonly (readonly [string, string, string])[] = [
   ['$ pip install -q zstandard brotli && python compare.py', '{"cmd":"pip install -q zstandard brotli && python compare.py"}', 'zstd -19: ratio 4.12, 38 MB/s\nbrotli -11: ratio 4.31, 6 MB/s\nbz2 -9: ratio 3.95, 14 MB/s'],
 ]
 
-export function live(key: string, listener: (event: LiveEvent) => void) {
+export function live(key: string, after: number, listener: (event: LiveEvent | { type: 'lost' | 'open' }) => void) {
   let alive = true
   let timer: ReturnType<typeof setTimeout> | undefined
   let event = 1_000_000
   let turn = 0
+  let cursor = after
+  let working = false
   const later = (ms: number, run: () => void) => {
     timer = setTimeout(() => alive && run(), ms)
+  }
+  const flush = (swarm: Live) => {
+    for (const entry of swarm.feed)
+      if (entry.seq > cursor) {
+        cursor = entry.seq
+        listener({ entry, type: 'entry' })
+      }
   }
   const say = (swarm: Live, who: string | null, kind: Kind, text: string, detail: string | null) => {
     const entry: Entry = { at: Date.now(), detail, event: ++event, kind, seq: 0, text, who }
     listener({ entry, type: 'entry' })
     swarm.feed.push({ ...entry, seq: (swarm.feed.at(-1)?.seq ?? 0) + 1 })
+    swarm.updatedAt = entry.at
+    flush(swarm)
   }
   const next = async () => {
     const swarm = await find(key).catch(() => undefined)
     if (!alive) return
+    if (swarm) flush(swarm)
     if (!swarm || swarm.status !== 'running') {
-      listener({ type: 'idle' })
+      if (working) listener({ type: 'end' })
+      working = false
       return later(4000, () => void next())
     }
+    if (!working) listener({ at: swarm.since ?? Date.now(), type: 'start' })
+    working = true
     const crew = [...new Set(swarm.feed.flatMap((entry) => (entry.who ? [entry.who] : [])))]
     const who = crew.length ? ([null, ...crew][turn % (crew.length + 1)] ?? null) : null
     const thought = musings[turn % musings.length] ?? ''
@@ -531,10 +546,15 @@ export function live(key: string, listener: (event: LiveEvent) => void) {
     }
     think()
   }
-  void find(key).then((swarm) => {
-    if (alive && swarm.status === 'running') listener({ at: swarm.since ?? Date.now(), type: 'start' })
-    void next()
-  })
+  void find(key).then(
+    (swarm) => {
+      if (!alive) return
+      listener({ type: 'open' })
+      if (swarm.status !== 'running') listener({ type: 'idle' })
+      void next()
+    },
+    () => alive && listener({ type: 'lost' }),
+  )
   return () => {
     alive = false
     clearTimeout(timer)
@@ -558,9 +578,16 @@ function begin(swarm: Live) {
 
 export const sent = new Map<string, bigint>()
 
+const dropped = new Set<string>()
+
 export async function contribute(key: string, input: { hash?: string; note?: string; transaction?: string }): Promise<Contributed> {
   const swarm = await find(key)
   const hash = (input.hash ?? input.transaction ?? '0x') as `0x${string}`
+  if (swarm.contributions.some((gift) => gift.hash === hash)) throw fail(409, 'conflict', 'This transaction is already counted.')
+  if (scene.has('uncounted') && !dropped.has(hash)) {
+    dropped.add(hash)
+    throw fail(502, 'unavailable', 'Swarms could not reach Tempo to check the transfer.')
+  }
   const token = input.transaction ? 'mach' : 'usdce'
   const contribution: Contribution = { amount: decimal(sent.get(hash) ?? 250_000n), at: Date.now(), contributor: visitor, hash, note: input.note?.trim() || null, token }
   swarm.contributions.push(contribution)
@@ -568,6 +595,8 @@ export async function contribute(key: string, input: { hash?: string; note?: str
   push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} sent ${contribution.amount} ${token === 'mach' ? 'MACH' : 'USDC.e'}${contribution.note ? ' with a note' : ''}`, contribution.note, Date.now())
   begin(swarm)
   settle(swarm)
+  pulsed(key, swarm)
+  changed(key, ['detail', 'members'])
   return delay({ contribution, swarm: summary(swarm) }, 500)
 }
 
@@ -886,6 +915,7 @@ export async function say(key: string, input: { artifact?: boolean; steer?: stri
     settle(swarm)
     steer = steering(swarm, decimal(units(input.steer)), note)
     if (swarm.status === 'running') push(swarm, 'steer', `Steered the agent toward "${note}"`, null, Date.now())
+    changed(key, ['detail', 'members'])
   }
   const message: Said = { artifact: null, at: Date.now(), author: who, id: (swarm.chat.at(-1)?.id ?? 0) + 1, mentions: mentions(swarm, text), steer, text }
   swarm.chat.push(message)
@@ -905,9 +935,33 @@ export async function btw(key: string, input: { branch?: number; question: strin
   return delay({ answer, question: input.question.trim() }, 600)
 }
 
-export function chatter(key: string, listener: (event: Chatter | { type: 'open' | 'closed' }) => void) {
+const versions = new Map<string, number>()
+
+function version(key: string) {
+  const next = (versions.get(key) ?? 0) + 1
+  versions.set(key, next)
+  return String(next)
+}
+
+function pulse(swarm: Live): Pulse {
+  const shown = detail(swarm)
+  return { hands: shown.hands, reason: shown.reason, swarm: summary(swarm), why: shown.why, working: shown.working }
+}
+
+function changed(key: string, parts: Part[]) {
+  tell(key, { parts, type: 'changed', version: version(key) })
+}
+
+function pulsed(key: string, swarm: Live) {
+  tell(key, { type: 'pulse', version: version(key), ...pulse(swarm) })
+}
+
+const offline = scene.has('down') || scene.has('wait')
+
+export function chatter(key: string, listen: boolean, listener: (event: Chatter | { type: 'open' | 'closed' }) => void) {
   let alive = true
   let timer: ReturnType<typeof setTimeout> | undefined
+  let watch: ReturnType<typeof setInterval> | undefined
   let here = false
   let turn = 0
   const set = listeners.get(key) ?? new Set()
@@ -934,23 +988,73 @@ export function chatter(key: string, listener: (event: Chatter | { type: 'open' 
       })
     }, 14_000 + ((turn * 7919) % 9000))
   }
+  const follow = () => {
+    let sent: string | undefined
+    let fed = 0
+    let updates = 0
+    watch = setInterval(() => {
+      void find(key).then((swarm) => {
+        if (!alive) return
+        const now = pulse(swarm)
+        const json = JSON.stringify(now)
+        if (sent !== undefined && json !== sent) listener({ type: 'pulse', version: version(key), ...now })
+        const grown = sent !== undefined && swarm.status !== 'running' && swarm.feed.length > fed
+        const updated = sent !== undefined && swarm.updates.length > updates
+        if (grown || updated) listener({ parts: [...(grown ? (['feed'] as const) : []), ...(updated ? (['detail'] as const) : [])], type: 'changed', version: version(key) })
+        sent = json
+        fed = swarm.feed.length
+        updates = swarm.updates.length
+      }, () => {})
+    }, 5000)
+  }
   setTimeout(() => {
     if (!alive) return
     listener({ type: 'open' })
-    presence()
-    next()
+    if (!listen) presence()
+    if (!offline) listener({ type: 'welcome', version: String(versions.get(key) ?? 0) })
+    follow()
+    if (!listen) next()
   }, 200)
   return {
     close: () => {
       alive = false
       clearTimeout(timer)
+      clearInterval(watch)
       set.delete(listener)
     },
     hello: () => {
+      if (listen) return
       here = true
       presence()
     },
     typing: () => {},
+  }
+}
+
+export function lobby(listener: (event: Lobby | { type: 'open' | 'closed' }) => void) {
+  let alive = true
+  let timer: ReturnType<typeof setInterval> | undefined
+  const sent = new Map<string, string>()
+  const listed = () => (scene.has('empty') ? [] : fixtures.map((swarm) => summary(swarm)).filter((swarm) => Number(swarm.raised) > 0))
+  const opened = setTimeout(() => {
+    if (!alive || offline) return
+    listener({ type: 'open' })
+    listener({ type: 'welcome' })
+    for (const swarm of listed()) sent.set(swarm.id, JSON.stringify(swarm))
+    timer = setInterval(() => {
+      for (const swarm of fixtures) tick(swarm)
+      for (const swarm of listed()) {
+        const json = JSON.stringify(swarm)
+        if (sent.get(swarm.id) === json) continue
+        sent.set(swarm.id, json)
+        listener({ swarm, type: 'swarm' })
+      }
+    }, 10_000)
+  }, 200)
+  return () => {
+    alive = false
+    clearTimeout(opened)
+    clearInterval(timer)
   }
 }
 
@@ -974,6 +1078,7 @@ export async function govern(key: string, input: { memberBudget?: number | null;
   const seats = current.seats.length ? current.seats : [{ address: who.toLowerCase() as `0x${string}`, handle: me(swarm, who)?.handle ?? 'you', left: null, limit: null, role: 'admin' as const, spent: '0.000000' }]
   const next: Roster = { ...current, memberBudget: input.memberBudget === undefined ? current.memberBudget : input.memberBudget === null ? null : decimal(units(String(input.memberBudget))), seats, steering: swarm.steering, team: current.team ?? '0x00000000000000000000000000000000000000aa' }
   rosters.set(key, next)
+  tell(key, { roster: next, type: 'roster' })
   return delay(next, 250)
 }
 
@@ -984,6 +1089,7 @@ export async function seat(key: string, input: { budget?: number | null; member:
   const seats = [...current.seats.filter((found) => found.address !== address), { address, handle: called(address), left: limit, limit, role: input.role, spent: '0.000000' }]
   const next: Roster = { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats }
   rosters.set(key, next)
+  tell(key, { roster: next, type: 'roster' })
   return delay(next, 250)
 }
 
@@ -993,6 +1099,7 @@ export async function unseat(key: string, member: string, who: `0x${string}` | u
   const seats = current.seats.filter((found) => found.address !== member.toLowerCase())
   const next: Roster = { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats }
   rosters.set(key, next)
+  tell(key, { roster: next, type: 'roster' })
   return delay(next, 250)
 }
 
@@ -1079,6 +1186,7 @@ export async function stop(key: string, branch: number, who: `0x${string}` | und
   if (back > 0n)
     planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), ...target.funders.map((funder) => ({ amount: -(back * units(funder.amount)) / funded, branch, contributor: funder.address }))])
   push(swarm, 'status', `${Mention.at(called(who as string))} stopped ${target.role} (branch ${branch}).`, null, Date.now())
+  changed(key, ['branches', 'members'])
   return delay(grown(swarm).find((found) => found.id === branch) as Branch, 300)
 }
 
@@ -1100,6 +1208,7 @@ export async function fund(key: string, branch: number, input: { amount: string;
     swarm.feed.push({ at, detail: input.message, event: null, kind: 'steer', seq, text: `${Mention.at(called(who as string))} steered ${after.who} with ${usd(decimal(amount))}: ${input.message.split('\n')[0]?.slice(0, 200)}`, who: after.who })
     swarm.updatedAt = at
   } else push(swarm, 'funds', `${Mention.at(called(who as string))} put ${usd(decimal(amount))} behind ${after.role} (branch ${branch}), whose budget is now ${usd(after.budget ?? '0')}.`, null, Date.now())
+  changed(key, ['branches', 'members'])
   return delay(after, 300)
 }
 
@@ -1117,5 +1226,6 @@ export async function move(key: string, branch: number, input: { amount: string;
   const contributor = (who as string).toLowerCase() as `0x${string}`
   planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), { amount: -amount, branch, contributor }, { amount, branch: input.to, contributor }])
   const after = grown(swarm)
+  changed(key, ['branches', 'members'])
   return delay([after.find((found) => found.id === branch) as Branch, after.find((found) => found.id === input.to) as Branch], 300)
 }

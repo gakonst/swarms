@@ -64,7 +64,7 @@ test('a working swarm frame streams the agent live from when it started', async 
   const html = await XFrames.swarm('https://swarms.example', working).text()
 
   assert.match(html, /<title>Live: Safer &lt;signatures&gt;<\/title>/)
-  assert.match(html, /\/live'\)/)
+  assert.match(html, /\/live\?after='\+seen/)
   assert.match(html, /href="https:\/\/swarms\.example\/s\/abc123"/)
   assert.match(html, /"live":\{"since":10\}/)
   assert.match(html, /zstd &lt;wins&gt;/)

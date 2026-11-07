@@ -3,6 +3,7 @@ import * as Artifacts from './Artifacts.ts'
 import * as Code from './Code.ts'
 import * as Edge from './Edge.ts'
 import * as Feedback from './Feedback.ts'
+import * as Lobby from './Lobby.ts'
 import * as Operations from './Operations.ts'
 import * as Page from './Page.ts'
 import * as Problem from './Problem.ts'
@@ -12,6 +13,7 @@ import * as Sessions from './Sessions.ts'
 import * as Timing from './Timing.ts'
 import * as XFrames from './XFrames.ts'
 
+export { Lobby } from './Lobby.ts'
 export { Swarm } from './Swarm.ts'
 
 const app = new Hono<{ Bindings: Cloudflare.Env }>()
@@ -115,6 +117,10 @@ app.get('/api/swarms', async (c) => {
   const listed = await Operations.list(c.env, {})
   return Problem.respond(listed.ok ? Problem.ok(Operations.listed(listed.value)) : listed)
 })
+
+app.get('/api/swarms/live', (c) => Lobby.enter(c.env, c.req.raw))
+
+app.get('/v1/swarms/live', (c) => Lobby.enter(c.env, c.req.raw))
 
 app.post('/api/swarms', async (c) => Problem.respond(await Operations.create(c.env, await Rest.body(c.req.raw), await Sessions.who(c.env, c.req.raw)), 201))
 
