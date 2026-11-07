@@ -1,3 +1,4 @@
+import * as Turns from './Turns.ts'
 import * as Repo from './Repo.ts'
 import type { Hand, Live } from '../shared/Api.ts'
 import { type Buffers, type Crew, appended, clip, crew, narrate, redact, subagent, thought, tool } from '../shared/Trail.ts'
@@ -46,7 +47,7 @@ const cueMs = 5_000
 
 export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   const agent = self.agent()
-  if (!agent) return self.finish(row, run, { error: 'The agent is gone.', request_id: run.turn, status: 'failed' })
+  if (!agent) return Turns.finish(self, row, run, { error: 'The agent is gone.', request_id: run.turn, status: 'failed' })
 
   let ended = false
   let down = false
@@ -63,7 +64,7 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
         down = read.status >= 500
         break
       }
-      if (read.value.events.length) self.reached()
+      if (read.value.events.length) Turns.reached(self)
       for (const event of read.value.events) ended = digest(self, event, run.turn) || ended
       if (read.value.next_cursor !== cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor: read.value.next_cursor })
       cursor = read.value.next_cursor
@@ -83,14 +84,14 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
     plan.git ? Repo.watch(self, row) : undefined,
     plan.artifacts ? self.publish(row.id) : undefined,
   ])
-  if (report?.ok && !['queued', 'running'].includes(report.value.status)) return self.finish(row, run, report.value)
+  if (report?.ok && !['queued', 'running'].includes(report.value.status)) return Turns.finish(self, row, run, report.value)
   if (report && !report.ok && report.status !== 401 && report.status < 500)
-    return self.finish(row, run, { error: report.detail, request_id: run.turn, status: 'failed' })
-  if ((down || (report && !report.ok && report.status >= 500)) && self.unreachable(now)) {
+    return Turns.finish(self, row, run, { error: report.detail, request_id: run.turn, status: 'failed' })
+  if ((down || (report && !report.ok && report.status >= 500)) && Turns.unreachable(self, now)) {
     const detail = !report || report.ok ? 'its events did not load' : report.detail
     await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
-    self.abandon(agent.id, detail)
-    return self.finish(row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
+    Turns.abandon(self, agent.id, detail)
+    return Turns.finish(self, row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
   }
   if (money && plan.chain && (money.left < Store.reserve + Store.headroom || BigInt(self.kv.get<string>('loose') ?? '0') >= Money.smallestSwap)) await Money.fund(self, money.row)
   return window ? Date.now() : now + Clock.followMs
@@ -130,7 +131,7 @@ export async function listen(self: Swarm, row: Store.Row, agent: Lead, run: Turn
           for (const delta of deltas(self, event, agent.id)) Relay.relay(self, delta)
           continue
         }
-        self.reached()
+        Turns.reached(self)
         ended = digest(self, event, run.turn) || ended
         cursor = Math.max(cursor, event.seq)
       }

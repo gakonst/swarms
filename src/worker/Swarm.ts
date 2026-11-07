@@ -9,7 +9,6 @@ import * as Mention from '../shared/Mention.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Gateway from './Gateway.ts'
-import * as Hands from './Hands.ts'
 import * as Payer from './Payer.ts'
 import * as Persona from './Persona.ts'
 import * as Phase from './Phase.ts'
@@ -23,11 +22,11 @@ import * as Words from './Words.ts'
 import * as Relay from './Relay.ts'
 import * as Clock from './Clock.ts'
 import * as Paying from './Paying.ts'
-import * as Money from './Money.ts'
 import * as Follow from './Follow.ts'
 import * as Repo from './Repo.ts'
 import * as Branching from './Branching.ts'
 import * as Chat from './Chat.ts'
+import * as Turns from './Turns.ts'
 
 export type Contributed = {
   amount: string
@@ -145,14 +144,6 @@ const indexChunk = 1_000
 const indexMs = 1_000
 
 const healMs = 5 * 60_000
-
-const unreachableMs = 15 * 60_000
-
-const maxFailures = 3
-
-const settleMs = 15_000
-
-const quickMs = 60_000
 
 const rowMs = 10_000
 
@@ -420,7 +411,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (id && !this.kv.get<number>('published') && now - (this.kv.get<number>('exposing') ?? 0) > 60_000) {
       this.kv.put('exposing', now)
       const row = await this.found(id)
-      if (row) await this.expose(row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
+      if (row) await Turns.expose(this, row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
       this.kv.delete('exposing')
     }
     await this.reindex()
@@ -613,7 +604,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   override async alarm() {
     const indexing = this.index()
-    this.stepping ??= this.step()
+    this.stepping ??= Turns.step(this)
       .catch((error: unknown) => {
         this.log('error', 'The swarm hit an error and will retry.', String(error))
         return Date.now() + Clock.retryMs
@@ -628,269 +619,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     await this.ctx.storage.setAlarm(pending !== null && pending < next ? pending : next)
   }
 
-  async step() {
-    const id = this.kv.get<string>('id')
-    const row = id ? await this.found(id) : null
-    if (!row) return null
-
-    this.initialize()
-    const run = this.run()
-    if (run.state === 'paused') {
-      if (!Phase.due(run, Date.now())) return run.pause.why === 'money' ? run.pause.wake : null
-      this.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
-    }
-    if (run.state === 'working') return Follow.follow(this, row, run)
-    return this.advance(row)
-  }
-
-  initialize() {
-    if (this.kv.get<string>('secret')) return
-    const run = this.run()
-    if (run.state === 'working') this.ctx.storage.sql.exec("UPDATE turns SET status = 'cancelled', ended_at = ? WHERE n = ? AND status = 'running'", Date.now(), run.n)
-    if (run.state === 'working' || run.state === 'starting') this.set({ since: null, state: 'waiting', until: Date.now() })
-    this.kv.delete('agent')
-    this.kv.put('secret', Words.hex(crypto.getRandomValues(new Uint8Array(32))))
-  }
-
-  async advance(row: Store.Row) {
-    const run = this.run()
-    const worked = this.turned()
-    await Money.fund(this, row)
-    const money = await Money.refresh(this, row)
-    if (run.state !== 'starting' && money.left < Store.reserve) {
-      const wake = Paying.rested(this)
-      await this.pause(money.row, worked || money.row.contributors ? { left: String(money.left), wake, why: 'money' } : { why: 'unfunded' })
-      return wake
-    }
-    const repo = await Repo.located(this, row)
-
-    const agent = await this.lead(row)
-    if ('error' in agent) return this.retry(money.row, agent.error, agent.detail)
-
-    const n = run.state === 'starting' ? run.n : worked + 1
-    const since = Phase.since(run)
-    const notes = await this.notes(money.row)
-    const base = repo.state === 'ready' ? await Repo.head(this, row.id, repo.name) : null
-    if (base) this.kv.put('seen', base)
-    else this.kv.delete('seen')
-    const told = this.told()
-    const included = agent.briefed ? notes.filter((note) => grown(told.get(note.id), Memo.units(note.weight))) : notes
-    const text = agent.briefed ? next(this.tell(included)) : brief(money.row, this.tell(notes))
-    const id = `${agent.id}:${n}`
-    const start: Phase.Run =
-      run.state === 'starting' && run.id === id ? run : { id, n, since, state: 'starting', told: included.map((note) => [note.id, String(Memo.units(note.weight))]) }
-    await this.move(money.row, start)
-    const sent = await Gateway.prompt(this.env, row.id, agent.id, { id: start.id, prompt: text, steer: false })
-    if (!sent.ok && sent.status !== 409) {
-      if (sent.status === 404) this.kv.delete('agent')
-      if (sent.status >= 500 && this.unreachable(Date.now())) this.abandon(agent.id, sent.detail)
-      return this.retry(money.row, 'The gateway did not take the next message for the agent.', sent.detail)
-    }
-
-    const now = Date.now()
-    const turn = sent.ok ? sent.value.request_id : start.id
-    await Money.cap(this, row, money.left / Hands.share)
-    this.kv.put('agent', { ...(this.agent() ?? agent), briefed: true, unreachable: null })
-    this.ctx.storage.sql.exec(
-      "INSERT OR REPLACE INTO turns (n, turn, started_at, status, spent_before, base) VALUES (?, ?, ?, 'running', ?, ?)",
-      n,
-      turn,
-      now,
-      String(money.row.spent),
-      base,
-    )
-    for (const [note, weight] of start.told) {
-      this.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at, weight) VALUES (?, ?, ?)', note, now, weight)
-      this.kv.delete('collapse:' + note)
-    }
-    for (const note of notes.filter((found) => told.get(found.id) === null)) this.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
-    this.touch()
-    await this.move(money.row, { from: this.last(), n, since: start.since ?? now, started: now, state: 'working', turn }, { rounds: n })
-    Relay.begin(this)
-    this.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
-    if (start.since === null) Chat.announce(this, `${worked ? 'Back at work' : 'Started working'}.`)
-    return now + Clock.followMs
-  }
-
-  async retry(row: Store.Row, error: string, detail: string) {
-    const run = this.run()
-    const now = Date.now()
-    const last = run.state === 'waiting' ? run.retry : undefined
-    const repeat = last?.error === error
-    const logged = last && repeat && now - last.logged < Clock.quietMs ? last.logged : now
-    if (logged === now) this.log('error', error, detail)
-    await this.move(row, {
-      ...(run.state === 'waiting' && run.from ? { from: run.from } : {}),
-      retry: { count: (last && repeat ? last.count : 0) + 1, error, logged },
-      since: Phase.since(run),
-      state: 'waiting',
-      until: now + Clock.retryMs,
-    })
-    return now + Clock.retryMs
-  }
-
-  unreachable(now: number) {
-    const agent = this.agent()
-    if (!agent) return false
-    if (agent.unreachable === null) this.kv.put('agent', { ...agent, unreachable: now })
-    return agent.unreachable !== null && now - agent.unreachable >= unreachableMs
-  }
-
-  reached() {
-    const agent = this.agent()
-    if (agent && agent.unreachable !== null) this.kv.put('agent', { ...agent, unreachable: null })
-  }
-
-  abandon(agent: string, detail: string) {
-    this.kv.delete('agent')
-    this.log('error', "The agent's session stopped answering for 15 minutes, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.", `${agent}: ${detail}`)
-  }
-
-  async lead(row: Store.Row): Promise<Lead | { detail: string; error: string }> {
-    const payer = { secret: this.kv.get<string>('secret') ?? '', url: `${this.env.SWARMS_URL}/api/swarms/${row.id}/pay` }
-    const known = this.agent()
-    if (known) {
-      if (known.url === payer.url) return this.styled(row, known)
-      const patched = await Gateway.repay(this.env, row.id, known.id, payer)
-      if (patched.ok) {
-        const moved = { ...known, url: payer.url }
-        this.kv.put('agent', moved)
-        return this.styled(row, moved)
-      }
-      if (patched.status !== 404) return { detail: patched.detail, error: "The gateway did not move the agent's payer." }
-      this.kv.delete('agent')
-    }
-
-    const styled = await Persona.ensure(this.env)
-    const named = { name: row.title.slice(0, 60), payer }
-    let created = await Gateway.agent(this.env, row.id, styled ? { ...named, persona: Persona.name } : named)
-    const persona = styled && created.ok
-    if (!created.ok && styled && created.status === 409) created = await Gateway.agent(this.env, row.id, named)
-    if (!created.ok) return { detail: created.detail, error: 'The gateway did not create the agent.' }
-    const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, persona, unreachable: null, url: payer.url }
-    this.kv.put('agent', agent)
-    this.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it pays for is paid from the contributions, one at a time.", created.value.id)
-    await Branching.release(this, row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
-    return agent
-  }
-
-  async styled(row: Store.Row, agent: Lead): Promise<Lead> {
-    if (!(await Persona.ensure(this.env)) || agent.persona) return agent
-    const patched = await Gateway.restyle(this.env, row.id, agent.id, Persona.name)
-    if (!patched.ok && patched.status !== 409) {
-      console.error('Giving the agent the swarm persona failed', patched.status, patched.detail)
-      return agent
-    }
-    const styled = { ...agent, persona: true }
-    this.kv.put('agent', styled)
-    if (patched.ok) this.log('status', "Gave the agent the swarm's instructions on artifacts, appended to its system prompt.")
-    return styled
-  }
-
   cue(cue: Follow.Cue) {
     this.cues.set(cue, Date.now())
-  }
-
-  async finish(row: Store.Row, run: Turning, report: Gateway.Report) {
-    Relay.ended(this)
-    const n = run.n
-    const error = typeof report.error === 'string' ? report.error : report.error?.message
-    const message = report.ok?.message ?? error ?? null
-    const status = report.status === 'completed' ? 'completed' : report.status === 'cancelled' ? 'cancelled' : 'failed'
-    Follow.flush(this)
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
-    for (const source of await Paying.sources(this, row)) await Paying.probe(this, row, source).catch(() => undefined)
-    const money = await Money.refresh(this, row)
-    const found = this.ctx.storage.sql
-      .exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n)
-      .toArray()[0]
-    await Branching.settled(this, money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
-    const repo = await Repo.located(this, money.row)
-    const commits = repo.state === 'ready' ? await Repo.pushed(this, row.id, repo.name, found?.base ?? null) : []
-    const spent = BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
-    this.ctx.storage.sql.exec(
-      'UPDATE turns SET ended_at = ?, status = ?, message = ?, spent = ?, commits = ? WHERE n = ?',
-      Date.now(),
-      status,
-      message === null ? null : redact(message),
-      String(spent > 0n ? spent : 0n),
-      JSON.stringify(commits.map((commit) => commit.sha)),
-      n,
-    )
-    this.touch()
-    const answer = status === 'completed' && message ? Answer.parse(redact(message), Date.now()) : undefined
-    if (answer?.text) await Store.update(this.env, row.id, { answer: JSON.stringify(answer) })
-    const ended = this.rows('WHERE n = ?', n)[0]
-    if (ended) await Search.report(this.env, row.id, ended).catch((error: unknown) => console.error('Indexing the update failed', error))
-    const pushed = commits.length ? ` and pushed ${commits.length} commit${commits.length === 1 ? '' : 's'} to ${repo.name}` : ''
-    this.log(
-      status === 'completed' ? 'status' : 'error',
-      status === 'completed' ? `Posted an update after spending ${Words.dollars(spent > 0n ? spent : 0n)}${pushed}.` : `The agent stopped with an error after spending ${Words.dollars(spent > 0n ? spent : 0n)}${pushed}.`,
-      status === 'completed' ? (commits.length ? commits.map((commit) => `${commit.sha.slice(0, 7)} ${commit.message.split('\n')[0]}`).join('\n') : null) : message,
-    )
-    await this.publish(row.id)
-    this.changed('detail')
-    if (answer?.text) Chat.announce(this, `Update: ${Answer.excerpt(answer.text, 280)}`)
-
-    const stored = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'tool' AND ((text || coalesce(detail, '')) LIKE '%kv_set%' OR (text || coalesce(detail, '')) LIKE '%bucket_put%' OR (text || coalesce(detail, '')) LIKE '%git_create%')", run.from).one().n
-    if (stored > 0 || !this.kv.get<number>('published')) await this.expose(row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
-    const latest = this.run()
-    const wanted = BigInt(latest.state === 'working' ? (latest.wanted ?? '0') : '0')
-    if (status !== 'completed' && (money.left < Store.reserve || wanted > money.biggest)) {
-      const wake = Paying.rested(this)
-      await this.pause(money.row, wanted > money.biggest ? { wanted: String(wanted), why: 'costly' } : { left: String(money.left), wake, why: 'money' })
-      return wanted > money.biggest ? null : wake
-    }
-    const failures = status === 'completed' ? 0 : this.failures(run.since)
-    if (failures >= maxFailures) {
-      await this.pause(money.row, { failures, why: 'rest' })
-      return null
-    }
-    const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : Date.now() + settleMs
-    await this.move(money.row, { since: run.since, state: 'waiting', until })
-    return until
-  }
-
-  failures(since: number) {
-    let count = 0
-    for (const row of this.ctx.storage.sql.exec<{ status: string }>('SELECT status FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, maxFailures).toArray()) {
-      if (row.status === 'completed') break
-      count += 1
-    }
-    return count
-  }
-
-  async expose(row: Store.Row) {
-    const hidden: ['bucket' | 'git' | 'kv', string][] = []
-    for (const [kind, page] of [['kv', (cursor: string | null) => Gateway.values(this.env, row.id, cursor).then((found) => found.ok ? { cursor: found.value.cursor, items: found.value.entries } : undefined)], ['bucket', (cursor: string | null) => Gateway.objects(this.env, row.id, cursor).then((found) => found.ok ? { cursor: found.value.cursor, items: found.value.objects } : undefined)]] as const) {
-      let cursor: string | null = null
-      for (let pages = 0; pages < 20; pages++) {
-        const found: { cursor: string | null; items: { key: string; public: boolean }[] } | undefined = await page(cursor)
-        if (!found) break
-        for (const item of found.items) if (!item.public) hidden.push([kind, item.key])
-        cursor = found.cursor
-        if (!cursor) break
-      }
-    }
-    const listed = await Gateway.repos(this.env, row.id)
-    if (listed.ok) for (const repo of listed.value.repos) if (!repo.public) hidden.push(['git', repo.name])
-    let shown = 0
-    for (const [kind, name] of hidden) if ((await Gateway.reveal(this.env, row.id, kind, name)).ok) shown++
-    this.kv.put('published', Date.now())
-    console.log(JSON.stringify({ expose: row.id, hidden: hidden.length, shown }))
-    if (shown) this.log('status', `Made ${shown} private item${shown === 1 ? '' : 's'} the agent stored public, so everything the swarm produces can be read by anyone.`, hidden.map(([kind, name]) => `${kind} ${name}`).join('\n'))
-  }
-
-  async sweep(row: Store.Row) {
-    const started = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'machine' AND text LIKE 'Starting machine%'", this.kv.get<number>('sweptSeq') ?? 0).one().n
-    if (!started && !(this.kv.get<Hand[]>('hands') ?? []).length) return
-    const listed = await Gateway.sandboxes(this.env, row.id)
-    if (!listed.ok) return
-    this.kv.put('sweptSeq', this.last())
-    for (const sandbox of listed.value.sandboxes.filter((found) => found.status !== 'terminated')) {
-      const ended = await Gateway.terminate(this.env, row.id, sandbox.sandboxId)
-      if (ended.ok) this.log('machine', `Shut down ${sandbox.hand ?? sandbox.sandboxId}, which was still running when the swarm stopped.`)
-    }
   }
 
   async budget(secret: string, app: string | undefined): Promise<Paying.Paid> {
@@ -907,19 +637,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const secret = this.kv.get<string>('secret')
     if (!secret || !Words.same(secret, input.secret)) return Promise.resolve({ code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 })
     return Paying.queued(this, input)
-  }
-
-  async pause(row: Store.Row, pause: Phase.Pause) {
-    const run = this.run()
-    if (run.state === 'paused' && Phase.same(run.pause, pause)) return
-    const text = Phase.reason(pause)
-    if (Phase.since(run) !== null) {
-      if (pause.why === 'rest') await this.sweep(row)
-      if (this.turned()) Chat.announce(this, text)
-    }
-    const shown = Phase.paused(run)
-    await this.move(row, { at: Date.now(), pause, state: 'paused' })
-    if (shown?.why !== pause.why) this.log('status', text)
   }
 
   code(): Snapshot | null {
@@ -943,7 +660,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const note = (await this.notes(row)).find((found) => found.id === noteId)
     if (!note) return undefined
     const sent = await Gateway.prompt(this.env, swarm, agent, {
-      prompt: weighed(this.tell([note])[0] ?? note),
+      prompt: Turns.weighed(this.tell([note])[0] ?? note),
       steer: true,
     })
     if (!sent.ok) return undefined
@@ -1246,25 +963,6 @@ function touched(kv: SyncKvStorage, touch: () => void): SyncKvStorage {
       if (viewKeys.has(key)) touch()
     },
   }
-}
-
-function brief(row: Store.Row, notes: Note[]) {
-  return [row.title, row.goal, ...notes.map(weighed)].filter(Boolean).join('\n\n')
-}
-
-function next(notes: Note[]) {
-  return ['Keep going.', ...notes.map(weighed)].join('\n\n')
-}
-
-function grown(told: bigint | null | undefined, weight: bigint) {
-  if (told === undefined) return true
-  if (told === null) return false
-  return weight >= told + (told / 4n > 100_000n ? told / 4n : 100_000n)
-}
-
-function weighed(note: Note) {
-  const backers = note.backers === 1 ? '1 backer' : `${note.backers} backers`
-  return `[${Words.dollars(Memo.units(note.weight))} behind this, from ${backers}] ${Mention.claimed(note.note)}`
 }
 
 function updates(turns: readonly Search.Turn[]): Update[] {
