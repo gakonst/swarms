@@ -10,6 +10,7 @@ import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
 import * as Rest from './Rest.ts'
 import * as Sessions from './Sessions.ts'
+import * as Telegram from './Telegram.ts'
 import * as Timing from './Timing.ts'
 import * as XFrames from './XFrames.ts'
 
@@ -68,22 +69,29 @@ app.get('*', async (c, next) => {
   return Page.page(c.req.raw, c.env)
 })
 
-app.get('/x', (c) =>
-  Edge.page(c.req.raw, '', async (request) => {
-    const listed = await Operations.list(c.env, {}).catch(() => undefined)
-    return { response: XFrames.start(new URL(request.url).origin, listed?.ok ? listed.value.swarms : [], new URL(request.url)), whole: Promise.resolve(!!listed?.ok) }
-  }),
-)
+function framed(env: Cloudflare.Env, id: string | undefined): Edge.Draw {
+  return async (request) => {
+    const url = new URL(request.url)
+    if (id === undefined) {
+      const listed = await Operations.list(env, {}).catch(() => undefined)
+      return { response: XFrames.start(url.origin, listed?.ok ? listed.value.swarms : [], url, env.TELEGRAM_BOT), whole: Promise.resolve(!!listed?.ok) }
+    }
+    const result = await Operations.get(env, { swarm: id })
+    return { response: result.ok ? XFrames.swarm(url.origin, result.value, url, env.TELEGRAM_BOT) : result.status === 404 ? XFrames.lost(url.origin, url, env.TELEGRAM_BOT) : Problem.json(result), whole: Promise.resolve(result.ok) }
+  }
+}
+
+app.get('/x', (c) => Edge.page(c.req.raw, '', framed(c.env, undefined)))
 
 app.get('/x/card.svg', (c) => XFrames.card(c.req.query('title') ?? 'Fund a research swarm'))
 
-app.get('/x/s/:id', (c) =>
-  Edge.page(c.req.raw, '', async (request) => {
-    const result = await Operations.get(c.env, { swarm: c.req.param('id') })
-    const url = new URL(request.url)
-    return { response: result.ok ? XFrames.swarm(url.origin, result.value, url) : result.status === 404 ? XFrames.lost(url.origin, url) : Problem.json(result), whole: Promise.resolve(result.ok) }
-  }),
-)
+app.get('/x/s/:id', (c) => Edge.page(c.req.raw, '', framed(c.env, c.req.param('id'))))
+
+app.get('/tg', (c) => Edge.page(c.req.raw, '', framed(c.env, Telegram.started(new URL(c.req.url)))))
+
+app.get('/tg/s/:id', (c) => Edge.page(c.req.raw, '', framed(c.env, c.req.param('id'))))
+
+app.post('/telegram', (c) => Telegram.hook(c.env, c.req.raw))
 
 app.get('/a/:id/:slug', (c) => c.redirect(`${new URL(c.req.url).pathname}/`, 301))
 

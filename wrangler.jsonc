@@ -8,12 +8,13 @@
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "none",
-    "run_worker_first": ["/", "/join", "/new", "/about", "/docs", "/s/*", "/a/*", "/api/*", "/v1/*", "/x", "/x/*", "/mcp", "/openapi.json", "/feedback", "/feedback/*"]
+    "run_worker_first": ["/", "/join", "/new", "/about", "/docs", "/s/*", "/a/*", "/api/*", "/v1/*", "/x", "/x/*", "/tg", "/tg/*", "/telegram", "/mcp", "/openapi.json", "/feedback", "/feedback/*"]
   },
   "observability": { "enabled": true },
   "vars": {
     "GATEWAY_URL": "https://gateway.tempo-dev.workers.dev",
     "SWARMS_URL": "https://swarms.tempo-dev.workers.dev",
+    "TELEGRAM_BOT": "TempoSwarmsBot",
     "TEMPO_RPC": "https://rpc.tempo.xyz"
   },
   "secrets": { "required": ["SWARMS_GATEWAY_KEY", "SWARMS_SECRET"] },

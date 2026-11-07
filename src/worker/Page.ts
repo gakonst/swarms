@@ -89,7 +89,7 @@ type Head = { description: string; image: string; player?: string; title: string
 
 async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
   const path = url.pathname.replace(/\/$/, '') || '/'
-  const head: Head = { description: 'Fund research breakthroughs. Start or back AI research swarms, watch them work live and steer them together.', image: `${url.origin}/xframe-card.jpg?v=2`, title: 'Swarms · Fund breakthroughs' }
+  const head: Head = { description: 'Fund research breakthroughs. Start or back AI research swarms, watch them work live and steer them together.', image: `${url.origin}/xframe-card.jpg?v=3`, title: 'Swarms · Fund breakthroughs' }
   const data: Record<string, unknown> = {}
   if (path === '/' || path === '/join' || path === '/new') {
     const list = await within(Operations.list(env, {}), 1500)
@@ -139,7 +139,10 @@ function meta(head: Head, url: URL) {
   const tags = [
     `<meta property="og:title" content="${escape(head.title)}">`,
     `<meta property="og:description" content="${escape(head.description)}">`,
+    '<meta property="og:type" content="website">',
     `<meta property="og:image" content="${escape(head.image)}">`,
+    '<meta property="og:image:width" content="800">',
+    '<meta property="og:image:height" content="450">',
     `<meta property="og:url" content="${escape(url.origin + url.pathname)}">`,
     `<meta name="twitter:card" content="${head.player ? 'player' : 'summary_large_image'}">`,
     `<meta name="twitter:title" content="${escape(head.title)}">`,
