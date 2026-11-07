@@ -102,8 +102,11 @@ function called(text: string, args: Record<string, unknown> | undefined, detail:
 }
 
 export function fleet(entries: readonly Entry[], hands: readonly Hand[], lent: readonly Lent[]): Machine[] {
-  const found = new Map<string, Machine>()
-  const get = (name: string, kind: Machine['kind'], at: number, by: string | null) => {
+  return lend(folded(entries, hands), lent)
+}
+
+function finder(found: Map<string, Machine>) {
+  return (name: string, kind: Machine['kind'], at: number, by: string | null) => {
     let machine = found.get(name)
     if (!machine) {
       machine = { by, charged: null, commands: [], config: [], connected: false, ended: null, failed: null, kind, label: null, name, price: null, requests: null, started: at }
@@ -111,6 +114,15 @@ export function fleet(entries: readonly Entry[], hands: readonly Hand[], lent: r
     }
     return machine
   }
+}
+
+function ordered(found: Map<string, Machine>) {
+  return [...found.values()].sort((a, b) => Number(b.connected) - Number(a.connected) || (b.started ?? 0) - (a.started ?? 0))
+}
+
+export function folded(entries: readonly Entry[], hands: readonly Hand[]): Machine[] {
+  const found = new Map<string, Machine>()
+  const get = finder(found)
   const sorted = [...entries].sort((a, b) => a.at - b.at || a.seq - b.seq)
   const sandboxes = new Map<string, string>()
   let browsers = 0
@@ -196,8 +208,14 @@ export function fleet(entries: readonly Entry[], hands: readonly Hand[], lent: r
     const machine = found.get(hand.name) ?? get(hand.name, hand.name.startsWith('sb-') ? 'sandbox' : 'hand', 0, null)
     machine.connected = hand.connected
   }
+  return ordered(found)
+}
+
+export function lend(machines: readonly Machine[], lent: readonly Lent[]): Machine[] {
+  const found = new Map(machines.map((machine) => [machine.name, { ...machine }]))
+  const get = finder(found)
   for (const hand of lent) {
-    const machine = found.get(hand.name) ?? get(hand.name, 'hand', hand.at, null)
+    const machine = get(hand.name, 'hand', hand.at, null)
     machine.kind = 'hand'
     machine.label = hand.label || machine.label
     machine.connected = machine.connected || hand.connected
@@ -206,5 +224,5 @@ export function fleet(entries: readonly Entry[], hands: readonly Hand[], lent: r
     machine.requests = hand.requests
     machine.started ??= hand.at
   }
-  return [...found.values()].sort((a, b) => Number(b.connected) - Number(a.connected) || (b.started ?? 0) - (a.started ?? 0))
+  return ordered(found)
 }

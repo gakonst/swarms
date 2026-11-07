@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { Address } from 'viem'
-import type { Chatter, Code, Currency, Entry, Hand, Kind, Lent, Live, Note, Part, Pulse, Roster, Said, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
+import type { Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
 import { clip, redact } from '../shared/Trail.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Fleet from '../shared/Fleet.ts'
@@ -500,8 +500,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return (filter.before === undefined ? rows : rows.reverse()).map(Feed.entry)
   }
 
-  fleet(lent: readonly Lent[]): Fleet.Machine[] {
-    return Fleet.fleet(this.feed(0, { before: Number.MAX_SAFE_INTEGER, kinds: ['tool', 'output', 'error', 'machine'], limit: 2000 }), this.kv.get<Hand[]>('hands') ?? [], lent)
+  fleet(): Fleet.Machine[] {
+    return Fleet.folded(this.feed(0, { before: Number.MAX_SAFE_INTEGER, kinds: ['tool', 'output', 'error', 'machine'], limit: 2000 }), this.kv.get<Hand[]>('hands') ?? [])
   }
 
   page(
