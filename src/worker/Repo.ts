@@ -1,0 +1,107 @@
+import type { Snapshot } from '../shared/Api.ts'
+import { redact } from '../shared/Trail.ts'
+import * as Gateway from './Gateway.ts'
+import * as Store from './Store.ts'
+import type { Swarm } from './Swarm.ts'
+
+function slug(title: string) {
+  return (
+    title
+      .normalize('NFKD')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+/, '')
+      .slice(0, 48)
+      .replace(/-+$/, '') || 'swarm'
+  )
+}
+
+export const snapshotMs = 60_000
+
+const snapshotFiles = 2_000
+
+const snapshotText = 64_000
+
+type Repo = { name: string; state: 'none' | 'ready' }
+
+export async function located(self: Swarm, row: Store.Row): Promise<Repo> {
+  const ready = self.kv.get<string>('repo')
+  if (ready) return { name: ready, state: 'ready' }
+  const name = row.repo ?? slug(row.title)
+  const owner = await gatewayWallet(self)
+  const listed = owner ? await Gateway.code<{ repos: { name: string }[] }>(self.env, owner, row.id, `?at=${Date.now()}`) : undefined
+  const found = listed?.repos.find((repo) => repo.name === name) ?? listed?.repos[0]
+  if (found) {
+    self.kv.put('repo', found.name)
+    await Store.update(self.env, row.id, { repo: found.name })
+    self.log('status', `The swarm's code now lives in its public repository ${found.name}, which its page shows.`)
+    self.changed('detail', 'code')
+    return { name: found.name, state: 'ready' }
+  }
+  return { name, state: 'none' }
+}
+
+export async function gatewayWallet(self: Swarm) {
+  const known = self.kv.get<string>('owner')
+  if (known) return known
+  const me = await Gateway.me(self.env)
+  if (!me.ok) return undefined
+  self.kv.put('owner', me.value.wallet.toLowerCase())
+  return me.value.wallet.toLowerCase()
+}
+
+export async function watch(self: Swarm, row: Store.Row) {
+  const repo = await located(self, row)
+  if (repo.state !== 'ready') return
+  const fresh = await pushed(self, row.id, repo.name, self.kv.get<string>('seen') ?? null)
+  if (!fresh[0]) return
+  self.kv.put('seen', fresh[0].sha)
+  await snapshot(self, row.id, repo.name).catch((error: unknown) => console.error('Reading the repository failed', error))
+  self.changed('code')
+  for (const commit of fresh.reverse()) self.log('status', `Pushed ${commit.sha.slice(0, 7)} to ${repo.name}: ${redact(commit.message.split('\n')[0] ?? '')}`)
+}
+
+export async function snapshot(self: Swarm, swarm: string, name: string) {
+  const owner = await gatewayWallet(self)
+  if (!owner) return
+  const base = `/${encodeURIComponent(name)}`
+  const [log, listed] = await Promise.all([
+    Gateway.code<{ commits: Snapshot['commits'] }>(self.env, owner, swarm, `${base}/log?ref=main&limit=50&at=${Date.now()}`),
+    Gateway.code<{ files: { path: string; type: string }[] }>(self.env, owner, swarm, `${base}/files?ref=main&at=${Date.now()}`),
+  ])
+  if (!log || !listed) return
+  const files = listed.files.filter((file) => file.type !== 'tree').map((file) => file.path)
+  const head = log.commits[0]
+  const path = files.find((file) => /^readme(\.md)?$/i.test(file)) ?? files.find((file) => /readme/i.test(file)) ?? files[0]
+  const [read, diff] = await Promise.all([
+    head && path ? Gateway.code<{ size: number; text?: string }>(self.env, owner, swarm, `${base}/read?path=${encodeURIComponent(path)}&ref=${head.sha}`) : undefined,
+    head ? Gateway.code<{ files: NonNullable<Snapshot['diff']> }>(self.env, owner, swarm, `${base}/diff?ref=${head.sha}`) : undefined,
+  ])
+  self.kv.put('snapshot', {
+    at: Date.now(),
+    commits: log.commits.map((commit) => ({ ...commit, message: redact(commit.message) })),
+    diff: diff && diff.files.reduce((total, change) => total + change.patch.length, 0) <= snapshotText * 2 ? diff.files.map((change) => ({ ...change, patch: redact(change.patch) })) : null,
+    files: files.slice(0, snapshotFiles),
+    name,
+    readme: path && read?.text !== undefined && read.text.length <= snapshotText ? { path, text: redact(read.text) } : null,
+  } satisfies Snapshot)
+  self.kv.delete('snapping')
+}
+
+export async function history(self: Swarm, swarm: string, name: string, limit: number) {
+  const owner = await gatewayWallet(self)
+  const read = owner
+    ? await Gateway.code<{ commits: Gateway.Commit[] }>(self.env, owner, swarm, `/${name}/log?ref=main&limit=${limit}&at=${Date.now()}`)
+    : undefined
+  return read?.commits ?? []
+}
+
+export async function head(self: Swarm, swarm: string, name: string) {
+  return (await history(self, swarm, name, 1))[0]?.sha ?? null
+}
+
+export async function pushed(self: Swarm, swarm: string, name: string, base: string | null) {
+  const commits = await history(self, swarm, name, 50)
+  const at = base ? commits.findIndex((commit) => commit.sha === base) : -1
+  return at >= 0 ? commits.slice(0, at) : commits
+}

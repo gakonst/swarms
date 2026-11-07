@@ -1,3 +1,4 @@
+import * as Repo from './Repo.ts'
 import type { Hand, Live } from '../shared/Api.ts'
 import { type Buffers, type Crew, appended, clip, crew, narrate, redact, subagent, thought, tool } from '../shared/Trail.ts'
 import * as Gateway from './Gateway.ts'
@@ -79,7 +80,7 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   const [report, money] = await Promise.all([
     ended || plan.turn ? Gateway.turn(self.env, row.id, agent.id, run.turn) : undefined,
     refreshing ? Money.refresh(self, row, plan) : undefined,
-    plan.git ? self.watch(row) : undefined,
+    plan.git ? Repo.watch(self, row) : undefined,
     plan.artifacts ? self.publish(row.id) : undefined,
   ])
   if (report?.ok && !['queued', 'running'].includes(report.value.status)) return self.finish(row, run, report.value)

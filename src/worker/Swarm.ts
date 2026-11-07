@@ -25,6 +25,7 @@ import * as Clock from './Clock.ts'
 import * as Paying from './Paying.ts'
 import * as Money from './Money.ts'
 import * as Follow from './Follow.ts'
+import * as Repo from './Repo.ts'
 
 export type Contributed = {
   amount: string
@@ -59,8 +60,6 @@ export type Spoken = {
   swarm: string
   text: string
 }
-
-type Repo = { name: string; state: 'none' | 'ready' }
 
 type Seen = { title: string; turn: number; version: number }
 
@@ -152,9 +151,6 @@ const maxFailures = 3
 const settleMs = 15_000
 
 const quickMs = 60_000
-const snapshotMs = 60_000
-const snapshotFiles = 2_000
-const snapshotText = 64_000
 
 const rowMs = 10_000
 
@@ -667,7 +663,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       await this.pause(money.row, worked || money.row.contributors ? { left: String(money.left), wake, why: 'money' } : { why: 'unfunded' })
       return wake
     }
-    const repo = await this.repo(row)
+    const repo = await Repo.located(this, row)
 
     const agent = await this.lead(row)
     if ('error' in agent) return this.retry(money.row, agent.error, agent.detail)
@@ -675,7 +671,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const n = run.state === 'starting' ? run.n : worked + 1
     const since = Phase.since(run)
     const notes = await this.notes(money.row)
-    const base = repo.state === 'ready' ? await this.head(row.id, repo.name) : null
+    const base = repo.state === 'ready' ? await Repo.head(this, row.id, repo.name) : null
     if (base) this.kv.put('seen', base)
     else this.kv.delete('seen')
     const told = this.told()
@@ -810,8 +806,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       .exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n)
       .toArray()[0]
     await this.settled(money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
-    const repo = await this.repo(money.row)
-    const commits = repo.state === 'ready' ? await this.pushed(row.id, repo.name, found?.base ?? null) : []
+    const repo = await Repo.located(this, money.row)
+    const commits = repo.state === 'ready' ? await Repo.pushed(this, row.id, repo.name, found?.base ?? null) : []
     const spent = BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
     this.ctx.storage.sql.exec(
       'UPDATE turns SET ended_at = ?, status = ?, message = ?, spent = ?, commits = ? WHERE n = ?',
@@ -929,97 +925,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (shown?.why !== pause.why) this.log('status', text)
   }
 
-  async owner() {
-    const known = this.kv.get<string>('owner')
-    if (known) return known
-    const me = await Gateway.me(this.env)
-    if (!me.ok) return undefined
-    this.kv.put('owner', me.value.wallet.toLowerCase())
-    return me.value.wallet.toLowerCase()
-  }
-
-  async repo(row: Store.Row): Promise<Repo> {
-    const ready = this.kv.get<string>('repo')
-    if (ready) return { name: ready, state: 'ready' }
-    const name = row.repo ?? slug(row.title)
-    const owner = await this.owner()
-    const listed = owner ? await Gateway.code<{ repos: { name: string }[] }>(this.env, owner, row.id, `?at=${Date.now()}`) : undefined
-    const found = listed?.repos.find((repo) => repo.name === name) ?? listed?.repos[0]
-    if (found) {
-      this.kv.put('repo', found.name)
-      await Store.update(this.env, row.id, { repo: found.name })
-      this.log('status', `The swarm's code now lives in its public repository ${found.name}, which its page shows.`)
-      this.changed('detail', 'code')
-      return { name: found.name, state: 'ready' }
-    }
-    return { name, state: 'none' }
-  }
-
-  async watch(row: Store.Row) {
-    const repo = await this.repo(row)
-    if (repo.state !== 'ready') return
-    const fresh = await this.pushed(row.id, repo.name, this.kv.get<string>('seen') ?? null)
-    if (!fresh[0]) return
-    this.kv.put('seen', fresh[0].sha)
-    await this.snapshot(row.id, repo.name).catch((error: unknown) => console.error('Reading the repository failed', error))
-    this.changed('code')
-    for (const commit of fresh.reverse()) this.log('status', `Pushed ${commit.sha.slice(0, 7)} to ${repo.name}: ${redact(commit.message.split('\n')[0] ?? '')}`)
-  }
-
   code(): Snapshot | null {
     const id = this.kv.get<string>('id')
     const repo = this.kv.get<string>('repo')
     const snapshot = this.kv.get<Snapshot>('snapshot')
-    if (id && repo && (!snapshot || snapshot.name !== repo || Date.now() - snapshot.at > snapshotMs) && Date.now() - (this.kv.get<number>('snapping') ?? 0) > snapshotMs) {
+    if (id && repo && (!snapshot || snapshot.name !== repo || Date.now() - snapshot.at > Repo.snapshotMs) && Date.now() - (this.kv.get<number>('snapping') ?? 0) > Repo.snapshotMs) {
       this.kv.put('snapping', Date.now())
-      this.ctx.waitUntil(this.snapshot(id, repo).catch((error: unknown) => console.error('Reading the repository failed', error)))
+      this.ctx.waitUntil(Repo.snapshot(this, id, repo).catch((error: unknown) => console.error('Reading the repository failed', error)))
     }
     return snapshot && snapshot.name === repo ? snapshot : null
-  }
-
-  async snapshot(swarm: string, name: string) {
-    const owner = await this.owner()
-    if (!owner) return
-    const base = `/${encodeURIComponent(name)}`
-    const [log, listed] = await Promise.all([
-      Gateway.code<{ commits: Snapshot['commits'] }>(this.env, owner, swarm, `${base}/log?ref=main&limit=50&at=${Date.now()}`),
-      Gateway.code<{ files: { path: string; type: string }[] }>(this.env, owner, swarm, `${base}/files?ref=main&at=${Date.now()}`),
-    ])
-    if (!log || !listed) return
-    const files = listed.files.filter((file) => file.type !== 'tree').map((file) => file.path)
-    const head = log.commits[0]
-    const path = files.find((file) => /^readme(\.md)?$/i.test(file)) ?? files.find((file) => /readme/i.test(file)) ?? files[0]
-    const [read, diff] = await Promise.all([
-      head && path ? Gateway.code<{ size: number; text?: string }>(this.env, owner, swarm, `${base}/read?path=${encodeURIComponent(path)}&ref=${head.sha}`) : undefined,
-      head ? Gateway.code<{ files: NonNullable<Snapshot['diff']> }>(this.env, owner, swarm, `${base}/diff?ref=${head.sha}`) : undefined,
-    ])
-    this.kv.put('snapshot', {
-      at: Date.now(),
-      commits: log.commits.map((commit) => ({ ...commit, message: redact(commit.message) })),
-      diff: diff && diff.files.reduce((total, change) => total + change.patch.length, 0) <= snapshotText * 2 ? diff.files.map((change) => ({ ...change, patch: redact(change.patch) })) : null,
-      files: files.slice(0, snapshotFiles),
-      name,
-      readme: path && read?.text !== undefined && read.text.length <= snapshotText ? { path, text: redact(read.text) } : null,
-    } satisfies Snapshot)
-    this.kv.delete('snapping')
-  }
-
-  async commits(swarm: string, name: string, limit: number) {
-    const owner = await this.owner()
-    const read = owner
-      ? await Gateway.code<{ commits: Gateway.Commit[] }>(this.env, owner, swarm, `/${name}/log?ref=main&limit=${limit}&at=${Date.now()}`)
-      : undefined
-    return read?.commits ?? []
-  }
-
-  async head(swarm: string, name: string) {
-    return (await this.commits(swarm, name, 1))[0]?.sha ?? null
-  }
-
-  async pushed(swarm: string, name: string, base: string | null) {
-    const commits = await this.commits(swarm, name, 50)
-    const at = base ? commits.findIndex((commit) => commit.sha === base) : -1
-    return at >= 0 ? commits.slice(0, at) : commits
   }
 
   async steer(swarm: string, noteId: string): Promise<Note | undefined> {
@@ -1449,18 +1363,6 @@ function touched(kv: SyncKvStorage, touch: () => void): SyncKvStorage {
       if (viewKeys.has(key)) touch()
     },
   }
-}
-
-function slug(title: string) {
-  return (
-    title
-      .normalize('NFKD')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+/, '')
-      .slice(0, 48)
-      .replace(/-+$/, '') || 'swarm'
-  )
 }
 
 function brief(row: Store.Row, notes: Note[]) {
