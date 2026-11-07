@@ -87,19 +87,22 @@ export function Side(props: {
     keep(props.swarm.id, props.branch, next)
   }
 
-  const ask = async () => {
+  const ask = async (): Promise<Btw.Exchange[] | undefined> => {
     const question = text.trim()
-    if (!question || pending) return
+    if (!question || pending) return undefined
     setError(undefined)
     setDone(undefined)
     setPending(question)
     setText('')
     try {
       const answered = await Api.btw(props.swarm.id, { ...(props.branch === null ? {} : { branch: props.branch }), question, thread: Btw.fit(thread) })
-      remember([...thread, answered].slice(-Btw.maxThread))
+      const next = [...thread, answered].slice(-Btw.maxThread)
+      remember(next)
+      return next
     } catch (reason) {
       setText(question)
       setError(message(reason))
+      return undefined
     } finally {
       setPending(undefined)
     }
@@ -107,10 +110,12 @@ export function Side(props: {
 
   const steer = async (artifact: boolean) => {
     const config = props.config
-    if (!config || busy || !thread.length || !valid(stake)) return
+    if (!config || busy || pending || !valid(stake)) return
+    const asked = !thread.length && artifact && text.trim() ? await ask() : thread
+    if (!asked?.length) return
     setError(undefined)
     setDone(undefined)
-    const kept = Btw.fit(thread)
+    const kept = Btw.fit(asked)
     try {
       const need = units(stake)
       if (team) {
@@ -120,7 +125,7 @@ export function Side(props: {
       if (props.branch === null) {
         const posted = await Api.say(props.swarm.id, { artifact, btw: kept, steer: decimal(need), text: `@swarm ${Btw.note(kept, artifact)}` })
         props.onSaid(posted.message)
-      } else await Api.fund(props.swarm.id, props.branch, { amount: decimal(need), message: Btw.collapse(kept, artifact) })
+      } else await Api.fund(props.swarm.id, props.branch, { amount: decimal(need), artifact, message: Btw.collapse(kept, artifact) })
       credit.spend(need)
       setDone(artifact ? `Asked ${name} for an artifact, with ${usd(decimal(need))} behind it.` : `Steered ${name} with this thread and ${usd(decimal(need))}.`)
       remember([])
@@ -182,7 +187,7 @@ export function Side(props: {
         </div>
         <button aria-label="Close" className="side-close" onClick={props.onClose} type="button">×</button>
       </header>
-      <p className="side-how">Answered from {name}'s own context without interrupting it. Steer with the thread, or ask for an artifact, by putting money behind it.</p>
+      <p className="side-how">Answered from {name}'s own context without interrupting it. Steer {name} with the thread, or ask {name} for an artifact of it, by putting money behind it.</p>
       <ol className="side-list" ref={list}>
         {thread.map((exchange, index) => (
           <li key={index}>
@@ -202,7 +207,7 @@ export function Side(props: {
       {done && <p className="side-done">{done}</p>}
       {gate ?? (
         <>
-          {thread.length > 0 && props.swarm.status !== 'done' && (
+          {(thread.length > 0 || !!text.trim()) && props.swarm.status !== 'done' && (
             <div className="side-act">
               <div className="say-stake" role="radiogroup" aria-label="How much behind it">
                 {stakes.map((value) => (
@@ -211,10 +216,10 @@ export function Side(props: {
                 <label className="say-own">$<input aria-label="Your amount" disabled={!!busy} inputMode="decimal" onChange={(event) => setStake(event.target.value.replace(',', '.').replace('$', ''))} onFocus={(event) => event.target.select()} placeholder="…" value={(stakes as readonly string[]).includes(stake) ? '' : stake} /></label>
               </div>
               <div className="side-buttons">
-                <button disabled={!!busy || !valid(stake)} onClick={() => void steer(false)} type="button">Steer with this</button>
-                <button disabled={!!busy || !valid(stake)} onClick={() => void steer(true)} type="button">Ask for an artifact</button>
-                <button className="side-quiet" disabled={!!busy} onClick={() => void share()} type="button">Share to room</button>
-                <button className="side-quiet" disabled={!!busy} onClick={() => remember([])} type="button">Clear</button>
+                {thread.length > 0 && <button disabled={!!busy || !!pending || !valid(stake)} onClick={() => void steer(false)} type="button">Steer with this</button>}
+                <button disabled={!!busy || !!pending || !valid(stake)} onClick={() => void steer(true)} title={thread.length ? undefined : 'Asks this first, then asks for an artifact of it'} type="button">Ask for an artifact</button>
+                {thread.length > 0 && <button className="side-quiet" disabled={!!busy} onClick={() => void share()} type="button">Share to room</button>}
+                {thread.length > 0 && <button className="side-quiet" disabled={!!busy} onClick={() => remember([])} type="button">Clear</button>}
               </div>
               <p className="side-note">{busy ?? (team ? `From the swarm's money${seat?.left === null || seat?.left === undefined ? '' : ` · ${usd(seat.left)} of your team budget left`}.` : 'New money from your wallet goes behind it.')}</p>
             </div>

@@ -30,10 +30,10 @@ function Command(props: { run: Machine['commands'][number] }) {
 
 function Row(props: { machine: Machine; now: number; onPick: () => void; open: boolean }) {
   const machine = props.machine
-  const state = machine.connected ? 'on' : machine.ended ? 'off' : 'idle'
+  const state = machine.connected ? 'on' : machine.failed ? 'failed' : machine.ended ? 'off' : 'idle'
   const up = machine.started ? (machine.ended ?? (machine.connected ? props.now : machine.started)) - machine.started : 0
   const runs = machine.commands.length
-  const status = machine.connected ? 'Online' : machine.ended ? 'Stopped' : 'Offline'
+  const status = machine.connected ? 'Online' : machine.failed ? 'Did not start' : machine.ended ? 'Stopped' : 'Offline'
   const earned = machine.kind === 'hand' && machine.charged && Number(machine.charged) > 0 ? `earned ${usd(machine.charged)}` : null
   return (
     <li data-open={props.open}>
@@ -47,8 +47,8 @@ function Row(props: { machine: Machine; now: number; onPick: () => void; open: b
         <div className="machine-open">
           <dl className="machine-facts">
             <div><dt>Kind</dt><dd>{kinds[machine.kind]}</dd></div>
-            <div><dt>State</dt><dd>{machine.connected ? 'Connected' : machine.ended ? `Stopped ${ago(machine.ended, props.now)}` : 'Offline'}</dd></div>
-            {machine.started ? <div><dt>{machine.connected ? 'Up for' : 'Ran for'}</dt><dd>{duration(up)}</dd></div> : null}
+            <div><dt>State</dt><dd>{machine.connected ? 'Connected' : machine.failed ? `Did not start: ${machine.failed}` : machine.ended ? `Stopped ${ago(machine.ended, props.now)}` : 'Offline'}</dd></div>
+            {machine.started && !machine.failed ? <div><dt>{machine.connected ? 'Up for' : 'Ran for'}</dt><dd>{duration(up)}</dd></div> : null}
             {machine.by && <div><dt>Started by</dt><dd>{machine.by}</dd></div>}
             {machine.config.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}
             {machine.kind === 'hand' && <div><dt>Price</dt><dd>{machine.price ?? 'Free'}</dd></div>}

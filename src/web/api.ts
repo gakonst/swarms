@@ -184,7 +184,7 @@ export function branches(id: string) {
   return fixture ? staged((fixtures) => fixtures.branches(id)) : request<Branches>(`${path(id)}/branches`)
 }
 
-export function fund(id: string, branch: number, input: { amount: string; message?: string }) {
+export function fund(id: string, branch: number, input: { amount: string; artifact?: boolean; message?: string }) {
   return fixture ? staged((fixtures) => fixtures.fund(id, branch, input, bearer ? visitor : undefined)) : request<Branch>(`${path(id)}/branches/${branch}/fund`, input)
 }
 

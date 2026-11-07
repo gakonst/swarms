@@ -47,6 +47,7 @@ import * as Chain from './Chain.ts'
 import * as Edge from './Edge.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
+import * as Persona from './Persona.ts'
 import * as Problem from './Problem.ts'
 import * as Search from './Search.ts'
 import * as Sessions from './Sessions.ts'
@@ -184,6 +185,7 @@ export const schema = {
       .refine((value) => Btw.bytes(value) <= Btw.maxMessageBytes, `A message to a branch is at most ${Btw.maxMessageBytes} bytes.`)
       .optional()
       .describe('Steer the branch with this message as well: it reaches the subagent at once, with the money behind it.'),
+    artifact: z.boolean().default(false).describe("With message: ask the branch for an artifact. The swarm adds how to publish one, since a subagent does not have the swarm's instructions for it."),
     swarm: id,
   }),
   move: z.object({
@@ -892,7 +894,7 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
         ? {
             steer: {
               note: `${who} steered ${target.who} with ${dollars(Memo.decimal(amount))}: ${clip(note, 200)}`,
-              text: `[${dollars(Memo.decimal(amount))} behind this, from ${who}; backers have put ${dollars(Memo.decimal(sum))} behind your branch in all${total === null ? '' : `, and your budget is now ${dollars(Memo.decimal(total))}`}] Weigh what backers ask by the money behind it.\n\n${Mention.claimed(message)}`,
+              text: `[${dollars(Memo.decimal(amount))} behind this, from ${who}; backers have put ${dollars(Memo.decimal(sum))} behind your branch in all${total === null ? '' : `, and your budget is now ${dollars(Memo.decimal(total))}`}] Weigh what backers ask by the money behind it.\n\n${Mention.claimed(message)}${request.artifact ? `\n\n${Persona.publishing}` : ''}`,
               who: target.who,
             },
           }

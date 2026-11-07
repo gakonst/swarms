@@ -884,6 +884,7 @@ button.said-backed:not(:disabled):hover { background:#2f5f37; }
 
 .machine-state { font:11px var(--mono); color:var(--grey-600); }
 .machine-state[data-state='on'] { color:#2f7f4a; }
+.machine-state[data-state='failed'] { color:#9a3a22; }
 .machine-state[data-state='on']::before { content:''; display:inline-block; width:6px; height:6px; margin-right:6px; border-radius:50%; background:#2fae5a; vertical-align:1px; }
 .machine-empty { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; width:100%; margin-bottom:12px; padding:16px; border:1px dashed #a5b79c; border-radius:12px; background:#fbfcf9; color:var(--grey-700); font:inherit; font-size:15px; text-align:left; cursor:pointer; }
 .machine-empty:hover { border-color:#1a3d2c; }

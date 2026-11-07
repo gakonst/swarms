@@ -1082,7 +1082,7 @@ export async function stop(key: string, branch: number, who: `0x${string}` | und
   return delay(grown(swarm).find((found) => found.id === branch) as Branch, 300)
 }
 
-export async function fund(key: string, branch: number, input: { amount: string; message?: string }, who: `0x${string}` | undefined): Promise<Branch> {
+export async function fund(key: string, branch: number, input: { amount: string; artifact?: boolean; message?: string }, who: `0x${string}` | undefined): Promise<Branch> {
   const swarm = seed(await find(key))
   const seated = directing(swarm, key, who)
   const target = grown(swarm).find((found) => found.id === branch && found.parent === null)
