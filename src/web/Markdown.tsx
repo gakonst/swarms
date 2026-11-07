@@ -1,7 +1,16 @@
+import { gfmFromMarkdown } from 'mdast-util-gfm'
+import { gfm } from 'micromark-extension-gfm'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 
-const plugins = [remarkGfm]
+type Extensions = { fromMarkdownExtensions?: unknown[]; micromarkExtensions?: unknown[] }
+
+function readGfm(this: { data(): object }) {
+  const data: Extensions = this.data()
+  data.micromarkExtensions = [...(data.micromarkExtensions ?? []), gfm()]
+  data.fromMarkdownExtensions = [...(data.fromMarkdownExtensions ?? []), gfmFromMarkdown()]
+}
+
+const plugins = [readGfm]
 
 function resolve(base: string | undefined) {
   return (url: string) => {
