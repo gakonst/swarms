@@ -1,0 +1,239 @@
+import type { Hand, Live } from '../shared/Api.ts'
+import { type Buffers, type Crew, appended, clip, crew, narrate, redact, subagent, thought, tool } from '../shared/Trail.ts'
+import * as Gateway from './Gateway.ts'
+import * as Store from './Store.ts'
+import * as Relay from './Relay.ts'
+import * as Clock from './Clock.ts'
+import * as Money from './Money.ts'
+import type { Lead, Swarm, Turning } from './Swarm.ts'
+
+function frame(block: string) {
+  const lines = block.split('\n')
+  const data = lines
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n')
+  if (!data) return undefined
+  return { data, live: lines.some((line) => /^event:\s*live$/.test(line)) }
+}
+
+function streamed(who: string | null, type: string | undefined, payload: Record<string, unknown>): Live[] {
+  const text = typeof payload['text'] === 'string' ? redact(payload['text']) : ''
+  const offset = typeof payload['offset'] === 'number' ? payload['offset'] : null
+  if (type === 'assistant.delta') return [{ channel: 'text', delta: text, item: String(payload['item_id'] ?? ''), offset, type: 'delta', who }]
+  if (type === 'reasoning.summary.delta') return [{ channel: 'thinking', delta: text, item: `reasoning:${String(payload['model_call_index'] ?? '')}`, offset: null, type: 'delta', who }]
+  if (type === 'tool.input.delta') return [{ channel: 'input', delta: text, item: String(payload['call_id'] ?? ''), offset: null, type: 'delta', who }]
+  return []
+}
+
+function cues(payload: Record<string, unknown>): Cue[] {
+  const said = `${tool(payload)} ${typeof payload['arguments'] === 'string' ? payload['arguments'] : JSON.stringify(payload['arguments'] ?? {})}`
+  return [
+    ...(/git_create|git_commit|git_remote|git push/.test(said) ? (['git'] as const) : []),
+    ...(/kv_set|bucket_put/.test(said) && said.includes('artifacts/') ? (['artifacts'] as const) : []),
+    ...(/compute_create|compute_hand|compute_terminate/.test(said) ? (['hands'] as const) : []),
+  ]
+}
+
+export type Cue = 'artifacts' | 'chain' | 'git' | 'hands' | 'sponsors' | 'turn'
+
+const streamFails = 2
+
+const fallbackMs = 5 * 60_000
+
+const cueMs = 5_000
+
+export async function follow(self: Swarm, row: Store.Row, run: Turning) {
+  const agent = self.agent()
+  if (!agent) return self.finish(row, run, { error: 'The agent is gone.', request_id: run.turn, status: 'failed' })
+
+  let ended = false
+  let down = false
+  const window = self.fails < streamFails ? await listen(self, row, agent, run) : undefined
+  if (window) {
+    self.fails = 0
+    ended = window.ended
+  } else {
+    if (self.fails < streamFails) self.fails += 1
+    let cursor = agent.cursor
+    for (let page = 0; page < 5; page++) {
+      const read = await Gateway.events(self.env, row.id, agent.id, cursor)
+      if (!read.ok) {
+        down = read.status >= 500
+        break
+      }
+      if (read.value.events.length) self.reached()
+      for (const event of read.value.events) ended = digest(self, event, run.turn) || ended
+      if (read.value.next_cursor !== cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor: read.value.next_cursor })
+      cursor = read.value.next_cursor
+      if (!read.value.has_more) break
+    }
+  }
+
+  const now = Date.now()
+  if (!window && !ended && now - self.checked < Clock.refreshMs) return now + Clock.followMs
+
+  self.checked = now
+  const plan = window ? planned(self, now) : { ...Money.everything, artifacts: now - (self.kv.get<number>('shelvedAt') ?? 0) >= Clock.shelfMs, git: true, turn: true }
+  const refreshing = plan.chain || plan.hands || plan.sponsors
+  const [report, money] = await Promise.all([
+    ended || plan.turn ? Gateway.turn(self.env, row.id, agent.id, run.turn) : undefined,
+    refreshing ? Money.refresh(self, row, plan) : undefined,
+    plan.git ? self.watch(row) : undefined,
+    plan.artifacts ? self.publish(row.id) : undefined,
+  ])
+  if (report?.ok && !['queued', 'running'].includes(report.value.status)) return self.finish(row, run, report.value)
+  if (report && !report.ok && report.status !== 401 && report.status < 500)
+    return self.finish(row, run, { error: report.detail, request_id: run.turn, status: 'failed' })
+  if ((down || (report && !report.ok && report.status >= 500)) && self.unreachable(now)) {
+    const detail = !report || report.ok ? 'its events did not load' : report.detail
+    await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
+    self.abandon(agent.id, detail)
+    return self.finish(row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
+  }
+  if (money && plan.chain && (money.left < Store.reserve + Store.headroom || BigInt(self.kv.get<string>('loose') ?? '0') >= Money.smallestSwap)) await Money.fund(self, money.row)
+  return window ? Date.now() : now + Clock.followMs
+}
+
+export async function listen(self: Swarm, row: Store.Row, agent: Lead, run: Turning): Promise<{ ended: boolean } | undefined> {
+  const stop = new AbortController()
+  const live = [...self.watchers].some((watcher) => watcher.relaying)
+  const opened = Date.now()
+  self.window = { live, stop }
+  const timer = setTimeout(() => stop.abort(), Clock.refreshMs)
+  let ended = false
+  let cursor = agent.cursor
+  try {
+    const response = await Gateway.stream(self.env, row.id, agent.id, cursor, stop.signal, live).catch(() => undefined)
+    if (!response?.ok || !response.body) {
+      await response?.body?.cancel().catch(() => undefined)
+      return undefined
+    }
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+    let buffer = ''
+    for (;;) {
+      const read = await reader.read().catch(() => undefined)
+      if (!read || read.done) {
+        await reader.cancel().catch(() => undefined)
+        if (stop.signal.aborted || ended) return { ended }
+        return Date.now() - opened < Clock.refreshMs / 2 ? undefined : { ended }
+      }
+      buffer += read.value
+      const blocks = buffer.split('\n\n')
+      buffer = blocks.pop() ?? ''
+      for (const block of blocks) {
+        const found = frame(block)
+        if (!found) continue
+        const event = JSON.parse(found.data) as Gateway.Event
+        if (found.live) {
+          for (const delta of deltas(self, event, agent.id)) Relay.relay(self, delta)
+          continue
+        }
+        self.reached()
+        ended = digest(self, event, run.turn) || ended
+        cursor = Math.max(cursor, event.seq)
+      }
+      if (cursor !== (self.agent() ?? agent).cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor })
+      if (ended) stop.abort()
+    }
+  } finally {
+    clearTimeout(timer)
+    if (self.window?.stop === stop) self.window = undefined
+  }
+}
+
+export function deltas(self: Swarm, event: Gateway.Event, agent: string): Live[] {
+  const outer = event.event
+  if (!outer || outer.source === undefined) return []
+  if (outer.source === 'subagent') {
+    const update = outer.update as { event?: { payload?: Record<string, unknown>; type?: string }; id?: unknown; type?: string } | undefined
+    if (update?.type !== 'event') return []
+    const who = crewed(self).names[`${outer.root_session_id ?? agent}:${String(update.id)}`] ?? `subagent ${String(update.id)}`
+    return streamed(who, update.event?.type, update.event?.payload ?? {})
+  }
+  return streamed(null, outer.event?.type, outer.event?.payload ?? {})
+}
+
+export function due(self: Swarm, cue: Cue, every: number, now: number) {
+  const last = self.polled.get(cue) ?? 0
+  const cued = self.cues.get(cue)
+  const hit = (cued !== undefined && cued > last && now - cued >= cueMs) || now - last >= every
+  if (hit) self.polled.set(cue, now)
+  return hit
+}
+
+export function planned(self: Swarm, now: number) {
+  const lent = (self.kv.get<Hand[]>('hands') ?? []).length > 0 || !!self.kv.get<boolean>('issued')
+  return {
+    artifacts: due(self, 'artifacts', fallbackMs, now),
+    chain: due(self, 'chain', Clock.minuteMs, now),
+    git: due(self, 'git', self.kv.get<string>('repo') ? Clock.minuteMs : fallbackMs, now),
+    hands: due(self, 'hands', lent ? Clock.refreshMs : Clock.minuteMs, now),
+    sponsors: due(self, 'sponsors', self.listened() ? Clock.refreshMs : 3 * Clock.refreshMs, now),
+    turn: due(self, 'turn', Clock.minuteMs, now),
+  }
+}
+
+export function digest(self: Swarm, event: Gateway.Event, turn: string) {
+  const outer = event.event
+  if (!outer) return false
+  if (outer.source === undefined) {
+    if (outer.type !== 'result' || event.request_id !== turn) return false
+    Relay.ended(self)
+    return true
+  }
+
+  const at = event.created_at ?? Date.now()
+  if (outer.source === 'subagent' && outer.update) {
+    const known = crewed(self)
+    const found = subagent(buffers(self), known, outer.root_session_id ?? self.agent()?.id ?? 'session', outer.update)
+    if (!found) return false
+    const update = outer.update as { event?: { payload?: Record<string, unknown>; type?: string }; type?: string }
+    if (update.type !== 'event') self.kv.put('crew', known)
+    if (update.type === 'added' || update.type === 'status' || update.type === 'completion') self.changed('branches')
+    if (update.type === 'event') {
+      if (update.event?.type === 'tool.call') for (const found of cues(update.event.payload ?? {})) self.cue(found)
+      for (const delta of streamed(found.who, update.event?.type, update.event?.payload ?? {})) Relay.relay(self, delta)
+    }
+    for (const step of found.steps) self.log(step.kind, step.text, step.detail, { at, event: event.seq, who: found.who })
+    return false
+  }
+
+  const inner = outer.event
+  if (inner?.type === 'tool.call') for (const found of cues(inner.payload ?? {})) self.cue(found)
+  for (const delta of streamed(null, inner?.type, inner?.payload ?? {})) Relay.relay(self, delta)
+  record(self, null, inner?.type, inner?.payload ?? {}, event.seq, at)
+  return false
+}
+
+export function record(self: Swarm, who: string | null, type: string | undefined, payload: Record<string, unknown>, event: number, at: number) {
+  for (const found of narrate(buffers(self), who, type, payload)) self.log(found.kind, found.text, found.detail, { at, event, who })
+}
+
+export function buffers(self: Swarm): Buffers {
+  const name = (who: string | null) => (who === null ? 'thinking' : `thinking:${who}`)
+  return {
+    add: (who, text) => {
+      const held = self.kv.get<string>(name(who)) ?? ''
+      const next = appended(held, text)
+      if (next !== held) self.kv.put(name(who), next)
+    },
+    take: (who) => {
+      const text = self.kv.get<string>(name(who)) ?? ''
+      self.kv.delete(name(who))
+      return text
+    },
+  }
+}
+
+export function flush(self: Swarm) {
+  const speakers = [null, ...[...self.kv.list({ prefix: 'thinking:' })].map(([name]) => name.slice('thinking:'.length))]
+  for (const who of speakers) {
+    const thinking = buffers(self).take(who).trim()
+    if (thinking) self.log('thinking', clip(thinking, thought), null, { who })
+  }
+}
+
+export function crewed(self: Swarm): Crew {
+  return self.kv.get<Crew>('crew') ?? crew()
+}

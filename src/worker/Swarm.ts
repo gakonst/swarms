@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { Address } from 'viem'
 import type { Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Shown, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
-import { type Buffers, type Crew, appended, clip, crew, narrate, redact, subagent, thought, tool } from '../shared/Trail.ts'
+import { clip, redact } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Memo from '../shared/Memo.ts'
@@ -24,6 +24,7 @@ import * as Relay from './Relay.ts'
 import * as Clock from './Clock.ts'
 import * as Paying from './Paying.ts'
 import * as Money from './Money.ts'
+import * as Follow from './Follow.ts'
 
 export type Contributed = {
   amount: string
@@ -63,9 +64,9 @@ type Repo = { name: string; state: 'none' | 'ready' }
 
 type Seen = { title: string; turn: number; version: number }
 
-type Lead = { briefed: boolean; cursor: number; id: string; persona: boolean; unreachable: number | null; url: string }
+export type Lead = { briefed: boolean; cursor: number; id: string; persona: boolean; unreachable: number | null; url: string }
 
-type Turning = Extract<Phase.Run, { state: 'working' }>
+export type Turning = Extract<Phase.Run, { state: 'working' }>
 
 const version = 2
 
@@ -186,8 +187,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   ring: Relay.Ring = { bytes: 0, frames: [] }
   window: { live: boolean; stop: AbortController } | undefined
   fails = 0
-  cues = new Map<Cue, number>()
-  polled = new Map<Cue, number>()
+  cues = new Map<Follow.Cue, number>()
+  polled = new Map<Follow.Cue, number>()
   held: Vault.Balances | undefined
   pledged = { biggest: 0n, left: 0n, spent: 0n }
   waiters = new Set<() => void>()
@@ -643,7 +644,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (!Phase.due(run, Date.now())) return run.pause.why === 'money' ? run.pause.wake : null
       this.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
     }
-    if (run.state === 'working') return this.follow(row, run)
+    if (run.state === 'working') return Follow.follow(this, row, run)
     return this.advance(row)
   }
 
@@ -791,139 +792,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return styled
   }
 
-  async follow(row: Store.Row, run: Turning) {
-    const agent = this.agent()
-    if (!agent) return this.finish(row, run, { error: 'The agent is gone.', request_id: run.turn, status: 'failed' })
-
-    let ended = false
-    let down = false
-    const window = this.fails < streamFails ? await this.listen(row, agent, run) : undefined
-    if (window) {
-      this.fails = 0
-      ended = window.ended
-    } else {
-      if (this.fails < streamFails) this.fails += 1
-      let cursor = agent.cursor
-      for (let page = 0; page < 5; page++) {
-        const read = await Gateway.events(this.env, row.id, agent.id, cursor)
-        if (!read.ok) {
-          down = read.status >= 500
-          break
-        }
-        if (read.value.events.length) this.reached()
-        for (const event of read.value.events) ended = this.digest(event, run.turn) || ended
-        if (read.value.next_cursor !== cursor) this.kv.put('agent', { ...(this.agent() ?? agent), cursor: read.value.next_cursor })
-        cursor = read.value.next_cursor
-        if (!read.value.has_more) break
-      }
-    }
-
-    const now = Date.now()
-    if (!window && !ended && now - this.checked < Clock.refreshMs) return now + Clock.followMs
-
-    this.checked = now
-    const plan = window ? this.plan(now) : { ...Money.everything, artifacts: now - (this.kv.get<number>('shelvedAt') ?? 0) >= Clock.shelfMs, git: true, turn: true }
-    const refreshing = plan.chain || plan.hands || plan.sponsors
-    const [report, money] = await Promise.all([
-      ended || plan.turn ? Gateway.turn(this.env, row.id, agent.id, run.turn) : undefined,
-      refreshing ? Money.refresh(this, row, plan) : undefined,
-      plan.git ? this.watch(row) : undefined,
-      plan.artifacts ? this.publish(row.id) : undefined,
-    ])
-    if (report?.ok && !['queued', 'running'].includes(report.value.status)) return this.finish(row, run, report.value)
-    if (report && !report.ok && report.status !== 401 && report.status < 500)
-      return this.finish(row, run, { error: report.detail, request_id: run.turn, status: 'failed' })
-    if ((down || (report && !report.ok && report.status >= 500)) && this.unreachable(now)) {
-      const detail = !report || report.ok ? 'its events did not load' : report.detail
-      await Gateway.cancel(this.env, row.id, agent.id, run.turn).catch(() => undefined)
-      this.abandon(agent.id, detail)
-      return this.finish(row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
-    }
-    if (money && plan.chain && (money.left < Store.reserve + Store.headroom || BigInt(this.kv.get<string>('loose') ?? '0') >= Money.smallestSwap)) await Money.fund(this, money.row)
-    return window ? Date.now() : now + Clock.followMs
-  }
-
-  async listen(row: Store.Row, agent: Lead, run: Turning): Promise<{ ended: boolean } | undefined> {
-    const stop = new AbortController()
-    const live = [...this.watchers].some((watcher) => watcher.relaying)
-    const opened = Date.now()
-    this.window = { live, stop }
-    const timer = setTimeout(() => stop.abort(), Clock.refreshMs)
-    let ended = false
-    let cursor = agent.cursor
-    try {
-      const response = await Gateway.stream(this.env, row.id, agent.id, cursor, stop.signal, live).catch(() => undefined)
-      if (!response?.ok || !response.body) {
-        await response?.body?.cancel().catch(() => undefined)
-        return undefined
-      }
-      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
-      let buffer = ''
-      for (;;) {
-        const read = await reader.read().catch(() => undefined)
-        if (!read || read.done) {
-          await reader.cancel().catch(() => undefined)
-          if (stop.signal.aborted || ended) return { ended }
-          return Date.now() - opened < Clock.refreshMs / 2 ? undefined : { ended }
-        }
-        buffer += read.value
-        const blocks = buffer.split('\n\n')
-        buffer = blocks.pop() ?? ''
-        for (const block of blocks) {
-          const found = frame(block)
-          if (!found) continue
-          const event = JSON.parse(found.data) as Gateway.Event
-          if (found.live) {
-            for (const delta of this.deltas(event, agent.id)) Relay.relay(this, delta)
-            continue
-          }
-          this.reached()
-          ended = this.digest(event, run.turn) || ended
-          cursor = Math.max(cursor, event.seq)
-        }
-        if (cursor !== (this.agent() ?? agent).cursor) this.kv.put('agent', { ...(this.agent() ?? agent), cursor })
-        if (ended) stop.abort()
-      }
-    } finally {
-      clearTimeout(timer)
-      if (this.window?.stop === stop) this.window = undefined
-    }
-  }
-
-  deltas(event: Gateway.Event, agent: string): Live[] {
-    const outer = event.event
-    if (!outer || outer.source === undefined) return []
-    if (outer.source === 'subagent') {
-      const update = outer.update as { event?: { payload?: Record<string, unknown>; type?: string }; id?: unknown; type?: string } | undefined
-      if (update?.type !== 'event') return []
-      const who = this.crew().names[`${outer.root_session_id ?? agent}:${String(update.id)}`] ?? `subagent ${String(update.id)}`
-      return streamed(who, update.event?.type, update.event?.payload ?? {})
-    }
-    return streamed(null, outer.event?.type, outer.event?.payload ?? {})
-  }
-
-  cue(cue: Cue) {
+  cue(cue: Follow.Cue) {
     this.cues.set(cue, Date.now())
-  }
-
-  due(cue: Cue, every: number, now: number) {
-    const last = this.polled.get(cue) ?? 0
-    const cued = this.cues.get(cue)
-    const hit = (cued !== undefined && cued > last && now - cued >= cueMs) || now - last >= every
-    if (hit) this.polled.set(cue, now)
-    return hit
-  }
-
-  plan(now: number) {
-    const lent = (this.kv.get<Hand[]>('hands') ?? []).length > 0 || !!this.kv.get<boolean>('issued')
-    return {
-      artifacts: this.due('artifacts', fallbackMs, now),
-      chain: this.due('chain', Clock.minuteMs, now),
-      git: this.due('git', this.kv.get<string>('repo') ? Clock.minuteMs : fallbackMs, now),
-      hands: this.due('hands', lent ? Clock.refreshMs : Clock.minuteMs, now),
-      sponsors: this.due('sponsors', this.listened() ? Clock.refreshMs : 3 * Clock.refreshMs, now),
-      turn: this.due('turn', Clock.minuteMs, now),
-    }
   }
 
   async finish(row: Store.Row, run: Turning, report: Gateway.Report) {
@@ -932,7 +802,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const error = typeof report.error === 'string' ? report.error : report.error?.message
     const message = report.ok?.message ?? error ?? null
     const status = report.status === 'completed' ? 'completed' : report.status === 'cancelled' ? 'cancelled' : 'failed'
-    this.flush()
+    Follow.flush(this)
     await new Promise((resolve) => setTimeout(resolve, 3_000))
     for (const source of await Paying.sources(this, row)) await Paying.probe(this, row, source).catch(() => undefined)
     const money = await Money.refresh(this, row)
@@ -1516,70 +1386,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       .map((row) => row.note)
   }
 
-  crew(): Crew {
-    return this.kv.get<Crew>('crew') ?? crew()
-  }
-
-  digest(event: Gateway.Event, turn: string) {
-    const outer = event.event
-    if (!outer) return false
-    if (outer.source === undefined) {
-      if (outer.type !== 'result' || event.request_id !== turn) return false
-      Relay.ended(this)
-      return true
-    }
-
-    const at = event.created_at ?? Date.now()
-    if (outer.source === 'subagent' && outer.update) {
-      const known = this.crew()
-      const found = subagent(this.buffers, known, outer.root_session_id ?? this.agent()?.id ?? 'session', outer.update)
-      if (!found) return false
-      const update = outer.update as { event?: { payload?: Record<string, unknown>; type?: string }; type?: string }
-      if (update.type !== 'event') this.kv.put('crew', known)
-      if (update.type === 'added' || update.type === 'status' || update.type === 'completion') this.changed('branches')
-      if (update.type === 'event') {
-        if (update.event?.type === 'tool.call') for (const found of cues(update.event.payload ?? {})) this.cue(found)
-        for (const delta of streamed(found.who, update.event?.type, update.event?.payload ?? {})) Relay.relay(this, delta)
-      }
-      for (const step of found.steps) this.log(step.kind, step.text, step.detail, { at, event: event.seq, who: found.who })
-      return false
-    }
-
-    const inner = outer.event
-    if (inner?.type === 'tool.call') for (const found of cues(inner.payload ?? {})) this.cue(found)
-    for (const delta of streamed(null, inner?.type, inner?.payload ?? {})) Relay.relay(this, delta)
-    this.record(null, inner?.type, inner?.payload ?? {}, event.seq, at)
-    return false
-  }
-
-  record(who: string | null, type: string | undefined, payload: Record<string, unknown>, event: number, at: number) {
-    for (const found of narrate(this.buffers, who, type, payload)) this.log(found.kind, found.text, found.detail, { at, event, who })
-  }
-
-  get buffers(): Buffers {
-    const name = (who: string | null) => (who === null ? 'thinking' : `thinking:${who}`)
-    return {
-      add: (who, text) => {
-        const held = this.kv.get<string>(name(who)) ?? ''
-        const next = appended(held, text)
-        if (next !== held) this.kv.put(name(who), next)
-      },
-      take: (who) => {
-        const text = this.kv.get<string>(name(who)) ?? ''
-        this.kv.delete(name(who))
-        return text
-      },
-    }
-  }
-
-  flush() {
-    const speakers = [null, ...[...this.kv.list({ prefix: 'thinking:' })].map(([name]) => name.slice('thinking:'.length))]
-    for (const who of speakers) {
-      const thinking = this.buffers.take(who).trim()
-      if (thinking) this.log('thinking', clip(thinking, thought), null, { who })
-    }
-  }
-
   log(kind: Kind, text: string, detail?: string | null, origin: { at?: number; event?: number; who?: string | null } = {}) {
     const logged = {
       at: origin.at ?? Date.now(),
@@ -1609,17 +1415,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 }
 
-type Cue = 'artifacts' | 'chain' | 'git' | 'hands' | 'sponsors' | 'turn'
-
 type Pending = { at: number; parts: Set<Part>; pulse: Store.Row | undefined; timer: ReturnType<typeof setTimeout> | undefined }
 
 const maxWaitMs = 60_000
-
-const streamFails = 2
-
-const fallbackMs = 5 * 60_000
-
-const cueMs = 5_000
 
 const coalesceMs = 2_000
 
@@ -1651,34 +1449,6 @@ function touched(kv: SyncKvStorage, touch: () => void): SyncKvStorage {
       if (viewKeys.has(key)) touch()
     },
   }
-}
-
-function frame(block: string) {
-  const lines = block.split('\n')
-  const data = lines
-    .filter((line) => line.startsWith('data:'))
-    .map((line) => line.slice(5).trimStart())
-    .join('\n')
-  if (!data) return undefined
-  return { data, live: lines.some((line) => /^event:\s*live$/.test(line)) }
-}
-
-function streamed(who: string | null, type: string | undefined, payload: Record<string, unknown>): Live[] {
-  const text = typeof payload['text'] === 'string' ? redact(payload['text']) : ''
-  const offset = typeof payload['offset'] === 'number' ? payload['offset'] : null
-  if (type === 'assistant.delta') return [{ channel: 'text', delta: text, item: String(payload['item_id'] ?? ''), offset, type: 'delta', who }]
-  if (type === 'reasoning.summary.delta') return [{ channel: 'thinking', delta: text, item: `reasoning:${String(payload['model_call_index'] ?? '')}`, offset: null, type: 'delta', who }]
-  if (type === 'tool.input.delta') return [{ channel: 'input', delta: text, item: String(payload['call_id'] ?? ''), offset: null, type: 'delta', who }]
-  return []
-}
-
-function cues(payload: Record<string, unknown>): Cue[] {
-  const said = `${tool(payload)} ${typeof payload['arguments'] === 'string' ? payload['arguments'] : JSON.stringify(payload['arguments'] ?? {})}`
-  return [
-    ...(/git_create|git_commit|git_remote|git push/.test(said) ? (['git'] as const) : []),
-    ...(/kv_set|bucket_put/.test(said) && said.includes('artifacts/') ? (['artifacts'] as const) : []),
-    ...(/compute_create|compute_hand|compute_terminate/.test(said) ? (['hands'] as const) : []),
-  ]
 }
 
 function slug(title: string) {
