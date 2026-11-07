@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Artifact, Form } from '../shared/Api.ts'
+import * as Wishlist from '../shared/Wishlist.ts'
 import { ago } from './format.ts'
 import { message, useNow } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
@@ -41,6 +42,82 @@ function rows(text: string, separator: string) {
   return table
 }
 
+export function useWishes(list: readonly Artifact[] | undefined) {
+  const artifact = list?.find(Wishlist.is)
+  const url = artifact ? source(artifact, 0) : undefined
+  const [wishes, setWishes] = useState<readonly Wishlist.Wish[]>([])
+
+  useEffect(() => {
+    if (!url) return
+    let alive = true
+    fetch(url)
+      .then((response) => (response.ok ? response.text() : Promise.reject(new Error(String(response.status)))))
+      .then(
+        (text) => alive && setWishes(Wishlist.parse(text)),
+        () => undefined,
+      )
+    return () => {
+      alive = false
+    }
+  }, [url])
+
+  return { artifact, wishes: artifact ? wishes : [] }
+}
+
+const stated = { dropped: 'No longer needed', found: 'Found', open: 'Open' } as const satisfies Record<Wishlist.State, string>
+
+function Wishes(props: { onRoom: () => void; wishes: readonly Wishlist.Wish[] }) {
+  if (!props.wishes.length) return <p className="empty artifact-note">The wishlist is empty.</p>
+  const order = { dropped: 2, found: 1, open: 0 }
+  return (
+    <div className="wishes">
+      <ol className="wish-rows">
+        {[...props.wishes].sort((a, b) => order[a.state] - order[b.state]).map((wish, index) => (
+          <li className="wish" data-state={wish.state} key={index}>
+            <div className="wish-top">
+              <b>{wish.want}</b>
+              <span className="wish-state" data-state={wish.state}>{stated[wish.state]}</span>
+            </div>
+            {wish.why && <p>{wish.why}</p>}
+            {wish.use && <p className="wish-use">{wish.use}</p>}
+            {wish.found && <p className="wish-found">{wish.found}</p>}
+          </li>
+        ))}
+      </ol>
+      {Wishlist.open(props.wishes).length > 0 && <Help onRoom={props.onRoom} />}
+    </div>
+  )
+}
+
+function Help(props: { onRoom: () => void }) {
+  return (
+    <button className="wish-help" onClick={props.onRoom} type="button">
+      <span>Can you help? Tell the swarm in the room, or in a note when you fund it.</span>
+      <span aria-hidden="true">→</span>
+    </button>
+  )
+}
+
+function Wanted(props: { onOpen: () => void; onRoom: () => void; wishes: readonly Wishlist.Wish[] }) {
+  const open = Wishlist.open(props.wishes)
+  return (
+    <section aria-label="Wishlist" className="wish-call">
+      <button className="wish-call-head" onClick={props.onOpen} type="button">
+        <span className="wish-call-title">
+          <b>Wishlist</b>
+          <span>{open.length === 1 ? '1 open wish' : `${open.length} open wishes`}</span>
+        </span>
+        <span className="wish-call-items">
+          {open.slice(0, 3).map((wish, index) => (
+            <span key={index}>{wish.want}</span>
+          ))}
+        </span>
+      </button>
+      <Help onRoom={props.onRoom} />
+    </section>
+  )
+}
+
 function Grid(props: { rows: string[][] }) {
   const [head = [], ...body] = props.rows
   return (
@@ -59,7 +136,7 @@ function Grid(props: { rows: string[][] }) {
   )
 }
 
-function Text(props: { artifact: Artifact; nonce: number }) {
+function Text(props: { artifact: Artifact; nonce: number; onRoom: () => void }) {
   const artifact = props.artifact
   const [state, setState] = useState<{ error?: string; text?: string }>({})
   const url = source(artifact, props.nonce)
@@ -85,6 +162,7 @@ function Text(props: { artifact: Artifact; nonce: number }) {
   if (state.text === undefined) return <p className="empty artifact-note">Loading…</p>
   if (artifact.form === 'markdown') return <div className="artifact-prose"><Markdown base={artifact.url} text={state.text} /></div>
   if (artifact.form === 'table') return <Grid rows={rows(state.text, artifact.entry.endsWith('.tsv') ? '\t' : ',')} />
+  if (Wishlist.is(artifact)) return <Wishes onRoom={props.onRoom} wishes={Wishlist.parse(state.text)} />
   if (artifact.form === 'json') {
     try {
       const value: unknown = JSON.parse(state.text)
@@ -100,7 +178,7 @@ function Text(props: { artifact: Artifact; nonce: number }) {
   return <pre className="artifact-pre">{state.text}</pre>
 }
 
-function View(props: { artifact: Artifact }) {
+function View(props: { artifact: Artifact; onRoom: () => void }) {
   const artifact = props.artifact
   const now = useNow(30_000)
   const [nonce, setNonce] = useState(0)
@@ -147,14 +225,14 @@ function View(props: { artifact: Artifact }) {
             <img alt={artifact.title} src={source(artifact, nonce)} />
           </div>
         ) : (
-          <Text artifact={artifact} nonce={nonce} />
+          <Text artifact={artifact} nonce={nonce} onRoom={props.onRoom} />
         )}
       </div>
     </section>
   )
 }
 
-export function Artifacts(props: { artifacts: readonly Artifact[] | undefined; error: string | undefined; onSelect: (slug: string) => void; selected: string | undefined; working: boolean }) {
+export function Artifacts(props: { artifacts: readonly Artifact[] | undefined; error: string | undefined; onRoom: () => void; onSelect: (slug: string) => void; selected: string | undefined; wishes: { artifact: Artifact | undefined; wishes: readonly Wishlist.Wish[] }; working: boolean }) {
   const now = useNow(30_000)
   const list = props.artifacts
   if (!list)
@@ -167,17 +245,20 @@ export function Artifacts(props: { artifacts: readonly Artifact[] | undefined; e
       </div>
     )
   const current = list.find((artifact) => artifact.slug === props.selected) ?? list[0]
+  const wished = props.wishes.artifact
+  const calling = wished !== undefined && wished.slug !== current?.slug && Wishlist.open(props.wishes.wishes).length > 0
   return (
-    <div className="artifacts">
+    <div className="artifacts" data-wished={calling}>
+      {calling && <Wanted onOpen={() => props.onSelect(wished.slug)} onRoom={props.onRoom} wishes={props.wishes.wishes} />}
       <ol className="artifact-list">
         {list.map((artifact) => (
           <li key={artifact.slug}>
             <button aria-pressed={artifact.slug === current?.slug} className="artifact-item" onClick={() => props.onSelect(artifact.slug)} type="button">
-              <span aria-hidden className="artifact-glyph" data-form={artifact.form}>{glyphs[artifact.form]}</span>
+              <span aria-hidden className="artifact-glyph" data-form={Wishlist.is(artifact) ? 'wishlist' : artifact.form}>{Wishlist.is(artifact) ? '✦' : glyphs[artifact.form]}</span>
               <span className="artifact-item-text">
                 <b>{artifact.title}</b>
                 <span>
-                  {named[artifact.form]}
+                  {Wishlist.is(artifact) ? 'Wishlist' : named[artifact.form]}
                   {artifact.updatedAt ? ` · ${ago(artifact.updatedAt, now)}` : ` · v${artifact.version}`}
                 </span>
               </span>
@@ -185,7 +266,7 @@ export function Artifacts(props: { artifacts: readonly Artifact[] | undefined; e
           </li>
         ))}
       </ol>
-      {current && <View artifact={current} key={current.slug} />}
+      {current && <View artifact={current} key={current.slug} onRoom={props.onRoom} />}
     </div>
   )
 }

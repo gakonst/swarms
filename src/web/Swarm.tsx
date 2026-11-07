@@ -4,7 +4,7 @@ import type { Config, Detail, Entry, Me, Member, Room as RoomState, Said } from 
 import { merge } from '../shared/Trail.ts'
 import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
-import { Artifacts } from './Artifacts.tsx'
+import { Artifacts, useWishes } from './Artifacts.tsx'
 import { Side } from './Side.tsx'
 import { Connect } from './Connect.tsx'
 import { Contributors } from './Contributors.tsx'
@@ -104,6 +104,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const running = detail.data?.status === 'running'
   const loaded = detail.data !== undefined
   const [shelf, reshelve, setShelf] = usePoll(() => Api.artifacts(props.id), wired === 'down' ? shelfMs : null, `artifacts:${props.id}`)
+  const wishes = useWishes(shelf.data?.artifacts)
   const stream = useLive(props.id, running && visible, (entry) => {
     last.current = Math.max(last.current, entry.seq)
     setEntries((previous) => merge(previous, [entry]))
@@ -193,10 +194,16 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   }
   const room = <Room config={props.config} onArtifact={open} onBack={back} onMessages={heard} onSteered={reload} onTranscript={() => setTab('transcript')} onUnread={setUnread} swarm={swarm} visible={wide || shown === 'room'} />
   const shelved = shelf.data?.artifacts.length ?? 0
+  const wished = wishes.wishes.filter((wish) => wish.state === 'open').length
+  const toRoom = () => {
+    if (!wide) return setTab('room')
+    const target = document.querySelector<HTMLElement>('.room .composer textarea') ?? document.querySelector<HTMLElement>('.room .room-foot button')
+    target?.focus()
+  }
   const backers = chat.members.filter((member) => Number(member.backed) > 0).length
   const labels: Record<Tab, ReactNode> = {
     about: 'About',
-    artifacts: <>Artifacts{shelved > 0 && <span className="tab-count tab-quiet">{shelved}</span>}</>,
+    artifacts: <>Artifacts{shelved > 0 && <span className="tab-count tab-quiet">{shelved}</span>}{wished > 0 && <span className="tab-count tab-wish" title="Open items on the swarm's wishlist">{wished === 1 ? '1 wish' : `${wished} wishes`}</span>}</>,
     code: 'Code',
     contributors: <>Contributors{backers > 0 && <span className="tab-count tab-quiet">{backers}</span>}</>,
     machines: <>Machines{connected > 0 && <span className="tab-count tab-quiet">{connected}</span>}</>,
@@ -253,10 +260,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
               onFund={backNote}
               onArtifact={open}
               onEntries={(next) => setEntries((previous) => merge(previous, next))}
-              onPeople={() => {
-                if (!wide) return setTab('room')
-                document.querySelector<HTMLTextAreaElement>('.room .composer textarea')?.focus()
-              }}
+              onPeople={toRoom}
               onSaid={(said) => {
                 setChat((previous) => ({ ...previous, said: [...previous.said.filter((item) => item.id !== said.id), said] }))
                 reload()
@@ -269,7 +273,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
           </div>
           {shown !== 'transcript' && shown !== 'room' && (
             <div aria-labelledby={`tab-${shown}`} className="room-panel room-page-panel" data-tab={shown} id={`panel-${shown}`} role="tabpanel">
-              {shown === 'artifacts' && <Artifacts artifacts={shelf.data?.artifacts} error={shelf.error} onSelect={setArtifact} selected={artifact} working={live} />}
+              {shown === 'artifacts' && <Artifacts artifacts={shelf.data?.artifacts} error={shelf.error} onRoom={toRoom} onSelect={setArtifact} selected={artifact} wishes={wishes} working={live} />}
               {shown === 'contributors' && <Contributors me={chat.me} members={chat.members} online={chat.online} />}
               {shown === 'code' && <Repository config={props.config} swarm={swarm} />}
               {shown === 'machines' && (

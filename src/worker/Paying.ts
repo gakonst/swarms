@@ -29,7 +29,7 @@ export type Pay = {
 
 export type Paid = { authorization: string; topUp?: string } | { feeToken: Address } | Budget | { code: string; detail: string; retry?: number; status: 401 | 402 | 429 }
 
-type Budget = { daily: string; raised: string; spent: string; usd: string }
+type Budget = { daily: string; page: string; raised: string; room: string; spent: string; swarm: string; usd: string }
 
 type Source = { currency: Address; id: string; label: string }
 

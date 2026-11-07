@@ -591,7 +591,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (!row) return { code: 'unauthorized', detail: 'No swarm has this id.', status: 401 }
     if (app !== undefined && app !== Gateway.app(row.id)) return { code: 'unauthorized', detail: 'This payer pays only for its own swarm.', status: 401 }
     const summary = Store.summary(row)
-    return { daily: '0.000000', raised: summary.raised, spent: summary.spent, usd: summary.remaining }
+    const page = new URL(`/s/${row.id}`, this.env.SWARMS_URL).href
+    return { daily: '0.000000', page, raised: summary.raised, room: new URL(`/v1/swarms/${row.id}/chat`, this.env.SWARMS_URL).href, spent: summary.spent, swarm: row.id, usd: summary.remaining }
   }
 
   pay(input: Paying.Pay): Promise<Paying.Paid> {

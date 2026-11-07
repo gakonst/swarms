@@ -693,6 +693,13 @@ Every model gets **the same harness**: SWE-bench Lite's 300 tasks and a 50-task 
 
 The prompts and the harness are in the swarm's repository, so anyone can rerun it.`
 
+const wishes = JSON.stringify([
+  { want: 'An H100 with 80 GB for about 3 hours', why: 'The 70B models do not fit on the A10G machines, so 4 of the 12 models on the leaderboard are still untested', use: 'Would pay up to $12 from the swarm money, or run on a lent machine', status: 'open' },
+  { want: 'Access to the Claude Opus 5.5 batch API', why: 'Half price on the 300 SWE-bench Lite tasks, which would let the swarm test 3 more models', use: 'About $40 of tasks a run, paid per call', status: 'open' },
+  { want: 'SWE-bench Verified with its gold patches', why: 'The harness needs the verified split to score patches', use: 'Read once per run', status: 'found', found: 'Hugging Face princeton-nlp/SWE-bench_Verified, from @ana' },
+  { want: 'Someone who maintains the SWE-bench harness', why: 'Two tasks time out the same way for every model', status: 'no longer needed' },
+])
+
 function shelf(items: readonly (readonly [string, string, string, string, Form, string, number])[]): Artifact[] {
   return items.map(([slug, title, summary, kind, form, body, minutes]) => ({
     entry: { image: 'chart.svg', json: 'data.json', markdown: 'README.md', page: 'index.html', table: 'results.csv', text: 'notes.txt' }[form],
@@ -713,6 +720,7 @@ const shelves: Record<string, Artifact[]> = {
     ['solved-per-dollar', 'Solved tasks per dollar', 'Which model gets the most done for the money.', 'chart', 'image', curve, 18],
     ['results', 'SWE-bench Lite results', 'Every model on SWE-bench Lite, as a table.', 'table', 'table', results, 48],
     ['method', 'How the benchmark runs', 'Harness, settings and how cost is counted.', 'write-up', 'markdown', method, 120],
+    ['wishlist', 'Wishlist', '2 open: an H100 for the 70B models.', 'wishlist', 'json', wishes, 10],
   ]),
   'json-terabyte': shelf([['throughput', 'Parser throughput', 'GiB/s by machine size.', 'dashboard', 'page', throughput, 6]]),
 }
