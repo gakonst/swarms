@@ -143,10 +143,6 @@ const indexChunk = 1_000
 
 const indexMs = 1_000
 
-const followMs = 2_000
-
-const refreshMs = 10_000
-
 const healMs = 5 * 60_000
 
 const unreachableMs = 15 * 60_000
@@ -168,8 +164,6 @@ const snapshotFiles = 2_000
 const snapshotText = 64_000
 
 const smallestSwap = 10_000n
-
-const shelfMs = 30_000
 
 const rowMs = 10_000
 
@@ -729,7 +723,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     Relay.begin(this)
     this.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
     if (start.since === null) this.announce(`${worked ? 'Back at work' : 'Started working'}.`)
-    return now + followMs
+    return now + Clock.followMs
   }
 
   async retry(row: Store.Row, error: string, detail: string) {
@@ -835,10 +829,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
 
     const now = Date.now()
-    if (!window && !ended && now - this.checked < refreshMs) return now + followMs
+    if (!window && !ended && now - this.checked < Clock.refreshMs) return now + Clock.followMs
 
     this.checked = now
-    const plan = window ? this.plan(now) : { ...everything, artifacts: now - (this.kv.get<number>('shelvedAt') ?? 0) >= shelfMs, git: true, turn: true }
+    const plan = window ? this.plan(now) : { ...everything, artifacts: now - (this.kv.get<number>('shelvedAt') ?? 0) >= Clock.shelfMs, git: true, turn: true }
     const refreshing = plan.chain || plan.hands || plan.sponsors
     const [report, money] = await Promise.all([
       ended || plan.turn ? Gateway.turn(this.env, row.id, agent.id, run.turn) : undefined,
@@ -856,7 +850,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       return this.finish(row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
     }
     if (money && plan.chain && (money.left < Store.reserve + Store.headroom || BigInt(this.kv.get<string>('loose') ?? '0') >= smallestSwap)) await this.fund(money.row)
-    return window ? Date.now() : now + followMs
+    return window ? Date.now() : now + Clock.followMs
   }
 
   async listen(row: Store.Row, agent: Lead, run: Turning): Promise<{ ended: boolean } | undefined> {
@@ -864,7 +858,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const live = [...this.watchers].some((watcher) => watcher.relaying)
     const opened = Date.now()
     this.window = { live, stop }
-    const timer = setTimeout(() => stop.abort(), refreshMs)
+    const timer = setTimeout(() => stop.abort(), Clock.refreshMs)
     let ended = false
     let cursor = agent.cursor
     try {
@@ -880,7 +874,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         if (!read || read.done) {
           await reader.cancel().catch(() => undefined)
           if (stop.signal.aborted || ended) return { ended }
-          return Date.now() - opened < refreshMs / 2 ? undefined : { ended }
+          return Date.now() - opened < Clock.refreshMs / 2 ? undefined : { ended }
         }
         buffer += read.value
         const blocks = buffer.split('\n\n')
@@ -936,8 +930,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       artifacts: this.due('artifacts', fallbackMs, now),
       chain: this.due('chain', Clock.minuteMs, now),
       git: this.due('git', this.kv.get<string>('repo') ? Clock.minuteMs : fallbackMs, now),
-      hands: this.due('hands', lent ? refreshMs : Clock.minuteMs, now),
-      sponsors: this.due('sponsors', this.listened() ? refreshMs : 3 * refreshMs, now),
+      hands: this.due('hands', lent ? Clock.refreshMs : Clock.minuteMs, now),
+      sponsors: this.due('sponsors', this.listened() ? Clock.refreshMs : 3 * Clock.refreshMs, now),
       turn: this.due('turn', Clock.minuteMs, now),
     }
   }
