@@ -68,17 +68,34 @@ const working = {
 
 type Working = keyof typeof working
 
-type Flow = { at: 'idle' } | { at: 'busy'; step: Working } | { at: 'done'; hash?: string; text: string } | { at: 'failed'; error: string; short: boolean }
+export type Unrecorded = { amount: bigint; hash?: string; note: string; swarm: string; token: Currency; transaction?: string }
+
+type Flow = { at: 'idle' } | { at: 'busy'; step: Working } | { at: 'done'; hash?: string; text: string } | { at: 'failed'; error: string; short: boolean } | { at: 'unrecorded'; paid: Unrecorded; reason: string; target: Target }
 
 const idle: Flow = { at: 'idle' }
 
-export async function recorded(swarm: string, hash: string, note: string) {
+function strayed(paid: Unrecorded, error: unknown) {
+  return Object.assign(new Error(`Sent, but not counted yet. ${message(error)} Try again to count it; nothing is sent twice.`), { code: 'unrecorded', paid, reason: message(error) })
+}
+
+export function stray(error: unknown) {
+  return code(error) === 'unrecorded' && typeof error === 'object' && error !== null && 'paid' in error && 'reason' in error ? { paid: error.paid as Unrecorded, reason: String(error.reason) } : undefined
+}
+
+export async function record(paid: Unrecorded) {
+  const proof = paid.transaction ? { transaction: paid.transaction } : { hash: paid.hash ?? '' }
   for (let attempt = 0; ; attempt++) {
     try {
-      return await Api.contribute(swarm, { hash, ...(note ? { note } : {}) })
+      return (await Api.contribute(paid.swarm, { ...proof, ...(paid.note ? { note: paid.note } : {}) })).contribution.hash ?? paid.hash ?? ''
     } catch (error) {
-      if (attempt >= 3 || code(error) !== 'not_found') throw error
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      if (code(error) === 'conflict') return paid.hash ?? ''
+      if (paid.transaction && /validity|valid before|expired/i.test(message(error))) throw Object.assign(new Error('Tempo Wallet took too long to approve, so the gateway did not send it. Nothing was charged; approve again.'), { code: 'expired' })
+      if (paid.transaction && error instanceof Api.Failure && error.status < 500) throw error
+      if (attempt < 3 && code(error) === 'not_found') {
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        continue
+      }
+      throw strayed(paid, error)
     }
   }
 }
@@ -87,15 +104,11 @@ export async function send(config: Config, target: Target, amount: bigint, note:
   if (token === 'mach') {
     if (!config.channel) throw new Error('MACH is not offered right now. Send USDC.e, OUSD or pathUSD instead.')
     const transaction = await Wallet.open(config, Channel.open(config.channel, target.id, amount, note))
-    const counted = await Api.contribute(target.id, { transaction, ...(note ? { note } : {}) }).catch((error: unknown) => {
-      throw /validity|valid before|expired/i.test(message(error)) ? Object.assign(new Error('Tempo Wallet took too long to approve, so the gateway did not send it. Nothing was charged; approve again.'), { code: 'expired' }) : error
-    })
-    return counted.contribution.hash ?? ''
+    return record({ amount, note, swarm: target.id, token, transaction })
   }
   if (!target.wallet) throw new Error('This swarm has no wallet yet. Try again in a moment.')
   const hash = await Wallet.send(config, { amount, memo: memo(target.id, note), to: target.wallet, token })
-  await recorded(target.id, hash, note)
-  return hash
+  return record({ amount, hash, note, swarm: target.id, token })
 }
 
 function dollars(amount: string) {
@@ -129,7 +142,7 @@ export function Fuel(props: {
   const token = picked ?? choose(amount, wallet.balances, props.config)
   const floor = least(props.config, token, props.least)
   const ok = valid(amount, floor)
-  const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && flow.at !== 'done'
+  const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && flow.at !== 'done' && flow.at !== 'unrecorded'
   const text = props.note.trim()
   const balance = wallet.balances[token]
   const low = balance !== undefined && ok && balance < units(amount)
@@ -138,6 +151,7 @@ export function Fuel(props: {
   const submit = async () => {
     const config = props.config
     if (!config || !ready) return
+    let target: Target | undefined
     try {
       let using = token
       if (!Wallet.snapshot().address) {
@@ -146,14 +160,28 @@ export function Fuel(props: {
         await Wallet.refresh(config).catch(() => {})
         using = picked ?? choose(amount, Wallet.snapshot().balances, config)
       }
-      const target = await props.target((next) => step(next))
+      target = await props.target((next) => step(next))
       step('send')
       const hash = await send(config, target, units(amount), text, using)
       setFlow({ at: 'done', hash, text: `You're in. Sent ${dollars(amount)}.` })
       props.onNote('')
       props.onDone(target)
     } catch (error) {
-      setFlow({ at: 'failed', error: message(error), short: code(error) === 'insufficient_balance' })
+      const lost = stray(error)
+      setFlow(lost && target ? { ...lost, at: 'unrecorded', target } : { at: 'failed', error: message(error), short: code(error) === 'insufficient_balance' })
+    }
+  }
+
+  const retry = async (paid: Unrecorded, target: Target) => {
+    step('record')
+    try {
+      const hash = await record(paid)
+      setFlow({ at: 'done', hash, text: `You're in. Sent ${dollars(decimal(paid.amount))}.` })
+      props.onNote('')
+      props.onDone(target)
+    } catch (error) {
+      const lost = stray(error)
+      setFlow(lost ? { ...lost, at: 'unrecorded', target } : { at: 'failed', error: message(error), short: false })
     }
   }
 
@@ -184,6 +212,11 @@ export function Fuel(props: {
         {flow.at === 'busy' ? working[flow.step] : flow.at === 'failed' && flow.short ? 'Try again' : (props.action ?? ((value: string) => value))(label)}
       </button>
       {flow.at === 'done' && <Alert action={{ label: 'Send more', onClick: () => setFlow(idle) }} title={flow.text} tone="good">{flow.hash && props.config ? <a href={`${props.config.explorer}/tx/${flow.hash}`} rel="noreferrer" target="_blank">Receipt ↗</a> : undefined}</Alert>}
+      {flow.at === 'unrecorded' && (
+        <Alert action={{ label: 'Record it', onClick: () => void retry(flow.paid, flow.target) }} title={`${dollars(decimal(flow.paid.amount))} went to the swarm, but it is not counted yet.`} tone="warn">
+          {flow.reason} Record it sends the same {flow.paid.transaction ? 'channel' : 'transaction'} again; nothing is paid twice.
+        </Alert>
+      )}
       {flow.at === 'failed' && (
         <Alert title={explain(flow.error).title} tone="bad">
           {explain(flow.error).detail}

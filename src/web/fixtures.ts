@@ -578,9 +578,16 @@ function begin(swarm: Live) {
 
 export const sent = new Map<string, bigint>()
 
+const dropped = new Set<string>()
+
 export async function contribute(key: string, input: { hash?: string; note?: string; transaction?: string }): Promise<Contributed> {
   const swarm = await find(key)
   const hash = (input.hash ?? input.transaction ?? '0x') as `0x${string}`
+  if (swarm.contributions.some((gift) => gift.hash === hash)) throw fail(409, 'conflict', 'This transaction is already counted.')
+  if (scene.has('uncounted') && !dropped.has(hash)) {
+    dropped.add(hash)
+    throw fail(502, 'unavailable', 'Swarms could not reach Tempo to check the transfer.')
+  }
   const token = input.transaction ? 'mach' : 'usdce'
   const contribution: Contribution = { amount: decimal(sent.get(hash) ?? 250_000n), at: Date.now(), contributor: visitor, hash, note: input.note?.trim() || null, token }
   swarm.contributions.push(contribution)
