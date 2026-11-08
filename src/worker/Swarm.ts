@@ -466,8 +466,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   working(): Working | null {
-    const since = Phase.since(this.run())
-    return since === null ? null : { since }
+    const run = this.run()
+    const since = Phase.since(run)
+    if (since === null) return null
+    if (run.state !== 'working') return { since }
+    const progressed = Math.max(this.kv.get<number>('progressed') ?? 0, run.started)
+    return { progressed, since, stalled: Date.now() - progressed >= Clock.stallMs }
   }
 
   turns(after = 0): Search.Turn[] {

@@ -31,6 +31,8 @@ const lines: Record<Statuses.Word, string> = {
 
 export function standing(swarm: Stood, now: number): Standing {
   const stood = Statuses.standing(swarm)
+  if (stood.word === 'Running' && swarm.working?.stalled && swarm.working.progressed !== undefined)
+    return { ...stood, line: `On it for ${duration(now - swarm.working.since)}, no progress for ${duration(now - swarm.working.progressed)}.` }
   if (stood.word === 'Running') return { ...stood, line: swarm.working ? `On it for ${duration(now - swarm.working.since)}.` : lines.Running }
   if (stood.mood === 'new') return { ...stood, line: 'Nobody has funded this yet.' }
   const said = stood.word === 'Starting' || !swarm.reason ? '' : Answer.local(Answer.spoken(swarm.reason) ?? '', swarm.updatedAt, minute)

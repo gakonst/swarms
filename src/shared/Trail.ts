@@ -147,6 +147,8 @@ export function subagent(buffers: Buffers, crew: Crew, scope: string, update: un
   if (id === undefined) return undefined
   const key = `${scope}:${id}`
   if (row.type === 'added') {
+    const known = crew.names[key]
+    if (known !== undefined) return { steps: [], who: known }
     const role = clip(String(row.agent?.['role'] ?? '').trim() || `subagent ${id}`, 60)
     const taken = Object.entries(crew.names).some(([other, name]) => other !== key && name === role)
     const who = taken ? `${role} #${id}` : role
