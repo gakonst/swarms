@@ -39,3 +39,11 @@ test('an update waits for backers only when its last line says so', () => {
   assert.ok(!Turns.waiting('Waiting for backers to fund the Wishlist before the next branch.\n\nThe kernel is at 1.316x.'))
   assert.ok(!Turns.waiting('I am not Waiting for backers yet.'))
 })
+
+test("settledUsd reads the turn's settled spend from the gateway's turn report", () => {
+  assert.equal(Turns.settledUsd({ request_id: 'agt_1:10', spent_usd: 0.092138, status: 'completed' }), 92138n)
+  assert.equal(Turns.settledUsd({ request_id: 'agt_1:10', spent_usd: 0, status: 'completed' }), 0n)
+  assert.equal(Turns.settledUsd({ request_id: 'agt_1:10', status: 'completed' }), undefined)
+  assert.equal(Turns.settledUsd({ request_id: 'agt_1:10', spent_usd: -1, status: 'completed' }), undefined)
+  assert.equal(Turns.settledUsd(undefined), undefined)
+})

@@ -9,6 +9,7 @@ export type Report = {
   error?: { message?: string } | string
   ok?: { message?: string }
   request_id: string
+  spent_usd?: number
   status: string
 }
 

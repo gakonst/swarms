@@ -230,7 +230,7 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   const repo = await Repo.located(self, money.row)
   const commits = repo.state === 'ready' && Follow.cued(self, 'git', run.started) ? await Repo.pushed(self, row.id, repo.name, found?.base ?? null) : []
   if (commits[0]) Repo.saw(self, commits[0].sha)
-  const spent = BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
+  const spent = (await charged(self, row, run)) ?? BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
   self.ctx.storage.sql.exec(
     'UPDATE turns SET ended_at = ?, status = ?, message = ?, spent = ?, commits = ? WHERE n = ?',
     Date.now(),
@@ -286,6 +286,18 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : Date.now() + settleMs
   await self.move(money.row, { since: run.since, state: 'waiting', until })
   return until
+}
+
+export function settledUsd(report: Gateway.Report | undefined) {
+  const usd = report?.spent_usd
+  return typeof usd === 'number' && Number.isFinite(usd) && usd >= 0 ? Memo.units(usd.toFixed(6)) : undefined
+}
+
+async function charged(self: Swarm, row: Store.Row, run: Turning) {
+  const agent = self.agent()?.id
+  if (!agent) return undefined
+  const report = await Gateway.turn(self.env, row.id, agent, run.turn).catch(() => undefined)
+  return report?.ok ? settledUsd(report.value) : undefined
 }
 
 export function waiting(message: string) {
