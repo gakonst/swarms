@@ -13,6 +13,7 @@ test('a subagent is named by its role, speaks under that name and reports its re
   const added = subagent(buffers, known, 's', { agent: { id: 3, parent: 0, role: 'zstd tuner', task: 'Tune zstd levels.' }, type: 'added' })
   assert.deepEqual(added, { steps: [{ detail: 'Tune zstd levels.', kind: 'status', text: 'Started a subagent: zstd tuner' }], who: 'zstd tuner' })
   assert.equal(subagent(buffers, known, 's', { agent: { id: 4, role: 'zstd tuner' }, type: 'added' })?.who, 'zstd tuner #4')
+  assert.deepEqual(subagent(buffers, known, 's', { agent: { id: 3, parent: 0, role: 'zstd tuner', task: 'Tune zstd levels.' }, type: 'added' }), { steps: [], who: 'zstd tuner' })
   assert.deepEqual(subagent(buffers, known, 's', { event: { payload: { arguments: { cmd: 'zstd -19 a' }, tool: 'exec_command' }, type: 'tool.call' }, id: 3, type: 'event' })?.steps, [{ detail: '{"cmd":"zstd -19 a"}', kind: 'tool', text: '$ zstd -19 a' }])
   assert.deepEqual(subagent(buffers, known, 's', { id: 3, status: { state: 'completed' }, type: 'status' })?.steps, [])
   assert.deepEqual(subagent(buffers, known, 's', { id: 3, status: { output: 'level 19 wins', state: 'completed' }, type: 'completion' })?.steps, [{ detail: 'level 19 wins', kind: 'output', text: 'zstd tuner finished' }])

@@ -80,7 +80,7 @@ export type Update = { at: number; base: string | null; commits: string[]; done:
 
 export type Pushed = Omit<Update, 'text'>
 
-export type Working = { since: number }
+export type Working = { progressed?: number; since: number; stalled?: boolean }
 
 export type Kind = 'tool' | 'output' | 'message' | 'thinking' | 'steer' | 'funds' | 'status' | 'machine' | 'error'
 

@@ -14,4 +14,6 @@ export const refreshMs = 10_000
 
 export const followMs = 2_000
 
+export const stallMs = 20 * 60_000
+
 export const shelfMs = 30_000

@@ -77,6 +77,7 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   }
 
   const now = Date.now()
+  if (!ended) stalled(self, now)
   if (!window && !ended && now - self.checked < Clock.refreshMs) return now + Clock.followMs
 
   self.checked = now
@@ -238,6 +239,7 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
       self.changed('branches')
     }
     if (update.type === 'event') {
+      advanced(self, update.event?.type, at)
       if (update.event?.type === 'tool.call') for (const found of cues(update.event.payload ?? {})) self.cue(found)
       for (const delta of streamed(found.who, update.event?.type, update.event?.payload ?? {})) Relay.relay(self, delta)
     }
@@ -246,10 +248,27 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
   }
 
   const inner = outer.event
+  advanced(self, inner?.type, at)
   if (inner?.type === 'tool.call') for (const found of cues(inner.payload ?? {})) self.cue(found)
   for (const delta of streamed(null, inner?.type, inner?.payload ?? {})) Relay.relay(self, delta)
   record(self, null, inner?.type, inner?.payload ?? {}, event.seq, at)
   return false
+}
+
+const progress = new Set(['assistant.message', 'model.call.completed', 'run.completed', 'tool.result'])
+
+export function advanced(self: Swarm, type: string | undefined, at: number) {
+  if (type === undefined || !progress.has(type)) return
+  if (at > (self.kv.get<number>('progressed') ?? 0)) self.kv.put('progressed', at)
+}
+
+export function stalled(self: Swarm, now: number) {
+  const working = self.working()
+  if (!working?.stalled || working.progressed === undefined) return
+  if (self.kv.get<number>('stallNoted') === working.progressed) return
+  self.kv.put('stallNoted', working.progressed)
+  const minutes = Math.round((now - working.progressed) / 60_000)
+  self.log('error', `The agent has made no model call or tool call for ${minutes} minutes. Its session may be restarting without getting anywhere; the swarm keeps waiting for it.`, null)
 }
 
 export function record(self: Swarm, who: string | null, type: string | undefined, payload: Record<string, unknown>, event: number, at: number) {

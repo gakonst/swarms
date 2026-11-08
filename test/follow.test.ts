@@ -46,3 +46,25 @@ test('thinking that arrives only as live frames is kept by offset and taken as o
   Follow.pondered(object, null, 'reasoning:3', 0, 'thought')
   assert.equal(Follow.buffers(object).take(null), 'an older thought')
 })
+
+test('a working agent with no model or tool call for twenty minutes is reported stalled once, and progress clears it', () => {
+  const kept = new Map<string, unknown>()
+  const logged: string[] = []
+  const started = Date.now() - 30 * 60_000
+  const object = {
+    kv: { get: (key: string) => kept.get(key), put: (key: string, value: unknown) => kept.set(key, value) },
+    log: (_kind: string, text: string) => logged.push(text),
+    working: () => {
+      const progressed = Math.max((kept.get('progressed') as number | undefined) ?? 0, started)
+      return { progressed, since: started, stalled: Date.now() - progressed >= 20 * 60_000 }
+    },
+  } as never
+  Follow.advanced(object, 'subagent.added', Date.now())
+  Follow.stalled(object, Date.now())
+  Follow.stalled(object, Date.now())
+  assert.equal(logged.length, 1)
+  assert.match(logged[0] ?? '', /no model call or tool call for 30 minutes/)
+  Follow.advanced(object, 'model.call.completed', Date.now())
+  Follow.stalled(object, Date.now())
+  assert.equal(logged.length, 1)
+})
