@@ -46,11 +46,14 @@ export const jobBytes = 4 * 1024 * 1024
 
 const memory = new WeakMap<Swarm, Held>()
 
+const tracking = 2
+
 function loaded(self: Swarm): Held {
   const known = memory.get(self)
   if (known) return known
   const kv = self.ctx.storage.kv
-  const held = { cursor: kv.get<number>('runs:cursor') ?? 0, state: kv.get<Fleet.Tracker>('runs:tracker') ?? Fleet.tracker() }
+  const current = kv.get<number>('runs:v') === tracking
+  const held = current ? { cursor: kv.get<number>('runs:cursor') ?? 0, state: kv.get<Fleet.Tracker>('runs:tracker') ?? Fleet.tracker() } : { cursor: 0, state: Fleet.tracker() }
   memory.set(self, held)
   return held
 }
@@ -58,6 +61,7 @@ function loaded(self: Swarm): Held {
 function save(self: Swarm, held: Held) {
   self.ctx.storage.kv.put('runs:cursor', held.cursor)
   self.ctx.storage.kv.put('runs:tracker', held.state)
+  self.ctx.storage.kv.put('runs:v', tracking)
 }
 
 function apply(self: Swarm, changes: Fleet.Tracked[]) {

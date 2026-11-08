@@ -138,6 +138,24 @@ test('runs backfill a feed, keep up with new entries with their duration, page a
   assert.ok(plan.some((step) => /USING (COVERING )?INDEX runs_machine/.test(step.detail)), JSON.stringify(plan))
 })
 
+test('runs track again a feed an older tracker passed over, so an E2B sandbox it missed gets its commands', () => {
+  const { insert, kv, self } = storage()
+  const id = 'iajm8koswc342dpzhhv41'
+  for (const item of [
+    entry(1, 'machine', 'Starting machine  (default image)', '{"lease":900}'),
+    entry(2, 'output', 'compute_create output', JSON.stringify({ text: created(id) })),
+    entry(3, 'tool', 'Called compute_exec', exec(id, 'uname -a')),
+    entry(4, 'output', 'compute_exec output', said({ exitCode: 0, stdout: 'Linux' })),
+  ])
+    insert(item as never)
+  kv.set('runs:cursor', 4)
+  kv.set('runs:tracker', tracker())
+  Runs.sync(self)
+  assert.deepEqual(Runs.listed(self, id, { limit: 10, order: 'oldest' }).commands.map((run) => [run.seq, run.text, run.exit]), [[3, '$ uname -a', 0]])
+  assert.equal(kv.get('runs:v'), 2)
+  assert.equal(kv.get('runs:cursor'), 4)
+})
+
 test('readable shows a compute call output as its stdout and stderr, and any other output as it came', () => {
   assert.equal(readable(said({ exitCode: 0, stderr: '', stdout: '6b1f6d2\n', timedOut: false })), '6b1f6d2')
   assert.equal(readable(JSON.stringify({ content: [{ text: JSON.stringify({ exitCode: 1, stderr: 'boom\n', stdout: 'a' }), type: 'text' }] })), 'a\nstderr:\nboom')
