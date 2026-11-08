@@ -8,6 +8,28 @@ export type Standing = { action: string | null; mood: Mood; word: Word }
 
 export type Stood = Pick<Summary, 'raised' | 'remaining' | 'status'> & { setup?: Summary['setup'] | undefined; why?: Summary['why'] | undefined }
 
+const pills: Record<Word, string> = {
+  'Needs money': 'Needs funding',
+  'Not started': 'New idea',
+  Running: 'Working now',
+  Starting: 'Starting',
+}
+
+const lines: Record<Word, string> = {
+  'Needs money': 'Out of money. Back it to keep it going.',
+  'Not started': 'Back it to get it started.',
+  Running: 'AI is working on it right now.',
+  Starting: 'Getting back to work.',
+}
+
+export function pill(word: Word) {
+  return pills[word]
+}
+
+export function line(word: Word) {
+  return lines[word]
+}
+
 export const fuel = 0.05
 
 export function fueled(swarm: Pick<Summary, 'remaining'> & { setup?: Summary['setup'] | undefined }) {
@@ -23,6 +45,12 @@ export function standing(swarm: Stood): Standing {
 
 export function word(swarm: Stood): Word {
   return standing(swarm).word
+}
+
+const tests = /operator test|headless check|channel check|audit fixes check|second audit check|template check|settle check|start exactly two subagents|stop stays stopped|steer and stop check|branch budget check|channel open check/i
+
+export function test(swarm: Pick<Summary, 'title'>) {
+  return tests.test(swarm.title)
 }
 
 export function count(swarms: readonly Pick<Summary, 'remaining' | 'status'>[]) {

@@ -1,3 +1,4 @@
+import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
 import * as Status from '../shared/Status.ts'
@@ -6,39 +7,11 @@ import { Link } from './router.tsx'
 
 export type Idea = { backers: number; href: string; id: string; left: number; mood: Status.Mood; pitch: string; raised: number; title: string; word: Status.Word }
 
-const words: Record<Status.Word, string> = {
-  'Needs money': 'Needs funding',
-  'Not started': 'New idea',
-  Running: 'Working now',
-  Starting: 'Starting',
-}
+export const pill = Status.pill
 
-const lines: Record<Status.Word, string> = {
-  'Needs money': 'Out of money. Back it to keep it going.',
-  'Not started': 'Back it to get it started.',
-  Running: 'AI is working on it right now.',
-  Starting: 'Getting back to work.',
-}
+export const line = Status.line
 
-export function pill(word: Status.Word) {
-  return words[word]
-}
-
-export function line(word: Status.Word) {
-  return lines[word]
-}
-
-function bare(text: string) {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-}
-
-export function lead(text: string, title = '') {
-  const flat = text.trim().split(/\n\s*\n/)[0]?.replace(/\s+/g, ' ').trim() ?? ''
-  const sentences = flat.match(/[^.!?]+[.!?]*(\s|$)/g)?.map((part) => part.trim()).filter(Boolean) ?? [flat]
-  const fresh = sentences.filter((part) => bare(part) && !bare(title).startsWith(bare(part)) && !bare(part).startsWith(bare(title)))
-  const pick = fresh[0] ?? ''
-  return pick.length > 240 ? `${pick.slice(0, 237).trimEnd()}…` : pick
-}
+export const lead = Answer.opening
 
 export function fromSwarm(swarm: Summary): Idea {
   const stood = Status.standing(swarm)

@@ -8,7 +8,7 @@
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "none",
-    "run_worker_first": ["/", "/ideas", "/join", "/new", "/about", "/docs", "/s/*", "/a/*", "/api/*", "/v1/*", "/x", "/x/*", "/tg", "/tg/*", "/telegram", "/mcp", "/openapi.json", "/feedback", "/feedback/*"]
+    "run_worker_first": ["/", "/ideas", "/join", "/new", "/about", "/docs", "/s/*", "/a/*", "/api/*", "/v1/*", "/x", "/x/*", "/og/*", "/oembed", "/tg", "/tg/*", "/telegram", "/mcp", "/openapi.json", "/feedback", "/feedback/*"]
   },
   "observability": { "enabled": true },
   "vars": {

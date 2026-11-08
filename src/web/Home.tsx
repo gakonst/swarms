@@ -30,10 +30,8 @@ const fits: Record<Filter, (idea: Idea) => boolean> = {
   waiting: (idea) => idea.word === 'Not started',
 }
 
-const tests = /operator test|headless check|channel check|audit fixes check|second audit check|template check|settle check|start exactly two subagents|stop stays stopped|steer and stop check|branch budget check|channel open check/i
-
 function sorted(swarms: readonly Summary[] | undefined) {
-  return [...(swarms ?? [])].filter((swarm) => !tests.test(swarm.title)).sort((a, b) => order[a.status] - order[b.status] || b.createdAt - a.createdAt)
+  return [...(swarms ?? [])].filter((swarm) => !Status.test(swarm)).sort((a, b) => order[a.status] - order[b.status] || b.createdAt - a.createdAt)
 }
 
 function useIdeas() {

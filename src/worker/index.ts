@@ -5,6 +5,7 @@ import * as Edge from './Edge.ts'
 import * as Feedback from './Feedback.ts'
 import * as Lobby from './Lobby.ts'
 import * as Operations from './Operations.ts'
+import * as Og from './Og.ts'
 import * as Page from './Page.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
@@ -87,6 +88,16 @@ function framed(env: Cloudflare.Env, id: string | undefined): Edge.Draw {
 app.get('/x', (c) => Edge.page(c.req.raw, '', framed(c.env, undefined)))
 
 app.get('/x/card.svg', (c) => XFrames.card(c.req.query('title') ?? 'Fund a swarm'))
+
+app.get('/og/*', (c) => Og.serve(c.env, c.req.raw))
+
+app.get('/oembed', async (c) => {
+  const embedded = await Og.embed(c.env, c.req.query('url') ?? '', new URL(c.req.url).origin, c.req.query('maxwidth'), c.req.query('maxheight'))
+  const response = Problem.respond(embedded)
+  response.headers.set('access-control-allow-origin', '*')
+  if (embedded.ok) response.headers.set('cache-control', 'public, max-age=300')
+  return response
+})
 
 app.get('/x/s/:id', (c) => Edge.page(c.req.raw, '', framed(c.env, c.req.param('id'))))
 

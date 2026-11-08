@@ -103,6 +103,18 @@ export function gist(text: string) {
   return text.split('\n').map(plain).find(telling) ?? ''
 }
 
+function bare(text: string) {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+export function opening(text: string, title = '') {
+  const flat = text.trim().split(/\n\s*\n/)[0]?.replace(/\s+/g, ' ').trim() ?? ''
+  const sentences = flat.match(/[^.!?]+[.!?]*(\s|$)/g)?.map((part) => part.trim()).filter(Boolean) ?? [flat]
+  const fresh = sentences.filter((part) => bare(part) && !bare(title).startsWith(bare(part)) && !bare(part).startsWith(bare(title)))
+  const pick = fresh[0] ?? ''
+  return pick.length > 240 ? `${pick.slice(0, 237).trimEnd()}…` : pick
+}
+
 export function lead(text: string) {
   const lines = text.split('\n')
   const found = lines.findIndex((line) => telling(plain(line)))

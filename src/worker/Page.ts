@@ -1,8 +1,11 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { waitUntil } from 'cloudflare:workers'
 import { render } from '#ssr'
 import type { Boot, Face } from '../shared/Boot.ts'
 import * as Edge from './Edge.ts'
+import * as Og from './Og.ts'
 import * as Operations from './Operations.ts'
+import * as Share from './Share.ts'
 import * as Store from './Store.ts'
 
 const store = new AsyncLocalStorage<Boot>()
@@ -75,23 +78,21 @@ function within<T>(work: Promise<T>, ms: number) {
   return Promise.race([work, new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), ms))]).catch(() => undefined)
 }
 
-type Head = { description: string; image: string; player?: string; title: string }
+type Head = Share.Share
 
 async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
   const path = url.pathname.replace(/\/$/, '') || '/'
-  const head: Head = { description: 'Back an idea with a few dollars and a team of AI agents researches and builds it, in public.', image: `${url.origin}/xframe-card.jpg?v=3`, title: 'Swarms · Back an idea. AI builds it.' }
+  const lost = Share.share(url.origin, Share.listing('home', []), { title: 'Not found · Swarms' })
   const data: Record<string, unknown> = {}
   if (path === '/' || path === '/ideas' || path === '/new') {
     const list = await within(Operations.list(env, {}), 1500)
     if (list?.ok) data['swarms'] = Operations.listed(list.value)
-    if (path === '/ideas') head.title = 'All ideas · Swarms'
-    if (path === '/new') head.title = 'Start an idea · Swarms'
-    head.player = `${url.origin}/x${path === '/ideas' ? '?view=join' : path === '/new' ? '?view=start' : ''}`
-    return { data, head, status: 200, whole: !!list?.ok }
+    const problem = path === '/new' ? Share.problem(url.searchParams.get('q')) : undefined
+    const subject = problem ? Share.idea(problem) : Share.listing(path === '/ideas' ? 'ideas' : path === '/new' ? 'new' : 'home', list?.ok ? list.value.swarms : [])
+    return { data, head: Share.share(url.origin, subject), status: 200, whole: !!list?.ok }
   }
-  if (path === '/about') return { data, head: { ...head, title: 'How it works · Swarms' }, status: 200, whole: true }
-  if (path === '/docs') return { data, head: { ...head, title: 'API and MCP · Swarms' }, status: 200, whole: true }
-  if (!rendered(path)) return { data, head: { ...head, title: 'Not found · Swarms' }, status: 404, whole: false }
+  if (path === '/about' || path === '/docs') return { data, head: Share.share(url.origin, Share.plain(path === '/about' ? 'about' : 'docs')), status: 200, whole: true }
+  if (!rendered(path)) return { data, head: lost, status: 404, whole: false }
   const [, raw = ''] = /^\/s\/([^/]+)(\/chat)?$/.exec(path) ?? []
   const id = decodeURIComponent(raw)
   const [detail, room, updates, shelf, branched, progressed] = await Promise.all([
@@ -102,10 +103,10 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
     within(Operations.branches(env, { swarm: id }), 2500),
     within(Operations.progress(env, { swarm: id }), 2500),
   ])
-  if (!detail) return { data, head, status: 200, whole: false }
+  if (!detail) return { data, head: Share.share(url.origin, Share.listing('home', [])), status: 200, whole: false }
   if (!detail.ok) {
     data[`!${id}`] = detail.detail
-    return { data, head: { ...head, title: 'Not found · Swarms' }, status: detail.status === 404 ? 404 : 200, whole: false }
+    return { data, head: lost, status: detail.status === 404 ? 404 : 200, whole: false }
   }
   data[id] = { ...detail.value, feed: [], updates: [] }
   if (room?.ok) data[`room:${id}`] = { ...room.value, messages: room.value.messages.slice(-firstChat) }
@@ -113,32 +114,12 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   if (shelf?.ok) data[`artifacts:${id}`] = shelf.value
   if (branched?.ok) data[`branches:${id}`] = branched.value
   if (progressed?.ok) data[`progress:${id}`] = progressed.value
-  const latest = detail.value.answer?.text
   return {
     data,
-    head: { description: (latest ?? detail.value.goal).replace(/\s+/g, ' ').slice(0, 200), image: head.image, player: `${url.origin}/x/s/${encodeURIComponent(id)}`, title: `${detail.value.title} · Swarms` },
+    head: Share.share(url.origin, Share.swarm(detail.value)),
     status: 200,
     whole: !!room?.ok && !!updates?.ok,
   }
-}
-
-
-function meta(head: Head, url: URL) {
-  const tags = [
-    `<meta property="og:title" content="${escape(head.title)}">`,
-    `<meta property="og:description" content="${escape(head.description)}">`,
-    '<meta property="og:type" content="website">',
-    `<meta property="og:image" content="${escape(head.image)}">`,
-    '<meta property="og:image:width" content="800">',
-    '<meta property="og:image:height" content="450">',
-    `<meta property="og:url" content="${escape(url.origin + url.pathname)}">`,
-    `<meta name="twitter:card" content="${head.player ? 'player' : 'summary_large_image'}">`,
-    `<meta name="twitter:title" content="${escape(head.title)}">`,
-    `<meta name="twitter:description" content="${escape(head.description)}">`,
-    `<meta name="twitter:image" content="${escape(head.image)}">`,
-    ...(head.player ? [`<meta name="twitter:player" content="${escape(head.player)}">`, '<meta name="twitter:player:width" content="800">', '<meta name="twitter:player:height" content="450">'] : []),
-  ]
-  return tags.join('')
 }
 
 export async function lost(request: Request, env: Cloudflare.Env) {
@@ -146,6 +127,7 @@ export async function lost(request: Request, env: Cloudflare.Env) {
 }
 
 export async function page(request: Request, env: Cloudflare.Env) {
+  if (Share.bot(request)) waitUntil(Og.warm(env, new URL(request.url)).catch((error: unknown) => console.error('Preview warm-up failed', error)))
   const cookie = request.headers.get('cookie')
   const build = await built(env, new URL(request.url).origin).catch(() => '')
   return Edge.page(request, `${build}|${mobile(request) ? 'm' : 'd'}|${zone(cookie) ?? ''}`, (given) => draw(given, env))
@@ -183,7 +165,7 @@ async function draw(request: Request, env: Cloudflare.Env) {
   const work = (async () => {
     const { data, head, whole } = await gathering
     const boot: Boot = { config: await configuring, data, face: face(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), url: url.href, zone: zone(request.headers.get('cookie')) }
-    await writer.write(encoder.encode(`<title>${escape(head.title)}</title><meta name="description" content="${escape(head.description)}">${meta(head, url)}${closing}<div id="root">`))
+    await writer.write(encoder.encode(`<title>${escape(head.title)}</title><meta name="description" content="${escape(head.description)}">${Share.tags(head)}${closing}<div id="root">`))
     try {
       const stream = await store.run(boot, () => render(request.signal))
       const reader = stream.getReader()

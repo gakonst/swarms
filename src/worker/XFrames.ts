@@ -1,6 +1,7 @@
 import type { Overview, Summary } from '../shared/Api.ts'
 import { briefInstruction, open } from '../shared/ResearchBrief.ts'
 import * as Status from '../shared/Status.ts'
+import * as Share from './Share.ts'
 
 const headers = {
   'cache-control': 'public, max-age=15',
@@ -28,6 +29,8 @@ const mini = {
 
 const sandbox = 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
 
+const icons = '<link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png">'
+
 export function shell(request?: URL) {
   return request?.pathname === '/tg' || request?.pathname.startsWith('/tg/') ? '/tg' : '/x'
 }
@@ -51,31 +54,16 @@ function backers(count: number) {
   return `${count} backer${count === 1 ? '' : 's'}`
 }
 
-function document(origin: string, path: string, title: string, description: string, content: string, context: object, status = 200, request?: URL, bot?: string) {
+function document(origin: string, path: string, subject: Share.Subject, title: string, description: string, content: string, context: object, status = 200, request?: URL, bot?: string) {
   const base = shell(request)
   const url = `${origin}${base}${path}`
-  const card = `${origin}/x${path}`
-  const image = `${origin}/xframe-card.jpg?v=3`
   const telegram = base === '/tg'
   const hosted = request !== undefined && !telegram && !request.searchParams.has('xframes-content')
-  const tags = `<meta charset="utf-8"><link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  const tags = `<meta charset="utf-8">${icons}
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>${attribute(title)}</title>
 <meta name="description" content="${attribute(description)}">
-<meta name="twitter:card" content="player">
-<meta name="twitter:title" content="${attribute(title)}">
-<meta name="twitter:description" content="${attribute(description)}">
-<meta name="twitter:image" content="${attribute(image)}">
-<meta name="twitter:player" content="${attribute(card)}">
-<meta name="twitter:player:width" content="800">
-<meta name="twitter:player:height" content="450">
-<meta property="og:type" content="website">
-<meta property="og:title" content="${attribute(title)}">
-<meta property="og:description" content="${attribute(description)}">
-<meta property="og:image" content="${attribute(image)}">
-<meta property="og:image:width" content="800">
-<meta property="og:image:height" content="450">
-<meta property="og:url" content="${attribute(url)}">`
+${Share.tags(Share.share(origin, subject, { description, title }))}`
   if (hosted)
     return new Response(
       `<!doctype html>
@@ -178,7 +166,7 @@ export function start(origin: string, swarms: readonly Summary[] = [], request?:
     ${joins ? `<ol class="list scroll">${joins}</ol>` : '<button class="empty" data-open="start" type="button">No swarms yet. <b>Start a swarm →</b></button>'}
   </section>
   ${wallet}`
-  return document(origin, '', title, description, content, { briefInstruction, ideas, kind: 'home' }, 200, request, bot)
+  return document(origin, '', Share.listing('home', swarms), title, description, content, { briefInstruction, ideas, kind: 'home' }, 200, request, bot)
 }
 
 export function swarm(origin: string, value: Overview, request?: URL, bot?: string) {
@@ -223,7 +211,7 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
     ${amounts('Fund')}
   </section>
   ${wallet}`
-  return document(origin, `/s/${encodeURIComponent(value.id)}`, title, description, content, {
+  return document(origin, `/s/${encodeURIComponent(value.id)}`, Share.swarm(value), title, description, content, {
     kind: 'swarm',
     live: working ? { since: working.since } : null,
     page,
@@ -237,7 +225,7 @@ export function lost(origin: string, request?: URL, bot?: string) {
     <h2>This swarm drifted off.</h2>
     <div class="row"><a class="go" href="${base}?view=start">Start a swarm</a><a class="ghost" href="${base}?view=join">Join a swarm</a></div>
   </section>`
-  return document(origin, '', 'Swarms', 'Fund AI agents that research and build in the open.', content, { kind: 'lost' }, 404, request, bot)
+  return document(origin, '', Share.listing('home', []), 'Swarms', 'Fund AI agents that research and build in the open.', content, { kind: 'lost' }, 404, request, bot)
 }
 
 export function card(title: string) {
