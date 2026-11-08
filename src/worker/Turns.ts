@@ -279,9 +279,24 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
     await pause(self, money.row, { failures, why: 'rest' })
     return null
   }
+  if (status === 'completed' && message && waiting(message) && (await quiet(self, row))) {
+    await pause(self, money.row, { why: 'idle' })
+    return null
+  }
   const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : Date.now() + settleMs
   await self.move(money.row, { since: run.since, state: 'waiting', until })
   return until
+}
+
+export function waiting(message: string) {
+  return /(?:^|\n)[\s*_]*Waiting for backers\.?[\s*_]*$/.test(message.trim())
+}
+
+async function quiet(self: Swarm, row: Store.Row) {
+  const agent = self.agent()?.id
+  if (!agent) return true
+  const listed = await Gateway.subagents(self.env, row.id, agent)
+  return listed.ok && listed.value.every((subagent) => !['pending', 'queued', 'running'].includes(subagent.status.state))
 }
 
 export function failing(self: Swarm, since: number) {
@@ -362,7 +377,7 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause) {
   if (run.state === 'paused' && Phase.same(run.pause, pause)) return
   const text = Phase.reason(pause)
   if (Phase.since(run) !== null) {
-    if (pause.why === 'rest') await sweep(self, row)
+    if (pause.why === 'rest' || pause.why === 'idle') await sweep(self, row)
     if (self.turned()) Chat.announce(self, text)
   }
   const shown = Phase.paused(run)

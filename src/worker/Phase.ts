@@ -8,6 +8,7 @@ export type Pause =
   | { left: string; needs?: string | undefined; wake: number | null; why: 'money' }
   | { wanted: string; why: 'costly' }
   | { failures: number; why: 'rest' }
+  | { why: 'idle' }
 
 export type Told = [note: string, weight: string]
 
@@ -41,7 +42,7 @@ export function check(from: State, to: State) {
 }
 
 export function wakes(pause: Pause, reason: Reason) {
-  return reason === 'money' || pause.why === 'rest' || pause.why === 'costly'
+  return reason === 'money' || pause.why === 'rest' || pause.why === 'costly' || pause.why === 'idle'
 }
 
 export function due(run: Run, now: number) {
@@ -60,6 +61,7 @@ export function reason(pause: Pause) {
   if (pause.why === 'unfunded') return 'Not started: nobody has funded it yet.'
   if (pause.why === 'money') return `Out of money: ${cash(pause.left)} left, and one step can cost up to ${cash(pause.needs ?? String(Store.reserve))}. Fund it to keep going.`
   if (pause.why === 'costly') return `Paused: its next step needs about ${cash(pause.wanted)} at once, more than any one backer has left in it. Fund it to keep going.`
+  if (pause.why === 'idle') return 'Waiting for backers: new money, a steer or a message in its room wakes it.'
   return `Stopped after ${pause.failures} errors in a row. New money or a note restarts it.`
 }
 

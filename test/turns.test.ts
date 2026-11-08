@@ -31,3 +31,11 @@ test('turns failed on squeezed payments do not count toward the errors that stop
   assert.equal(Turns.failing(self([8, 9]), 0), 2)
   assert.equal(Turns.failing(self([6, 7, 8, 9]), 0), 0)
 })
+
+test('an update waits for backers only when its last line says so', () => {
+  assert.ok(Turns.waiting('Still at 1.316x, and $4 is too little for another experiment.\n\nWaiting for backers.'))
+  assert.ok(Turns.waiting('Holding.\n**Waiting for backers.**\n'))
+  assert.ok(Turns.waiting('Waiting for backers'))
+  assert.ok(!Turns.waiting('Waiting for backers to fund the Wishlist before the next branch.\n\nThe kernel is at 1.316x.'))
+  assert.ok(!Turns.waiting('I am not Waiting for backers yet.'))
+})

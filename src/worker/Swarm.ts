@@ -687,7 +687,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       }
     }
     if (steer) this.changed('detail', 'members')
-    return Chat.speak(this, input.author, redact(input.text), input.mentions, steer)
+    const said = await Chat.speak(this, input.author, redact(input.text), input.mentions, steer)
+    const run = this.run()
+    if (run.state === 'paused' && run.pause.why === 'idle') await this.wake('note')
+    return said
   }
 
   tell(notes: Note[]): Note[] {
