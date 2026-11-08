@@ -7,7 +7,6 @@ import * as Gateway from './Gateway.ts'
 import * as Lobby from './Lobby.ts'
 import * as Operations from './Operations.ts'
 import * as Page from './Page.ts'
-import * as Persona from './Persona.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
 import * as Rest from './Rest.ts'
@@ -258,34 +257,13 @@ app.get('*', (c) => {
   return Page.lost(c.req.raw, c.env)
 })
 
-const orphaned = [
-  ['3e740359642d', 'agt_e5343549610f1db87b16fc8244bab8e2'],
-  ['c77fde6b935c', 'agt_c99d0cfd644a238e5fbbf361a9f7e1fe'],
-] as const
-
-const throwaway = [
-  ['30ae5277ed14', 'agt_181c4068e09cb8f0ccc9416760ffa5f2'],
-  ['97370f4e75d0', 'agt_b88c7dd7f2c4e1d3ef7f8d33890e4879'],
-] as const
-
 async function scheduled(_controller: ScheduledController, env: Cloudflare.Env) {
-  const instructions = Persona.render(null)
-  const instructed = await Promise.all(
-    orphaned.map(async ([swarm, agent]) => {
-      const patched = await Gateway.instruct(env, swarm, agent, instructions)
-      return `${swarm}:${patched.ok ? 200 : patched.status}`
-    }),
-  )
-  const deleted = await Promise.all(
-    throwaway.map(async ([swarm, agent]) => {
-      const response = await Gateway.call(env, `/v1/agents/${agent}`, {
-        headers: { authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY, 'gateway-app': Gateway.app(swarm) },
-        method: 'DELETE',
-      })
-      return `${swarm}:${response.status}`
-    }),
-  )
-  console.log(JSON.stringify({ deleted, instructed }))
+  const response = await Gateway.call(env, '/v1/personas/delete', {
+    body: JSON.stringify({ name: 'swarm' }),
+    headers: { authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY, 'content-type': 'application/json' },
+    method: 'POST',
+  })
+  console.log(JSON.stringify({ persona: response.status, answer: (await response.text()).slice(0, 200) }))
 }
 
 export default { fetch: app.fetch, scheduled } satisfies ExportedHandler<Cloudflare.Env>
