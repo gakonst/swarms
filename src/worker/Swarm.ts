@@ -10,7 +10,6 @@ import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Gateway from './Gateway.ts'
 import * as Payer from './Payer.ts'
-import * as Persona from './Persona.ts'
 import * as Phase from './Phase.ts'
 import type { Why } from '../shared/Api.ts'
 import * as Search from './Search.ts'
@@ -65,7 +64,7 @@ export type Spoken = {
 
 type Seen = { title: string; turn: number; version: number }
 
-export type Lead = { briefed: boolean; cursor: number; id: string; persona: boolean; unreachable: number | null; url: string }
+export type Lead = { briefed: boolean; cursor: number; id: string; instructed?: boolean; unreachable: number | null; url: string }
 
 export type Turning = Extract<Phase.Run, { state: 'working' }>
 
@@ -89,7 +88,6 @@ function migrate(storage: DurableObjectStorage, from: number) {
         briefed: !kv.get<boolean>('fresh'),
         cursor: kv.get<number>('cursor') ?? 0,
         id: agent,
-        persona: kv.get<string>('persona') === Persona.name,
         unreachable: kv.get<number>('unreachable') ?? null,
         url: kv.get<string>('url') ?? '',
       } satisfies Lead)

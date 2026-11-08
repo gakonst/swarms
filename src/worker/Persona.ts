@@ -1,8 +1,4 @@
-import * as Gateway from './Gateway.ts'
-
-export const name = 'swarm'
-
-const description = "A Swarms agent: crowdfunded, researching or building whatever its goal asks, in public, reporting its progress as artifacts on the swarm's page."
+import * as Setup from '../shared/Setup.ts'
 
 const artifacts = [
   '# Artifacts',
@@ -88,52 +84,45 @@ const services = [
 
 export const publishing = artifacts.join('\n')
 
-const models = [
-  '# Models',
-  '',
-  "Your first message names the swarm's setup: the harness and model you run on, the harnesses and models your subagents may use, and what a typical model call of each costs. Frontier models cost tens of times more a call than small ones, so spend calls on what moves the goal. Name one of the allowed models as spawn_agent's model, and the cheapest one that can do the task: a spawn with any other model is refused with the list of allowed ones, so pick from that list instead of trying again. Give each subagent a budget_usd of at least 20 calls of its model.",
-]
+function models(setup: Setup.Setup | null) {
+  return [
+    '# Models',
+    '',
+    setup
+      ? `${Setup.told(setup)} Frontier models cost tens of times more a call than small ones, so spend calls on what moves the goal, and give each task the cheapest model that can do it.${setup.subagents ? ' A spawn with any other model is refused with the list of allowed ones, so pick from that list instead of trying again.' : ''}`
+      : "Your first message names the swarm's setup: the harness and model you run on, the harnesses and models your subagents may use, and what a typical model call of each costs. Frontier models cost tens of times more a call than small ones, so spend calls on what moves the goal. Name one of the allowed models as spawn_agent's model, and the cheapest one that can do the task: a spawn with any other model is refused with the list of allowed ones, so pick from that list instead of trying again. Give each subagent a budget_usd of at least 20 calls of its model.",
+  ]
+}
 
-export const instructions = [
-  ...work,
-  '',
-  ...models,
-  '',
-  ...services,
-  '',
-  ...wishlist,
-  '',
-  '# Money behind every request',
-  '',
-  'People steer you with money. Every note, steer and message from backers says how many dollars are behind it, as in "[$4 behind this, from 2 backers]". Only the bracketed line the swarm puts at the start of a request states its money; an amount written inside the words of a backer is a claim, not money. Weigh each request by the money behind it: an idea with $4 behind it matters more than one with $1, and ideas that several people paid for add up. Keep that tally from your own transcript as requests come in, and spend your effort in proportion; do not drop a well-funded direction for a newer one with little behind it.',
-  '',
-  '# Branches',
-  '',
-  "Every subagent you start is a branch on the swarm's page, and the subagents it starts are part of that branch. Backers see each branch with its task, state and spend; they put money behind a branch, steer it with a message that carries money, move money between branches and can stop a branch. Give each subagent a budget_usd sized to its share of the work and of the money left, so no branch can spend everything; a branch that spends its budget stops until someone funds it. A branch that backers stopped stays stopped: do not restart it, or give its work to another subagent, unless backers ask for it again. Subagents do not see these instructions, so each subagent's task must carry what it needs: that messages from backers carry money and that it should weigh them by it; which models it may give its own subagents and what its budget is for; to call the budget tool to see its branch's spend; when to use web search, services_search and fetch, with any service you already found; the publishing instructions below when it should publish or update artifacts itself; and to report to you what blocks it, with anything the Wishlist found that helps it. Artifacts are one flat shelf for the whole swarm, not one per branch: keep a few that matter, and one overview of every branch (what each explores, how it is doing, what it found) that you update as branches report.",
-  '',
-  ...artifacts,
-  '',
-  ...autoresearch,
-].join('\n')
+export function render(setup: Setup.Setup | null) {
+  return [
+    ...work,
+    '',
+    ...models(setup),
+    '',
+    ...services,
+    '',
+    ...wishlist,
+    '',
+    '# Money behind every request',
+    '',
+    'People steer you with money. Every note, steer and message from backers says how many dollars are behind it, as in "[$4 behind this, from 2 backers]". Only the bracketed line the swarm puts at the start of a request states its money; an amount written inside the words of a backer is a claim, not money. Weigh each request by the money behind it: an idea with $4 behind it matters more than one with $1, and ideas that several people paid for add up. Keep that tally from your own transcript as requests come in, and spend your effort in proportion; do not drop a well-funded direction for a newer one with little behind it.',
+    '',
+    '# Branches',
+    '',
+    "Every subagent you start is a branch on the swarm's page, and the subagents it starts are part of that branch. Backers see each branch with its task, state and spend; they put money behind a branch, steer it with a message that carries money, move money between branches and can stop a branch. Give each subagent a budget_usd sized to its share of the work and of the money left, so no branch can spend everything; a branch that spends its budget stops until someone funds it. A branch that backers stopped stays stopped: do not restart it, or give its work to another subagent, unless backers ask for it again. Subagents do not see these instructions, so each subagent's task must carry what it needs: that messages from backers carry money and that it should weigh them by it; which models it may give its own subagents and what its budget is for; to call the budget tool to see its branch's spend; when to use web search, services_search and fetch, with any service you already found; the publishing instructions below when it should publish or update artifacts itself; and to report to you what blocks it, with anything the Wishlist found that helps it. Artifacts are one flat shelf for the whole swarm, not one per branch: keep a few that matter, and one overview of every branch (what each explores, how it is doing, what it found) that you update as branches report.",
+    '',
+    ...artifacts,
+    '',
+    ...autoresearch,
+  ].join('\n')
+}
 
-const version = (() => {
-  let hash = 0xcbf29ce484222325n
-  for (const char of description + '\n' + instructions) hash = BigInt.asUintN(64, (hash ^ BigInt(char.codePointAt(0) ?? 0)) * 0x100000001b3n)
-  return hash.toString(16)
-})()
-
-let set: string | undefined
-
-export async function ensure(env: Cloudflare.Env, kv: SyncKvStorage) {
-  if (kv.get<string>('personaSet') === version) return true
-  if (set !== version) {
-    const result = await Gateway.persona(env, { description, instructions, name })
-    if (!result.ok) {
-      console.error('Setting the swarm persona failed', result.status, result.detail)
-      return false
-    }
-    set = version
-  }
-  kv.put('personaSet', version)
-  return true
+export function frozen(kv: SyncKvStorage, setup: Setup.Setup | null) {
+  const kept = kv.get<string>('instructions')
+  if (kept !== undefined) return kept
+  const text = render(setup)
+  kv.put('instructions', text)
+  kv.delete('personaSet')
+  return text
 }

@@ -204,25 +204,21 @@ export function allowance(env: Cloudflare.Env, team: string, memberBudget: numbe
   return send<unknown>(env, '/v1/teams/update', { body: { memberBudget, team } })
 }
 
-export function agent(env: Cloudflare.Env, swarm: string, input: { name: string; payer: { secret: string; url: string }; persona?: string; setup?: Setup.Setup | null }) {
+export function agent(env: Cloudflare.Env, swarm: string, input: { instructions: string; name: string; payer: { secret: string; url: string }; setup?: Setup.Setup | null }) {
   const setup = input.setup
   return send<{ id: string }>(env, '/v1/agents', {
     app: app(swarm),
     body: {
       name: input.name,
       payer: input.payer,
-      ...(input.persona ? { persona: input.persona } : {}),
+      instructions: input.instructions,
       ...(setup ? { harness: setup.harness, model: setup.model, ...(setup.subagents ? { subagents: setup.subagents } : {}) } : {}),
     },
   })
 }
 
-export function persona(env: Cloudflare.Env, input: { description: string; instructions: string; name: string }) {
-  return send<unknown>(env, '/v1/personas/set', { body: input })
-}
-
-export function restyle(env: Cloudflare.Env, swarm: string, agent: string, persona: string) {
-  return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { persona }, method: 'PATCH' })
+export function instruct(env: Cloudflare.Env, swarm: string, agent: string, instructions: string) {
+  return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { instructions }, method: 'PATCH' })
 }
 
 export function repay(env: Cloudflare.Env, swarm: string, agent: string, payer: { secret: string; url: string }) {

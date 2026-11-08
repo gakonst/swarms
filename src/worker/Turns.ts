@@ -56,6 +56,7 @@ export async function step(self: Swarm) {
   if (!row) return null
 
   initialize(self)
+  Persona.frozen(self.kv, Store.setup(row))
   const run = self.run()
   if (run.state === 'paused') {
     if (!Phase.due(run, Date.now())) return run.pause.why === 'money' ? run.pause.wake : null
@@ -173,41 +174,38 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
   const payer = { secret: self.kv.get<string>('secret') ?? '', url: `${self.env.SWARMS_URL}/api/swarms/${row.id}/pay` }
   const known = self.agent()
   if (known) {
-    if (known.url === payer.url) return restyled(self, row, known)
+    if (known.url === payer.url) return instructed(self, row, known)
     const patched = await Gateway.repay(self.env, row.id, known.id, payer)
     if (patched.ok) {
       const moved = { ...known, url: payer.url }
       self.kv.put('agent', moved)
-      return restyled(self, row, moved)
+      return instructed(self, row, moved)
     }
     if (patched.status !== 404) return { detail: patched.detail, error: "The gateway did not move the agent's payer." }
     self.kv.delete('agent')
   }
 
-  const styled = await Persona.ensure(self.env, self.kv)
-  const named = { name: row.title.slice(0, 60), payer, setup: Store.setup(row) }
-  let created = await Gateway.agent(self.env, row.id, styled ? { ...named, persona: Persona.name } : named)
-  const persona = styled && created.ok
-  if (!created.ok && styled && created.status === 409) created = await Gateway.agent(self.env, row.id, named)
+  const setup = Store.setup(row)
+  const created = await Gateway.agent(self.env, row.id, { instructions: Persona.frozen(self.kv, setup), name: row.title.slice(0, 60), payer, setup })
   if (!created.ok) return { detail: created.detail, error: 'The gateway did not create the agent.' }
-  const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, persona, unreachable: null, url: payer.url }
+  const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, instructed: true, unreachable: null, url: payer.url }
   self.kv.put('agent', agent)
   self.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it pays for is paid from the contributions, one at a time.", created.value.id)
   await Branching.release(self, row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
   return agent
 }
 
-export async function restyled(self: Swarm, row: Store.Row, agent: Lead): Promise<Lead> {
-  if (!(await Persona.ensure(self.env, self.kv)) || agent.persona) return agent
-  const patched = await Gateway.restyle(self.env, row.id, agent.id, Persona.name)
+export async function instructed(self: Swarm, row: Store.Row, agent: Lead): Promise<Lead> {
+  if (agent.instructed) return agent
+  const patched = await Gateway.instruct(self.env, row.id, agent.id, Persona.frozen(self.kv, Store.setup(row)))
   if (!patched.ok && patched.status !== 409) {
-    console.error('Giving the agent the swarm persona failed', patched.status, patched.detail)
+    console.error("Giving the agent the swarm's own instructions failed", patched.status, patched.detail)
     return agent
   }
-  const styled = { ...agent, persona: true }
-  self.kv.put('agent', styled)
-  if (patched.ok) self.log('status', "Gave the agent the swarm's instructions on artifacts, appended to its system prompt.")
-  return styled
+  const given = { ...agent, instructed: true }
+  self.kv.put('agent', given)
+  if (patched.ok) self.log('status', "Gave the agent this swarm's own instructions, appended to its system prompt and fixed for the swarm's life, in place of the shared swarm persona.")
+  return given
 }
 
 export async function finish(self: Swarm, row: Store.Row, run: Turning, report: Gateway.Report) {
