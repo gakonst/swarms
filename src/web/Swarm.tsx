@@ -38,7 +38,7 @@ const feedMs = 5000
 
 const shelfMs = 60_000
 
-const tabs = ['overview', 'room', 'artifacts', 'contributors', 'transcript', 'code', 'machines', 'about'] as const
+const tabs = ['overview', 'transcript', 'room', 'artifacts', 'contributors', 'code', 'machines', 'about'] as const
 
 type Tab = (typeof tabs)[number]
 
@@ -58,9 +58,13 @@ function subscribe(listener: () => void) {
 
 function useTab() {
   const hash = useSyncExternalStore(subscribe, () => location.hash.slice(1), () => '')
-  const tab: Tab = (tabs as readonly string[]).includes(hash) ? (hash as Tab) : 'overview'
+  const search = useSyncExternalStore(subscribe, () => location.search, () => here().search)
+  const tab: Tab = (tabs as readonly string[]).includes(hash) ? (hash as Tab) : new URLSearchParams(search).has('who') ? 'transcript' : 'overview'
   const choose = (next: Tab) => {
-    history.replaceState(null, '', `${location.pathname}${location.search}${next === 'overview' ? '' : `#${next}`}`)
+    const url = new URL(location.href)
+    if (next === 'overview') url.searchParams.delete('who')
+    url.hash = next === 'overview' ? '' : next
+    history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
     dispatchEvent(new HashChangeEvent('hashchange'))
   }
   return [tab, choose] as const
@@ -88,7 +92,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   const [note, setNote] = useState(() => asked().note)
   const [tab, setTab] = useTab()
   const [unread, setUnread] = useState(0)
-  const [technical, setTechnical] = useState(false)
   const [titled, setTitled] = useState(false)
   const [prefill] = useState(() => asked())
   const [draft, setDraft] = useState({ at: 0, text: '' })
@@ -98,11 +101,7 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
     return { handles: new Map((room?.members ?? []).map((member) => [member.address, member.handle])), me: null, members: room?.members ?? [], online: [], said: room?.messages ?? [], watching: 0 }
   })
   const heard = useCallback((said: readonly Said[], me: Me | null, members: readonly Member[], online: readonly string[], watching: number) => setChat((previous) => ({ handles: new Map(members.map((member) => [member.address, member.handle])), me, members, online, watching, said: [...said, ...previous.said.filter((item) => !said.some((other) => other.id === item.id) && item.id > (said.at(-1)?.id ?? 0))] })), [])
-  const [thanked, setThanked] = useState(false)
   const [funding, setFunding] = useState(() => here().searchParams.has('fund'))
-  useEffect(() => {
-    if (funding) document.querySelector('.campaign-fund')?.scrollIntoView({ block: 'start' })
-  }, [funding, tab])
   const [artifact, setArtifact] = useState(chosen)
   const visible = useVisible()
   const wide = useMedia('(min-width: 1100px)')
@@ -180,10 +179,10 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
 
   if (!detail.data)
     return detail.error ? (
-      <Lost title={/no swarm/i.test(detail.error) ? 'This swarm drifted off.' : "Can't reach Swarms."}>
+      <Lost title={/no swarm/i.test(detail.error) ? 'This idea is gone.' : "Can't reach Swarms."}>
         {!/no swarm/i.test(detail.error) && <button className="lost-row" onClick={() => location.reload()} type="button">Try again <span aria-hidden="true">↻</span></button>}
-        <Link className="lost-row" to="/new">Start a swarm <span aria-hidden="true">→</span></Link>
-        <Link className="lost-row" to="/join">Join a swarm <span aria-hidden="true">→</span></Link>
+        <Link className="lost-row" to="/join">Browse ideas <span aria-hidden="true">→</span></Link>
+        <Link className="lost-row" to="/new">Start an idea <span aria-hidden="true">→</span></Link>
       </Lost>
     ) : (
       <section className="page lost" aria-busy="true"><span className="lost-orbit" aria-hidden="true"><i /><i /><i /></span></section>
@@ -191,14 +190,15 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
 
   const swarm = detail.data
   const live = swarm.status === 'running'
-  const shown: Tab = wide && tab === 'room' ? 'overview' : tab
+  const campaign = tab === 'overview'
+  const shown: Tab = wide && tab === 'room' ? 'transcript' : tab
   const connected = swarm.hands.filter((hand) => hand.connected).length
-  const fund = <Fund config={props.config} note={note} onDone={() => { reload(); setFunding(false); setThanked(true); setTab('overview') }} onNote={setNote} prefill={prefill} target={() => Promise.resolve({ id: swarm.id, wallet: swarm.wallet })} title={swarm.title} />
+  const fund = <Fund config={props.config} note={note} onDone={() => { reload(); setFunding(false) }} onNote={setNote} prefill={prefill} target={() => Promise.resolve({ id: swarm.id, wallet: swarm.wallet })} title={swarm.title} />
   const open = (slug: string) => {
     setArtifact(slug)
     setTab('artifacts')
   }
-  const room = <Room config={props.config} onArtifact={open} onBack={back} onMessages={heard} onSteered={reload} onTranscript={() => setTab('transcript')} onUnread={setUnread} swarm={swarm} visible={wide || shown === 'room'} />
+  const room = <Room config={props.config} onArtifact={open} onBack={back} onMessages={heard} onSteered={reload} onTranscript={() => setTab('transcript')} onUnread={setUnread} swarm={swarm} visible={!campaign && (wide || shown === 'room')} />
   const shelved = shelf.data?.artifacts.length ?? 0
   const wished = wishes.wishes.filter((wish) => wish.state === 'open').length
   const toRoom = () => {
@@ -208,16 +208,16 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
   }
   const backers = chat.members.filter((member) => Number(member.backed) > 0).length
   const labels: Record<Tab, ReactNode> = {
-    overview: 'Overview',
-    about: 'Mission details',
+    overview: '← Overview',
+    about: 'Details',
     artifacts: <>Results{shelved > 0 && <span className="tab-count tab-quiet">{shelved}</span>}{wished > 0 && <span className="tab-count tab-wish" title="Open items on the swarm's wishlist">{wished === 1 ? '1 wish' : `${wished} wishes`}</span>}</>,
     code: 'Code',
     contributors: <>Backers{backers > 0 && <span className="tab-count tab-quiet">{backers}</span>}</>,
     machines: <>Machines{connected > 0 && <span className="tab-count tab-quiet">{connected}</span>}</>,
-    room: <>Community<Presence members={chat.members} online={chat.online} watching={chat.watching} />{unread > 0 && <span className="tab-count">{unread}</span>}</>,
+    room: <>Chat<Presence members={chat.members} online={chat.online} watching={chat.watching} />{unread > 0 && <span className="tab-count">{unread}</span>}</>,
     transcript: 'Transcript',
   }
-  const strip = tabs.filter((item) => (item !== 'room' || !wide) && (technical || !['transcript', 'code', 'machines', 'about'].includes(item) || item === shown))
+  const strip = tabs.filter((item) => item !== 'room' || !wide)
   const arrows = (event: Press<HTMLElement>) => {
     const at = strip.indexOf(shown)
     const next = event.key === 'ArrowRight' ? strip[(at + 1) % strip.length] : event.key === 'ArrowLeft' ? strip[(at + strip.length - 1) % strip.length] : event.key === 'Home' ? strip[0] : event.key === 'End' ? strip.at(-1) : undefined
@@ -237,18 +237,42 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
     </nav>
   )
 
+  if (campaign)
+    return (
+      <article className="page idea-page" data-status={swarm.status}>
+        <Campaign
+          artifacts={shelf.data?.artifacts ?? []}
+          config={props.config}
+          funding={funding}
+          members={chat.members}
+          messages={chat.said}
+          note={note}
+          onArtifact={open}
+          onBacked={() => {
+            reload()
+            setFunding(false)
+          }}
+          onNote={setNote}
+          onWork={(work) => setTab(work)}
+          prefill={prefill}
+          swarm={swarm}
+          watching={chat.watching}
+        />
+        <div hidden>{room}</div>
+      </article>
+    )
+
   return (
     <article className="page swarm room-page" data-status={swarm.status}>
       <header className="swarm-head">
         <div className="swarm-title">
-          <Link aria-label="All swarms" className="swarm-home" to="/join">←</Link>
+          <button aria-label="Back to the idea" className="swarm-home" onClick={() => setTab('overview')} type="button">←</button>
           <Dot swarm={swarm} />
           <h1 data-open={titled} onClick={() => setTitled(!titled)} title={swarm.title}>{swarm.title}</h1>
         </div>
         <Energy onFund={() => back('')} swarm={swarm} />
         {!phone && tablist('room-tabs')}
-        <button className="campaign-technical" aria-expanded={technical} onClick={() => setTechnical(!technical)} type="button">{technical ? 'Hide technical views' : 'Behind the scenes'}</button>
-        {!phone && technical && <button className="side-open" onClick={() => (side.open ? setSide((current) => ({ ...current, open: false })) : ask(null))} type="button">{side.open ? 'Close the side pane' : 'Ask on the side'}</button>}
+        {!phone && <button className="side-open" onClick={() => (side.open ? setSide((current) => ({ ...current, open: false })) : ask(null))} type="button">{side.open ? 'Close the side pane' : 'Ask on the side'}</button>}
       </header>
       <div className="room-layout">
         <section className="room-main">
@@ -281,7 +305,6 @@ export function Swarm(props: { config: Config | undefined; id: string }) {
           </div>
           {shown !== 'transcript' && shown !== 'room' && (
             <div aria-labelledby={`tab-${shown}`} className="room-panel room-page-panel" data-tab={shown} id={`panel-${shown}`} role="tabpanel">
-              {shown === 'overview' && <>{thanked && <p className="campaign-thanks" role="status">You’re part of this mission. Thank you for backing the work.</p>}{funding && <section className="campaign-fund"><button className="campaign-link" onClick={() => setFunding(false)} type="button">Close contribution</button>{fund}</section>}<Campaign swarm={swarm} members={chat.members} messages={chat.said} artifacts={shelf.data?.artifacts ?? []} onFund={() => back('')} onCommunity={toRoom} onArtifact={open} onResearch={(who) => { const url = new URL(location.href); url.searchParams.set('who', who); history.replaceState(null, '', url); setTechnical(true); setTab('transcript') }} /></>}
               {shown === 'artifacts' && <Artifacts artifacts={shelf.data?.artifacts} error={shelf.error} onRoom={toRoom} onSelect={setArtifact} selected={artifact} wishes={wishes} working={live} />}
               {shown === 'contributors' && <Contributors me={chat.me} members={chat.members} online={chat.online} />}
               {shown === 'code' && <Repository config={props.config} swarm={swarm} />}

@@ -78,7 +78,7 @@ export function Energy(props: { onFund?: (() => void) | undefined; swarm: Stood 
         <span className="energy-total">{Answer.cash(raised)} raised</span>
         {props.onFund && (
           <button className="energy-fund" data-primary={primary} onClick={props.onFund} type="button">
-            Chip in
+            Back it
           </button>
         )}
       </div>

@@ -6,7 +6,9 @@ type Frame = { name: string; note?: string; size?: 'card'; steps?: readonly Step
 
 type Flow = { frames: readonly Frame[]; id: string; title: string }
 
-const swarm = (id: string, rest = '') => `/s/${id}?fixture${rest}`
+const swarm = (id: string, rest = '') => `/s/${id}?fixture${rest}${rest.includes('#') ? '' : '#transcript'}`
+
+const idea = (id: string, rest = '') => `/s/${id}?fixture${rest}`
 
 const flows: readonly Flow[] = [
   {
@@ -21,54 +23,53 @@ const flows: readonly Flow[] = [
   },
   {
     frames: [
-      { name: 'Open swarms', url: '/join?fixture' },
-      { name: 'Tapped open', note: 'tap again to go in', steps: [{ click: '.tiles-swarm li:nth-child(2) .tile-swarm' }], url: '/join?fixture' },
-      { name: 'Running', url: '/join?fixture&filter=running' },
-      { name: 'Resting', url: '/join?fixture&filter=resting' },
-      { name: 'Not started', url: '/join?fixture&filter=waiting' },
-      { name: 'Needs money', url: '/join?fixture&filter=money' },
+      { name: 'All ideas', url: '/join?fixture' },
+      { name: 'Working now', url: '/join?fixture&filter=running' },
+      { name: 'Taking a break', url: '/join?fixture&filter=resting' },
+      { name: 'New', url: '/join?fixture&filter=waiting' },
+      { name: 'Needs funding', url: '/join?fixture&filter=money' },
       { name: 'A long list', url: '/join?fixture&scene=many' },
-      { name: 'A long list, scrolled', note: 'scrolled', steps: [{ scroll: '.tiles-swarm' }], url: '/join?fixture&scene=many' },
+      { name: 'A long list, scrolled', note: 'scrolled', steps: [{ scroll: 'page' }], url: '/join?fixture&scene=many' },
       { name: 'Loading', url: '/join?fixture&scene=wait' },
-      { name: 'No swarms yet', url: '/join?fixture&scene=empty' },
+      { name: 'No ideas yet', url: '/join?fixture&scene=empty' },
       { name: 'Offline', url: '/join?fixture&scene=down' },
     ],
     id: 'join',
-    title: 'Be part of the future',
+    title: 'All ideas',
   },
   {
     frames: [
-      { name: 'Ideas', url: '/new?fixture' },
-      { name: 'Tapped open', note: 'brief is editable', steps: [{ click: '.ideas li:nth-child(1) .tile-swarm' }], url: '/new?fixture' },
-      { name: 'Editing the brief', steps: [{ click: '.ideas li:nth-child(2) .tile-swarm' }, { type: ['.tile-edit textarea', 'Speed up one open-source scientific workload without losing accuracy.'] }], url: '/new?fixture' },
-      { name: 'Your own idea', steps: [{ click: '.ideas li:last-child .tile-swarm' }, { type: ['#question', 'Can a 1B model beat GPT-4 at chess puzzles?'] }], url: '/new?fixture' },
-      { name: 'More ideas', steps: [{ click: '.ideas li:nth-last-child(2) .tile-swarm' }], url: '/new?fixture' },
-      { name: 'Ideas, scrolled', note: 'scrolled', steps: [{ scroll: 'page' }], url: '/new?fixture' },
-      { name: 'Fund it, one time', url: '/new?fixture&q=pq-signatures' },
-      { name: 'Signed out, launching', note: 'connects the wallet first', steps: [{ click: '.fuel-go' }], url: '/new?fixture&q=pq-signatures&scene=hang' },
+      { name: 'Your own idea', url: '/new?fixture' },
+      { name: 'Typed', steps: [{ type: ['#question', 'Can a 1B model beat GPT-4 at chess puzzles?'] }], url: '/new?fixture' },
+      { name: 'Advanced', steps: [{ type: ['#question', 'Can a 1B model beat GPT-4 at chess puzzles?'] }, { click: '.own-box .advanced summary' }], url: '/new?fixture' },
+      { name: 'A suggested idea', url: '/new?fixture&q=pq-signatures' },
+      { name: 'Its plan, editable', steps: [{ click: '.idea-section.advanced summary' }], url: '/new?fixture&q=pq-signatures' },
+      { name: 'Signed out, backing', note: 'connects the wallet first', steps: [{ click: '.fuel-go' }], url: '/new?fixture&q=pq-signatures&scene=hang' },
       { name: 'Approve in Tempo Wallet', steps: [{ click: '.fuel-go' }], url: '/new?fixture&q=pq-signatures&scene=hang,in' },
       { name: 'Declined in the wallet', steps: [{ click: '.fuel-go' }, { wait: 1600 }], url: '/new?fixture&q=pq-signatures&scene=deny,in' },
       { name: 'Not enough money', steps: [{ click: '.fuel-go' }, { wait: 2600 }], url: '/new?fixture&q=pq-signatures&scene=broke,in' },
     ],
     id: 'start',
-    title: 'Start a breakthrough',
+    title: 'Start an idea',
   },
   {
     frames: [
-      { name: 'Loading', url: swarm('bench-coders', '&scene=wait') },
-      { name: 'Live', url: swarm('bench-coders') },
-      { name: 'Just started', url: swarm('rust-book-el') },
-      { name: 'Not started yet', url: swarm('speedrun-t4') },
-      { name: 'Paused, out of money', url: swarm('dex-guide') },
-      { name: 'Next step costs more than any backer', url: swarm('dex-guide', '&scene=costly') },
-      { name: 'Resting after errors', url: swarm('dex-guide', '&scene=rest') },
-      { name: 'Resting after a result', url: swarm('mev-map') },
-      { name: 'Waking it with money', steps: [{ click: 'button.energy-fund' }], url: swarm('mev-map', '&scene=in') },
+      { name: 'Loading', url: idea('bench-coders', '&scene=wait') },
+      { name: 'Live', url: idea('bench-coders') },
+      { name: 'Just started', url: idea('rust-book-el') },
+      { name: 'Not started yet', url: idea('speedrun-t4') },
+      { name: 'Paused, out of money', url: idea('dex-guide') },
+      { name: 'Next step costs more than any backer', url: idea('dex-guide', '&scene=costly') },
+      { name: 'Resting after errors', url: idea('dex-guide', '&scene=rest') },
+      { name: 'Resting after a result', url: idea('mev-map') },
+      { name: 'Adding a note', steps: [{ click: '.fuel-add' }, { type: ['.fuel-note input', 'Try the fused kernel next'] }], url: idea('mev-map', '&scene=in') },
+      { name: 'Scrolled, the back bar', note: 'phone', steps: [{ scroll: 'page' }], url: idea('bench-coders') },
+      { name: 'Behind the scenes, the workspace', url: swarm('bench-coders') },
       { name: 'Not found', url: '/s/nope?fixture' },
-      { name: 'Offline', url: swarm('bench-coders', '&scene=down') },
+      { name: 'Offline', url: idea('bench-coders', '&scene=down') },
     ],
     id: 'swarm',
-    title: 'A swarm',
+    title: 'An idea',
   },
   {
     frames: [
@@ -158,15 +159,15 @@ const flows: readonly Flow[] = [
   },
   {
     frames: [
-      { name: 'From the head', note: 'card rises from below', steps: [{ click: 'button.energy-fund' }], url: swarm('bench-coders', '&scene=in') },
-      { name: 'Behind a note', url: swarm('bench-coders', '&scene=in&fund&note=Try%20a%20second%20pass%20at%20temperature%200') },
-      { name: 'Approve in Tempo Wallet', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }], url: swarm('dex-guide', '&scene=hang,in') },
-      { name: 'Declined', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 1600 }], url: swarm('dex-guide', '&scene=deny,in') },
-      { name: 'Not enough money', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 2600 }], url: swarm('dex-guide', '&scene=broke,in') },
-      { name: 'Sent, not counted yet', note: 'the transfer left the wallet', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 2600 }], url: swarm('dex-guide', '&scene=uncounted,in') },
-      { name: 'In MACH', note: 'a channel the gateway spends', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 3000 }], url: swarm('dex-guide', '&scene=in&token=mach') },
-      { name: 'Counted on Record it', note: 'posts the same transaction again', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 2600 }, { click: '.alert-go' }, { wait: 1500 }], url: swarm('dex-guide', '&scene=uncounted,in') },
-      { name: 'Funded, in the flow', note: 'shows as a $ row', steps: [{ click: 'button.energy-fund' }, { click: '.fuel-go' }, { wait: 3000 }], url: swarm('bench-coders', '&scene=in') },
+      { name: 'From the workspace', note: 'goes back to the idea', steps: [{ click: 'button.energy-fund' }], url: swarm('bench-coders', '&scene=in') },
+      { name: 'Behind a note', url: idea('bench-coders', '&scene=in&fund&note=Try%20a%20second%20pass%20at%20temperature%200') },
+      { name: 'Approve in Tempo Wallet', steps: [{ click: '.box .fuel-go' }], url: idea('dex-guide', '&scene=hang,in') },
+      { name: 'Declined', steps: [{ click: '.box .fuel-go' }, { wait: 1600 }], url: idea('dex-guide', '&scene=deny,in') },
+      { name: 'Not enough money', steps: [{ click: '.box .fuel-go' }, { wait: 2600 }], url: idea('dex-guide', '&scene=broke,in') },
+      { name: 'Sent, not counted yet', note: 'the transfer left the wallet', steps: [{ click: '.box .fuel-go' }, { wait: 2600 }], url: idea('dex-guide', '&scene=uncounted,in') },
+      { name: 'In MACH', note: 'a channel the gateway spends', steps: [{ click: '.box .fuel-go' }, { wait: 3000 }], url: idea('dex-guide', '&scene=in&token=mach') },
+      { name: 'Counted on Record it', note: 'posts the same transaction again', steps: [{ click: '.box .fuel-go' }, { wait: 2600 }, { click: '.alert-go' }, { wait: 1500 }], url: idea('dex-guide', '&scene=uncounted,in') },
+      { name: 'Backed, in the updates', steps: [{ click: '.box .fuel-go' }, { wait: 3000 }], url: idea('bench-coders', '&scene=in') },
     ],
     id: 'fund',
     title: 'Fund',

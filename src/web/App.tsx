@@ -129,9 +129,9 @@ function Header(props: { config: Config | undefined; path: string }) {
         </Link>
       </p>
       <div className="header-end">
-        <Link className={props.path === '/about' ? 'game-nav game-nav-on' : 'game-nav'} to="/about">About</Link>
-        <Link className={props.path === '/new' ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start<span className="nav-long"> a swarm</span></Link>
-        <Link className={props.path === '/join' || props.path.startsWith('/s/') ? 'game-nav game-nav-on' : 'game-nav'} to="/join">Join<span className="nav-long"> a swarm</span></Link>
+        <Link className={props.path === '/join' || props.path.startsWith('/s/') ? 'game-nav game-nav-on' : 'game-nav'} to="/join">Ideas</Link>
+        <Link className={props.path === '/new' ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start<span className="nav-long"> an idea</span></Link>
+        <Link className={props.path === '/about' ? 'game-nav game-nav-on nav-long' : 'game-nav nav-long'} to="/about">How it works</Link>
         <WalletButton config={props.config} />
       </div>
     </header>
@@ -145,7 +145,7 @@ export function App() {
   const code = /^\/s\/([^/]+)\/code\/?$/.exec(path)?.[1]
 
   useEffect(() => {
-    if (!swarm && !code && path !== '/board') document.title = path === '/new' ? 'Start a breakthrough · Swarms' : path === '/join' ? 'Be part of the future · Swarms' : path === '/about' ? 'About · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/' ? 'Swarms · Fund breakthroughs' : 'Not found · Swarms'
+    if (!swarm && !code && path !== '/board') document.title = path === '/new' ? 'Start an idea · Swarms' : path === '/join' ? 'All ideas · Swarms' : path === '/about' ? 'How it works · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/' ? 'Swarms · Back an idea. AI builds it.' : 'Not found · Swarms'
   }, [path, swarm, code])
 
   useEffect(() => {
@@ -189,8 +189,8 @@ export function App() {
           <Swarm config={config} id={decodeURIComponent(swarm)} key={swarm} />
         ) : (
           <Lost title="Nothing out here.">
-            <Link className="lost-row" to="/new">Start a swarm <span aria-hidden="true">→</span></Link>
-            <Link className="lost-row" to="/join">Join a swarm <span aria-hidden="true">→</span></Link>
+            <Link className="lost-row" to="/join">Browse ideas <span aria-hidden="true">→</span></Link>
+            <Link className="lost-row" to="/new">Start an idea <span aria-hidden="true">→</span></Link>
           </Lost>
         )}
         </Suspense>

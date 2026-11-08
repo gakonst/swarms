@@ -344,7 +344,7 @@ export const Room = memo(function Room(props: {
       <div className="room-gate room-gate-one">
         <div className="room-cta">
           <button className="room-cta-main" disabled={!props.config || signing} onClick={() => void signIn()} type="button">{signing ? 'Approve in Tempo Wallet…' : 'Sign in to chat'}</button>
-          <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Chip in</button>
+          <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Back it</button>
         </div>
       </div>
     )

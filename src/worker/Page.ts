@@ -87,17 +87,17 @@ type Head = { description: string; image: string; player?: string; title: string
 
 async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
   const path = url.pathname.replace(/\/$/, '') || '/'
-  const head: Head = { description: 'Fund breakthroughs. Start or back swarms, AI agents that research and build in the open, watch them work live and steer them together.', image: `${url.origin}/xframe-card.jpg?v=3`, title: 'Swarms · Fund breakthroughs' }
+  const head: Head = { description: 'Back an idea with a few dollars and a team of AI agents researches and builds it, in public.', image: `${url.origin}/xframe-card.jpg?v=3`, title: 'Swarms · Back an idea. AI builds it.' }
   const data: Record<string, unknown> = {}
   if (path === '/' || path === '/join' || path === '/new') {
     const list = await within(Operations.list(env, {}), 1500)
     if (list?.ok) data['swarms'] = Operations.listed(list.value)
-    if (path === '/join') head.title = 'Be part of the future · Swarms'
-    if (path === '/new') head.title = 'Start a breakthrough · Swarms'
+    if (path === '/join') head.title = 'All ideas · Swarms'
+    if (path === '/new') head.title = 'Start an idea · Swarms'
     head.player = `${url.origin}/x${path === '/join' ? '?view=join' : path === '/new' ? '?view=start' : ''}`
     return { data, head, status: 200, whole: !!list?.ok }
   }
-  if (path === '/about') return { data, head: { ...head, title: 'About · Swarms' }, status: 200, whole: true }
+  if (path === '/about') return { data, head: { ...head, title: 'How it works · Swarms' }, status: 200, whole: true }
   if (path === '/docs') return { data, head: { ...head, title: 'API and MCP · Swarms' }, status: 200, whole: true }
   if (!rendered(path)) return { data, head: { ...head, title: 'Not found · Swarms' }, status: 404, whole: false }
   const [, raw = '', browsing] = /^\/s\/([^/]+)(\/code)?$/.exec(path) ?? []
