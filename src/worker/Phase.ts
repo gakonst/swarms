@@ -61,7 +61,7 @@ export function reason(pause: Pause) {
   if (pause.why === 'unfunded') return 'Not started: nobody has funded it yet.'
   if (pause.why === 'money') return `Out of money: ${cash(pause.left)} left, and one step can cost up to ${cash(pause.needs ?? String(Store.reserve))}. Fund it to keep going.`
   if (pause.why === 'costly') return `Paused: its next step needs about ${cash(pause.wanted)} at once, more than any one backer has left in it. Fund it to keep going.`
-  if (pause.why === 'idle') return 'Waiting for backers: new money, a steer or a message in its room wakes it.'
+  if (pause.why === 'idle') return 'Waiting for backers: new money or a funded steer wakes it.'
   return `Stopped after ${pause.failures} errors in a row. New money or a note restarts it.`
 }
 

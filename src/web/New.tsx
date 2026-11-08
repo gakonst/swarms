@@ -105,7 +105,7 @@ export function New(props: { config: Config | undefined }) {
         {stage === 1 && <div className="quest-budget">
           <Models config={props.config} onChange={(next) => { setChoice(next); setCreated(undefined) }} value={choice} />
           <Fund
-            action={(label) => (label === 'Pay' ? 'Launch' : `Launch · ${label.replace('Pay ', '')}`)}
+            action={(label) => (label === 'Chip in' ? 'Launch' : `Launch · ${label.replace('Chip in ', '')}`)}
             config={props.config}
             least={priced ? decimal(BigInt(priced.most)) : undefined}
             locked={!briefReady || !ready(choice)}

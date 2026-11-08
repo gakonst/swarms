@@ -392,9 +392,9 @@ function Composer(props: { branch: Branch | undefined; config: Config | undefine
             }}
             type="button"
           >
-            {busy ?? (target ? `Sign in to steer or fund ${target.who}` : 'Sign in to steer the agent')}
+            {busy ?? (target ? `Sign in to steer or fund ${target.who}` : 'Sign in to sponsor a direction')}
           </button>
-          <button className="room-cta-side" onClick={() => props.onFund()} type="button">Fund to steer</button>
+          <button className="room-cta-side" onClick={() => props.onFund()} type="button">Chip in</button>
         </div>
         {error && <Alert title={explain(error).title} tone="bad">{explain(error).detail}</Alert>}
       </div>

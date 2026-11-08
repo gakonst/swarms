@@ -14,7 +14,8 @@ const order = { running: 0, paused: 1, funding: 2, done: 3 } as const
 const openIdeas = open
 
 const filters = [
-  ['open', 'Open'],
+  ['open', 'Explore'],
+  ['following', 'Following'],
   ['running', 'Running'],
   ['resting', 'Resting'],
   ['waiting', 'Not started'],
@@ -26,6 +27,7 @@ type Filter = (typeof filters)[number][0]
 const aliases: Record<string, Filter> = { fuel: 'money', live: 'running' }
 
 const fits: Record<Filter, (swarm: Summary) => boolean> = {
+  following: () => true,
   money: (swarm) => Status.word(swarm) === 'Needs money',
   open: (swarm) => swarm.status !== 'done',
   resting: (swarm) => Status.word(swarm) === 'Resting' || Status.word(swarm) === 'Stopped after errors',
@@ -34,7 +36,7 @@ const fits: Record<Filter, (swarm: Summary) => boolean> = {
 }
 
 function sorted(swarms: readonly Summary[] | undefined) {
-  return [...(swarms ?? [])].sort((a, b) => order[a.status] - order[b.status] || b.createdAt - a.createdAt)
+  return [...(swarms ?? [])].filter((swarm) => !/operator test|headless check|channel check|audit fixes check|second audit check|template check|settle check|start exactly two subagents|stop stays stopped|steer and stop check|branch budget check|channel open check/i.test(swarm.title)).sort((a, b) => order[a.status] - order[b.status] || b.createdAt - a.createdAt)
 }
 
 function asked() {
@@ -61,7 +63,7 @@ function Tile(props: { onPick: () => void; open: boolean; swarm: Summary }) {
       <button aria-expanded={props.open} className="tile-swarm" onClick={() => (props.open ? navigate(page) : props.onPick())} onFocus={() => prefetch(page)} onPointerEnter={() => prefetch(page)} onTouchStart={() => prefetch(page)} title={props.open ? undefined : swarm.title} type="button">
         <i className="tile-dot" data-status={swarm.status} title={word} />
         <span className="tile-title">{swarm.title}</span>
-        <span className="tile-raised">{usd(swarm.raised)}</span>
+        <span className="tile-raised">{swarm.contributors} backer{swarm.contributors === 1 ? "" : "s"} · {usd(swarm.raised)}</span>
         {props.open && (
           <span className="tile-more">
             <span className="tile-goal">{swarm.goal}</span>
@@ -170,7 +172,7 @@ export function Home() {
         <Link className="sky-link" to="/new">
           <span className="sky-kicker">{Status.ideas(free.length)}</span>
           <Title text="Start a breakthrough" />
-          <span className="sky-text">A swarm is an AI agent that researches or builds whatever you set it, in public, for as long as it has money: it splits the work into branches with their own subagents, runs code on real machines, and publishes code and live artifacts as it goes.</span>
+          <span className="sky-text">Give a big idea a team of AI researchers. They explore different approaches, build and test in public, and show what worked, what failed, and what’s next.</span>
         </Link>
       </div>
       <div className="sky-block sky-join" ref={join}>
@@ -180,7 +182,7 @@ export function Home() {
             {!list.data ? (list.error ? 'Offline' : 'Looking…') : counted.text}
           </span>
           <Title text="Be part of the future" />
-          <span className="sky-text">Anyone can fund a swarm. The money pays only for its work (models, machines and the services it calls), a note sent with it steers the agent, and every cent shows on its page. No tokens, no returns.</span>
+          <span className="sky-text">Find a mission you care about. Chip in with others, follow the discoveries, and help shape what happens next. No expertise needed. Your money funds the work; every contribution is visible.</span>
         </Link>
       </div>
       <nav aria-label="Key" className="sky-key" ref={legend}>
@@ -214,12 +216,16 @@ export function Home() {
 
 export function Join() {
   const list = Wire.useSwarms()
+  const [following, setFollowing] = useState<string[]>([])
+  useEffect(() => {
+    try { setFollowing(Object.keys(localStorage).filter((key) => key.startsWith('following:')).map((key) => key.slice(10))) } catch {}
+  }, [])
   const [start] = useState(asked)
   const [filter, setFilter] = useState<Filter>(start.filter)
   const [picked, setPicked] = useState<string | undefined>(start.open)
   const swarms = sorted(list.data?.swarms)
-  const shown = swarms.filter((swarm) => fits[filter](swarm))
-  const count = (key: Filter) => swarms.filter((swarm) => fits[key](swarm)).length
+  const shown = swarms.filter((swarm) => filter === 'following' ? following.includes(swarm.id) : fits[filter](swarm))
+  const count = (key: Filter) => swarms.filter((swarm) => key === 'following' ? following.includes(swarm.id) : fits[key](swarm)).length
   const choose = (next: Filter) => {
     setFilter(next)
     keep(next, picked)
@@ -251,7 +257,7 @@ export function Join() {
           </button>
         ) : list.data && shown.length === 0 ? (
           <Link className="world-empty" to="/new">
-            <span>{filter === 'resting' ? 'Nothing resting right now.' : filter === 'money' ? 'Every swarm has money.' : filter === 'running' ? 'Nothing running right now.' : filter === 'waiting' ? 'Nothing waiting to start.' : 'No swarms yet.'}</span>
+            <span>{filter === 'following' ? 'Follow a mission to find it here on this device.' : filter === 'resting' ? 'Nothing resting right now.' : filter === 'money' ? 'Every swarm has money.' : filter === 'running' ? 'Nothing running right now.' : filter === 'waiting' ? 'Nothing waiting to start.' : 'No swarms yet.'}</span>
             <b>Start a swarm →</b>
           </Link>
         ) : (

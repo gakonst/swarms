@@ -30,7 +30,7 @@ test('each pause says which wakes it', () => {
   assert.ok(Phase.wakes({ wanted: '400000', why: 'costly' }, 'money'))
   assert.ok(Phase.wakes({ why: 'idle' }, 'note'))
   assert.ok(Phase.wakes({ why: 'idle' }, 'money'))
-  assert.equal(Phase.reason({ why: 'idle' }), 'Waiting for backers: new money, a steer or a message in its room wakes it.')
+  assert.equal(Phase.reason({ why: 'idle' }), 'Waiting for backers: new money or a funded steer wakes it.')
   assert.ok(!Phase.due({ at: 0, pause: money, state: 'paused' }, 10))
   assert.ok(Phase.due({ at: 0, pause: { ...money, wake: 5 }, state: 'paused' }, 10))
   assert.ok(!Phase.due({ at: 0, pause: { failures: 3, why: 'rest' }, state: 'paused' }, 10))

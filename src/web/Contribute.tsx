@@ -143,7 +143,7 @@ export function Fuel(props: {
   const text = props.note.trim()
   const balance = wallet.balances[token]
   const low = balance !== undefined && ok && balance < units(amount)
-  const label = ok ? `Pay ${dollars(amount)}` : 'Pay'
+  const label = ok ? `Chip in ${dollars(amount)}` : 'Chip in'
 
   const submit = async () => {
     const config = props.config
@@ -204,7 +204,7 @@ export function Fuel(props: {
           That is less than {dollars(amount)}. Swarms take USDC.e, OUSD or pathUSD.
         </Alert>
       )}
-      <p className="fuel-terms">{terms(token, balance !== undefined)}</p>
+      <p className="fuel-terms">{text ? "You’re sponsoring the direction above." : "Back the mission. The swarm chooses its next steps; no instructions needed."} This is a one-time contribution to the work, not an investment or a guarantee of a result.</p><details className="fuel-terms"><summary>Payment details · Tempo Wallet</summary><p>{terms(token, balance !== undefined)}</p></details>
       <button className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
         {flow.at === 'busy' ? working[flow.step] : flow.at === 'failed' && flow.short ? 'Try again' : (props.action ?? ((value: string) => value))(label)}
       </button>

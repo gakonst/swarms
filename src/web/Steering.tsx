@@ -137,7 +137,7 @@ export function Steering(props: { onChange: () => void; swarm: Detail }) {
   return (
     <details className="steering">
       <summary>
-        <b>{team ? 'Its team steers it' : 'Any backer steers it'}</b>
+        <b>{team ? 'Its team steers it' : 'Help shape the research'}</b>
         <span>{team ? `${roster?.seats.length ?? 0} on the team, each with a budget of the swarm's money` : 'each with their own money'}</span>
       </summary>
       {error && <Alert title={explain(error).title} tone="bad">{explain(error).detail}</Alert>}
@@ -189,7 +189,7 @@ export function Steering(props: { onChange: () => void; swarm: Detail }) {
           <button className="btn btn-low" disabled={busy || !/^0x[0-9a-fA-F]{40}$/.test(member.trim())} type="submit">Add</button>
         </form>
       )}
-      {!admin && !team && <p className="steering-note">Back it and write @swarm with an idea to steer it.</p>}
+      {!admin && !team && <p className="steering-note">Chat and share sources here. To sponsor research, write @swarm and your idea; you’ll review its funding before sending it.</p>}
       {!admin && team && !roster?.seats.some((seat) => seat.address === me) && <p className="steering-note">Anyone funds it and talks here; only its team steers. Ask an admin to add you.</p>}
     </details>
   )

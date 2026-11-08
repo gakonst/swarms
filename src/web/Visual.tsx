@@ -35,6 +35,7 @@ export function standing(swarm: Stood, now: number): Standing {
     return { ...stood, line: `On it for ${duration(now - swarm.working.since)}, no progress for ${duration(now - swarm.working.progressed)}.` }
   if (stood.word === 'Running') return { ...stood, line: swarm.working ? `On it for ${duration(now - swarm.working.since)}.` : lines.Running }
   if (stood.mood === 'new') return { ...stood, line: 'Nobody has funded this yet.' }
+  if (swarm.why === 'idle') return { ...stood, line: 'Paused between research directions. Read the latest finding or suggest what to explore next.' }
   const said = stood.word === 'Starting' || !swarm.reason ? '' : Answer.local(Answer.spoken(swarm.reason) ?? '', swarm.updatedAt, minute)
   return { ...stood, line: said || lines[stood.word] }
 }
@@ -77,7 +78,7 @@ export function Energy(props: { onFund?: (() => void) | undefined; swarm: Stood 
         <span className="energy-total">{Answer.cash(raised)} raised</span>
         {props.onFund && (
           <button className="energy-fund" data-primary={primary} onClick={props.onFund} type="button">
-            {primary ? stood.action : 'Fund'}
+            Chip in
           </button>
         )}
       </div>

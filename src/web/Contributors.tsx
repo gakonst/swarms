@@ -4,7 +4,7 @@ import { decimal, units } from '../shared/Memo.ts'
 import { percent, usd } from './format.ts'
 import { Avatar } from './Room.tsx'
 
-const ways = { machine: 'lent a machine', transfer: 'sent money' } as const satisfies Record<Way, string>
+const ways = { machine: 'lent a machine', transfer: 'backed the mission' } as const satisfies Record<Way, string>
 
 function day(at: number) {
   return new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
@@ -20,7 +20,7 @@ export function Contributors(props: { me: Me | null; members: readonly Member[];
     return (
       <div className="artifact-empty">
         <h2>No contributors yet.</h2>
-        <p>Whoever funds it first leads this board.</p>
+        <p>Be the first to help this mission move forward. Every contribution counts.</p>
       </div>
     )
 
@@ -28,7 +28,7 @@ export function Contributors(props: { me: Me | null; members: readonly Member[];
     <section aria-label="Contributors" className="contributors">
       <header className="contributors-head">
         <p className="contributors-total"><b>{usd(decimal(total))}</b> put in by {ranked.length} {ranked.length === 1 ? 'person' : 'people'}</p>
-        {mine >= 0 && <p className="contributors-you">You are #{mine + 1}</p>}
+        {mine >= 0 && <p className="contributors-you">You’re part of this mission</p>}
       </header>
       <ol className="contributors-list">
         {ranked.map((member, index) => {
