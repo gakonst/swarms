@@ -3,7 +3,6 @@ import * as Artifacts from './Artifacts.ts'
 import * as Code from './Code.ts'
 import * as Edge from './Edge.ts'
 import * as Feedback from './Feedback.ts'
-import * as Gateway from './Gateway.ts'
 import * as Lobby from './Lobby.ts'
 import * as Operations from './Operations.ts'
 import * as Page from './Page.ts'
@@ -257,14 +256,5 @@ app.get('*', (c) => {
   return Page.lost(c.req.raw, c.env)
 })
 
-async function scheduled(_controller: ScheduledController, env: Cloudflare.Env) {
-  const response = await Gateway.call(env, '/v1/personas/delete', {
-    body: JSON.stringify({ name: 'swarm' }),
-    headers: { authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY, 'content-type': 'application/json' },
-    method: 'POST',
-  })
-  console.log(JSON.stringify({ persona: response.status, answer: (await response.text()).slice(0, 200) }))
-}
-
-export default { fetch: app.fetch, scheduled } satisfies ExportedHandler<Cloudflare.Env>
+export default app
 
