@@ -3,6 +3,7 @@ import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contri
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
+import * as Progress from '../shared/Progress.ts'
 import * as Setup from '../shared/Setup.ts'
 import { usd } from './format.ts'
 import { pace, scene, visitor } from './stage.ts'
@@ -779,6 +780,34 @@ export function git(url: string): Promise<unknown> {
     return text === undefined ? Promise.reject(fail(404, 'not_found', 'No file has this path.')) : delay({ path, size: text.length, text })
   }
   return delay({ files: commit.paths.map((path) => added(path, files[path] ?? '')) })
+}
+
+const tried = [
+  'commit\tsolve rate\tstatus\tdescription',
+  'base\t0.21\tkeep\tbaseline: one prompt, no tools',
+  'harness-1\t0.29\tkeep\tmerge harness: tool calls and a 30-step budget per task',
+  'temp-0\t0.28\tdiscard\ttemperature 0',
+  'swe-2\t0.36\tkeep\tmerge swe-lite: retry once on a failing test',
+  'rust-3\t0.41\tkeep\tmerge rust-subset: compile errors fed back to the model',
+].join('\n')
+
+const map = {
+  branches: [
+    { explores: 'a fair harness with tool calls', found: '0.29 solve rate', name: 'harness', state: 'done' },
+    { explores: 'longer context for big repos', found: 'no gain: timeouts doubled', name: 'context', state: 'dead end' },
+    { explores: 'retry on failing tests', found: '0.36', name: 'swe-lite', state: 'done' },
+    { explores: 'compile errors as feedback', found: '0.41', name: 'rust-subset', state: 'done' },
+    { explores: 'a second machine for Qwen3-Coder', found: '', name: 'latency-probe', state: 'exploring' },
+  ],
+  better: 'higher',
+  goal: 0.6,
+  metric: 'solve rate',
+  title: 'Share of benchmark tasks solved',
+}
+
+export async function progress(key: string) {
+  await find(key)
+  return steady({ progress: key.split('~')[0] === 'bench-coders' ? (Progress.parse(map, tried) ?? null) : null })
 }
 
 export async function updates(key: string) {

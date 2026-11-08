@@ -124,7 +124,7 @@ function Node(props: { row: Row; progress: Progress.Progress }) {
     : row.kind === 'start' ? sentence(row.step.text.replace(/^baseline\s*[:,-]?\s*/i, '')) || 'The baseline'
     : row.kind === 'tried' ? sentence(branch?.found || branch?.explores || '')
     : sentence(branch?.explores ?? '')
-  const title = row.kind === 'merge' ? 'Merged into main' : row.kind === 'main' ? 'Improved main' : row.kind === 'start' ? 'Started here' : row.kind === 'tried' ? "Tried, didn't beat main" : 'Exploring now'
+  const title = row.kind === 'merge' ? 'Merged into main' : row.kind === 'main' ? 'On main' : row.kind === 'start' ? 'Started here' : row.kind === 'tried' ? "Tried, didn't beat main" : 'Exploring now'
   const more = branch && (row.kind === 'merge' ? branch.found : row.kind === 'tried' ? branch.explores : '')
   return (
     <li className="flow-row" data-kind={row.kind}>

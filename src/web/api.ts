@@ -198,7 +198,7 @@ export function hand(id: string, label: string) {
 }
 
 export function progress(id: string) {
-  return fixture ? Promise.resolve({ progress: null }) : request<{ progress: Progress | null }>(`${path(id)}/progress`)
+  return fixture ? staged((fixtures) => fixtures.progress(id)) : request<{ progress: Progress | null }>(`${path(id)}/progress`)
 }
 
 export function updates(id: string) {
