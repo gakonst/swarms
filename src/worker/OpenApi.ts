@@ -550,6 +550,15 @@ export function document(origin: string) {
       '/v1/swarms/{id}/backers': {
         get: { description: 'The ideas ranked by the money behind them, and every backer with what they put in and how.', operationId: 'listBackers', parameters: [swarm], responses: { ...ok({ type: 'object' }, 'Ideas and backers.'), ...failures(404) }, summary: 'Ideas and backers' },
       },
+      '/v1/swarms/{id}/progress': {
+        get: {
+          description: "The swarm's progress toward a goal that comes down to one number, read from its autoresearch artifact (data.json and main.tsv): the metric, whether higher or lower is better, the goal, main's history (each change to main with the metric after it, merges naming the branch they took) and every branch with what it explored, its state and what it found. null when the swarm keeps no such record.",
+          operationId: 'getProgress',
+          parameters: [swarm],
+          responses: { ...ok(object({ progress: { type: ['object', 'null'] } }), 'The progress.'), ...failures(404) },
+          summary: 'Progress',
+        },
+      },
       '/v1/swarms/{id}/artifacts': {
         get: {
           description: "The dashboards, charts, tables and write-ups the swarm's agents published, from the public manifests under artifacts/ in the swarm's gateway kv. Load each from its url.",

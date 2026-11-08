@@ -1,5 +1,6 @@
 import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, Posted, Problem, Room, Roster, Snapshot, Steering, Summary, Update } from '../shared/Api.ts'
 import type * as Btw from '../shared/Btw.ts'
+import type { Progress } from '../shared/Progress.ts'
 import type * as Setup from '../shared/Setup.ts'
 import type { Job, Listed, Logged, Machine, Shown } from '../shared/Fleet.ts'
 import { seeded } from './boot.ts'
@@ -194,6 +195,10 @@ export function hand(id: string, label: string) {
       ? Promise.resolve({ cli: "nc hand 'https://gateway.tempo.xyz/v1/hands/attach' --token hand_demo_4f2a", command: 'curl -fsSL https://nanocode.xyz/install | sh && nc hand ...', label: label ?? '', library: "import { Hand } from 'nanocode'\nawait Hand.connect(url, { token })", name: (label || 'my-machine') + '-3c1f', npm: 'npm i nanocode@build-20f97e0', swarm: id, tab: null, token: 'hand_demo_4f2a', url: 'https://gateway.tempo.xyz/v1/hands/attach' } as Issued)
       : request<Issued>(`${path(id)}/hands`, label ? { label } : {}),
   )
+}
+
+export function progress(id: string) {
+  return fixture ? Promise.resolve({ progress: null }) : request<{ progress: Progress | null }>(`${path(id)}/progress`)
 }
 
 export function updates(id: string) {

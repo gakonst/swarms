@@ -48,6 +48,15 @@ export async function list(env: Cloudflare.Env, swarm: string, cached = true): P
   return artifacts
 }
 
+export async function read(env: Cloudflare.Env, swarm: string, name: string, file: string) {
+  const owner = await Gateway.wallet(env)
+  if (!owner) return undefined
+  const key = [Shelf.prefix + name, ...file.split('/')].map(encodeURIComponent).join('/')
+  const response = await Timing.span('gw.p.bucket', Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/bucket/${key}`))
+  if (!response.ok) return undefined
+  return response.text()
+}
+
 export function policy(origin: string, gateway: string) {
   const sources = [origin, gateway].join(' ')
   return [

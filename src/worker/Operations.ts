@@ -49,6 +49,7 @@ import * as Edge from './Edge.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Persona from './Persona.ts'
+import * as Progress from '../shared/Progress.ts'
 import * as Phase from './Phase.ts'
 import * as Problem from './Problem.ts'
 import * as Search from './Search.ts'
@@ -603,6 +604,27 @@ export async function artifacts(env: Cloudflare.Env, input: Input<'swarm'>, orig
   if (!found) return Problem.fail(502, 'upstream_failed', "The gateway did not list the swarm's artifacts.")
   return Problem.ok({ artifacts: found.map((artifact) => ({ ...artifact, url: origin + artifact.url })) })
 }
+
+export async function progress(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ progress: Progress.Progress | null }>> {
+  const parsed = parse(schema.swarm, input)
+  if (!parsed.ok) return parsed
+  const swarm = parsed.value.swarm
+  if (!(await Store.exists(env, swarm))) return missing()
+  const value = await Edge.cached(env, `progress/${swarm}`, progressSeconds, async () => {
+    const shelf = await Artifacts.list(env, swarm)
+    if (!shelf?.some((artifact) => artifact.slug === Progress.slug)) return null
+    const [data, main] = await Promise.all([Artifacts.read(env, swarm, Progress.slug, 'data.json'), Artifacts.read(env, swarm, Progress.slug, 'main.tsv')])
+    if (data === undefined) return null
+    try {
+      return Progress.parse(JSON.parse(data), main) ?? null
+    } catch {
+      return null
+    }
+  })
+  return Problem.ok({ progress: value })
+}
+
+const progressSeconds = 30
 
 export async function room(env: Cloudflare.Env, input: Input<'room'>, address?: Address): Promise<Problem.Result<Room>> {
   const heard = await listened(env, input, address)

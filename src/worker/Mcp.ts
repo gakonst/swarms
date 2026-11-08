@@ -159,6 +159,12 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
   )
 
   server.registerTool(
+    'swarm_progress',
+    { annotations: reading, description: "A swarm's progress for a goal that comes down to one number, from its autoresearch artifact: the metric, its direction and goal, main's history (every change to main, each merge naming the branch it took, with the metric after it), and every branch with what it explored, its state, what it found and whether main merged it. progress is null for a swarm that keeps no such record.", inputSchema: Operations.schema.swarm.shape },
+    async (input) => reply(await Operations.progress(read, input)),
+  )
+
+  server.registerTool(
     'swarm_artifacts',
     {
       annotations: reading,

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import type { Artifact, Branch, Detail, Member, Update } from '../shared/Api.ts'
+import type { Progress } from '../shared/Progress.ts'
 import type * as Wishlist from '../shared/Wishlist.ts'
 import { Explored } from './Explored.tsx'
 import { ago, short, usd } from './format.ts'
@@ -30,6 +31,7 @@ function Preview(props: { artifact: Artifact }) {
 export function Results(props: {
   artifacts: readonly Artifact[] | undefined
   branches: readonly Branch[] | undefined
+  progress: Progress | null | undefined
   members: readonly Member[]
   onChat: () => void
   onOpen: (slug: string) => void
@@ -75,8 +77,8 @@ export function Results(props: {
       </section>
 
       <section className="result-section" aria-labelledby="explored-title">
-        <h2 id="explored-title">Ideas explored</h2>
-        <Explored branches={props.branches} running={swarm.status === 'running'} title={swarm.title} />
+        <h2 id="explored-title">How it got here</h2>
+        <Explored branches={props.branches} progress={props.progress} running={swarm.status === 'running'} />
       </section>
 
       {asked.length > 0 && (

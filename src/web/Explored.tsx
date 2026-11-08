@@ -1,42 +1,6 @@
 import { useState } from 'react'
 import type { Branch } from '../shared/Api.ts'
-import { Markdown } from './Markdown.tsx'
-
-type Look = 'exploring' | 'found' | 'dead' | 'stopped'
-
-type Metric = { key: string; value: number }
-
-type Attempt = Branch & { children: Attempt[]; label: string; look: Look; metric: Metric | undefined; said: string; fields: [string, string][] | undefined }
-
-const words: Record<Look, string> = { dead: "Didn't finish", exploring: 'Exploring', found: 'Done', stopped: 'Stopped' }
-
-function look(branch: Branch): Look {
-  if (branch.state === 'pending' || branch.state === 'running') return 'exploring'
-  if (branch.result && branch.state !== 'failed') return 'found'
-  if (branch.state === 'failed' || branch.error) return 'dead'
-  return 'stopped'
-}
-
-function human(text: string) {
-  const plain = text.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
-  return plain ? plain.charAt(0).toUpperCase() + plain.slice(1) : ''
-}
-
-function role(text: string) {
-  return text.replace(/^\s*(?:auto\s*research|research)?\s*branch\s*:\s*/i, '').trim()
-}
-
-function family(text: string) {
-  const first = role(text).split(/[\s(:/]/)[0] ?? ''
-  return first.toLowerCase().replace(/\d+$/, '') || text
-}
-
-function label(text: string, first: boolean) {
-  const bare = role(text)
-  const inside = /\(([^)]{3,})\)\s*$/.exec(bare)?.[1] ?? /:\s*(.{3,})$/.exec(bare)?.[1]
-  if (inside) return human(inside)
-  return first ? 'First try' : human(bare) || 'A direction'
-}
+import type * as Progress from '../shared/Progress.ts'
 
 function clip(text: string, most: number) {
   return text.length > most ? `${text.slice(0, most - 1).trimEnd()}…` : text
@@ -46,146 +10,207 @@ function tidy(text: string) {
   return text
     .replace(/\b(?:best |retained |verified )?commit [0-9a-f]{7,40}\b[.:,;]?\s*/gi, '')
     .replace(/\s*\(?\/w\/[\w./-]+\)?/g, '')
-    .replace(/^\s*[.:,;-]\s*/, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
-function parsed(text: string | null): Record<string, unknown> | undefined {
-  if (!text) return undefined
-  const json = /\{[\s\S]*\}/.exec(text)?.[0]
-  if (!json) return undefined
-  try {
-    const value: unknown = JSON.parse(json)
-    return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
-  } catch {
-    return undefined
+function sentence(text: string) {
+  const plain = tidy(text)
+  return plain ? plain.charAt(0).toUpperCase() + plain.slice(1) : ''
+}
+
+function amount(value: number, metric: string) {
+  if (/speed ?up|faster|times/i.test(metric)) return `${value.toFixed(2)}×`
+  return String(Number(value.toPrecision(4)))
+}
+
+function change(value: number, before: number, better: Progress.Progress['better']) {
+  const gain = better === 'lower' ? before / value - 1 : value / before - 1
+  if (!Number.isFinite(gain) || Math.abs(gain) < 0.0005) return undefined
+  return `${gain > 0 ? '+' : '−'}${Math.abs(gain * 100).toFixed(gain > 0.1 || gain < -0.1 ? 0 : 1)}%`
+}
+
+type Row =
+  | { kind: 'merge'; branch: Progress.Line | undefined; key: string; name: string; step: Progress.Step; was: number | undefined }
+  | { kind: 'main'; key: string; step: Progress.Step; was: number | undefined }
+  | { kind: 'start'; key: string; step: Progress.Step }
+  | { kind: 'tried'; branch: Progress.Line; key: string }
+  | { kind: 'live'; branch: Progress.Line; key: string }
+  | { count: number; kind: 'tweaks'; key: string }
+
+function rows(progress: Progress.Progress): Row[] {
+  const kept = progress.main.filter((step) => step.kept && step.value !== null)
+  const where = (name: string) => kept.findIndex((step) => step.merged === name)
+  const tried = new Map<number, Progress.Line[]>()
+  const live: Progress.Line[] = []
+  let at = 0
+  for (const branch of progress.branches) {
+    const merged = where(branch.name)
+    if (merged >= 0) {
+      at = Math.max(at, merged)
+      continue
+    }
+    if (branch.state === 'exploring' || branch.state === 'promising') live.push(branch)
+    else if (!branch.merged) tried.set(at, [...(tried.get(at) ?? []), branch])
   }
-}
-
-function measure(fields: Record<string, unknown> | undefined, text: string | null): Metric | undefined {
-  if (fields) {
-    const keys = Object.keys(fields).filter((key) => typeof fields[key] === 'number' && Number.isFinite(fields[key]))
-    const key = keys.find((name) => /best/i.test(name)) ?? keys.find((name) => /speedup|score|accuracy|rate|loss|bpb/i.test(name))
-    if (key) return { key, value: fields[key] as number }
+  const tweaks = new Map<number, number>()
+  let index = -1
+  for (const step of progress.main) {
+    if (step.kept && step.value !== null) index += 1
+    else if (index >= 0) tweaks.set(index, (tweaks.get(index) ?? 0) + 1)
   }
-  const times = text ? /(\d+(?:\.\d+)?)\s*[x×]\s*(?:faster|speedup)/i.exec(text) : null
-  return times ? { key: 'speedup', value: Number(times[1]) } : undefined
-}
-
-function shown(metric: Metric) {
-  if (/speedup|faster/i.test(metric.key)) return `${metric.value.toFixed(metric.value >= 10 ? 1 : 2)}× faster`
-  const name = human(metric.key.replace(/^best[ _-]?/i, ''))
-  const value = Math.abs(metric.value) >= 100 ? metric.value.toFixed(0) : String(Number(metric.value.toPrecision(4)))
-  return name ? `${name} ${value}` : value
-}
-
-function summary(fields: Record<string, unknown> | undefined) {
-  if (!fields) return undefined
-  const key = Object.keys(fields).find((name) => /summary|finding|found|conclusion|outcome|headline|answer|result/i.test(name) && typeof fields[name] === 'string')
-  return key ? String(fields[key]) : undefined
-}
-
-function listed(fields: Record<string, unknown>): [string, string][] {
-  return Object.entries(fields)
-    .filter(([key, value]) => !/dir$|path$|commit/i.test(key) && value !== null && value !== '')
-    .map(([key, value]): [string, string] => [
-      human(key),
-      typeof value === 'string' ? tidy(value) : typeof value === 'number' ? String(value) : Array.isArray(value) ? value.map((item) => (typeof item === 'string' ? item : JSON.stringify(item))).join(', ') : Object.entries(value as Record<string, unknown>).map(([name, item]) => `${name} ${typeof item === 'number' ? item : JSON.stringify(item)}`).join(' · '),
-    ])
-    .slice(0, 8)
-}
-
-function attempt(branch: Branch, first: boolean): Attempt {
-  const state = look(branch)
-  const fields = parsed(branch.result)
-  const metric = state === 'found' ? measure(fields, branch.result) : undefined
-  const found = summary(fields) ?? (fields ? '' : branch.result ?? '')
-  const said = state === 'found' ? clip(tidy(found), 180) : state === 'dead' ? '' : clip(tidy(branch.task.replace(/^\s*CONTEXT\.[\s\S]*?\n\n/, '')), 160)
-  return { ...branch, children: [], fields: fields ? listed(fields) : undefined, label: label(branch.role, first), look: state, metric, said }
-}
-
-function grow(branches: readonly Branch[]) {
-  const seen = new Set<string>()
-  const nodes = new Map<number, Attempt>([...branches].sort((a, b) => a.id - b.id).map((branch) => {
-    const kind = family(branch.role)
-    const first = !seen.has(kind)
-    seen.add(kind)
-    return [branch.id, attempt(branch, first)]
-  }))
-  const roots: Attempt[] = []
-  for (const node of [...nodes.values()].sort((a, b) => a.id - b.id)) {
-    const parent = node.parent === null ? undefined : nodes.get(node.parent)
-    if (parent) parent.children.push(node)
-    else roots.push(node)
+  const out: Row[] = live.map((branch) => ({ branch, key: `l-${branch.name}`, kind: 'live' as const }))
+  for (let position = kept.length - 1; position >= 0; position--) {
+    const step = kept[position]!
+    const was = kept[position - 1]?.value ?? undefined
+    const count = tweaks.get(position) ?? 0
+    if (count) out.push({ count, key: `w-${position}`, kind: 'tweaks' })
+    for (const branch of [...(tried.get(position) ?? [])].reverse()) out.push({ branch, key: `t-${branch.name}`, kind: 'tried' })
+    if (position === 0 && !step.merged) out.push({ key: `s-${step.commit}`, kind: 'start', step })
+    else if (step.merged) out.push({ branch: progress.branches.find((branch) => branch.name === step.merged), key: `m-${step.commit}`, kind: 'merge', name: step.merged, step, was })
+    else out.push({ key: `c-${step.commit}`, kind: 'main', step, was })
   }
-  const families = new Map<string, Attempt[]>()
-  for (const node of roots) families.set(family(node.role), [...(families.get(family(node.role)) ?? []), node])
-  return [...families.entries()].map(([key, attempts]) => ({ attempts, key, name: human(key) }))
+  return out
 }
 
-function Step(props: { best: number | undefined; node: Attempt }) {
-  const node = props.node
-  const [open, setOpen] = useState(false)
-  const more = node.look === 'found' && (!!node.fields?.length || (!!node.result && !node.fields))
+function Chart(props: { progress: Progress.Progress }) {
+  const kept = props.progress.main.filter((step) => step.kept && step.value !== null).map((step) => ({ merged: !!step.merged, value: step.value as number }))
+  if (kept.length < 2) return null
+  const values = kept.map((step) => step.value)
+  const goal = props.progress.goal
+  const top = Math.max(...values)
+  const bottom = Math.min(...values)
+  const shownGoal = goal !== null && goal >= bottom && goal <= top + (top - bottom) * 0.6 ? goal : null
+  const high = Math.max(top, shownGoal ?? top)
+  const low = Math.min(bottom, shownGoal ?? bottom)
+  const span = high - low || 1
+  const lower = props.progress.better === 'lower'
+  const width = 600
+  const height = 96
+  const x = (index: number) => 8 + (index / (kept.length - 1)) * (width - 16)
+  const y = (value: number) => {
+    const share = (value - low) / span
+    return 8 + (lower ? share : 1 - share) * (height - 16)
+  }
+  const path = kept.map((step, index) => (index === 0 ? `M${x(0)},${y(step.value)}` : `H${x(index)}V${y(step.value)}`)).join('')
   return (
-    <li className="step" data-look={node.look}>
-      <button aria-expanded={more ? open : undefined} className="step-row" disabled={!more} onClick={() => setOpen(!open)} type="button">
-        <i aria-hidden="true" className="step-dot" />
-        <span className="step-text">
-          <b>{node.label}</b>
-          {node.said && <span>{node.said}</span>}
+    <svg aria-hidden="true" className="flow-chart" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
+      {shownGoal !== null && <line className="flow-goal" x1="0" x2={width} y1={y(shownGoal)} y2={y(shownGoal)} />}
+      <path className="flow-area" d={`${path}V${height}H${x(0)}Z`} />
+      <path className="flow-line" d={path} vectorEffect="non-scaling-stroke" />
+      {kept.map((step, index) => <circle className="flow-point" cx={x(index)} cy={y(step.value)} data-merged={step.merged} key={index} r={step.merged ? 3.5 : 2.5} vectorEffect="non-scaling-stroke" />)}
+    </svg>
+  )
+}
+
+function Node(props: { row: Row; progress: Progress.Progress }) {
+  const row = props.row
+  const progress = props.progress
+  const [open, setOpen] = useState(false)
+  if (row.kind === 'tweaks')
+    return (
+      <li className="flow-row" data-kind="tweaks">
+        <i aria-hidden="true" className="flow-dot" />
+        <p className="flow-quiet">{row.count} small tweak{row.count === 1 ? '' : 's'} on main, not kept</p>
+      </li>
+    )
+  const value = row.kind === 'merge' || row.kind === 'main' || row.kind === 'start' ? row.step.value : null
+  const delta = (row.kind === 'merge' || row.kind === 'main') && value !== null && row.was !== undefined ? change(value, row.was, progress.better) : undefined
+  const branch = row.kind === 'merge' || row.kind === 'tried' || row.kind === 'live' ? row.branch : undefined
+  const name = row.kind === 'merge' ? row.name : branch?.name
+  const said =
+    row.kind === 'merge' ? sentence(row.step.text.replace(/^merg(?:e|ed)\s+[\w.-]+\s*[:,-]?\s*/i, '')) || sentence(branch?.explores ?? '')
+    : row.kind === 'main' ? sentence(row.step.text)
+    : row.kind === 'start' ? sentence(row.step.text.replace(/^baseline\s*[:,-]?\s*/i, '')) || 'The baseline'
+    : row.kind === 'tried' ? sentence(branch?.found || branch?.explores || '')
+    : sentence(branch?.explores ?? '')
+  const title = row.kind === 'merge' ? 'Merged into main' : row.kind === 'main' ? 'Improved main' : row.kind === 'start' ? 'Started here' : row.kind === 'tried' ? "Tried, didn't beat main" : 'Exploring now'
+  const more = branch && (row.kind === 'merge' ? branch.found : row.kind === 'tried' ? branch.explores : '')
+  return (
+    <li className="flow-row" data-kind={row.kind}>
+      <i aria-hidden="true" className="flow-dot" />
+      <button aria-expanded={more ? open : undefined} className="flow-card" disabled={!more} onClick={() => setOpen(!open)} type="button">
+        <span className="flow-top">
+          {name && <span className="flow-name">{name}</span>}
+          <b>{title}</b>
+          {value !== null && <span className="flow-value">{amount(value, progress.metric)}{delta && <small>{delta}</small>}</span>}
         </span>
-        <span className="step-end">
-          {node.metric ? <span className="step-metric" data-best={props.best !== undefined && node.metric.value === props.best}>{shown(node.metric)}</span> : <span className="step-state">{words[node.look]}</span>}
-        </span>
+        {said && <span className="flow-said">{clip(said, open ? 600 : 170)}</span>}
+        {open && more && <span className="flow-more">{sentence(more)}</span>}
       </button>
-      {open && (node.fields ? (
-        <dl className="step-more">{node.fields.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
-      ) : (
-        <div className="step-more"><Markdown text={node.result ?? ''} /></div>
-      ))}
-      {node.children.length > 0 && <ol className="steps-sub">{node.children.map((child) => <Step best={props.best} key={child.id} node={child} />)}</ol>}
     </li>
   )
 }
 
-export function Explored(props: { branches: readonly Branch[] | undefined; running: boolean; title: string }) {
-  if (!props.branches) return <div className="explored explored-wait" aria-busy="true" />
-  const branches = props.branches
-  const families = grow(branches)
-  const all = families.flatMap((group) => group.attempts)
-  const exploring = branches.filter((branch) => look(branch) === 'exploring').length
-  const metrics = all.flatMap((node) => (node.metric ? [node.metric] : []))
-  const key = metrics[0]?.key
-  const same = metrics.length > 1 && metrics.every((metric) => metric.key === key)
-  const lower = !!key && /loss|bpb|latency|time|error/i.test(key)
-  const best = same ? (lower ? Math.min(...metrics.map((metric) => metric.value)) : Math.max(...metrics.map((metric) => metric.value))) : undefined
-  const leader = best === undefined ? undefined : all.find((node) => node.metric?.value === best)
+function Tree(props: { progress: Progress.Progress; running: boolean }) {
+  const progress = props.progress
+  const kept = progress.main.filter((step) => step.kept && step.value !== null)
+  const first = kept[0]?.value ?? 0
+  const now = kept.at(-1)?.value ?? 0
+  const merged = kept.filter((step) => step.merged).length
+  const tried = progress.branches.filter((branch) => !branch.merged && branch.state !== 'exploring' && branch.state !== 'promising').length
+  const goal = progress.goal
+  const reach = goal !== null && goal !== first ? Math.max(0, Math.min(1, (now - first) / (goal - first))) : null
+  const listed = rows(progress)
   return (
-    <div className="explored">
-      <div className="explored-root" data-live={props.running}>
-        <i aria-hidden="true" />
-        <span>
-          <b>{branches.length ? `${all.length} direction${all.length === 1 ? '' : 's'} tried${exploring ? `, ${exploring} still going` : ''}` : props.running ? 'The AI is working on it directly' : 'No directions tried yet'}</b>
-          {leader?.metric && <small>Best so far: {shown(leader.metric)}, from {leader.label.charAt(0).toLowerCase() + leader.label.slice(1)}</small>}
-        </span>
+    <div className="flow">
+      <div className="flow-head" data-live={props.running}>
+        <p className="flow-now"><b>{amount(now, progress.metric)}</b>{progress.title && <span>{progress.title}</span>}</p>
+        <p className="flow-stats">
+          {merged} merged into main · {tried} tried and dropped{goal !== null ? ` · goal ${amount(goal, progress.metric)}` : ''}
+        </p>
+        {reach !== null && <span aria-hidden="true" className="flow-reach"><i style={{ width: `${Math.round(reach * 1000) / 10}%` }} /></span>}
+        <Chart progress={progress} />
       </div>
-      {families.length > 0 && (
-        <ol className="lines">
-          {families.map((group) => (
-            <li className="line" data-many={group.attempts.length > 1} key={group.key}>
-              {group.attempts.length > 1 && (
-                <p className="line-head">
-                  <b>{group.name}</b>
-                  <span>{group.attempts.length} attempts</span>
-                </p>
-              )}
-              <ol className="line-steps">{group.attempts.map((node) => <Step best={best} key={node.id} node={node} />)}</ol>
-            </li>
-          ))}
-        </ol>
-      )}
+      <ol className="flow-list">{listed.map((row) => <Node key={row.key} progress={progress} row={row} />)}</ol>
     </div>
   )
+}
+
+type Look = 'exploring' | 'done' | 'dead' | 'stopped'
+
+const looks: Record<Look, string> = { dead: "Didn't finish", done: 'Done', exploring: 'Exploring now', stopped: 'Stopped' }
+
+function look(branch: Branch): Look {
+  if (branch.state === 'pending' || branch.state === 'running') return 'exploring'
+  if (branch.result && branch.state !== 'failed') return 'done'
+  if (branch.state === 'failed' || branch.error) return 'dead'
+  return 'stopped'
+}
+
+function named(role: string) {
+  const bare = role.replace(/^\s*(?:auto\s*research|research)?\s*branch\s*:\s*/i, '').trim()
+  return sentence(bare.replace(/[-_]+/g, ' ')) || 'A direction'
+}
+
+function Flat(props: { branches: readonly Branch[]; running: boolean }) {
+  const branches = [...props.branches].sort((a, b) => b.id - a.id)
+  const live = branches.filter((branch) => look(branch) === 'exploring').length
+  if (!branches.length) return <p className="result-quiet">{props.running ? 'The AI is working on it directly. Directions it splits off show up here.' : 'No directions tried yet.'}</p>
+  return (
+    <div className="flow">
+      <p className="flow-stats">{branches.length} direction{branches.length === 1 ? '' : 's'} tried{live ? `, ${live} still going` : ''}</p>
+      <ol className="flow-list">
+        {branches.map((branch) => {
+          const state = look(branch)
+          const said = state === 'done' ? branch.result ?? '' : state === 'exploring' ? branch.task.replace(/^\s*CONTEXT\.[\s\S]*?\n\n/, '') : ''
+          return (
+            <li className="flow-row" data-kind={state === 'exploring' ? 'live' : state === 'done' ? 'branch' : 'tried'} key={branch.id}>
+              <i aria-hidden="true" className="flow-dot" />
+              <div className="flow-card">
+                <span className="flow-top"><b>{named(branch.role)}</b><span className="flow-state">{looks[state]}</span></span>
+                {said && <span className="flow-said">{clip(sentence(said), 170)}</span>}
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
+  )
+}
+
+export function Explored(props: { branches: readonly Branch[] | undefined; progress: Progress.Progress | null | undefined; running: boolean }) {
+  if (props.progress) return <Tree progress={props.progress} running={props.running} />
+  if (props.progress === undefined || !props.branches) return <div aria-busy="true" className="explored-wait" />
+  return <Flat branches={props.branches} running={props.running} />
 }

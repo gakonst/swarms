@@ -25,12 +25,16 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
     if (signal.type === 'pulse') setDetail((data) => Wire.pulsed(data, signal))
     if (signal.type === 'artifacts') setShelf(() => ({ artifacts: signal.artifacts.map((artifact) => (artifact.url.startsWith('/') ? { ...artifact, url: location.origin + artifact.url } : artifact)) }))
     if (Wire.stirred(signal, 'detail')) reload()
-    if (Wire.stirred(signal, 'artifacts')) reshelve()
+    if (Wire.stirred(signal, 'artifacts')) {
+      reshelve()
+      reprogress()
+    }
     if (Wire.stirred(signal, 'branches')) rebranch()
   })
   const [detail, reload, setDetail] = usePoll(() => Api.swarm(id, false), wired === 'down' ? detailMs : null, id)
   const [shelf, reshelve, setShelf] = usePoll(() => Api.artifacts(id), wired === 'down' ? shelfMs : null, `artifacts:${id}`)
   const [news, renews] = usePoll(() => Api.updates(id), null, `updates:${id}`)
+  const [progress, reprogress] = usePoll(() => Api.progress(id), null, `progress:${id}`)
   const [tree, rebranch] = usePoll(() => Api.branches(id), wired === 'down' && detail.data?.status === 'running' ? 30_000 : null, `branches:${id}`)
   const wishes = useWishes(shelf.data?.artifacts)
   const opened = useQuery('r')
@@ -57,6 +61,7 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
     if (!answered) return
     renews()
     rebranch()
+    reprogress()
   }, [answered])
 
   useEffect(() => {
@@ -173,7 +178,7 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
             <div className="idea-mark" ref={mark} />
             {tabs}
             <div hidden={props.chat}>
-              <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} members={members} onChat={() => show(true)} onOpen={(slug) => navigate(`${base}?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steer} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
+              <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show(true)} onOpen={(slug) => navigate(`${base}?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steer} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
             </div>
             <div className="idea-chat" hidden={!props.chat}>{room}</div>
           </div>

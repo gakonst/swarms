@@ -173,6 +173,8 @@ app.post('/api/swarms/:id/contributions', async (c) =>
   Rest.contributed(await Operations.contribute(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') })),
 )
 
+app.get('/api/swarms/:id/progress', async (c) => Problem.respond(await Operations.progress(c.env, { swarm: c.req.param('id') })))
+
 app.get('/api/swarms/:id/artifacts', async (c) =>
   Problem.respond(await Operations.artifacts(c.env, { swarm: c.req.param('id') }, new URL(c.req.url).origin)),
 )
