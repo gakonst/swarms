@@ -119,10 +119,10 @@ export function render(setup: Setup.Setup | null) {
 }
 
 export function frozen(kv: SyncKvStorage, setup: Setup.Setup | null) {
-  const kept = kv.get<string>('instructions')
-  if (kept !== undefined) return kept
-  const text = render(setup)
+  return kv.get<string>('instructions') ?? render(setup)
+}
+
+export function keep(kv: SyncKvStorage, text: string) {
   kv.put('instructions', text)
   kv.delete('personaSet')
-  return text
 }

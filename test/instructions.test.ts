@@ -73,12 +73,12 @@ test("a swarm's instructions name its template's models and every section", () =
   assert.ok(text.length < 32_768)
 })
 
-test("a swarm keeps the instructions it first got, whatever the template says later", () => {
+test('a swarm keeps the instructions its lead first got, whatever the template says later', () => {
   const kv = store([['personaSet', 'abc']])
-  const first = Persona.frozen(kv as never, mix)
-  assert.equal(first, Persona.render(mix))
+  assert.equal(Persona.frozen(kv as never, mix), Persona.render(mix))
+  assert.equal(kv.get('instructions'), undefined)
+  Persona.keep(kv as never, 'an older text')
   assert.equal(kv.get('personaSet'), undefined)
-  kv.put('instructions', 'an older text')
   assert.equal(Persona.frozen(kv as never, mix), 'an older text')
   assert.equal(Persona.frozen(kv as never, null), 'an older text')
 })
@@ -95,6 +95,7 @@ test('a new lead is created with the swarm\'s own instructions and no persona', 
   assert.equal(body['persona'], undefined)
   assert.equal(body['model'], Setup.opus)
   assert.ok(!sent.some((request) => request.path.startsWith('/v1/personas')))
+  assert.equal(kv.get('instructions'), Persona.render(mix))
 })
 
 test('a lead re-created later gets the text the swarm froze, not a newer one', async () => {
@@ -114,6 +115,7 @@ test('a lead on the shared persona gets the frozen text once, on its next turn, 
   assert.deepEqual(sent, [{ body: { instructions: Persona.render(mix) }, method: 'PATCH', path: '/v1/agents/agt_old' }])
   await Turns.lead(self, row)
   assert.equal(sent.length, 1)
+  assert.equal(kv.get('instructions'), Persona.render(mix))
 })
 
 test('a lead whose instructions the gateway refuses to give tries again next turn', async () => {
@@ -125,4 +127,5 @@ test('a lead whose instructions the gateway refuses to give tries again next tur
   assert.notEqual(lead.instructed, true)
   await Turns.lead(self, row)
   assert.equal(sent.length, 2)
+  assert.equal(kv.get('instructions'), undefined)
 })

@@ -69,7 +69,7 @@ export type Lead = { briefed: boolean; cursor: number; id: string; instructed?: 
 
 export type Turning = Extract<Phase.Run, { state: 'working' }>
 
-const version = 2
+const version = 3
 
 const dead = ['turn', 'started', 'since', 'paused', 'why', 'failures', 'wanted', 'checked', 'n', 'fresh', 'unreachable', 'url', 'persona', 'cursor', 'shelved', 'terms', 'left', 'expected', 'poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'round', 'resting', 'stuck', 'kicked', 'rechecked', 'retired', 'retiring', 'tallied', 'workers', 'refundAt', 'refunded', 'closing', 'returning', 'open', 'source', 'pledge', 'swept']
 
@@ -107,6 +107,7 @@ function migrate(storage: DurableObjectStorage, from: number) {
     const last = sql.exec<{ seq: number | null }>('SELECT MAX(seq) AS seq FROM feed').one().seq
     if (last !== null) kv.put('unindexed', Number(last))
   }
+  if (from < 3 && !kv.get<Lead>('agent')?.instructed) kv.delete('instructions')
   kv.put('v', version)
 }
 

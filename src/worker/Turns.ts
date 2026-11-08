@@ -56,7 +56,6 @@ export async function step(self: Swarm) {
   if (!row) return null
 
   initialize(self)
-  Persona.frozen(self.kv, Store.setup(row))
   const run = self.run()
   if (run.state === 'paused') {
     if (!Phase.due(run, Date.now())) return run.pause.why === 'money' ? run.pause.wake : null
@@ -186,8 +185,10 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
   }
 
   const setup = Store.setup(row)
-  const created = await Gateway.agent(self.env, row.id, { instructions: Persona.frozen(self.kv, setup), name: row.title.slice(0, 60), payer, setup })
+  const instructions = Persona.frozen(self.kv, setup)
+  const created = await Gateway.agent(self.env, row.id, { instructions, name: row.title.slice(0, 60), payer, setup })
   if (!created.ok) return { detail: created.detail, error: 'The gateway did not create the agent.' }
+  Persona.keep(self.kv, instructions)
   const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, instructed: true, unreachable: null, url: payer.url }
   self.kv.put('agent', agent)
   self.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it pays for is paid from the contributions, one at a time.", created.value.id)
@@ -197,11 +198,13 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
 
 export async function instructed(self: Swarm, row: Store.Row, agent: Lead): Promise<Lead> {
   if (agent.instructed) return agent
-  const patched = await Gateway.instruct(self.env, row.id, agent.id, Persona.frozen(self.kv, Store.setup(row)))
+  const instructions = Persona.frozen(self.kv, Store.setup(row))
+  const patched = await Gateway.instruct(self.env, row.id, agent.id, instructions)
   if (!patched.ok && patched.status !== 409) {
     console.error("Giving the agent the swarm's own instructions failed", patched.status, patched.detail)
     return agent
   }
+  Persona.keep(self.kv, instructions)
   const given = { ...agent, instructed: true }
   self.kv.put('agent', given)
   if (patched.ok) self.log('status', "Gave the agent this swarm's own instructions, appended to its system prompt and fixed for the swarm's life, in place of the shared swarm persona.")
