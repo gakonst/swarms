@@ -117,7 +117,7 @@ async function fulls(env: Cloudflare.Env, swarm: string, agent: string, wanted: 
 
 async function completed(env: Cloudflare.Env, swarm: string, opened: { agent: string | null; commands: Runs.Opened[] }, gateway: boolean): Promise<Command[]> {
   const needs = (run: Runs.Opened) => run.event !== null && (run.clipped || (gateway && run.ms === null))
-  const asked = opened.agent && gateway ? opened.commands.filter(needs).map((run) => ({ event: run.event ?? 0, tool: named(run.tool) })) : []
+  const asked = opened.agent ? opened.commands.filter(needs).map((run) => ({ event: run.event ?? 0, tool: named(run.tool) })) : []
   const found = opened.agent && asked.length ? await fulls(env, swarm, opened.agent, asked) : new Map<number, Full>()
   return opened.commands.map((run) => {
     const fuller = run.event === null ? undefined : found.get(run.event)
@@ -125,7 +125,7 @@ async function completed(env: Cloudflare.Env, swarm: string, opened: { agent: st
     return {
       ...rest,
       full: !!fuller || !run.clipped,
-      ms: run.ms ?? fuller?.ms ?? null,
+      ms: fuller?.ms ?? run.ms,
       output: fuller ? fuller.output : run.output,
       source: fuller ? 'gateway' : 'feed',
       truncated: !fuller && run.clipped,
@@ -152,7 +152,7 @@ export async function command(env: Cloudflare.Env, input: Input<'command'>): Pro
   const [found] = await completed(env, query.swarm, opened as unknown as { agent: string | null; commands: Runs.Opened[] }, true)
   if (!found) return Problem.fail(404, 'not_found', 'This machine has no command with this seq.')
   const before = opened.commands[0]?.ms ?? null
-  if (before === null && found.ms !== null) await object.timed(found.seq, found.ms)
+  if (found.ms !== null && found.ms !== before) await object.timed(found.seq, found.ms)
   return Problem.ok(found)
 }
 
