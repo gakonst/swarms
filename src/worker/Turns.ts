@@ -15,6 +15,7 @@ import * as Words from './Words.ts'
 import * as Relay from './Relay.ts'
 import * as Clock from './Clock.ts'
 import * as Paying from './Paying.ts'
+import * as Payer from './Payer.ts'
 import * as Money from './Money.ts'
 import * as Follow from './Follow.ts'
 import * as Repo from './Repo.ts'
@@ -58,7 +59,9 @@ export async function step(self: Swarm) {
   initialize(self)
   const run = self.run()
   if (run.state === 'paused') {
-    if (!Phase.due(run, Date.now())) return run.pause.why === 'money' ? run.pause.wake : null
+    const settling = await settle(self, row, run)
+    const wake = run.pause.why === 'money' ? run.pause.wake : null
+    if (!Phase.due(run, Date.now())) return wake === null ? settling : settling === null ? wake : Math.min(wake, settling)
     self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
   }
   if (run.state === 'working') return Follow.follow(self, row, run)
@@ -396,4 +399,24 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause) {
   const shown = Phase.paused(run)
   await self.move(row, { at: Date.now(), pause, state: 'paused' })
   if (shown?.why !== pause.why) self.log('status', text)
+  const alarm = await self.ctx.storage.getAlarm()
+  if (alarm === null || alarm > Date.now() + settleMs) await self.ctx.storage.setAlarm(Date.now() + settleMs)
+}
+
+export async function settle(self: Swarm, row: Store.Row, run: { at: number }) {
+  const unsettled = Paying.sources(self, row).filter((source) => {
+    const channel = self.kv.get<Payer.Channel>(`channel:${source.id}`)
+    return channel?.confirmed && self.kv.get<string>('settled:' + source.id) !== channel.signed
+  })
+  if (!unsettled.length) return null
+  const asked = Math.max(run.at, ...unsettled.map((source) => self.kv.get<number>('paid:' + source.id) ?? 0)) + settleMs
+  if (Date.now() < asked) return asked
+  if (!(await quiet(self, row))) return Date.now() + Clock.minuteMs
+  for (const source of unsettled) {
+    await Paying.probe(self, row, source, true).catch(() => undefined)
+    const channel = self.kv.get<Payer.Channel>(`channel:${source.id}`)
+    if (channel) self.kv.put('settled:' + source.id, channel.signed)
+  }
+  await Money.refresh(self, row, Money.everything)
+  return null
 }

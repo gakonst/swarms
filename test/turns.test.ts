@@ -32,6 +32,22 @@ test('turns failed on squeezed payments do not count toward the errors that stop
   assert.equal(Turns.failing(self([6, 7, 8, 9]), 0), 0)
 })
 
+test('a paused swarm reads its wallet channel again once its calls are over, and once per voucher', async () => {
+  const now = Date.now()
+  const store = new Map<string, unknown>([
+    ['channel:pool', { confirmed: true, signed: '500' }],
+    ['paid:pool', now - 5_000],
+  ])
+  const self = { kv: { get: (key: string) => store.get(key), put: (key: string, value: unknown) => void store.set(key, value) } } as never
+  const row = { id: 'abc123abc123', wallet: '0x00000000000000000000000000000000000000aa' } as never
+  const waited = await Turns.settle(self, row, { at: now - 60_000 })
+  assert.ok(waited !== null && waited >= now + 9_000 && waited <= now + 11_000)
+  store.set('settled:pool', '500')
+  assert.equal(await Turns.settle(self, row, { at: now - 60_000 }), null)
+  store.set('channel:pool', { confirmed: true, signed: '700' })
+  assert.ok((await Turns.settle(self, row, { at: now })) !== null)
+})
+
 test('an update waits for backers only when its last line says so', () => {
   assert.ok(Turns.waiting('Still at 1.316x, and $4 is too little for another experiment.\n\nWaiting for backers.'))
   assert.ok(Turns.waiting('Holding.\n**Waiting for backers.**\n'))

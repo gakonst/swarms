@@ -424,9 +424,9 @@ export async function attempt(self: Swarm, row: Store.Row, source: Source, input
   return topUp ? { authorization, topUp } : { authorization }
 }
 
-export async function probe(self: Swarm, row: Store.Row, source: Source) {
+export async function probe(self: Swarm, row: Store.Row, source: Source, again = false) {
   const channel = self.kv.get<Payer.Channel>(`channel:${source.id}`)
-  if (!channel?.confirmed || self.kv.get<string>('probed:' + source.id) === channel.signed) return
+  if (!channel?.confirmed || (!again && self.kv.get<string>('probed:' + source.id) === channel.signed)) return
   const init = { body: JSON.stringify({ key: 'probe' }), headers: { 'content-type': 'application/json', 'gateway-app': Gateway.app(row.id) }, method: 'POST' }
   const challenge = await Gateway.call(self.env, '/v1/kv/get', init)
   const offered = Payer.offer(challenge.headers.get('www-authenticate') ?? '', source.currency)
