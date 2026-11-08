@@ -31,33 +31,40 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   const client = Chain.client(self.env)
   const unsure = plan.chain ? [...self.kv.list<Payer.Channel>({ prefix: 'channel:' })].filter(([, channel]) => Payer.unsure(channel)) : []
   const reading = plan.chain || !self.held
+  const started = Date.now()
   const [hands, balances, states, pledged] = await Promise.all([
     plan.hands ? Gateway.hands(self.env, row.id) : undefined,
     row.wallet ? (reading ? Vault.balances(self.env, row.wallet, client) : Promise.resolve(self.held)) : Promise.resolve(undefined),
     Promise.all(unsure.map(([, channel]) => Payer.state(self.env, channel.id, client).catch(() => undefined))),
     plan.sponsors ? sponsorships(self, row) : undefined,
   ])
-  if (reading && balances) self.held = balances
+  if (reading && balances && started >= self.heldAt) {
+    self.held = balances
+    self.heldAt = started
+  }
   for (const [index, [key, channel]] of unsure.entries()) {
     const state = states[index]
+    if (state) Paying.landed(self, key.slice('channel:'.length), state.deposit)
     const confirmed = state ? Payer.confirm(channel, state.deposit, Date.now()) : channel
     if (confirmed !== channel) self.kv.put(key, confirmed)
   }
+  const room = balances ? Payer.max(Vault.total(balances) - Vault.dust * 3n, 0n) : 0n
   let left = 0n
   let biggest = 0n
-  let pooled = 0n
+  let pooled = room
+  let open = false
   for (const source of sources) {
     const channel = self.kv.get<Payer.Channel>(`channel:${source.id}`)
     const spent = BigInt(self.kv.get<string>('spent:' + source.id) ?? channel?.signed ?? '0')
     const inside = Payer.inside(channel, spent)
-    const room = balances ? Payer.max(Vault.total(balances) - Vault.dust * 3n, 0n) : 0n
-    const available = inside + room
     if (room >= Store.callOf(row)) self.kv.delete('exhausted:' + source.id)
-    pooled = available
+    pooled += inside
     if ((self.kv.get<number>('exhausted:' + source.id) ?? 0) > Date.now()) continue
-    left += available
-    biggest = Payer.max(biggest, available)
+    open = true
+    left += inside
+    biggest = Payer.max(biggest, inside + room)
   }
+  if (open) left += room
   const loose = String(balances ? balances.pathusd + balances.usdce - Vault.dust * 2n : 0n)
   if (self.kv.get<string>('loose') !== loose) self.kv.put('loose', loose)
   if (pledged) self.pledged = pledged
@@ -70,7 +77,7 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   const connected = hands ? (hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []) : undefined
   if (connected) await joined(self, row, connected, new Set(previous.map((hand) => hand.name)))
 
-  const pool = { machines: connected?.length ?? previous.length, pool_left: Number(pooled), pool_spent: Number(Paying.used(self, 'pool') + Paying.handsUsed(self)), sponsor_left: Number(sponsored.left), sponsor_spent: Number(sponsored.spent) }
+  const pool = { machines: connected?.length ?? previous.length, pool_left: Number(pooled), pool_spent: Number(Paying.pooled(self) + Paying.handsUsed(self)), sponsor_left: Number(sponsored.left), sponsor_spent: Number(sponsored.spent) }
   if (
     Number(row.machines) !== pool.machines ||
     Number(row.pool_left) !== pool.pool_left ||
@@ -145,22 +152,22 @@ export async function refill(self: Swarm, row: Store.Row) {
   const owner = await Vault.account(self.env, row)
   const balances = await Vault.balances(self.env, row.wallet)
 
-  for (const id of ['pathusd', 'usdce'] as const) {
+  await Promise.all((['pathusd', 'usdce'] as const).map(async (id) => {
     const amount = balances[id] - Vault.dust
-    if (amount < smallestSwap || (id === 'usdce' && Date.now() - self.vended < pullMs)) continue
+    if (amount < smallestSwap || (id === 'usdce' && Date.now() - self.vended < pullMs)) return
     const result = await Vault.swap(self.env, owner, id, amount).catch((error: unknown) => error as Error)
     if (result instanceof Error) {
       self.log('error', `Swapping ${Chain.tokens[id].symbol} to OUSD failed.`, result.message.split('\n')[0] ?? null)
-      continue
+      return
     }
-    self.kv.delete('exhausted:pool')
+    Paying.revive(self)
     self.cue('chain')
     self.log(
       'funds',
       `Swapped ${Words.trim(Memo.decimal(amount))} ${Chain.tokens[id].symbol} to ${Words.trim(Memo.decimal(result.received))} OUSD on the stablecoin DEX (quote ${Words.trim(Memo.decimal(result.quote))}, at least ${Words.trim(Memo.decimal(result.minimum))}, fee ${Words.trim(Memo.decimal(result.fee))}).`,
       result.hash,
     )
-  }
+  }))
 }
 
 export async function cap(self: Swarm, row: Store.Row, amount: bigint, known: Gateway.Listed[] | undefined) {

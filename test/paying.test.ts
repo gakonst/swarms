@@ -32,8 +32,19 @@ function swarm(fields: { clients?: string[]; raised?: number; kv?: Record<string
   const reads = { count: 0 }
   const row = { id: 'abc123abc123', raised: fields.raised ?? 0, sealed_wallet: 'sealed', sponsor_left: 0, wallet }
   const self = {
-    clients: new Map(['pool', ...(fields.clients ?? [])].map((id) => [id, { createCredential: async (_response: Response, context: unknown) => (credentials.push({ ...(context as object), source: id }), 'Payment voucher') }])),
-    paying: Promise.resolve() as Promise<unknown>,
+    clients: new Map(['pool', ...(fields.clients ?? [])].map((id) => [id, {
+      createCredential: async (_response: Response, context: unknown) => {
+        credentials.push({ ...(context as object), source: id })
+        if ((context as { depositRaw?: string }).depositRaw) store.set(`mppx:${id}:k`, JSON.stringify({ channelId: '0x' + String(store.size).padStart(64, '0'), descriptor: {}, opened: true }))
+        return 'Payment voucher'
+      },
+    }])),
+    callers: new Map(),
+    held: undefined,
+    balancing: undefined,
+    heldAt: 0,
+    holding: new Map(),
+    lanes: new Map(),
     cue: () => {},
     env: { TEMPO_RPC: 'http://127.0.0.1:9' },
     found: async () => {
@@ -133,11 +144,15 @@ test("a gateway snapshot of a closing channel banks what it spent and forgets it
   assert.equal(Paying.used(closing.self, 'pool'), 60000n)
   assert.ok((closing.store.get('exhausted:pool') as number) > Date.now())
   assert.match(closing.logs.at(-1)?.[1] ?? '', /cannot pay right now/)
+  const ordered = swarm({ kv: { 'channel:pool': channel, id: 'abc123abc123' } })
+  const again = await Paying.charge(ordered.self, { attempt: 2, challenge: challenge(5000), channels: [snapshot], operation: 'model.responses', rejected: { detail: 'Delta too small', status: 402 }, secret: '' })
+  assert.ok('authorization' in again)
+  assert.equal(ordered.store.get('exhausted:pool'), undefined)
   const refused = swarm({ kv: { 'channel:pool': channel, id: 'abc123abc123' } })
-  await Paying.charge(refused.self, { attempt: 2, challenge: challenge(5000), channels: [snapshot], operation: 'model.responses', rejected: { detail: 'delta too small', status: 402 }, secret: '' })
+  await Paying.charge(refused.self, { attempt: 2, challenge: challenge(5000), channels: [snapshot], operation: 'model.responses', rejected: { detail: 'channel is closing', status: 402 }, secret: '' })
   assert.equal(refused.store.get('spent:pool'), '60000')
   assert.ok((refused.store.get('exhausted:pool') as number) > Date.now() + 9 * 60_000)
-  assert.match(refused.logs[0]?.[1] ?? '', /refused the swarm wallet's payment again/)
+  assert.match(refused.logs[0]?.[1] ?? '', /refused a payment on one of the swarm wallet's channels again/)
 })
 
 test('the swarm wakes when its earliest set-aside source comes back, within eight days', () => {
@@ -242,4 +257,40 @@ test("a hand owner's ask during the lead's asks is signed on the owner's own cha
   assert.deepEqual(by('hand:' + owner), [28000, 36000])
   assert.equal((store.get('channel:pool') as { signed: string }).signed, '60000')
   assert.equal((store.get('channel:hand:' + owner) as { signed: string }).signed, '36000')
+})
+
+test('subagent trees get channels of their own while the wallet can fund them, and share the least busy ones after', () => {
+  const lanes = Array.from({ length: Paying.most }, (_, at) => Paying.lane(at))
+  const { row, self } = swarm({ clients: lanes.slice(1) })
+  const held = self as unknown as { held: unknown; heldAt: number }
+  held.held = { ousd: 350_000n, pathusd: 0n, usdce: 0n }
+  held.heldAt = Date.now()
+  const pick = (tree: number | undefined) => {
+    const [first] = Paying.route(self, row as never, { challenge: challenge(5000), operation: 'model.responses', secret: '', tree }, [])
+    ;(self as unknown as { lanes: Map<string, unknown> }).lanes.set(first!.id, { depth: 1, flow: [], tail: Promise.resolve() })
+    return first!.id
+  }
+  assert.equal(pick(undefined), 'pool')
+  assert.equal(pick(1), 'pool.1')
+  assert.equal(pick(2), 'pool')
+  assert.equal(pick(undefined), 'pool')
+  assert.equal(pick(1), 'pool.1')
+  assert.equal(Paying.who({ tree: 3 }), 'tree:3')
+  assert.equal(Paying.who({ subagent: 4 }), 'subagent:4')
+  assert.equal(Paying.who({}), 'lead')
+})
+
+test('channels opened at once never put in more than the wallet holds, and a refused credential gives its share back', async () => {
+  const { credentials, row, self } = swarm({ clients: ['pool.1', 'pool.2'] })
+  const held = self as unknown as { held: unknown; heldAt: number }
+  held.held = { ousd: 150_000n, pathusd: 0n, usdce: 0n }
+  held.heldAt = Date.now()
+  const source = (id: string) => ({ currency: ousd, id, label: "the swarm's wallet" })
+  const asks = ['pool', 'pool.1', 'pool.2'].map((id) => Paying.attempt(self, row as never, source(id) as never, { challenge: challenge(5000), operation: 'model.responses', secret: '' }, []))
+  const results = await Promise.all(asks)
+  const opened = credentials.map((item) => Number((item as { depositRaw?: string }).depositRaw ?? 0))
+  assert.deepEqual(opened, [100_000, 48_000])
+  assert.ok(opened.reduce((sum, amount) => sum + amount, 0) <= 150_000 - 2_000)
+  assert.ok('authorization' in results[0]! && 'authorization' in results[1]!)
+  assert.match((results[2] as { failed: string }).failed, /It can put in 0\.000000 now/)
 })

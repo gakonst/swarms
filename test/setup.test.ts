@@ -18,6 +18,13 @@ function priced(choice: Setup.Choice) {
   return setup as Setup.Setup
 }
 
+test('the default runs on the cheapest models: Codex on GPT-6 Luna leads, and subagents use Luna, Haiku, DeepSeek Flash or GLM Flash', () => {
+  assert.equal(Setup.fallback, 'cheap')
+  const resolved = Setup.resolve({ template: Setup.fallback })
+  assert.notEqual(typeof resolved, 'string')
+  assert.deepEqual(resolved, { harness: 'codex', model: Setup.luna, subagents: { harnesses: ['codex', 'claude'], models: [Setup.luna, Setup.haiku, Setup.flash, Setup.glmFlash] }, template: 'cheap' })
+})
+
 test('frontier mix leads with Claude Code on Opus and offers Opus, Sol and Astra under both harnesses', () => {
   const setup = priced({ template: 'frontier-mix' })
   assert.equal(setup.harness, 'claude')

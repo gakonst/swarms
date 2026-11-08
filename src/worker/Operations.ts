@@ -162,7 +162,7 @@ export const schema = {
       .enum(Setup.templates)
       .default(Setup.fallback)
       .describe(
-        'Which models the swarm runs on. frontier-mix (the default): Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, GPT-6.1 Sol or GPT-6 Astra on Claude Code or Codex. frontier-anthropic: Claude Code on Opus 5.5 only. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
+        'Which models the swarm runs on. cheap (the default): Codex on GPT-6 Luna leads, and subagents use GPT-6 Luna, Claude Haiku 5.5, DeepSeek V4.1 Flash or GLM-5.3 Flash on Codex or Claude Code. frontier-mix: Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, GPT-6.1 Sol or GPT-6 Astra on Claude Code or Codex. frontier-anthropic: Claude Code on Opus 5.5 only. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
       ),
     harness: z.enum(Setup.harnesses).optional().describe('custom only: the lead agent\'s harness, claude (Claude Code) or codex.'),
     model: z.string().min(1).max(200).optional().describe('custom only: the lead agent\'s gateway model id, such as vercel/anthropic/claude-opus-5.5.'),
@@ -1370,6 +1370,8 @@ export async function pay(env: Cloudflare.Env, swarm: string, authorization: str
     recipient: typeof input['recipient'] === 'string' && isAddress(input['recipient']) ? input['recipient'] : undefined,
     rejected: typeof input['rejected'] === 'object' && input['rejected'] !== null ? (input['rejected'] as { detail: string; status: number }) : undefined,
     secret,
+    subagent: typeof input['subagent'] === 'number' ? input['subagent'] : undefined,
+    tree: typeof input['tree'] === 'number' ? input['tree'] : undefined,
   })
 }
 

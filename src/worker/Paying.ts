@@ -25,6 +25,8 @@ export type Pay = {
   recipient?: Address | undefined
   rejected?: { detail: string; status: number } | undefined
   secret: string
+  subagent?: number | undefined
+  tree?: number | undefined
 }
 
 export type Paid = { authorization: string; topUp?: string } | { feeToken: Address } | Budget | { code: string; detail: string; retry?: number; status: 401 | 402 | 429 }
@@ -37,7 +39,7 @@ export type Signer = { account: Account; key: Hex }
 
 type Room = { amount: bigint; resets: number | null }
 
-type Failed = { busy?: boolean; failed: string; price?: bigint; room: Room | undefined; small?: boolean }
+type Failed = { busy?: boolean; failed: string; price?: bigint; room: Room | undefined; small?: boolean; unopened?: boolean }
 
 type Passed = { amount: string; at: number; host: string }
 
@@ -56,6 +58,18 @@ const recentMs = 10_000
 const holdMs = 90_000
 
 const heldMs = 10 * 60_000
+
+export const most = 8
+
+const activeMs = 30_000
+
+const reserveMs = 30_000
+
+const flowMs = 60_000
+
+const burst = 3
+
+const freshMs = 2_000
 
 
 function asked(input: Pay) {
@@ -79,8 +93,144 @@ function passHost(input: Pay) {
   }
 }
 
-function pool(): Source {
-  return { currency: Chain.tokens.ousd.address, id: 'pool', label: "the swarm's wallet" }
+export function lane(index: number) {
+  return index === 0 ? 'pool' : `pool.${index}`
+}
+
+function pool(id = 'pool'): Source {
+  return { currency: Chain.tokens.ousd.address, id, label: "the swarm's wallet" }
+}
+
+function index(id: string) {
+  return id === 'pool' ? 0 : Number(id.slice('pool.'.length))
+}
+
+export function lanes(self: Pick<Swarm, 'kv'>) {
+  const ids = new Set(['pool'])
+  for (const prefix of ['channel:pool', 'spent:pool', 'banked:pool'])
+    for (const [key] of self.kv.list({ prefix })) {
+      const id = key.slice(key.indexOf('pool'))
+      if (/^pool(\.\d+)?$/.test(id)) ids.add(id)
+    }
+  return [...ids].sort((a, b) => index(a) - index(b))
+}
+
+export function who(input: Pick<Pay, 'subagent' | 'tree'>) {
+  return input.tree !== undefined ? `tree:${input.tree}` : input.subagent !== undefined ? `subagent:${input.subagent}` : 'lead'
+}
+
+export function revive(self: Pick<Swarm, 'kv'>) {
+  for (const id of lanes(self)) self.kv.delete('exhausted:' + id)
+}
+
+function free(self: Swarm, id: string) {
+  const channel = self.kv.get<Payer.Channel>(`channel:${id}`)
+  if (!channel) return 0n
+  return Payer.max(Payer.held(channel) - BigInt(self.kv.get<string>('spent:' + id) ?? channel.signed), 0n)
+}
+
+function spare(self: Swarm) {
+  if (!self.held || Date.now() - self.heldAt > Clock.minuteMs) return undefined
+  return self.held.ousd - Vault.dust - reserved(self)
+}
+
+export function ordering(detail: string | undefined) {
+  return /delta too small|strictly greater|does not add new funds|below .*required|higher voucher/i.test(detail ?? '')
+}
+
+export type Lane = { at: number; expect: bigint; seen: { at: number; deposit: bigint }[] }
+
+function reserved(self: Swarm) {
+  const now = Date.now()
+  let total = 0n
+  for (const lane of self.holding.values()) {
+    const latest = lane.seen.at(-1)?.deposit ?? 0n
+    if (lane.expect > latest && now - lane.at > reserveMs) {
+      lane.expect = latest
+      self.heldAt = 0
+    }
+    const by = [...lane.seen].reverse().find((seen) => seen.at <= self.heldAt)?.deposit ?? lane.seen[0]?.deposit ?? 0n
+    if (lane.expect > by) total += lane.expect - by
+  }
+  return total
+}
+
+export function landed(self: Pick<Swarm, 'holding'>, id: string, deposit: bigint) {
+  const lane = self.holding.get(id)
+  if (!lane || deposit <= (lane.seen.at(-1)?.deposit ?? 0n)) return
+  lane.seen = [...lane.seen.slice(-15), { at: Date.now(), deposit }]
+}
+
+function release(self: Swarm, id: string, amount: bigint) {
+  const lane = self.holding.get(id)
+  if (lane) lane.expect -= amount
+}
+
+function flowed(self: Swarm, id: string) {
+  const lane = self.lanes.get(id)
+  if (!lane) return 0n
+  const now = Date.now()
+  lane.flow = lane.flow.filter((item) => now - item.at < flowMs)
+  return lane.flow.reduce((sum, item) => sum + item.amount, 0n)
+}
+
+function flow(self: Swarm, id: string, amount: bigint) {
+  self.lanes.get(id)?.flow.push({ amount, at: Date.now() })
+}
+
+export function route(self: Swarm, row: Store.Row, input: Pay, snapshots: readonly Payer.Snapshot[]): Source[] {
+  const now = Date.now()
+  const caller = who(input)
+  const known = [...new Set([...lanes(self), ...[...self.lanes.keys()].filter((id) => id.startsWith('pool'))])].sort((a, b) => index(a) - index(b))
+  const live = known.filter((id) => (self.kv.get<number>('exhausted:' + id) ?? 0) <= now)
+  const busy = new Map<string, number>()
+  for (const [name, seen] of self.callers) {
+    if (now - seen.at > activeMs) self.callers.delete(name)
+    else if (name !== caller) busy.set(seen.lane, (busy.get(seen.lane) ?? 0) + 1)
+  }
+  const load = (id: string) => busy.get(id) ?? 0
+  const refused = input.rejected && snapshots[0] ? live.find((id) => self.kv.get<Payer.Channel>(`channel:${id}`)?.id.toLowerCase() === snapshots[0]!.channelId.toLowerCase()) : undefined
+  const kept = self.callers.get(caller)?.lane
+  const opened = live.filter((id) => self.kv.get<Payer.Channel>(`channel:${id}`))
+  const unused = Array.from({ length: most }, (_, at) => lane(at)).find((id) => !known.includes(id))
+  const left = spare(self)
+  const size = Payer.max(chunk, Store.reserveOf(row))
+  const opening = BigInt(known.filter((id) => !self.kv.get<Payer.Channel>(`channel:${id}`)).length)
+  const fresh = unused && left !== undefined && left - opening * size >= 2n * size ? unused : undefined
+  const price = Payer.priced(input.challenge) ?? 0n
+  const dry = left !== undefined && left < price
+  const fits = (id: string) => !dry || free(self, id) >= price
+  const least = [...live].filter(fits).sort((a, b) => load(a) - load(b))[0] ?? [...live].sort((a, b) => load(a) - load(b))[0]
+  const held = kept && live.includes(kept) && fits(kept) ? kept : undefined
+  const chosen =
+    refused ??
+    (held && !load(held) ? held : undefined) ??
+    live.find((id) => !load(id) && fits(id)) ??
+    fresh ??
+    (held && least && load(held) <= load(least) + 1 ? held : undefined) ??
+    least ??
+    'pool'
+  self.callers.set(caller, { at: now, lane: chosen })
+  const crowded = (self.lanes.get(chosen)?.depth ?? 0) >= burst
+  const spill = crowded && !refused ? opened.find((id) => id !== chosen && !load(id) && !(self.lanes.get(id)?.depth ?? 0)) : undefined
+  const first = spill ?? chosen
+  const rest = opened.filter((id) => id !== first && fits(id)).sort((a, b) => Number(free(self, b) - free(self, a)))
+  return [first, ...rest].map((id) => pool(id))
+}
+
+function inLane<T>(self: Swarm, id: string, marks: Marks, task: () => Promise<T>): Promise<T> {
+  const queued = Date.now()
+  const lane = self.lanes.get(id) ?? { depth: 0, flow: [], tail: Promise.resolve() }
+  lane.depth += 1
+  self.lanes.set(id, lane)
+  const run = lane.tail.then(() => {
+    marks.waited = (marks.waited ?? 0) + Date.now() - queued
+    return task()
+  })
+  lane.tail = run.catch(() => undefined).finally(() => {
+    lane.depth -= 1
+  })
+  return run
 }
 
 function owing(payee: Address): Source {
@@ -141,7 +291,7 @@ export async function vendor(self: Swarm, row: Store.Row, input: Pay): Promise<P
 }
 
 export function sources(self: Swarm, row: Store.Row): Source[] {
-  return row.wallet ? [pool()] : []
+  return row.wallet ? lanes(self).map((id) => pool(id)) : []
 }
 
 export function signer(self: Swarm, row: Store.Row, source: Source): Promise<Signer> {
@@ -162,8 +312,35 @@ export async function client(self: Swarm, row: Store.Row, source: Source): Promi
 }
 
 export async function headroom(self: Swarm, row: Store.Row): Promise<Room> {
-  const balances = await Vault.balances(self.env, row.wallet as Address)
-  return { amount: Payer.max(balances.ousd - Vault.dust, 0n), resets: null }
+  if (!self.held || Date.now() - self.heldAt > freshMs) {
+    self.balancing ??= (async () => {
+      const started = Date.now()
+      const balances = await Vault.balances(self.env, row.wallet as Address)
+      if (started >= self.heldAt) {
+        self.held = balances
+        self.heldAt = started
+      }
+    })().finally(() => {
+      self.balancing = undefined
+    })
+    await self.balancing
+  }
+  return room(self)
+}
+
+function room(self: Swarm): Room {
+  return { amount: Payer.max((self.held?.ousd ?? 0n) - Vault.dust - reserved(self), 0n), resets: null }
+}
+
+function claim(self: Swarm, id: string, want: bigint, floor: bigint, base: bigint) {
+  const free = room(self)
+  const amount = Payer.min(want, free.amount)
+  if (amount < floor) return { amount: 0n, room: free }
+  const lane = self.holding.get(id) ?? { at: 0, expect: base, seen: [{ at: 0, deposit: base }] }
+  lane.expect = Payer.max(lane.expect, base) + amount
+  lane.at = Date.now()
+  self.holding.set(id, lane)
+  return { amount, room: free }
 }
 
 export async function confirmed(self: Swarm, source: Source) {
@@ -173,6 +350,7 @@ export async function confirmed(self: Swarm, source: Source) {
     const state = await Payer.state(self.env, channel.id).catch(() => undefined)
     const old = Date.now() - channel.at > Payer.confirmMs
     if (state) {
+      landed(self, source.id, state.deposit)
       const confirmed = Payer.confirm(channel, state.deposit, Date.now())
       if (confirmed.confirmed) {
         self.kv.put(`channel:${source.id}`, confirmed)
@@ -217,7 +395,7 @@ export function passed(self: Swarm, input: Pay, paid: Paid): Paid {
   return paid
 }
 
-export type Marks = { attempts?: number; confirm?: number; room?: number; row?: number; sign?: number }
+export type Marks = { attempts?: number; confirm?: number; lane?: string; room?: number; row?: number; sign?: number; waited?: number }
 
 function mark(marks: Marks, name: 'confirm' | 'room' | 'sign', since: number) {
   marks[name] = (marks[name] ?? 0) + Date.now() - since
@@ -230,17 +408,13 @@ export function outcome(paid: Paid) {
   return paid.status
 }
 
-export function queued(self: Swarm, input: Pay): Promise<Paid> {
+export async function queued(self: Swarm, input: Pay): Promise<Paid> {
   const asked = Date.now()
   const marks: Marks = {}
-  const run = self.paying.then(async () => {
-    const started = Date.now()
-    const paid = await charge(self, input, marks)
-    console.log(JSON.stringify({ ...marks, operation: input.operation ?? null, paid: outcome(paid), pay: self.kv.get<string>('id'), waited: started - asked, worked: Date.now() - started }))
-    return paid
-  })
-  self.paying = run.catch(() => undefined)
-  return run
+  const paid = await charge(self, input, marks)
+  const worked = Date.now() - asked
+  console.log(JSON.stringify({ ...marks, operation: input.operation ?? null, paid: outcome(paid), pay: self.kv.get<string>('id'), waited: marks.waited ?? 0, worked: worked - (marks.waited ?? 0) }))
+  return paid
 }
 
 export async function charge(self: Swarm, input: Pay, marks: Marks = {}): Promise<Paid> {
@@ -269,18 +443,21 @@ export async function charge(self: Swarm, input: Pay, marks: Marks = {}): Promis
       const id = key.slice('channel:'.length)
       self.kv.put('spent:' + id, snapshot.spent)
       if (snapshot.closing || (index === 0 && input.rejected?.status === 410)) drop(self, id)
-      else if (Payer.unsure(channel) && BigInt(snapshot.deposit) >= Payer.held(channel)) self.kv.put(key, Payer.confirm(channel, BigInt(snapshot.deposit), Date.now()))
-      if (index === 0 && input.rejected && (input.attempt ?? 0) >= 2) {
+      else {
+        landed(self, id, BigInt(snapshot.deposit))
+        if (Payer.unsure(channel) && BigInt(snapshot.deposit) >= Payer.held(channel)) self.kv.put(key, Payer.confirm(channel, BigInt(snapshot.deposit), Date.now()))
+      }
+      if (index === 0 && input.rejected && (input.attempt ?? 0) >= 2 && !ordering(input.rejected.detail)) {
         self.kv.put('exhausted:' + id, Date.now() + Clock.restMs)
-        self.log('funds', `The gateway refused ${id === 'pool' ? "the swarm wallet's" : 'a contribution\'s'} payment again, so the swarm moves on to the next contribution.`, input.rejected.detail)
+        self.log('funds', "The gateway refused a payment on one of the swarm wallet's channels again, so the swarm pays on its other channels for a while.", input.rejected.detail)
       }
     }
 
   const owed = input.recipient ? owing(input.recipient) : undefined
-  if (owed && row.wallet && [owed.id, 'pool'].every((id) => (self.kv.get<number>('exhausted:' + id) ?? 0) <= Date.now())) {
+  if (owed && row.wallet && (self.kv.get<number>('exhausted:' + owed.id) ?? 0) <= Date.now()) {
     const source = owed
     const signing = Date.now()
-    const result = await attempt(self, row, source, input, snapshots, marks).catch(
+    const result = await inLane(self, source.id, marks, () => attempt(self, row, source, input, snapshots, marks)).catch(
       (error: unknown): Failed => ({ failed: String(error).split('\n')[0]?.slice(0, 300) ?? 'The payment failed.', room: undefined }),
     )
     mark(marks, 'sign', signing)
@@ -292,28 +469,22 @@ export async function charge(self: Swarm, input: Pay, marks: Marks = {}): Promis
     }
   }
 
-  const current = self.kv.get<string>('payer')
-  const ordered = sources(self, row).filter((source) => (self.kv.get<number>('exhausted:' + source.id) ?? 0) <= Date.now())
+  const ordered = row.wallet ? route(self, row, input, snapshots) : []
   let busy = false
   let small = false
   let wanted = 0n
   for (const source of ordered) {
     const signing = Date.now()
-    const result = await attempt(self, row, source, input, snapshots, marks).catch(
+    marks.lane = marks.lane ? `${marks.lane},${source.id}` : source.id
+    const result = await inLane(self, source.id, marks, () => attempt(self, row, source, input, snapshots, marks)).catch(
       (error: unknown): Failed => ({ failed: String(error).split('\n')[0]?.slice(0, 300) ?? 'The payment failed.', room: { amount: 0n, resets: Date.now() + Clock.retryMs } }),
     )
     mark(marks, 'sign', signing)
     marks.attempts = (marks.attempts ?? 0) + 1
     if ('feeToken' in result) return result
-    if ('authorization' in result) {
-      if (current !== source.id) {
-        self.kv.put('payer', source.id)
-        self.log('funds', `Paying from ${source.label} now.`)
-      }
-      return passing ? passed(self, input, result) : result
-    }
+    if ('authorization' in result) return passing ? passed(self, input, result) : result
     if (result.busy) busy = true
-    if (result.busy || result.small) {
+    if (result.busy || result.small || result.unopened) {
       small ||= !!result.small
       if (result.small && result.price) wanted = Payer.max(wanted, result.price)
       continue
@@ -362,22 +533,28 @@ export async function attempt(self: Swarm, row: Store.Row, source: Source, input
   const channel = await confirmed(self, source)
   mark(marks, 'confirm', confirming)
   const price = offered.amount
-  const step = payee ? handChunk : chunk
+  const step = Payer.max(payee ? handChunk : chunk, flowed(self, source.id))
 
   if (!channel) {
     const rooming = Date.now()
-    const room = await headroom(self, row)
+    await headroom(self, row)
     mark(marks, 'room', rooming)
-    const deposit = Payer.min(Payer.max(step, price), room.amount)
+    const claimed = claim(self, source.id, Payer.max(step, price), price, 0n)
+    const room = claimed.room
+    const deposit = claimed.amount
     if (deposit < price)
-      return { failed: `It can put in ${Memo.decimal(room.amount)} now, less than the ${Memo.decimal(price)} this request holds.`, price, room, small: room.amount >= Store.callOf(row) }
-    const authorization = await mppx.createCredential(offered.response, { depositRaw: String(deposit) })
+      return { failed: `It can put in ${Memo.decimal(room.amount)} now, less than the ${Memo.decimal(price)} this request holds.`, price, room, small: room.amount >= Store.callOf(row), unopened: source.id !== 'pool' && !payee }
+    const authorization = await mppx.createCredential(offered.response, { depositRaw: String(deposit) }).catch((error: unknown) => {
+      release(self, source.id, deposit)
+      throw error
+    })
     const entry = Payer.opened(self.kv, source.id)
     if (!entry) throw new Error('mppx stored no channel for the open')
     self.kv.put(`channel:${source.id}`, { at: Date.now(), confirmed: false, deposit: String(deposit), descriptor: entry.descriptor, id: entry.channelId, signed: String(price) } satisfies Payer.Channel)
     self.kv.put('spent:' + source.id, String(price))
     self.kv.put('paid:' + source.id, Date.now())
     self.cue('chain')
+    flow(self, source.id, price)
     if (payee) self.log('funds', `Opened a channel from the swarm's wallet to the owner of hand ${input.hand ?? 'a lent machine'} (${Words.short(payee)}), which the gateway settles straight to them.`)
     return { authorization }
   }
@@ -400,10 +577,12 @@ export async function attempt(self: Swarm, row: Store.Row, source: Source, input
   let additional = 0n
   if (need > deposit) {
     const rooming = Date.now()
-    const room = await headroom(self, row)
+    await headroom(self, row)
     mark(marks, 'room', rooming)
     const shortfall = need - deposit
-    additional = Payer.min(Payer.max(step, shortfall), room.amount)
+    const claimed = claim(self, source.id, Payer.max(step, shortfall), shortfall, deposit)
+    const room = claimed.room
+    additional = claimed.amount
     if (additional < shortfall) {
       const unspent = spent === undefined ? 0n : deposit - BigInt(spent)
       return {
@@ -414,10 +593,16 @@ export async function attempt(self: Swarm, row: Store.Row, source: Source, input
         small: room.amount + Payer.max(unspent, 0n) >= Store.callOf(row),
       }
     }
-    topUp = await mppx.createCredential(offered.response, { action: 'topUp', additionalDepositRaw: String(additional), channelId: channel.id, descriptor: channel.descriptor })
+    topUp = await mppx.createCredential(offered.response, { action: 'topUp', additionalDepositRaw: String(additional), channelId: channel.id, descriptor: channel.descriptor }).catch((error: unknown) => {
+      release(self, source.id, additional)
+      throw error
+    })
   }
   const authorization = await mppx.createCredential(offered.response, { action: 'voucher', channelId: channel.id, cumulativeAmountRaw: String(need), descriptor: channel.descriptor })
-  self.kv.put(`channel:${source.id}`, Payer.topped(channel, deposit, additional, need, Date.now()))
+  flow(self, source.id, price)
+  const latest = self.kv.get<Payer.Channel>(`channel:${source.id}`)
+  if (latest?.id !== channel.id) return { authorization, ...(topUp ? { topUp } : {}) }
+  self.kv.put(`channel:${source.id}`, Payer.topped(latest, deposit, additional, need, Date.now()))
   if (topUp) self.cue('chain')
   self.kv.put('pending:' + source.id, [...recent, { amount: String(price), at: Date.now(), cumulative: String(need) }])
   self.kv.put('paid:' + source.id, Date.now())
@@ -453,8 +638,12 @@ export function drop(self: Swarm, id: string) {
   self.clients.delete(id)
 }
 
-export function used(self: Swarm, id: string) {
+export function used(self: Pick<Swarm, 'kv'>, id: string) {
   return BigInt(self.kv.get<string>('banked:' + id) ?? '0') + BigInt(self.kv.get<string>('spent:' + id) ?? '0')
+}
+
+export function pooled(self: Pick<Swarm, 'kv'>) {
+  return lanes(self).reduce((sum, id) => sum + used(self, id), 0n)
 }
 
 export function owners(self: Swarm) {

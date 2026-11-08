@@ -141,7 +141,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   declare ctx: DurableObjectState<{}>
   declare env: Cloudflare.Env
   stepping: Promise<number | null> | undefined
-  paying: Promise<unknown> = Promise.resolve()
+  lanes = new Map<string, { depth: number; flow: { amount: bigint; at: number }[]; tail: Promise<unknown> }>()
+  callers = new Map<string, { at: number; lane: string }>()
+  holding = new Map<string, Paying.Lane>()
+  heldAt = 0
+  balancing: Promise<void> | undefined
   funding: Promise<void> | undefined
   wallet: Promise<unknown> = Promise.resolve()
   checked = 0
@@ -247,7 +251,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async contributed(input: Contributed) {
     this.marked += 1
     this.kv.put('id', input.swarm)
-    this.kv.delete('exhausted:pool')
+    Paying.revive(this)
     if (input.kind === 'noted') {
       this.log('funds', `${Words.short(input.contributor)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
       Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed "${input.note ?? ''}" with $${Words.trim(input.amount)}.`)

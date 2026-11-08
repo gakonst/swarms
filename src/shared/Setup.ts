@@ -2,7 +2,7 @@ export const harnesses = ['claude', 'codex'] as const
 
 export type Harness = (typeof harnesses)[number]
 
-export const templates = ['frontier-mix', 'frontier-anthropic', 'frontier-openai', 'free', 'custom'] as const
+export const templates = ['cheap', 'frontier-mix', 'frontier-anthropic', 'frontier-openai', 'free', 'custom'] as const
 
 export type Template = (typeof templates)[number]
 
@@ -24,9 +24,22 @@ export const astra = 'vercel/openai/gpt-6-astra'
 
 export const flash = '@cf/deepseek-ai/deepseek-v4.1-flash-1017'
 
-export const fallback: Template = 'frontier-mix'
+export const luna = 'vercel/openai/gpt-6-luna'
+
+export const haiku = 'vercel/anthropic/claude-haiku-5.5'
+
+export const glmFlash = '@cf/zai-org/glm-5.3-flash'
+
+export const fallback: Template = 'cheap'
 
 export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hint: string; label: string; model: string; subagents: Offer | null }> = {
+  cheap: {
+    harness: 'codex',
+    hint: 'Codex on GPT-6 Luna leads. Subagents use GPT-6 Luna, Claude Haiku 5.5, DeepSeek V4.1 Flash or GLM-5.3 Flash, the cheapest models the gateway offers, on Codex or Claude Code.',
+    label: 'Cheapest',
+    model: luna,
+    subagents: { harnesses: ['codex', 'claude'], models: [luna, haiku, flash, glmFlash] },
+  },
   'frontier-mix': {
     harness: 'claude',
     hint: 'Claude Code on Opus 5.5 leads. Subagents use Opus 5.5, GPT-6.1 Sol or GPT-6 Astra, on Claude Code or Codex.',
@@ -58,6 +71,7 @@ export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hi
 }
 
 export const labels: Record<Template, string> = {
+  cheap: presets.cheap.label,
   custom: 'Custom',
   free: presets.free.label,
   'frontier-anthropic': presets['frontier-anthropic'].label,

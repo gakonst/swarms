@@ -224,7 +224,7 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   const status = report.status === 'completed' ? 'completed' : report.status === 'cancelled' ? 'cancelled' : 'failed'
   Follow.flush(self)
   await new Promise((resolve) => setTimeout(resolve, 3_000))
-  for (const source of await Paying.sources(self, row)) await Paying.probe(self, row, source).catch(() => undefined)
+  await Promise.all(Paying.sources(self, row).map((source) => Paying.probe(self, row, source).catch(() => undefined)))
   const money = await Money.refresh(self, row, { chain: true, hands: Follow.handsDue(self, Date.now()), sponsors: true })
   const found = self.ctx.storage.sql
     .exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n)
@@ -407,11 +407,11 @@ export async function settle(self: Swarm, row: Store.Row, run: { at: number }) {
   const asked = Math.max(run.at, ...unsettled.map((source) => self.kv.get<number>('paid:' + source.id) ?? 0)) + settleMs
   if (Date.now() < asked) return asked
   if (!(await quiet(self, row))) return Date.now() + Clock.minuteMs
-  for (const source of unsettled) {
+  await Promise.all(unsettled.map(async (source) => {
     await Paying.probe(self, row, source, true).catch(() => undefined)
     const channel = self.kv.get<Payer.Channel>(`channel:${source.id}`)
     if (channel) self.kv.put('settled:' + source.id, channel.signed)
-  }
+  }))
   await Money.refresh(self, row, Money.everything)
   return null
 }

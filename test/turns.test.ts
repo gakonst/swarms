@@ -42,7 +42,7 @@ test('a paused swarm reads its wallet channel again once its calls are over, and
     ['channel:pool', { confirmed: true, signed: '500' }],
     ['paid:pool', now - 5_000],
   ])
-  const self = { kv: { get: (key: string) => store.get(key), put: (key: string, value: unknown) => void store.set(key, value) } } as never
+  const self = { kv: { get: (key: string) => store.get(key), list: (options: { prefix?: string } = {}) => [...store].filter(([key]) => key.startsWith(options.prefix ?? '')).values(), put: (key: string, value: unknown) => void store.set(key, value) } } as never
   const row = { id: 'abc123abc123', wallet: '0x00000000000000000000000000000000000000aa' } as never
   const waited = await Turns.settle(self, row, { at: now - 60_000 })
   assert.ok(waited !== null && waited >= now + 9_000 && waited <= now + 11_000)
