@@ -2,9 +2,10 @@ import type { Mood } from '../shared/Status.ts'
 
 export type Home = 'join' | 'start'
 
-export type Hive = { detail: string; home: Home; id: string; mood: Mood; title: string; weight: number }
+export type Hive = { about: string; detail: string; facts: string; fresh: number; home: Home; id: string; mood: Mood; title: string; updated: number; weight: number }
 
 export type Options = {
+  avoid?: (() => readonly (Element | null | undefined)[]) | undefined
   canvas: HTMLCanvasElement
   homes: () => Partial<Record<Home, Element | null | undefined>>
   label?: HTMLElement | undefined
@@ -15,6 +16,7 @@ export type Options = {
 
 export type Field = {
   focus: (id: string | undefined) => void
+  group: (mood: Mood | undefined) => void
   hives: (hives: readonly Hive[]) => void
   layout: () => void
   pointer: (x: number | undefined, y: number | undefined) => void
@@ -26,7 +28,7 @@ type Vector = [number, number, number]
 
 type Box = { h: number; w: number; x: number; y: number }
 
-type Tag = { dx: number; dy: number; element: HTMLElement; last: string }
+type Tag = { dx: number; dy: number; element: HTMLElement; h: number; last: string; w: number }
 
 type Slot = { at: Vector; center: Vector; focus: number; hive: Hive; phase: Vector; px: number; radius: number; seen: boolean; show: number; spark: number; tag: Tag | undefined; target: Vector }
 
@@ -254,6 +256,10 @@ function size(hive: Hive) {
   return Math.min(46, 15 + 11 * Math.log10(1 + Math.max(0, hive.weight))) * (hive.mood === 'live' ? 1.15 : 1)
 }
 
+function extent(hive: Hive) {
+  return hive.mood === 'live' ? 1.3 : hive.mood === 'money' ? 1.12 : 1.05
+}
+
 function crowd(hive: Hive) {
   if (hive.mood === 'new') return 40
   const base = 40 + 100 * Math.log10(1 + Math.max(0, hive.weight))
@@ -388,6 +394,7 @@ export function start(options: Options): Field | undefined {
   let meshes: { centers: Mesh; points: Mesh; spokes: Mesh } | undefined
   let links: Mesh | undefined
   let focused: string | undefined
+  let grouped: Mood | undefined
   let hovered: string | undefined
   let pointer: [number, number] | undefined
   let lean: [number, number] = [0, 0]
@@ -441,6 +448,10 @@ export function start(options: Options): Field | undefined {
     laid = [rect.width, rect.height]
     const homes = options.homes()
     const blocks: Box[] = []
+    for (const element of options.avoid?.() ?? []) {
+      const box = element?.getBoundingClientRect()
+      if (box && box.width && box.height) blocks.push(grown({ h: box.height, w: box.width, x: box.left - rect.left, y: box.top - rect.top }, 12))
+    }
     const anchors: Partial<Record<Home, [number, number]>> = {}
     for (const key of ['start', 'join'] as const) {
       const element = homes[key]
@@ -462,6 +473,7 @@ export function start(options: Options): Field | undefined {
     const raw = live.map((slot) => size(slot.hive))
     const scale = Math.max(0.45, Math.min(1.3, Math.sqrt((free * 0.2) / Math.max(1, raw.reduce((sum, r) => sum + Math.PI * r * r, 0)))))
     const radii = raw.map((r) => r * scale)
+    const outer = radii.map((r, index) => r * extent(live[index]!.hive))
     const gap = 10 + 18 * scale
     const points: number[][] = live.map((slot) => [margin + hash(slot.hive.id, 1) * (width - margin * 2), margin + hash(slot.hive.id, 2) * (height - margin * 2)])
     for (let round = 0; round < 180; round++) {
@@ -472,7 +484,7 @@ export function start(options: Options): Field | undefined {
           const dx = pb[0]! - pa[0]!
           const dy = pb[1]! - pa[1]!
           const distance = Math.hypot(dx, dy) || 0.01
-          const room = radii[a]! + radii[b]! + gap
+          const room = outer[a]! + outer[b]! + gap
           if (distance >= room) continue
           const push = (room - distance) / distance / 2
           pa[0] = pa[0]! - dx * push
@@ -482,7 +494,7 @@ export function start(options: Options): Field | undefined {
         }
       }
       points.forEach((point, index) => {
-        const r = radii[index]!
+        const r = outer[index]!
         const anchor = anchors[live[index]!.hive.home]
         if (anchor) {
           point[0] = point[0]! + (anchor[0] - point[0]!) * 0.0012
@@ -565,8 +577,8 @@ export function start(options: Options): Field | undefined {
       const y = points[index]![1]!
       const w = element.offsetWidth
       const h = element.offsetHeight
-      const offset = radii[index]! * 0.7 + 14
-      const lift = radii[index]! * 0.55 + 6
+      const offset = outer[index]! * 0.8 + 12
+      const lift = outer[index]! * 0.6 + 6
       const sides = x < width * 0.6 ? (['right', 'left', 'above', 'below'] as const) : (['left', 'right', 'above', 'below'] as const)
       for (const side of sides) {
         const box =
@@ -577,9 +589,9 @@ export function start(options: Options): Field | undefined {
         if (box.x < 8 || box.x + box.w > width - 8 || box.y < 8 || box.y + box.h > height - 8) continue
         if (blocks.some((block) => !apart(block, box))) continue
         if (placed.some((other) => !apart(grown(other, 6), box))) continue
-        if (points.some((point, other) => other !== index && touches(box, point[0]!, point[1]!, Math.min(radii[other]! * 0.8, clear) + 4))) continue
+        if (points.some((point, other) => other !== index && touches(box, point[0]!, point[1]!, (live[other]!.hive.mood === 'live' ? outer[other]! * 0.9 : Math.min(radii[other]! * 0.8, clear)) + 4))) continue
         placed.push(box)
-        slot.tag = { dx: box.x - x, dy: box.y - y, element, last: '' }
+        slot.tag = { dx: box.x - x, dy: box.y - y, element, h, last: '', w }
         element.dataset['side'] = side
         element.dataset['placed'] = 'true'
         element.style.setProperty('--i', String(order++))
@@ -593,7 +605,7 @@ export function start(options: Options): Field | undefined {
 
     const aspect = width / height
     live.forEach((slot, index) => {
-      const z = (hash(slot.hive.id, 5) - 0.5) * depth
+      const z = Math.max(-depth / 2, Math.min(depth / 2, ((slot.hive.fresh - 0.5) * 0.75 + (hash(slot.hive.id, 5) - 0.5) * 0.3) * depth))
       const reach = (eye - z) * lens
       const x = points[index]![0]!
       const y = points[index]![1]!
@@ -622,7 +634,7 @@ export function start(options: Options): Field | undefined {
       const spot = project(slot.at)
       if (spot.w <= 0) continue
       const gap = Math.hypot(spot.x - pointer[0], spot.y - pointer[1])
-      if (gap < Math.max(14, slot.px * 0.85) && gap < closest) {
+      if (gap < Math.max(14, slot.px * extent(slot.hive) * 0.85) && gap < closest) {
         closest = gap
         best = slot.hive.id
       }
@@ -633,24 +645,36 @@ export function start(options: Options): Field | undefined {
   const write = (slot: Slot | undefined) => {
     const label = options.label
     if (!label) return
-    if (!slot || slot.tag || slot.focus < 0.05) {
+    if (!slot || slot.focus < 0.05) {
       label.dataset['shown'] = 'false'
       return
     }
+    const fill = `${slot.hive.id}\u0001${slot.hive.detail}\u0001${slot.hive.about}\u0001${slot.hive.facts}`
+    if (label.dataset['fill'] !== fill) {
+      label.dataset['fill'] = fill
+      for (const part of ['title', 'detail', 'about', 'facts'] as const) {
+        const element = label.querySelector<HTMLElement>(`[data-part='${part}']`)
+        if (element) element.textContent = slot.hive[part]
+      }
+    }
+    label.dataset['tagged'] = slot.tag ? 'true' : 'false'
+    label.dataset['shown'] = 'true'
     const spot = project(slot.at)
-    const offset = slot.px * 0.7 + 14
     const wide = label.offsetWidth
+    const tall = label.offsetHeight
+    if (slot.tag) {
+      const tx = spot.x + slot.tag.dx
+      const ty = spot.y + slot.tag.dy
+      const x = Math.max(12, Math.min(tx, width - 12 - wide))
+      const y = ty + slot.tag.h + 6 + tall < height - 12 ? ty + slot.tag.h + 6 : ty - 6 - tall
+      label.style.transform = `translate(${Math.round(x)}px, ${Math.round(Math.max(12, y))}px)`
+      return
+    }
+    const offset = slot.px * extent(slot.hive) * 0.8 + 12
     const right = spot.x + offset + wide < width - 12 || spot.x - offset - wide < 12
     const x = right ? Math.min(spot.x + offset, width - 12 - wide) : spot.x - offset - wide
-    label.dataset['shown'] = 'true'
-    label.style.transform = `translate(${Math.round(Math.max(12, x))}px, ${Math.round(spot.y)}px) translate(0, -50%)`
-    if (label.dataset['id'] !== slot.hive.id) {
-      label.dataset['id'] = slot.hive.id
-      const title = label.querySelector('b')
-      const detail = label.querySelector('small')
-      if (title) title.textContent = slot.hive.title
-      if (detail) detail.textContent = slot.hive.detail
-    }
+    const y = Math.max(12 + tall / 2, Math.min(height - 12 - tall / 2, spot.y))
+    label.style.transform = `translate(${Math.round(Math.max(12, x))}px, ${Math.round(y)}px) translate(0, -50%)`
   }
 
   const bind = (program: Program, lines: number, size: number) => {
@@ -688,12 +712,12 @@ export function start(options: Options): Field | undefined {
     }
     const active = hovered ?? focused
     for (const slot of slots) {
-      slot.focus += ((slot.hive.id === active ? 1 : 0) - slot.focus) * ease(7)
+      slot.focus += ((slot.hive.id === active ? 1 : grouped && slot.hive.mood === grouped ? 0.62 : 0) - slot.focus) * ease(7)
       slot.spark *= options.still ? 0 : Math.exp(-step * 1.1)
       slot.show += ((slot.seen ? 1 : 0) - slot.show) * ease(3)
       for (let axis = 0; axis < 3; axis++) slot.center[axis] = slot.center[axis]! + (slot.target[axis]! - slot.center[axis]!) * ease(2.5)
     }
-    dim += ((active ? 1 : 0) - dim) * ease(6)
+    dim += ((active || grouped ? 1 : 0) - dim) * ease(6)
     const want: [number, number] = pointer ? [pointer[0] / width - 0.5, pointer[1] / height - 0.5] : [0, 0]
     lean = [lean[0] + (want[0] - lean[0]) * ease(2), lean[1] + (want[1] - lean[1]) * ease(2)]
     const yaw = Math.sin(time * 0.06) * 0.04 + lean[0] * 0.08
@@ -756,6 +780,10 @@ export function start(options: Options): Field | undefined {
       focused = id
       kick()
     },
+    group: (mood) => {
+      grouped = mood
+      kick()
+    },
     hives: (list) => {
       const next = list.slice(0, most)
       const known = new Map(slots.map((slot) => [slot.hive.id, slot]))
@@ -772,7 +800,7 @@ export function start(options: Options): Field | undefined {
           radius: before?.radius ?? 0,
           seen: before?.seen ?? true,
           show: before?.show ?? 1,
-          spark: before && hive.weight > before.hive.weight + 1e-6 ? 1 : (before?.spark ?? 0),
+          spark: !before ? 0 : hive.weight > before.hive.weight + 1e-6 ? 1 : hive.updated > before.hive.updated ? Math.max(before.spark, 0.55) : before.spark,
           tag: undefined,
           target: before ? before.target : [0, 0, 0],
         }

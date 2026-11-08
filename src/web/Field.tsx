@@ -1,10 +1,13 @@
 import { type RefObject, useEffect, useRef, useState } from 'react'
+import type { Mood } from '../shared/Status.ts'
 import type { Field as Engine, Hive, Home } from './gl.ts'
 
 export type { Hive, Home }
 
 type Props = {
+  avoid?: RefObject<HTMLElement | null> | undefined
   focus?: string | undefined
+  group?: Mood | undefined
   hives: readonly Hive[]
   homes: Partial<Record<Home, RefObject<HTMLElement | null>>>
   ignore?: string | undefined
@@ -15,7 +18,7 @@ type Props = {
 }
 
 function key(hives: readonly Hive[]) {
-  return hives.map((hive) => [hive.id, hive.mood, hive.weight, hive.title, hive.detail, hive.home].join('\u0001')).join('\u0002')
+  return hives.map((hive) => [hive.id, hive.mood, hive.weight, hive.title, hive.detail, hive.home, hive.about, hive.facts, hive.fresh, hive.updated].join('\u0001')).join('\u0002')
 }
 
 export function Field(props: Props) {
@@ -38,6 +41,7 @@ export function Field(props: Props) {
         const element = canvas.current
         if (!alive || !element) return
         const field = gl.start({
+          avoid: () => [latest.current.avoid?.current],
           canvas: element,
           homes: () => ({ join: latest.current.homes.join?.current, start: latest.current.homes.start?.current }),
           label: label.current ?? undefined,
@@ -49,6 +53,7 @@ export function Field(props: Props) {
         engine.current = field
         field.hives(latest.current.hives)
         field.focus(latest.current.focus)
+        field.group(latest.current.group)
         let seen = true
         const sync = () => field.run(seen && document.visibilityState === 'visible')
         const watcher = new IntersectionObserver((entries) => {
@@ -102,12 +107,18 @@ export function Field(props: Props) {
     engine.current?.focus(props.focus)
   }, [props.focus])
 
+  useEffect(() => {
+    engine.current?.group(props.group)
+  }, [props.group])
+
   return (
     <>
       <canvas aria-hidden="true" className="sky-field" data-ready={ready} ref={canvas} />
       <div aria-hidden="true" className="sky-label" data-shown="false" ref={label}>
-        <b />
-        <small />
+        <b data-part="title" />
+        <small data-part="detail" />
+        <span data-part="about" />
+        <small data-part="facts" />
       </div>
     </>
   )

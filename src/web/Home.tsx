@@ -1,4 +1,4 @@
-import { type MouseEvent, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
 import * as Status from '../shared/Status.ts'
@@ -90,6 +90,14 @@ function Title(props: { text: string }) {
   )
 }
 
+function plural(count: number, word: string) {
+  return `${count} ${word}${count === 1 ? '' : 's'}`
+}
+
+function facts(swarm: Summary, now: number | undefined) {
+  return [plural(swarm.contributors, 'backer'), Number(swarm.spent) > 0 ? `${usd(swarm.spent)} spent` : '', now ? `updated ${ago(swarm.updatedAt, now)}` : ''].filter(Boolean).join(' · ')
+}
+
 function follow(event: MouseEvent, path: string | undefined) {
   if (!path || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
   event.preventDefault()
@@ -109,23 +117,55 @@ export function Home() {
   const start = useRef<HTMLDivElement>(null)
   const join = useRef<HTMLDivElement>(null)
   const tags = useRef<HTMLDivElement>(null)
+  const legend = useRef<HTMLElement>(null)
   const [focus, setFocus] = useState<string>()
   const [lit, setLit] = useState<string>()
+  const [group, setGroup] = useState<Status.Mood>()
   const [flat, setFlat] = useState(false)
+  const [now, setNow] = useState<number>()
+  useEffect(() => {
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
   const hives = useMemo<Hive[]>(
     () => {
-      const joins = ranked.slice(0, 52).map((item): Hive => ({ detail: `${Status.word(item)} · ${usd(item.raised)}`, home: 'join', id: item.id, mood: Status.standing(item).mood, title: item.title, weight: Number(item.raised) }))
-      const seeds = free.slice(0, 12).map((item): Hive => ({ detail: item.hint, home: 'start', id: `idea:${item.id}`, mood: 'new', title: item.label, weight: 0 }))
+      const clock = now ?? latest
+      const joins = ranked.slice(0, 52).map(
+        (item): Hive => ({
+          about: (item.answer && Answer.gist(item.answer.text)) || item.goal,
+          detail: `${Status.word(item)} · ${usd(item.raised)}`,
+          facts: facts(item, now),
+          fresh: item.status === 'running' ? 1 : 1 / (1 + Math.max(0, clock - item.updatedAt) / 86_400_000),
+          home: 'join',
+          id: item.id,
+          mood: Status.standing(item).mood,
+          title: item.title,
+          updated: item.updatedAt,
+          weight: Number(item.raised),
+        }),
+      )
+      const seeds = free.slice(0, 12).map((item): Hive => ({ about: item.title, detail: item.hint, facts: 'No swarm yet · start one', fresh: 0.35, home: 'start', id: `idea:${item.id}`, mood: 'new', title: item.label, updated: 0, weight: 0 }))
       return joins.flatMap((hive, index) => (index % 4 === 3 && seeds.length ? [hive, seeds.shift()!] : [hive])).concat(seeds)
     },
-    [ranked.map((item) => [item.id, item.status, item.why, item.raised, item.remaining, item.title].join()).join('|'), free.map((item) => item.id).join()],
+    [ranked.map((item) => [item.id, item.status, item.why, item.raised, item.remaining, item.spent, item.contributors, item.updatedAt, item.title, item.answer?.text.length].join()).join('|'), free.map((item) => item.id).join(), now],
   )
+  const moods = open.reduce<Record<Status.Mood, number>>((sum, item) => ({ ...sum, [Status.standing(item).mood]: sum[Status.standing(item).mood] + 1 }), { errors: 0, live: 0, money: 0, new: free.length, resting: 0 })
+  const keys = (
+    [
+      ['live', `${moods.live} running`, '/join?filter=running'],
+      ['money', `${moods.money} need${moods.money === 1 ? 's' : ''} money`, '/join?filter=money'],
+      ['resting', `${moods.resting} resting`, '/join?filter=resting'],
+      ['errors', `${moods.errors} stopped`, '/join?filter=resting'],
+      ['new', `${moods.new} waiting`, '/new'],
+    ] as const
+  ).filter(([mood]) => list.data && moods[mood] > 0)
   const path = (id: string) => (id.startsWith('idea:') ? `/new?q=${id.slice(5)}` : `/s/${id}`)
   const tagged = hives.slice(0, 24)
 
   return (
-    <div className="sky" data-lit={!!lit} onClickCapture={(event) => follow(event, lit && path(lit))} ref={sky}>
-      <Field focus={focus} hives={hives} homes={{ join, start }} ignore=".sky-block, .sky-tag, .sky-flat" onFail={() => setFlat(true)} onPick={setLit} surface={sky} tags={tags} />
+    <div className="sky" data-active={focus ?? lit} data-group={group} data-lit={!!lit} onClickCapture={(event) => follow(event, lit && path(lit))} ref={sky}>
+      <Field avoid={legend} focus={focus} group={group} hives={hives} homes={{ join, start }} ignore=".sky-block, .sky-tag, .sky-flat, .sky-key" onFail={() => setFlat(true)} onPick={setLit} surface={sky} tags={tags} />
       <div className="sky-block sky-start" ref={start}>
         <Link className="sky-link" to="/new">
           <span className="sky-kicker">{Status.ideas(free.length)}</span>
@@ -143,6 +183,14 @@ export function Home() {
           <span className="sky-text">Anyone can fund a swarm. The money pays only for its work (models, machines and the services it calls), a note sent with it steers the agent, and every cent shows on its page. No tokens, no returns.</span>
         </Link>
       </div>
+      <nav aria-label="Key" className="sky-key" ref={legend}>
+        {keys.map(([mood, label, to]) => (
+          <Link className="sky-key-item" data={{ 'data-mood': mood }} key={mood} lit={group === mood} onHover={(hovering) => setGroup(hovering ? mood : undefined)} to={to}>
+            <i aria-hidden="true" className="mood-dot" data-mood={mood} />
+            {label}
+          </Link>
+        ))}
+      </nav>
       <nav aria-label="Swarms and ideas" className="sky-tags" ref={tags}>
         {tagged.map((hive) => (
           <Link className="sky-tag" data={{ 'data-mood': hive.mood, 'data-tag': hive.id }} key={hive.id} lit={lit === hive.id} onHover={(hovering) => setFocus(hovering ? hive.id : undefined)} to={path(hive.id)}>
