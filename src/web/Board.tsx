@@ -66,7 +66,7 @@ const flows: readonly Flow[] = [
     frames: [
       { name: 'Signed out', url: chat('bench-coders') },
       { name: 'Backer', url: chat('bench-coders', '&scene=in') },
-      { name: 'Steering with @swarm', steps: [{ type: ['.composer textarea', '@swarm try a second pass at temperature 0'] }], url: chat('bench-coders', '&scene=in') },
+      { name: 'Telling the AI', steps: [{ click: '.chat-ai' }, { type: ['.chat-bar textarea', 'Try a second pass at temperature 0'] }], url: chat('bench-coders', '&scene=in') },
       { name: 'Back it from the chat', steps: [{ click: '.chat-back-it' }], url: chat('bench-coders', '&scene=in') },
       { name: 'Quiet', url: chat('rust-book-el', '&scene=in') },
     ],

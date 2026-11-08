@@ -11,7 +11,7 @@ import { useMedia, usePoll } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Results } from './Results.tsx'
 import { Room } from './Room.tsx'
-import { Back, back, Link, navigate, useCanBack, useQuery } from './router.tsx'
+import { Back, back, href, Link, navigate, useCanBack, useQuery } from './router.tsx'
 import * as Wire from './wire.ts'
 
 const detailMs = 10_000
@@ -26,10 +26,12 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
     if (signal.type === 'artifacts') setShelf(() => ({ artifacts: signal.artifacts.map((artifact) => (artifact.url.startsWith('/') ? { ...artifact, url: location.origin + artifact.url } : artifact)) }))
     if (Wire.stirred(signal, 'detail')) reload()
     if (Wire.stirred(signal, 'artifacts')) reshelve()
+    if (Wire.stirred(signal, 'branches')) rebranch()
   })
   const [detail, reload, setDetail] = usePoll(() => Api.swarm(id, false), wired === 'down' ? detailMs : null, id)
   const [shelf, reshelve, setShelf] = usePoll(() => Api.artifacts(id), wired === 'down' ? shelfMs : null, `artifacts:${id}`)
   const [news, renews] = usePoll(() => Api.updates(id), null, `updates:${id}`)
+  const [tree, rebranch] = usePoll(() => Api.branches(id), wired === 'down' && detail.data?.status === 'running' ? 30_000 : null, `branches:${id}`)
   const wishes = useWishes(shelf.data?.artifacts)
   const opened = useQuery('r')
   const phone = useMedia('(max-width: 899px)')
@@ -42,6 +44,7 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<RoomState>(`room:${id}`)?.members ?? [])
   const [unread, setUnread] = useState(0)
   const box = useRef<HTMLElement>(null)
+  const mark = useRef<HTMLDivElement>(null)
   const [past, setPast] = useState(false)
 
   useEffect(() => {
@@ -51,7 +54,9 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
 
   const answered = detail.data?.answer?.at
   useEffect(() => {
-    if (answered) renews()
+    if (!answered) return
+    renews()
+    rebranch()
   }, [answered])
 
   useEffect(() => {
@@ -90,7 +95,13 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
   const artifacts = shelf.data?.artifacts ?? []
   const viewing = opened ? artifacts.find((artifact) => artifact.slug === opened) : undefined
   const pitch = lead(swarm.goal, swarm.title)
-  const chat = () => navigate(`${base}/chat`)
+  const show = (chatting: boolean) => {
+    if (chatting === props.chat) return
+    if (chatting && small) return navigate(`${base}/chat`)
+    const top = mark.current ? mark.current.getBoundingClientRect().top + scrollY - (document.querySelector('.game-header')?.getBoundingClientRect().height ?? 0) : 0
+    navigate(chatting ? `${base}/chat` : base, { keep: true, replace: true })
+    if (scrollY > top) scrollTo(0, top)
+  }
 
   const backing = (
     <Box
@@ -114,8 +125,7 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
       onArtifact={(slug) => navigate(`${base}?r=${encodeURIComponent(slug)}`)}
       onBack={steer}
       onMessages={heard}
-      onSteered={reload}
-      onTranscript={() => back(base)}
+      onResults={() => show(false)}
       onUnread={setUnread}
       swarm={swarm}
       visible={props.chat}
@@ -123,12 +133,8 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
   )
   const tabs = (
     <nav aria-label="Idea" className="idea-tabs">
-      {props.chat ? <Back className="idea-tab" to={base}>Results</Back> : <span aria-current="page" className="idea-tab">Results</span>}
-      {props.chat ? (
-        <span aria-current="page" className="idea-tab">Chat</span>
-      ) : (
-        <Link className="idea-tab" to={`${base}/chat`}>Chat{unread > 0 && <i className="idea-unread">{unread}</i>}</Link>
-      )}
+      <a aria-current={props.chat ? undefined : 'page'} className="idea-tab" href={href(base)} onClick={(event) => { event.preventDefault(); show(false) }}>Results</a>
+      <a aria-current={props.chat ? 'page' : undefined} className="idea-tab" href={href(`${base}/chat`)} onClick={(event) => { event.preventDefault(); show(true) }}>Chat{unread > 0 && !props.chat && <i className="idea-unread">{unread}</i>}</a>
     </nav>
   )
 
@@ -159,20 +165,17 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
         <header className="idea-head">
           <Pill mood={stood.mood} word={stood.word} />
           <h1>{swarm.title}</h1>
-          {pitch && !props.chat && <p className="idea-pitch">{pitch}</p>}
+          {pitch && <p className="idea-pitch">{pitch}</p>}
         </header>
         <div className="idea-grid">
           {backing}
           <div className="idea-main">
+            <div className="idea-mark" ref={mark} />
             {tabs}
-            {props.chat ? (
-              <div className="idea-chat">{room}</div>
-            ) : (
-              <>
-                <Results artifacts={artifacts} members={members} onChat={chat} onOpen={(slug) => navigate(`${base}?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steer} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
-                <div hidden>{room}</div>
-              </>
-            )}
+            <div hidden={props.chat}>
+              <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} members={members} onChat={() => show(true)} onOpen={(slug) => navigate(`${base}?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steer} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
+            </div>
+            <div className="idea-chat" hidden={!props.chat}>{room}</div>
           </div>
         </div>
       </div>

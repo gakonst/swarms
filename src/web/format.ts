@@ -65,6 +65,13 @@ export function stamp(at: number) {
   return new Date(at).toLocaleString('en-GB', { day: 'numeric', hour: '2-digit', minute: '2-digit', month: 'short', timeZone: zone(), year: 'numeric' })
 }
 
+export function day(at: number, now: number) {
+  const key = (time: number) => new Date(time).toLocaleDateString('en-CA', { timeZone: zone() })
+  if (key(at) === key(now)) return 'Today'
+  if (key(at) === key(now - 86_400_000)) return 'Yesterday'
+  return new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: zone(), ...(new Date(at).getFullYear() === new Date(now).getFullYear() ? {} : { year: 'numeric' }) })
+}
+
 function zone() {
   const current = boot()
   return current ? (current.zone ?? 'UTC') : undefined

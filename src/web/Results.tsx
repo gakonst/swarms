@@ -1,15 +1,35 @@
 import { useState } from 'react'
 import * as Answer from '../shared/Answer.ts'
-import type { Artifact, Detail, Member, Update } from '../shared/Api.ts'
+import type { Artifact, Branch, Detail, Member, Update } from '../shared/Api.ts'
 import type * as Wishlist from '../shared/Wishlist.ts'
+import { Explored } from './Explored.tsx'
 import { ago, short, usd } from './format.ts'
 import { useNow } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
 
 type Item = { at: number; key: string } & ({ kind: 'backed'; amount: string; note: string | null; who: string } | { kind: 'update'; text: string })
 
+function source(artifact: Artifact) {
+  return /^https?:/.test(artifact.url) ? `${artifact.url}?v=${artifact.version}` : artifact.url
+}
+
+const marks = { image: '◩', json: '{ }', markdown: '¶', page: '▦', table: '▤', text: '≡' } as const
+
+function Preview(props: { artifact: Artifact }) {
+  const artifact = props.artifact
+  if (artifact.form === 'page')
+    return (
+      <span className="made-preview" data-form="page">
+        <iframe aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" sandbox="allow-scripts" scrolling="no" src={source(artifact)} tabIndex={-1} title="" />
+      </span>
+    )
+  if (artifact.form === 'image') return <span className="made-preview" data-form="image"><img alt="" loading="lazy" src={source(artifact)} /></span>
+  return <span className="made-preview" data-form={artifact.form}><i aria-hidden="true">{marks[artifact.form]}</i></span>
+}
+
 export function Results(props: {
-  artifacts: readonly Artifact[]
+  artifacts: readonly Artifact[] | undefined
+  branches: readonly Branch[] | undefined
   members: readonly Member[]
   onChat: () => void
   onOpen: (slug: string) => void
@@ -22,47 +42,42 @@ export function Results(props: {
   const now = useNow(60_000)
   const [more, setMore] = useState(false)
   const handle = (address: string) => props.members.find((member) => member.address === address)?.handle ?? short(address)
-  const made = props.artifacts.filter((artifact) => artifact.slug !== 'wishlist')
+  const made = (props.artifacts ?? []).filter((artifact) => artifact.slug !== 'wishlist')
   const asked = [...swarm.notes].sort((a, b) => Number(b.weight) - Number(a.weight)).slice(0, 4)
   const items: Item[] = [
     ...swarm.contributions.map((item, index): Item => ({ amount: item.amount, at: item.at, key: `c${index}`, kind: 'backed', note: item.note, who: handle(item.contributor) })),
     ...(props.updates ?? []).filter((update) => update.text.trim()).map((update, index): Item => ({ at: update.at, key: `u${index}`, kind: 'update', text: update.text })),
   ].sort((a, b) => b.at - a.at)
-  const shown = more ? items : items.slice(0, 6)
+  const shown = more ? items : items.slice(0, 5)
 
   return (
     <div className="results">
-      <section className="result-latest" aria-label="Latest">
-        {swarm.answer ? (
-          <>
-            <span className="result-when">Latest · {ago(swarm.answer.at, now)}</span>
-            <p className="result-gist">{Answer.gist(swarm.answer.text)}</p>
-            <details className="result-read">
-              <summary>Read more</summary>
-              <Markdown text={swarm.answer.text} />
-            </details>
-          </>
-        ) : (
-          <p className="result-quiet">{swarm.status === 'running' ? 'AI is working on it. Results show up here.' : 'Results show up here once it starts.'}</p>
-        )}
-      </section>
-
-      {made.length > 0 && (
-        <section className="result-section">
-          <h2>What it made</h2>
+      <section className="result-section" aria-labelledby="made-title">
+        <h2 className="sr-only" id="made-title">Results</h2>
+        {made.length ? (
           <ul className="made">
             {made.map((artifact) => (
               <li key={artifact.slug}>
                 <button onClick={() => props.onOpen(artifact.slug)} type="button">
-                  <b>{artifact.title}</b>
-                  {artifact.summary && <span>{artifact.summary}</span>}
-                  {artifact.updatedAt && <small>Updated {ago(artifact.updatedAt, now)}</small>}
+                  <Preview artifact={artifact} />
+                  <span className="made-text">
+                    <b>{artifact.title}</b>
+                    {artifact.summary && <span>{artifact.summary}</span>}
+                    {artifact.updatedAt && <small>Updated {ago(artifact.updatedAt, now)}</small>}
+                  </span>
                 </button>
               </li>
             ))}
           </ul>
-        </section>
-      )}
+        ) : (
+          <p className="result-quiet">{props.artifacts ? 'Results show up here as the AI makes them.' : ' '}</p>
+        )}
+      </section>
+
+      <section className="result-section" aria-labelledby="explored-title">
+        <h2 id="explored-title">Ideas explored</h2>
+        <Explored branches={props.branches} running={swarm.status === 'running'} title={swarm.title} />
+      </section>
 
       {asked.length > 0 && (
         <section className="result-section">
@@ -102,6 +117,7 @@ export function Results(props: {
         )}
         {items.length > shown.length && <button className="result-link" onClick={() => setMore(true)} type="button">Show all {items.length}</button>}
       </section>
+
       {props.wishes.length > 0 && (
         <section className="result-section">
           <h2>It needs</h2>
@@ -111,7 +127,6 @@ export function Results(props: {
           <button className="result-link" onClick={props.onChat} type="button">Can you help? Say so in the chat →</button>
         </section>
       )}
-
     </div>
   )
 }

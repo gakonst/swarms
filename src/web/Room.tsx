@@ -1,13 +1,13 @@
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Config, Detail, Me, Member, Room as RoomState, Said } from '../shared/Api.ts'
-import { seeded } from './boot.ts'
 import * as Answer from '../shared/Answer.ts'
 import { maxNote } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Api from './api.ts'
-import { percent, usd, minute } from './format.ts'
-import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
+import { seeded } from './boot.ts'
 import { code } from './Contribute.tsx'
+import { day, minute, usd } from './format.ts'
+import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
 import { gate as gated, seated, useRoster } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
@@ -15,18 +15,41 @@ import * as Wire from './wire.ts'
 
 const roomMs = { closed: 15_000, open: 60_000 }
 
+const kept = new Map<string, { members: readonly Member[]; messages: readonly Said[] }>()
+
 export function tint(address: string) {
   let value = 0
   for (const char of address.toLowerCase()) value = (value * 31 + char.charCodeAt(0)) >>> 0
   return `hsl(${value % 360} 38% 36%)`
 }
 
-function arrived(text: string) {
-  return /^(@[\w-]+|0x[0-9a-f]{4}…[0-9a-f]{4}) (backed|pledged|sent|set a budget|funded|put|moved|steered|stopped)\b/.test(text) || /^New artifact:/.test(text)
+export function Avatar(props: { address: string; handle: string; size?: 'small' }) {
+  return (
+    <span aria-hidden className="avatar" data-size={props.size} style={{ background: tint(props.address) }}>
+      {props.handle.startsWith('0x') ? '·' : props.handle.charAt(0).toUpperCase()}
+    </span>
+  )
 }
 
-function plain(text: string) {
-  return text.replace(/(\d[\d,]*(?:\.\d+)?) (?:MACH|OUSD|USDC\.e|pathUSD|USDT0)\b/g, (_, amount: string) => `$${amount}`).replace(/^New artifact: /, 'New result: ')
+function backing(text: string) {
+  return /^(@[\w-]+|0x[0-9a-f]{4}…[0-9a-f]{4}) (backed|pledged|sent|funded|put)\b/.test(text)
+}
+
+function friendly(text: string) {
+  const line = dollars(text).replace(/\.$/, '')
+  const behind = /^(\S+) (?:pledged|sent|put|put the) (\$[\d.,]+)(?: [A-Za-z.]+)?(?: they sent)? behind "(.+)"$/.exec(line)
+  if (behind) return `${behind[1]} backed "${behind[3]}" with ${behind[2]}`
+  const sent = /^(\S+) (?:pledged|sent|funded it with) (\$[\d.,]+)$/.exec(line)
+  if (sent) return `${sent[1]} backed it with ${sent[2]}`
+  return line
+}
+
+function dollars(text: string) {
+  return Answer.amounts(text.replace(/(\d[\d,]*(?:\.\d+)?) (?:MACH|OUSD|USDC\.e|pathUSD|USDT0)\b/g, (_, amount: string) => `$${amount}`))
+}
+
+function noted(text: string) {
+  return /"([^"]{3,})"/.exec(text)?.[1]
 }
 
 function merge(list: readonly Said[], more: readonly Said[]) {
@@ -36,13 +59,33 @@ function merge(list: readonly Said[], more: readonly Said[]) {
   return [...byId.values()].sort((a, b) => a.id - b.id)
 }
 
+type Row =
+  | { at: number; key: string; kind: 'day'; label: string }
+  | { at: number; key: string; kind: 'ai'; artifact: Said['artifact']; text: string }
+  | { at: number; key: string; kind: 'backed'; note: string | undefined; text: string }
+  | { at: number; first: boolean; item: Said; key: string; kind: 'said'; last: boolean }
 
-export function Avatar(props: { address: string; handle: string; size?: 'small' }) {
-  return (
-    <span aria-hidden className="avatar" data-size={props.size} style={{ background: tint(props.address) }}>
-      {props.handle.startsWith('0x') ? '·' : props.handle.charAt(0).toUpperCase()}
-    </span>
-  )
+function rows(messages: readonly Said[], now: number): Row[] {
+  const shown = messages.filter((item) => item.author || item.artifact || item.text.startsWith('Update: ') || backing(item.text))
+  const out: Row[] = []
+  let label = ''
+  shown.forEach((item, index) => {
+    const today = day(item.at, now)
+    if (today !== label) {
+      label = today
+      out.push({ at: item.at, key: `d${item.id}`, kind: 'day', label })
+    }
+    if (item.artifact || !item.author) {
+      if (item.artifact || item.text.startsWith('Update: ')) out.push({ artifact: item.artifact, at: item.at, key: `m${item.id}`, kind: 'ai', text: item.artifact ? item.text.replace(/^New artifact: /, '') : item.text.slice(8) })
+      else out.push({ at: item.at, key: `m${item.id}`, kind: 'backed', note: noted(item.text), text: friendly(item.text) })
+      return
+    }
+    const previous = shown[index - 1]
+    const next = shown[index + 1]
+    const joined = (a: Said | undefined, b: Said | undefined) => !!a && !!b && a.author === b.author && b.at - a.at < 5 * 60_000 && day(a.at, now) === day(b.at, now) && !a.steer && !b.steer
+    out.push({ at: item.at, first: !joined(previous, item), item, key: `m${item.id}`, kind: 'said', last: !joined(item, next) })
+  })
+  return out
 }
 
 function Words(props: { handles: ReadonlySet<string>; me: ReadonlySet<string>; text: string }) {
@@ -53,20 +96,11 @@ function Words(props: { handles: ReadonlySet<string>; me: ReadonlySet<string>; t
         if (!piece.startsWith('@') || (name !== 'swarm' && !props.handles.has(name))) return piece
         return (
           <span className="mention" data-me={props.me.has(name)} data-swarm={name === 'swarm'} key={index}>
-            {piece}
+            {name === 'swarm' ? '@AI' : piece}
           </span>
         )
       })}
     </>
-  )
-}
-
-function Backed(props: { onBack: ((note: string) => void) | undefined; steer: NonNullable<Said['steer']> }) {
-  const steer = props.steer
-  return (
-    <button className="said-backed" disabled={!props.onBack} onClick={() => props.onBack?.(steer.note)} type="button" title={`${usd(steer.weight)} in all behind this idea, ${percent(steer.share)} of the money. ${steer.live ? 'Reached the agent at once.' : 'Read when it resumes.'}`}>
-      {usd(steer.amount)}{props.onBack && <b aria-hidden="true">+</b>}
-    </button>
   )
 }
 
@@ -75,8 +109,7 @@ export const Room = memo(function Room(props: {
   onArtifact: (slug: string) => void
   onBack: (note: string) => void
   onMessages?: (messages: readonly Said[], me: Me | null, members: readonly Member[], online: readonly string[], watching: number) => void
-  onSteered: () => void
-  onTranscript?: () => void
+  onResults?: () => void
   onUnread: (count: number) => void
   swarm: Detail
   visible: boolean
@@ -84,7 +117,7 @@ export const Room = memo(function Room(props: {
   const id = props.swarm.id
   const wallet = useWallet()
   const token = wallet.session?.token
-  const [seed] = useState(() => seeded<RoomState>(`room:${props.swarm.id}`))
+  const [seed] = useState(() => kept.get(id) ?? seeded<RoomState>(`room:${id}`))
   const [messages, setMessages] = useState<readonly Said[]>(() => seed?.messages ?? [])
   const [members, setMembers] = useState<readonly Member[]>(() => seed?.members ?? [])
   const [me, setMe] = useState<Me | null>(null)
@@ -94,8 +127,10 @@ export const Room = memo(function Room(props: {
   const [online, setOnline] = useState<readonly string[]>([])
   const [watching, setWatching] = useState(0)
   const [typing, setTyping] = useState<Readonly<Record<string, number>>>({})
-  const now = useNow(1000, Object.values(typing).some((until) => until > Date.now()))
+  const ticking = Object.values(typing).some((until) => until > Date.now())
+  const now = useNow(ticking ? 1000 : 60_000)
   const [text, setText] = useState('')
+  const [ai, setAi] = useState(false)
   const [caret, setCaret] = useState(0)
   const [pick, setPick] = useState(0)
   const [closed, setClosed] = useState(false)
@@ -103,7 +138,7 @@ export const Room = memo(function Room(props: {
   const [signing, setSigning] = useState(false)
   const [problem, setProblem] = useState<{ short?: boolean; text: string }>()
   const [fresh, setFresh] = useState(0)
-  const list = useRef<HTMLOListElement>(null)
+  const list = useRef<HTMLDivElement>(null)
   const area = useRef<HTMLTextAreaElement>(null)
   const stick = useRef(true)
   const last = useRef(0)
@@ -131,7 +166,8 @@ export const Room = memo(function Room(props: {
 
   useEffect(() => {
     last.current = messages.at(-1)?.id ?? 0
-  }, [messages])
+    kept.set(id, { members, messages })
+  }, [id, members, messages])
 
   const [connected, setConnected] = useState(() => Wire.connected(id))
   const wired = Wire.useWire(id, 'room', (signal) => {
@@ -198,6 +234,11 @@ export const Room = memo(function Room(props: {
     else setFresh((count) => count + 1)
   }, [newest])
 
+  useLayoutEffect(() => {
+    const element = list.current
+    if (element && props.visible && stick.current) element.scrollTop = element.scrollHeight
+  }, [props.visible])
+
   useEffect(() => {
     const element = list.current
     if (!element) return
@@ -207,6 +248,13 @@ export const Room = memo(function Room(props: {
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
+
+  useLayoutEffect(() => {
+    const element = area.current
+    if (!element) return
+    element.style.height = 'auto'
+    element.style.height = `${Math.min(element.scrollHeight, 132)}px`
+  }, [text])
 
   const called = new Map(members.map((member) => [member.address, member.handle]))
   const handleOf = (address: string) => called.get(address as `0x${string}`) ?? Mention.short(address)
@@ -221,53 +269,52 @@ export const Room = memo(function Room(props: {
   const options = query
     ? [
         { handle: 'swarm', hint: 'tell the AI what to try' },
-        ...members.filter((member) => !member.handle.startsWith('0x')).map((member) => ({ handle: member.handle, hint: member.address === me?.address ? 'you' : `${usd(member.backed)} in` })),
+        ...members.filter((member) => !member.handle.startsWith('0x') && member.address !== me?.address).map((member) => ({ handle: member.handle, hint: '' })),
       ]
         .filter((option) => option.handle.startsWith((query[2] ?? '').toLowerCase()))
         .slice(0, 6)
     : []
-  const steering = Mention.steers(text)
-  const idea = Mention.idea(text)
+  const steering = ai || Mention.steers(text)
+  const idea = ai ? text.replace(/\s+/g, ' ').trim() : Mention.idea(text)
   const typers = Object.entries(typing).filter(([address, until]) => until > now && address !== me?.address).map(([address]) => handleOf(address))
+  const here = members.filter((member) => online.includes(member.address)).slice(0, 4)
+
+  const focus = (at: number) =>
+    requestAnimationFrame(() => {
+      area.current?.focus()
+      area.current?.setSelectionRange(at, at)
+    })
 
   const complete = (handle: string) => {
     if (!query) return
     const start = caret - (query[2]?.length ?? 0) - 1
+    if (handle === 'swarm') {
+      const next = `${text.slice(0, start)}${text.slice(caret)}`.trimStart()
+      setText(next)
+      setAi(true)
+      setCaret(start)
+      setPick(0)
+      return focus(Math.min(start, next.length))
+    }
     const next = `${text.slice(0, start)}@${handle} ${text.slice(caret)}`
     const at = start + handle.length + 2
     setText(next)
     setCaret(at)
     setPick(0)
-    requestAnimationFrame(() => {
-      area.current?.focus()
-      area.current?.setSelectionRange(at, at)
-    })
+    focus(at)
   }
 
-  const mention = (handle: string) => {
-    if (!mine) return
-    const next = `${text}${text && !text.endsWith(' ') ? ' ' : ''}@${handle} `
-    setText(next)
-    setCaret(next.length)
-    requestAnimationFrame(() => {
-      area.current?.focus()
-      area.current?.setSelectionRange(next.length, next.length)
-    })
-  }
-
-  const post = async (body: string, amount?: string) => {
+  const post = async (body: string) => {
     setSending(true)
     setProblem(undefined)
     try {
-      const posted = await Api.say(id, { text: body, ...(amount ? { steer: amount } : {}) })
+      const posted = await Api.say(id, { text: body })
       setMe(posted.me)
       setMessages((previous) => merge(previous, [posted.message]))
       stick.current = true
       setFresh(0)
-      requestAnimationFrame(() => list.current?.scrollTo({ top: list.current.scrollHeight }))
       setText('')
       setCaret(0)
-      if (amount) props.onSteered()
     } catch (error) {
       if (code(error) === 'username_required') void Wallet.identify()
       setProblem({ short: code(error) === 'insufficient_balance', text: reason(error) })
@@ -279,13 +326,14 @@ export const Room = memo(function Room(props: {
   const submit = () => {
     const body = text.trim()
     if (!body || sending || !mine) return
-    if (Mention.steers(body)) {
-      if (team && !seat) return setProblem({ text: "Only this swarm's team steers it. Ask one of its admins here to add you." })
-      if (idea.length < 3) return setProblem({ text: 'Say what the swarm should do after @swarm.' })
-      if (idea.length > maxNote) return setProblem({ text: `Keep the idea to ${maxNote} characters; it becomes a note the agent keeps reading.` })
+    if (steering) {
+      if (team && !seat) return setProblem({ text: 'Only its team can tell the AI what to do.' })
+      if (idea.length < 3) return setProblem({ text: 'Say what the AI should try.' })
+      if (idea.length > maxNote) return setProblem({ text: `Keep it under ${maxNote} characters.` })
       setProblem(undefined)
       setText('')
       setCaret(0)
+      setAi(false)
       return props.onBack(idea)
     }
     void post(body)
@@ -308,7 +356,11 @@ export const Room = memo(function Room(props: {
         return
       }
     }
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === 'Backspace' && ai && !text) {
+      setAi(false)
+      return
+    }
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !matchMedia('(pointer: coarse)').matches) {
       event.preventDefault()
       submit()
     }
@@ -341,37 +393,96 @@ export const Room = memo(function Room(props: {
     })
   }
 
-  let gate: ReactNode = null
-  if (door === 'checking') gate = <div aria-busy="true" className="room-gate room-gate-wait" />
+  const listed = rows(messages, now)
+
+  let foot: ReactNode
+  if (door === 'checking') foot = <div aria-busy="true" className="chat-bar chat-bar-wait" />
   else if (door === 'signed-out')
-    gate = (
-      <div className="room-gate room-gate-one">
-        <div className="room-cta">
-          <button className="room-cta-main" disabled={!props.config || signing} onClick={() => void signIn()} type="button">{signing ? 'Signing in…' : 'Sign in to chat'}</button>
-          <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Back it</button>
-        </div>
-      </div>
+    foot = (
+      <button className="chat-gate" disabled={!props.config || signing} onClick={() => void signIn()} type="button">
+        {signing ? 'Signing in…' : 'Sign in to chat'}
+      </button>
     )
-  else if (door === 'unnamed')
-    gate = (
-      <div className="room-gate room-gate-one">
-        <Username why="Pick a username to chat." />
-      </div>
-    )
+  else if (door === 'unnamed') foot = <Username why="Pick a name to chat." />
   else if (door.at === 'not-member')
-    gate = (
-      <div className="room-gate room-gate-one">
-        <div className="room-cta">
-          <button className="room-cta-main" onClick={() => props.onBack('')} type="button">Back it to join the chat</button>
-        </div>
+    foot = (
+      <button className="chat-gate" onClick={() => props.onBack('')} type="button">
+        Back it to chat
+      </button>
+    )
+  else
+    foot = (
+      <div className="chat-bar" data-ai={steering}>
+        {options.length > 0 && (
+          <ol className="chat-mentions" role="listbox">
+            {options.map((option, index) => (
+              <li key={option.handle}>
+                <button
+                  aria-selected={index === pick}
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    complete(option.handle)
+                  }}
+                  role="option"
+                  type="button"
+                >
+                  <b data-swarm={option.handle === 'swarm'}>{option.handle === 'swarm' ? '✦ AI' : `@${option.handle}`}</b>
+                  {option.hint && <span>{option.hint}</span>}
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+        <button
+          aria-label={ai ? 'Talk to people' : 'Tell the AI'}
+          aria-pressed={ai}
+          className="chat-ai"
+          onClick={() => {
+            setAi(!ai)
+            area.current?.focus()
+          }}
+          title={ai ? 'Talk to people' : 'Tell the AI what to try'}
+          type="button"
+        >
+          ✦
+        </button>
+        <textarea
+          aria-label={steering ? 'What should the AI try?' : 'Message'}
+          enterKeyHint="send"
+          maxLength={Mention.maxText}
+          onChange={(event) => {
+            setText(event.target.value)
+            setCaret(event.target.selectionStart)
+            setPick(0)
+            setClosed(false)
+            if (Date.now() - typed.current > 3000) {
+              typed.current = Date.now()
+              Wire.line(id)?.typing()
+            }
+          }}
+          onKeyDown={keys}
+          onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+          placeholder={ai ? 'What should the AI try?' : 'Message'}
+          ref={area}
+          rows={1}
+          value={text}
+        />
+        <button aria-label={steering ? 'Back it' : 'Send'} className="chat-send" data-ai={steering} disabled={!text.trim() || sending} onClick={submit} type="button">
+          {steering ? 'Back it' : '↑'}
+        </button>
       </div>
     )
 
   return (
-    <section aria-label="Chat" className="room">
-      <ol
+    <section aria-label="Chat" className="chat">
+      <header className="chat-here">
+        {here.length > 0 && <span className="chat-faces">{here.map((member) => <Avatar address={member.address} handle={member.handle} key={member.address} size="small" />)}</span>}
+        <span>{props.swarm.contributors} backer{props.swarm.contributors === 1 ? '' : 's'}</span>
+        {watching > 0 && <span className="chat-live"><i />{watching} here</span>}
+      </header>
+      <div
         aria-live="polite"
-        className="room-list"
+        className="chat-list"
         onScroll={(event) => {
           const element = event.currentTarget
           stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60
@@ -379,151 +490,87 @@ export const Room = memo(function Room(props: {
         }}
         ref={list}
       >
-        {earlier && (
-          <li className="room-earlier">
-            <button className="btn btn-minimal" onClick={() => void older()} type="button">Earlier messages</button>
-          </li>
-        )}
-        {!loaded && <li className="room-empty">{failed ? `Could not load the chat. ${failed}` : 'Opening the chat…'}</li>}
-        {loaded && !messages.some((item) => item.artifact || item.author || item.text.startsWith('Update: ') || arrived(item.text)) && <li className="room-empty">Quiet so far. Say hi.</li>}
-        {messages.map((item, index) => {
-          const author = item.author
-          const shown = item.artifact
-          if (shown)
+        {earlier && <button className="chat-earlier" onClick={() => void older()} type="button">Earlier messages</button>}
+        {!loaded && <p className="chat-empty">{failed ? `Couldn't load the chat. ${failed}` : 'Loading…'}</p>}
+        {loaded && !listed.length && <p className="chat-empty">No messages yet. Say hi.</p>}
+        {listed.map((row) => {
+          if (row.kind === 'day') return <p className="chat-day" key={row.key}><span>{row.label}</span></p>
+          if (row.kind === 'backed')
             return (
-              <li className="said said-system" data-artifact="true" key={item.id}>
-                <button className="said-link" onClick={() => props.onArtifact(shown.slug)} type="button">
-                  <Words handles={handles} me={myNames} text={plain(item.text)} /> <span aria-hidden="true">→</span>
-                  <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
-                </button>
-              </li>
-            )
-          if (!author) {
-            const update = item.text.startsWith('Update: ')
-            if (update)
-              return (
-                <li className="said said-update" key={item.id}>
-                  <button disabled={!props.onTranscript} onClick={props.onTranscript} type="button">
-                    <span className="said-update-tag">Update</span>
-                    <span className="said-update-text">{Answer.excerpt(item.text.slice(8), 160)}</span>
-                    <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
-                  </button>
-                </li>
-              )
-            if (!arrived(item.text)) return null
-            return (
-              <li className="said said-system" key={item.id}>
+              <div className="chat-event" key={row.key}>
                 <p>
-                  <Words handles={handles} me={myNames} text={plain(Answer.amounts(item.text))} />
-                  <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
+                  <span aria-hidden="true">♥</span> <Words handles={handles} me={myNames} text={row.text} />
                 </p>
-              </li>
+                {row.note && <button onClick={() => props.onBack(row.note ?? '')} type="button">+ Back this</button>}
+              </div>
             )
-          }
-          const previous = messages[index - 1]
-          const follow = previous?.author === author && item.at - previous.at < 5 * 60_000 && !item.steer && !previous.steer
-          const handle = handleOf(author)
-          return (
-            <li className="said" data-follow={follow} data-me={author === me?.address} data-mentioned={!!me && item.mentions.includes(me.address)} key={item.id}>
-              {follow ? <span className="said-gap" /> : <Avatar address={author} handle={handle} />}
-              <div className="said-body">
-                {!follow && (
-                  <p className="said-head">
-                    <button className="said-who" disabled={!mine} onClick={() => mention(handle)} style={{ color: tint(author) }} type="button">
-                      {Mention.at(handle)}
+          if (row.kind === 'ai')
+            return (
+              <div className="msg msg-ai" data-first="true" data-last="true" key={row.key}>
+                <span aria-hidden="true" className="avatar avatar-ai">✦</span>
+                <div className="msg-col">
+                  <p className="msg-who"><b>AI</b><time dateTime={new Date(row.at).toISOString()}>{minute(row.at)}</time></p>
+                  {row.artifact ? (
+                    <button className="msg-card" onClick={() => row.artifact && props.onArtifact(row.artifact.slug)} type="button">
+                      <small>New result</small>
+                      <b>{row.artifact.title}</b>
+                      <span>Open →</span>
                     </button>
-                    {author === me?.address && <span className="tag">you</span>}
-                    <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
-                    {item.steer && <Backed onBack={props.onBack} steer={item.steer} />}
+                  ) : (
+                    <button className="msg-bubble msg-update" disabled={!props.onResults} onClick={props.onResults} type="button">
+                      <span>{Answer.excerpt(row.text, 320)}</span>
+                      <small>See results →</small>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          const item = row.item
+          const author = item.author ?? ''
+          const handle = handleOf(author)
+          const self = author === me?.address
+          return (
+            <div className="msg" data-first={row.first} data-last={row.last} data-me={self} data-mentioned={!!me && item.mentions.includes(me.address)} key={row.key}>
+              {!self && (row.last ? <Avatar address={author} handle={handle} /> : <span className="avatar-gap" />)}
+              <div className="msg-col">
+                {row.first && !self && <p className="msg-who"><b style={{ color: tint(author) }}>{handle.startsWith('0x') ? Mention.short(author) : handle}</b><time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time></p>}
+                <p className="msg-bubble">
+                  <Words handles={handles} me={myNames} text={item.text} />
+                </p>
+                {item.steer && (
+                  <p className="msg-steer">
+                    <span>✦ Told the AI · {usd(item.steer.amount)}</span>
+                    <button onClick={() => props.onBack(item.steer?.note ?? '')} type="button">+ Back this</button>
                   </p>
                 )}
-                <p className="said-text">
-                  <Words handles={handles} me={myNames} text={item.text} />
-                  {follow && item.steer && <> <Backed onBack={props.onBack} steer={item.steer} /></>}
-                </p>
+                {self && row.last && <time className="msg-time" dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>}
               </div>
-            </li>
+            </div>
           )
         })}
-        {fresh > 0 && (
-          <li className="room-jump">
-            <button
-              className="btn btn-medium"
-              onClick={() => {
-                list.current?.scrollTo({ behavior: 'smooth', top: list.current.scrollHeight })
-                stick.current = true
-                setFresh(0)
-              }}
-              type="button"
-            >
-              New messages ↓
-            </button>
-          </li>
-        )}
-      </ol>
-      <footer className="room-foot">
-        <p className="room-typing">{typers.length ? `${typers.slice(0, 2).map(Mention.at).join(', ')} ${typers.length === 1 ? 'is' : 'are'} typing…` : ''}</p>
-        {gate}
-        {mine && (
-          <div className="composer">
-            {options.length > 0 && (
-              <ol className="mentions" role="listbox">
-                {options.map((option, index) => (
-                  <li key={option.handle}>
-                    <button
-                      aria-selected={index === pick}
-                      onMouseDown={(event) => {
-                        event.preventDefault()
-                        complete(option.handle)
-                      }}
-                      role="option"
-                      type="button"
-                    >
-                      <b data-swarm={option.handle === 'swarm'}>@{option.handle}</b>
-                      <span>{option.hint}</span>
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
-            <textarea
-              aria-label="Message"
-              maxLength={Mention.maxText}
-              onChange={(event) => {
-                setText(event.target.value)
-                setCaret(event.target.selectionStart)
-                setPick(0)
-                setClosed(false)
-                if (Date.now() - typed.current > 3000) {
-                  typed.current = Date.now()
-                  Wire.line(id)?.typing()
-                }
-              }}
-              onKeyDown={keys}
-              onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-              placeholder="Say something… (@swarm to tell the AI)"
-              ref={area}
-              rows={2}
-              value={text}
-            />
-            <button aria-label="Send" className="room-send" disabled={!text.trim() || sending} onClick={submit} type="button">
-              {steering ? 'Steer…' : 'Send'}
-            </button>
-          </div>
-        )}
+      </div>
+      {fresh > 0 && (
+        <button
+          className="chat-jump"
+          onClick={() => {
+            list.current?.scrollTo({ behavior: 'smooth', top: list.current.scrollHeight })
+            stick.current = true
+            setFresh(0)
+          }}
+          type="button"
+        >
+          New messages ↓
+        </button>
+      )}
+      <footer className="chat-foot">
+        <p className="chat-typing" data-on={typers.length > 0}>{typers.length ? <><i /><i /><i /> {typers.slice(0, 2).join(', ')} {typers.length === 1 ? 'is' : 'are'} typing</> : null}</p>
         {problem && (
-          <p className="error room-error" role="alert">
+          <p className="chat-error" role="alert">
             {problem.text}
-            {problem.short && (
-              <>
-                {' '}
-                <button className="btn btn-minimal" onClick={() => props.onBack(idea)} type="button">
-                  Back it →
-                </button>
-              </>
-            )}
+            {problem.short && <button onClick={() => props.onBack(idea)} type="button">Back it →</button>}
           </p>
         )}
+        {foot}
       </footer>
     </section>
   )
