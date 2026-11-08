@@ -397,17 +397,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return listed.ok ? listed.value.hands : []
   }
 
-  async instruct() {
-    const id = this.kv.get<string>('id')
-    const agent = this.agent()
-    const state = this.run().state
-    if (!id || !agent || agent.instructed || this.stepping || state === 'starting' || state === 'working') return { agent: agent?.id ?? null, instructed: !!agent?.instructed, state }
-    const row = await this.found(id)
-    if (!row) return { agent: agent.id, instructed: false, state }
-    const given = await Turns.instructed(this, row, agent)
-    return { agent: agent.id, instructed: !!given.instructed, state }
-  }
-
   async heal() {
     const now = Date.now()
     const id = this.kv.get<string>('id')

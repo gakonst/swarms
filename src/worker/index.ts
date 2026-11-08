@@ -3,9 +3,11 @@ import * as Artifacts from './Artifacts.ts'
 import * as Code from './Code.ts'
 import * as Edge from './Edge.ts'
 import * as Feedback from './Feedback.ts'
+import * as Gateway from './Gateway.ts'
 import * as Lobby from './Lobby.ts'
 import * as Operations from './Operations.ts'
 import * as Page from './Page.ts'
+import * as Persona from './Persona.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
 import * as Rest from './Rest.ts'
@@ -256,19 +258,34 @@ app.get('*', (c) => {
   return Page.lost(c.req.raw, c.env)
 })
 
+const orphaned = [
+  ['3e740359642d', 'agt_e5343549610f1db87b16fc8244bab8e2'],
+  ['c77fde6b935c', 'agt_c99d0cfd644a238e5fbbf361a9f7e1fe'],
+] as const
+
+const throwaway = [
+  ['30ae5277ed14', 'agt_181c4068e09cb8f0ccc9416760ffa5f2'],
+  ['97370f4e75d0', 'agt_b88c7dd7f2c4e1d3ef7f8d33890e4879'],
+] as const
+
 async function scheduled(_controller: ScheduledController, env: Cloudflare.Env) {
-  const { results } = await env.DB.prepare('SELECT id FROM swarms').all<{ id: string }>()
-  const swept = await Promise.all(
-    results.map(async (row) => {
-      try {
-        return { id: row.id, ...(await env.SWARMS.get(env.SWARMS.idFromName(row.id)).instruct()) }
-      } catch (error) {
-        return { agent: null, error: String(error), id: row.id, instructed: false, state: 'unknown' }
-      }
+  const instructions = Persona.render(null)
+  const instructed = await Promise.all(
+    orphaned.map(async ([swarm, agent]) => {
+      const patched = await Gateway.instruct(env, swarm, agent, instructions)
+      return `${swarm}:${patched.ok ? 200 : patched.status}`
     }),
   )
-  const left = swept.filter((swarm) => swarm.agent && !swarm.instructed)
-  console.log(JSON.stringify({ instruct: swept.length, left: left.map((swarm) => `${swarm.id}:${swarm.state}`), withoutAgent: swept.filter((swarm) => !swarm.agent).length }))
+  const deleted = await Promise.all(
+    throwaway.map(async ([swarm, agent]) => {
+      const response = await Gateway.call(env, `/v1/agents/${agent}`, {
+        headers: { authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY, 'gateway-app': Gateway.app(swarm) },
+        method: 'DELETE',
+      })
+      return `${swarm}:${response.status}`
+    }),
+  )
+  console.log(JSON.stringify({ deleted, instructed }))
 }
 
 export default { fetch: app.fetch, scheduled } satisfies ExportedHandler<Cloudflare.Env>
