@@ -585,6 +585,7 @@ button.said-backed:not(:disabled):hover { background:#2f5f37; }
 .say-own input { width:auto; min-width:calc(2ch + 8px); max-width:calc(10ch + 8px); padding:0 4px; border:0; outline:none; background:none; color:var(--black); font:inherit; field-sizing:content; }
 @supports not (field-sizing:content) { .say-own input { width:calc(6ch + 8px); } }
 .say-note { flex-shrink:0; margin-left:auto; font:11px var(--mono); color:var(--grey-600); white-space:nowrap; }
+@media (max-width:799px) { .say-note { display:-webkit-box; flex:0 1 auto; min-width:7ch; overflow:hidden; line-height:1.25; white-space:normal; text-align:right; -webkit-box-orient:vertical; -webkit-line-clamp:2; } }
 
 .presence { display:inline-flex; align-items:center; gap:6px; margin-left:8px; }
 .presence-faces { display:inline-flex; }
@@ -1073,3 +1074,18 @@ button.said-backed:not(:disabled):hover { background:#2f5f37; }
 .wallet-out:hover { background:#f2f5ec; }
 .wallet-out:focus-visible { outline:2px solid #3f7d4e; outline-offset:2px; }
 @media (max-width:799px) { .wallet-out { min-height:44px; } }
+@media (pointer:coarse) {
+  .tile-edit textarea,.say-own input,.steering-form input,.side-title select,.lane-move select { font-size:16px; }
+  .say-side,.said-who,.lane-link,.lane-stop,.lane-result summary,.code-bar .btn-minimal,.code-clone .code-copy,.repo-card-open,.wordmark { position:relative; }
+  .say-side::after,.said-who::after,.lane-link::after,.lane-stop::after,.lane-result summary::after,.code-bar .btn-minimal::after,.code-clone .code-copy::after,.repo-card-open::after,.wordmark::after { content:''; position:absolute; inset:-11px -6px; }
+  .side-box textarea { margin-block:-8px; padding-block:8px; }
+  .lane-children .lane-link { margin-block:-9px; padding-block:9px; }
+  .steering-choice button { height:34px; }
+}
+@media (max-width:640px) {
+  .docs-table,.docs-table tbody { display:block; }
+  .docs-table tr { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:baseline; gap:4px 10px; padding:10px 0; border-bottom:1px solid var(--grey-200); }
+  .docs-table td { padding:0; border:0; }
+  .docs-table td:last-child { grid-column:1 / -1; }
+  .docs-routes td:nth-child(2) { white-space:normal; }
+}
