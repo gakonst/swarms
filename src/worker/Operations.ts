@@ -1487,7 +1487,7 @@ export async function machines(env: Cloudflare.Env, input: Input<'swarm'>): Prom
   if (cached && Date.now() - cached.at < lendingMs) return Problem.ok({ machines: cached.machines })
   if (!(await Store.exists(env, parsed.value.swarm))) return missing()
   const [folded, lent] = await Promise.all([stub(env, parsed.value.swarm).fleet(), hands(env, input)])
-  const machines = Fleet.lend(folded as unknown as Fleet.Machine[], lent.ok ? lent.value.hands : [])
+  const machines = Fleet.lend(folded as unknown as Fleet.Machine[], lent.ok ? lent.value.hands : []).map((machine) => ({ ...machine, runs: machine.runs ?? { count: 0, failed: 0, last: null } }))
   fleets.set(parsed.value.swarm, { at: Date.now(), machines })
   return Problem.ok({ machines })
 }

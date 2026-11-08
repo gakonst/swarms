@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { Contributed } from '../shared/Api.ts'
 import * as Feedback from './Feedback.ts'
+import * as Machines from './Machines.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
@@ -94,6 +95,26 @@ app.post('/v1/swarms/:id/hands', async (c) =>
 app.get('/v1/problems', async (c) => Problem.respond(await Operations.problems(c.env)))
 
 app.get('/v1/swarms/:id/machines', async (c) => Problem.respond(await Operations.machines(c.env, { swarm: c.req.param('id') })))
+
+app.get('/v1/swarms/:id/machines/export', async (c) => stream(await Machines.exported(c.env, { swarm: c.req.param('id') })))
+
+app.get('/v1/swarms/:id/machines/:machine/export', async (c) => stream(await Machines.exported(c.env, { machine: c.req.param('machine'), swarm: c.req.param('id') })))
+
+app.get('/v1/swarms/:id/machines/:machine/commands', async (c) =>
+  Problem.respond(await Machines.commands(c.env, { ...c.req.query(), machine: c.req.param('machine'), swarm: c.req.param('id') })),
+)
+
+app.get('/v1/swarms/:id/machines/:machine/commands/:seq', async (c) =>
+  Problem.respond(await Machines.command(c.env, { machine: c.req.param('machine'), seq: c.req.param('seq'), swarm: c.req.param('id') })),
+)
+
+app.get('/v1/swarms/:id/machines/:machine/commands/:seq/log', async (c) =>
+  Problem.respond(await Machines.job(c.env, { machine: c.req.param('machine'), seq: c.req.param('seq'), swarm: c.req.param('id') })),
+)
+
+app.get('/v1/swarms/:id/machines/:machine/logs', async (c) =>
+  Problem.respond(await Machines.logs(c.env, { ...c.req.query(), machine: c.req.param('machine'), swarm: c.req.param('id') })),
+)
 
 app.get('/v1/swarms/:id/backers', async (c) => Problem.respond(await Operations.backers(c.env, { swarm: c.req.param('id') })))
 

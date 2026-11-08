@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import * as Feedback from './Feedback.ts'
+import * as Machines from './Machines.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Sessions from './Sessions.ts'
@@ -45,6 +46,16 @@ function parameter(name: string, where: 'path' | 'query', schema: Json, descript
 }
 
 const swarm = parameter('id', 'path', string, 'The swarm id, as in /s/<id>.')
+
+const machine = parameter('machine', 'path', string, "A machine's name, as /machines lists it.")
+
+function queried(schema: z.ZodObject, names: string[]) {
+  const shape = input(schema) as { properties?: Record<string, Json> }
+  return names.map((name) => {
+    const property = shape.properties?.[name] ?? {}
+    return parameter(name, 'query', property, String(property['description'] ?? ''))
+  })
+}
 
 const usd = { description: 'A USD stablecoin amount with 6 decimals, such as "0.250000".', type: 'string' }
 
@@ -480,7 +491,61 @@ export function document(origin: string) {
         get: { description: 'The curated idea bank: every problem with its brief, whether it is open, and the swarm working on it if any.', operationId: 'listProblems', responses: { ...ok({ type: 'object' }, 'The problems.') }, summary: 'Idea bank' },
       },
       '/v1/swarms/{id}/machines': {
-        get: { description: "Every machine the swarm used: sandboxes with their settings, browsers and lent hands with price and payout, each with its state and the commands that ran on it with their output.", operationId: 'listMachines', parameters: [swarm], responses: { ...ok({ type: 'object' }, 'The machines.'), ...failures(404) }, summary: 'Machines' },
+        get: { description: "Every machine the swarm used over its whole life: sandboxes with their settings and sandbox ids, browsers and lent hands with price and payout, each with its state and how many commands ran on it (runs). The commands are listed by /machines/{machine}/commands.", operationId: 'listMachines', parameters: [swarm], responses: { ...ok({ type: 'object' }, 'The machines.'), ...failures(404) }, summary: 'Machines' },
+      },
+      '/v1/swarms/{id}/machines/{machine}/commands': {
+        get: {
+          description: "Every command that ran on one machine over the swarm's whole life, without their outputs: seq, at, who, text, exit, failed, ms (duration, when known), clipped (the feed kept only the start of its output) and log (a compute_spawn's log path).",
+          operationId: 'listMachineCommands',
+          parameters: [swarm, machine, ...queried(Machines.schema.commands, ['cursor', 'limit', 'order'])],
+          responses: { ...ok(object({ commands: { items: { type: 'object' }, type: 'array' }, machine: string, next: nullable(integer), order: string, total: integer }), 'A page of commands; next is the cursor of the page after it.'), ...failures(400, 404) },
+          summary: 'Machine commands',
+        },
+      },
+      '/v1/swarms/{id}/machines/{machine}/commands/{seq}': {
+        get: {
+          description: "One command with its whole output: the gateway's copy of the tool result when the agent's session still has it (source gateway), else the feed's first 2,000 characters (source feed, truncated true when cut).",
+          operationId: 'getMachineCommand',
+          parameters: [swarm, machine, parameter('seq', 'path', integer, "The command's seq.")],
+          responses: { ...ok({ type: 'object' }, 'The command and its output.'), ...failures(400, 404) },
+          summary: 'Machine command',
+        },
+      },
+      '/v1/swarms/{id}/machines/{machine}/commands/{seq}/log': {
+        get: {
+          description: "The log of a job started with compute_spawn, read from the sandbox through the gateway's compute/logs while it runs and kept by Swarms; exit once it finished.",
+          operationId: 'getMachineJob',
+          parameters: [swarm, machine, parameter('seq', 'path', integer, 'The compute_spawn command\'s seq.')],
+          responses: { ...ok({ type: 'object' }, 'The job log.'), ...failures(400, 404) },
+          summary: 'Spawned job log',
+        },
+      },
+      '/v1/swarms/{id}/machines/{machine}/logs': {
+        get: {
+          description: "A sandbox's own log (system, stdout and stderr) from the gateway's compute/output, which keeps it up to 7 days after the sandbox ended; Swarms keeps what it fetched, asks again at most every 30 s while the sandbox may still log, and never once complete is true. Lines oldest first.",
+          operationId: 'getMachineLogs',
+          parameters: [swarm, machine, ...queried(Machines.schema.logs, ['before', 'limit', 'sandbox', 'stream'])],
+          responses: { ...ok({ type: 'object' }, 'Log lines.'), ...failures(400, 404) },
+          summary: 'Sandbox log',
+        },
+      },
+      '/v1/swarms/{id}/machines/export': {
+        get: {
+          description: 'Everything about every machine of the swarm as one NDJSON file: an export line, then for each machine its machine line, every command with its whole output, each sandbox\'s logs and log lines, and each spawned job\'s log, and an end line.',
+          operationId: 'exportMachines',
+          parameters: [swarm],
+          responses: { '200': { content: { 'application/x-ndjson': { schema: string } }, description: 'The NDJSON file.' }, ...failures(404) },
+          summary: 'Export machines',
+        },
+      },
+      '/v1/swarms/{id}/machines/{machine}/export': {
+        get: {
+          description: 'Everything about one machine as one NDJSON file, as /machines/export writes it.',
+          operationId: 'exportMachine',
+          parameters: [swarm, machine],
+          responses: { '200': { content: { 'application/x-ndjson': { schema: string } }, description: 'The NDJSON file.' }, ...failures(404) },
+          summary: 'Export a machine',
+        },
       },
       '/v1/swarms/{id}/backers': {
         get: { description: 'The ideas ranked by the money behind them, and every backer with what they put in and how.', operationId: 'listBackers', parameters: [swarm], responses: { ...ok({ type: 'object' }, 'Ideas and backers.'), ...failures(404) }, summary: 'Ideas and backers' },

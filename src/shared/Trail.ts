@@ -1,6 +1,6 @@
 import type { Entry, Kind } from './Api.ts'
 
-export type Step = { detail: string | null; kind: Kind; text: string }
+export type Step = { detail: string | null; kind: Kind; ms?: number; text: string }
 
 export type Buffers = { add(who: string | null, text: string): void; take(who: string | null): string }
 
@@ -83,11 +83,12 @@ export function step(type: string | undefined, payload: Record<string, unknown>)
   if (type === 'tool.result') {
     const name = tool(payload)
     const text = output(payload['result']).trim()
-    if (payload['status'] !== 'completed') return { detail: clip(text || JSON.stringify(payload['result'] ?? ''), 2000), kind: 'error', text: `${name} failed` }
+    const timed = typeof payload['duration_ns'] === 'number' ? { ms: Math.round(payload['duration_ns'] / 1e6) } : {}
+    if (payload['status'] !== 'completed') return { detail: clip(text || JSON.stringify(payload['result'] ?? ''), 2000), kind: 'error', text: `${name} failed`, ...timed }
     if (quiet.has(name) || !text) return undefined
     const shown = result(name, text)
     if (!shown.body) return undefined
-    return { detail: clip(shown.body, 2000), kind: 'output', text: shown.text }
+    return { detail: clip(shown.body, 2000), kind: 'output', text: shown.text, ...timed }
   }
   if (type === 'assistant.message') return { detail: null, kind: 'message', text: clip(String(payload['text'] ?? ''), 4000) }
   if (type === 'run.failed') return { detail: clip(JSON.stringify(payload), 2000), kind: 'error', text: 'The run failed.' }

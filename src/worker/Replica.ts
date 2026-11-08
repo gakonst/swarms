@@ -6,7 +6,7 @@ const primaries = new WeakMap<Cloudflare.Env, Cloudflare.Env>()
 
 const sessions = new WeakMap<Cloudflare.Env, D1DatabaseSession>()
 
-const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|hands|answer|updates|search|wait|machines|backers|team|branches))?)?$/
+const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|hands|answer|updates|search|wait|machines|machines\/export|machines\/[^/]+\/(commands|commands\/\d+|commands\/\d+\/log|logs|export)|backers|team|branches))?)?$/
 
 const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|tg|tg\/s\/[^/]+|s\/[^/]+|s\/[^/]+\/code)$/
 

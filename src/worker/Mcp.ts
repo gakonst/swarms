@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import * as Feedback from './Feedback.ts'
+import * as Machines from './Machines.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
@@ -106,8 +107,43 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
 
   server.registerTool(
     'swarm_machines',
-    { annotations: reading, description: "Every machine a swarm used, as its Machines tab shows them: Modal sandboxes from compute_create (with their image, CPU, memory, GPU, lease and timeout), Browserbase browsers, and contributors' lent nanocode hands (label, price, what their owners were paid, requests), each with whether it is connected, when it started and stopped, and every command that ran on it with its output.", inputSchema: Operations.schema.swarm.shape },
+    { annotations: reading, description: "Every machine a swarm used over its whole life, as its Machines tab shows them: Modal sandboxes from compute_create (with their image, CPU, memory, GPU, lease and timeout, and their sandbox ids), Browserbase browsers, and contributors' lent nanocode hands (label, price, what their owners were paid, requests), each with whether it is connected, when it started and stopped, and how many commands ran on it (runs.count, runs.failed). List the commands with swarm_machine_commands.", inputSchema: Operations.schema.swarm.shape },
     async (input) => reply(await Operations.machines(read, input)),
+  )
+
+  server.registerTool(
+    'swarm_machine_commands',
+    { annotations: reading, description: "Every command that ran on one machine over the swarm's whole life, a page at a time (newest first by default, or oldest first), each with its seq, time (ms), who ran it (null for the swarm's agent, else the subagent's name), the command, its exit code, whether it failed, how long it took (ms, when known) and, for compute_spawn, the job's log path. Outputs are not included: read one with swarm_machine_command. Page on with cursor set to the previous page's next.", inputSchema: Machines.schema.commands.shape },
+    async (input) => reply(await Machines.commands(read, input)),
+  )
+
+  server.registerTool(
+    'swarm_machine_command',
+    { annotations: reading, description: "One command of a machine with its whole output: the gateway's copy of the tool result when the agent's session still has it (source gateway), else the swarm's feed copy, which keeps the first 2,000 characters (source feed, truncated true when cut). Also its input as the agent sent it.", inputSchema: Machines.schema.command.shape },
+    async (input) => reply(await Machines.command(read, input)),
+  )
+
+  server.registerTool(
+    'swarm_machine_logs',
+    { annotations: reading, description: "A sandbox's own log from the gateway (Modal's system, stdout and stderr lines, such as the image build, an out-of-memory kill or why it ended), kept by Swarms once fetched; the gateway keeps it up to 7 days after the sandbox ended. Lines oldest first, the newest page by default; page back with before set to the previous answer's next. complete says Swarms fetched all of it and will not ask the gateway again.", inputSchema: Machines.schema.logs.shape },
+    async (input) => reply(await Machines.logs(read, input)),
+  )
+
+  server.registerTool(
+    'swarm_machine_job',
+    { annotations: reading, description: "The log of a job started with compute_spawn (the command's seq from swarm_machine_commands), read from the sandbox while it runs and kept by Swarms, with its exit code once it finished. After the sandbox ends, the part already fetched stays.", inputSchema: Machines.schema.job.shape },
+    async (input) => reply(await Machines.job(read, input)),
+  )
+
+  server.registerTool(
+    'swarm_machines_export',
+    { annotations: reading, description: "Where to download everything about a swarm's machines, or one machine, as one NDJSON file: each machine, every command with its whole output, each sandbox's gateway log and each spawned job's log. Answers the URL and a curl command; the file can be large.", inputSchema: Machines.schema.export.shape },
+    async (input) => {
+      const parsed = Machines.schema.export.safeParse(input)
+      if (!parsed.success) return reply(Problem.invalid(parsed.error))
+      const url = `${origin}/v1/swarms/${encodeURIComponent(parsed.data.swarm)}/machines${parsed.data.machine ? `/${encodeURIComponent(parsed.data.machine)}` : ''}/export`
+      return text({ curl: `curl -fsSL '${url}' -o swarm-${parsed.data.swarm}-machines.ndjson`, format: 'NDJSON: one JSON object a line, with type export, machine, command, logs, log, job and end', url })
+    },
   )
 
   server.registerTool(

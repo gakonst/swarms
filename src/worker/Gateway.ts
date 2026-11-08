@@ -317,6 +317,25 @@ export function sandboxes(env: Cloudflare.Env, swarm: string) {
   })
 }
 
+export type Logged = { before: string | null; entries: { at: number; stream: string; text: string }[]; provider?: string; sandboxId: string }
+
+export function output(env: Cloudflare.Env, swarm: string, sandboxId: string, input: { before?: string | undefined; limit: number }) {
+  return send<Logged>(env, '/v1/compute/output', { app: app(swarm), body: { limit: input.limit, sandboxId, stream: 'all', ...(input.before ? { before: input.before } : {}) } })
+}
+
+export function tail(env: Cloudflare.Env, swarm: string, sandboxId: string, logPath: string, offset: number, signal: AbortSignal) {
+  return call(env, '/v1/compute/logs', {
+    body: JSON.stringify({ logPath, offset, sandboxId }),
+    headers: { accept: 'application/x-ndjson', authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY, 'content-type': 'application/json', 'gateway-app': app(swarm) },
+    method: 'POST',
+    signal,
+  })
+}
+
+export async function event(env: Cloudflare.Env, swarm: string, agent: string, seq: number, limit = 1) {
+  return send<Page>(env, `/v1/agents/${agent}/events?after=${seq - 1}&limit=${limit}`, { app: app(swarm) })
+}
+
 export function terminate(env: Cloudflare.Env, swarm: string, sandboxId: string) {
   return send<unknown>(env, '/v1/compute/terminate', { app: app(swarm), body: { sandboxId } })
 }

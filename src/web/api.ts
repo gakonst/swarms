@@ -1,7 +1,7 @@
 import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, Posted, Problem, Room, Roster, Snapshot, Steering, Summary } from '../shared/Api.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type * as Setup from '../shared/Setup.ts'
-import type { Machine } from '../shared/Fleet.ts'
+import type { Job, Listed, Logged, Machine, Shown } from '../shared/Fleet.ts'
 import { seeded } from './boot.ts'
 import { visitor } from './stage.ts'
 
@@ -160,6 +160,32 @@ export function hands(id: string) {
 
 export function machines(id: string) {
   return fixture ? Promise.resolve({ machines: [] as Machine[] }) : request<{ machines: Machine[] }>(`/v1/swarms/${encodeURIComponent(id)}/machines`)
+}
+
+function machined(id: string, machine: string) {
+  return `/v1/swarms/${encodeURIComponent(id)}/machines/${encodeURIComponent(machine)}`
+}
+
+export function commands(id: string, machine: string, query: { cursor?: number | undefined; order: 'newest' | 'oldest' }) {
+  const search = new URLSearchParams({ limit: '100', order: query.order, ...(query.cursor === undefined ? {} : { cursor: String(query.cursor) }) })
+  return request<{ commands: Listed[]; next: number | null; total: number }>(`${machined(id, machine)}/commands?${search}`)
+}
+
+export function command(id: string, machine: string, seq: number) {
+  return request<Shown>(`${machined(id, machine)}/commands/${seq}`)
+}
+
+export function job(id: string, machine: string, seq: number) {
+  return request<Job>(`${machined(id, machine)}/commands/${seq}/log`)
+}
+
+export function machineLogs(id: string, machine: string, query: { before?: string | undefined; sandbox?: string | undefined }) {
+  const search = new URLSearchParams({ ...(query.before ? { before: query.before } : {}), ...(query.sandbox ? { sandbox: query.sandbox } : {}) })
+  return request<Logged>(`${machined(id, machine)}/logs?${search}`)
+}
+
+export function exported(id: string, machine?: string) {
+  return machine ? `${machined(id, machine)}/export` : `/v1/swarms/${encodeURIComponent(id)}/machines/export`
 }
 
 export function hand(id: string, label: string) {

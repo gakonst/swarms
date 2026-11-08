@@ -2,6 +2,8 @@ import type { Entry, Hand, Lent } from './Api.ts'
 
 export type Run = { at: number; failed: boolean; output: string | null; seq: number; text: string; who: string | null }
 
+export type Runs = { count: number; failed: number; last: number | null }
+
 export type Machine = {
   by: string | null
   charged: string | null
@@ -15,8 +17,30 @@ export type Machine = {
   name: string
   price: string | null
   requests: number | null
+  runs: Runs | null
+  sandboxes: string[]
   started: number | null
 }
+
+export type Command = { at: number; clipped: boolean; exit: number | null; failed: boolean; log: string | null; machine: string; ms: number | null; output: number | null; seq: number; text: string; who: string | null }
+
+export type Answer = Pick<Command, 'clipped' | 'exit' | 'failed' | 'log' | 'ms' | 'output' | 'seq'>
+
+export type Listed = Omit<Command, 'output'>
+
+export type Shown = Listed & { full: boolean; input: string | null; output: string | null; source: 'feed' | 'gateway'; truncated: boolean }
+
+export type Line = { at: number; id: number; stream: string; text: string }
+
+export type Logged = { complete: boolean; error: string | null; fetchedAt: number | null; lines: Line[]; next: string | null; sandbox: string; sandboxes: string[] }
+
+export type Job = { data: string; done: boolean; error: string | null; exit: number | null; fetchedAt: number | null; held: number; log: string; offset: number; sandbox: string; seq: number }
+
+export type Tracker = { pending: { at: number; left: number; seq: number; who: string | null }[]; sandboxes: Record<string, string>; starting: { name: string | null; who: string | null } | null }
+
+export type Tracked = { command: Command; kind: 'command' } | { answer: Answer; kind: 'answer' }
+
+export const watched = ['tool', 'output', 'error', 'machine'] as const
 
 const shown: Record<string, string> = {
   apt: 'Packages',
@@ -101,6 +125,10 @@ function called(text: string, args: Record<string, unknown> | undefined, detail:
   return text.replace('Called compute_', '')
 }
 
+function target(entry: Entry, boxed: string | undefined, named: (id: string) => string | undefined) {
+  return boxed ? (named(boxed) ?? boxed) : (/ on (\S+)$/.exec(entry.text)?.[1] ?? /"hand"\s*:\s*"([^"]+)"|hand:\s*["']([^"']+)["']/.exec(entry.detail ?? '')?.slice(1).find(Boolean))
+}
+
 export function fleet(entries: readonly Entry[], hands: readonly Hand[], lent: readonly Lent[]): Machine[] {
   return lend(folded(entries, hands), lent)
 }
@@ -109,7 +137,7 @@ function finder(found: Map<string, Machine>) {
   return (name: string, kind: Machine['kind'], at: number, by: string | null) => {
     let machine = found.get(name)
     if (!machine) {
-      machine = { by, charged: null, commands: [], config: [], connected: false, ended: null, failed: null, kind, label: null, name, price: null, requests: null, started: at }
+      machine = { by, charged: null, commands: [], config: [], connected: false, ended: null, failed: null, kind, label: null, name, price: null, requests: null, runs: null, sandboxes: [], started: at }
       found.set(name, machine)
     }
     return machine
@@ -187,7 +215,7 @@ export function folded(entries: readonly Entry[], hands: readonly Hand[]): Machi
     if (entry.kind !== 'tool' || !/^(\$ |Called )/.test(entry.text)) continue
     const args = json(entry.detail)
     const boxed = sandboxed.test(entry.text) ? sandbox(entry.detail) : undefined
-    const on = boxed ? (sandboxes.get(boxed) ?? boxed) : (/ on (\S+)$/.exec(entry.text)?.[1] ?? /"hand"\s*:\s*"([^"]+)"|hand:\s*["']([^"']+)["']/.exec(entry.detail ?? '')?.slice(1).find(Boolean))
+    const on = target(entry, boxed, (id) => sandboxes.get(id))
     if (!on) continue
     const machine = found.get(on) ?? get(on, on.startsWith('sb-') ? 'sandbox' : 'hand', entry.at, entry.who)
     let output = args ? null : entry.detail
@@ -225,4 +253,99 @@ export function lend(machines: readonly Machine[], lent: readonly Lent[]): Machi
     machine.started ??= hand.at
   }
   return ordered(found)
+}
+
+export function tracker(): Tracker {
+  return { pending: [], sandboxes: {}, starting: null }
+}
+
+export function exited(text: string, detail: string | null) {
+  const code = /exitCode\\*"\s*:\s*(-?\d+)/.exec(detail ?? '')?.[1] ?? / · exit (-?\d+)$/.exec(text)?.[1] ?? (text === 'Command output' ? '0' : undefined)
+  return code === undefined ? null : Number(code)
+}
+
+function answer(waiting: Tracker['pending'][number], entry: Entry, ms: number | null): Answer {
+  const exit = exited(entry.text, entry.detail)
+  const detail = entry.detail ?? ''
+  return {
+    clipped: detail.length >= 1990 && detail.endsWith('…'),
+    exit,
+    failed: entry.kind === 'error' || /exit [1-9]/.test(entry.text) || (exit !== null && exit !== 0) || /timedOut\\*"\s*:\s*true/.test(detail),
+    log: /logPath\\*"\s*:\s*\\*"([^"\\]+)/.exec(detail)?.[1] ?? null,
+    ms: ms ?? (entry.at > waiting.at ? entry.at - waiting.at : null),
+    output: entry.seq,
+    seq: waiting.seq,
+  }
+}
+
+export function track(state: Tracker, entry: Entry, ms: number | null = null): Tracked[] {
+  if (!(watched as readonly string[]).includes(entry.kind)) return []
+  const found: Tracked[] = []
+  const who = entry.who ?? null
+  state.pending = state.pending.flatMap((waiting) => {
+    if (waiting.who === who && entry.kind === 'tool') return []
+    if (waiting.who === who && (entry.kind === 'output' || entry.kind === 'error')) {
+      found.push({ answer: answer(waiting, entry, ms), kind: 'answer' })
+      return []
+    }
+    return waiting.left > 1 ? [{ ...waiting, left: waiting.left - 1 }] : []
+  })
+  const start = /^Starting machine (\S*)/.exec(entry.text)
+  if (entry.kind === 'machine' && start) {
+    state.starting = { name: start[1] || null, who }
+    return found
+  }
+  if ((entry.kind === 'output' || entry.kind === 'error') && entry.text.startsWith('compute_create') && state.starting && state.starting.who === who) {
+    const id = entry.kind === 'output' ? sandbox(entry.detail) : undefined
+    if (id) state.sandboxes[id] = state.starting.name ?? id
+    state.starting = null
+    return found
+  }
+  if (entry.kind !== 'tool' || entry.text === 'Called browser_create' || !/^(\$ |Called )/.test(entry.text)) return found
+  const args = json(entry.detail)
+  const boxed = sandboxed.test(entry.text) ? sandbox(entry.detail) : undefined
+  const on = target(entry, boxed, (id) => state.sandboxes[id])
+  if (!on) return found
+  found.push({
+    command: { at: entry.at, clipped: false, exit: null, failed: false, log: null, machine: on, ms: null, output: null, seq: entry.seq, text: boxed ? called(entry.text, args, entry.detail) : entry.text.replace(/ on \S+$/, ''), who },
+    kind: 'command',
+  })
+  state.pending.push({ at: entry.at, left: 5, seq: entry.seq, who })
+  return found
+}
+
+export function named(state: Tracker, name: string) {
+  const ids = Object.entries(state.sandboxes).filter(([, known]) => known === name).map(([id]) => id)
+  return ids.length ? ids : name.startsWith('sb-') ? [name] : []
+}
+
+
+function parsed(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return undefined
+  }
+}
+
+function unwrapped(value: unknown): string | undefined {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value) && Array.isArray((value as { content?: unknown }).content)) return unwrapped((value as { content: unknown }).content)
+  if (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 1 && typeof (value as { text?: unknown }).text === 'string') return (value as { text: string }).text
+  if (Array.isArray(value) && value.length && value.every((part) => typeof part === 'object' && part !== null && typeof (part as { text?: unknown }).text === 'string')) return (value as { text: string }[]).map((part) => part.text).join('\n')
+  return undefined
+}
+
+export function readable(text: string) {
+  let current = text
+  for (let depth = 0; depth < 4; depth++) {
+    const value = parsed(current)
+    if (typeof value === 'object' && value !== null && !Array.isArray(value) && ('stdout' in value || 'stderr' in value)) {
+      const { stderr, stdout } = value as { stderr?: unknown; stdout?: unknown }
+      return [typeof stdout === 'string' ? stdout.replace(/\n$/, '') : '', typeof stderr === 'string' && stderr ? `stderr:\n${stderr.replace(/\n$/, '')}` : ''].filter(Boolean).join('\n') || 'No output.'
+    }
+    const inner = unwrapped(value)
+    if (inner === undefined) return current
+    current = inner
+  }
+  return current
 }

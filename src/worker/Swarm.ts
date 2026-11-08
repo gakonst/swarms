@@ -27,6 +27,7 @@ import * as Branching from './Branching.ts'
 import * as Chat from './Chat.ts'
 import * as Turns from './Turns.ts'
 import * as Feed from './Feed.ts'
+import * as Runs from './Runs.ts'
 
 export type Contributed = {
   amount: string
@@ -115,6 +116,7 @@ const schema = [
   'CREATE TABLE IF NOT EXISTS steered (note TEXT PRIMARY KEY, at INTEGER NOT NULL)',
   "CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, author TEXT, text TEXT NOT NULL, mentions TEXT NOT NULL DEFAULT '[]', steer TEXT)",
   "CREATE VIRTUAL TABLE IF NOT EXISTS feed_search USING fts5(body, content='', contentless_delete=1, tokenize='porter unicode61 remove_diacritics 2')",
+  ...Runs.schema,
 ]
 
 const columns = [
@@ -126,7 +128,7 @@ const columns = [
   ['steered', 'weight', 'ALTER TABLE steered ADD COLUMN weight TEXT'],
 ] as const
 
-const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)', `CREATE INDEX IF NOT EXISTS feed_machines ON feed (seq) WHERE ${Feed.machined}`]
+const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)', `CREATE INDEX IF NOT EXISTS feed_machines ON feed (seq) WHERE ${Feed.machined}`, ...Runs.indexes]
 
 const healMs = 5 * 60_000
 
@@ -499,12 +501,31 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   fleet(): Fleet.Machine[] {
-    const recent = this.feed(0, { before: Number.MAX_SAFE_INTEGER, kinds: ['tool', 'output', 'error', 'machine'], limit: Feed.fleetWindow })
-    const older = this.ctx.storage.sql
-      .exec<Record<string, SqlStorageValue>>(`SELECT seq, at, kind, text, detail, who, event FROM feed WHERE ${Feed.machined} AND seq < ? ORDER BY seq`, recent[0]?.seq ?? Number.MAX_SAFE_INTEGER)
+    const rows = this.ctx.storage.sql
+      .exec<Record<string, SqlStorageValue>>(`SELECT seq, at, kind, text, detail, who, event FROM feed WHERE ${Feed.machined} ORDER BY seq`)
       .toArray()
       .map(Feed.entry)
-    return Fleet.folded([...older, ...recent], this.kv.get<Hand[]>('hands') ?? [])
+    return Runs.counted(this, Fleet.folded(rows, this.kv.get<Hand[]>('hands') ?? []))
+  }
+
+  commands(machine: string, query: { cursor?: number | undefined; limit: number; order: 'newest' | 'oldest' }) {
+    return Runs.listed(this, machine, query)
+  }
+
+  opened(machine: string, seqs: number[]) {
+    return { agent: this.agent()?.id ?? null, commands: Runs.opened(this, machine, seqs) }
+  }
+
+  timed(seq: number, ms: number) {
+    Runs.timed(this, seq, ms)
+  }
+
+  async machineLogs(swarm: string, name: string, query: { before?: string | undefined; limit: number; sandbox?: string | undefined; stream?: string | undefined }) {
+    return Runs.logs(this, swarm, this.fleet().find((machine) => machine.name === name), name, query)
+  }
+
+  async job(swarm: string, machine: string, seq: number) {
+    return Runs.job(this, swarm, this.fleet().find((found) => found.name === machine), machine, seq)
   }
 
   page(
@@ -881,7 +902,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       .map((row) => row.note)
   }
 
-  log(kind: Kind, text: string, detail?: string | null, origin: { at?: number; event?: number; who?: string | null } = {}) {
+  log(kind: Kind, text: string, detail?: string | null, origin: { at?: number; event?: number; ms?: number | undefined; who?: string | null } = {}) {
     const logged = {
       at: origin.at ?? Date.now(),
       detail: detail ? redact(detail) : null,
@@ -902,6 +923,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       )
       .one()
     this.ctx.storage.sql.exec(`INSERT INTO feed_search (rowid, body) SELECT seq, ${Feed.searchable} FROM feed WHERE seq = ?`, row.seq)
+    Runs.logged(this, { ...logged, seq: Number(row.seq) }, origin.ms ?? null)
     this.touch()
     if (!this.turn()) this.changed('feed')
     if (!this.watchers.size) return

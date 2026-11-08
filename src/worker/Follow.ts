@@ -239,7 +239,7 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
       if (update.event?.type === 'tool.call') for (const found of cues(update.event.payload ?? {})) self.cue(found)
       for (const delta of streamed(found.who, update.event?.type, update.event?.payload ?? {})) Relay.relay(self, delta)
     }
-    for (const step of found.steps) self.log(step.kind, step.text, step.detail, { at, event: event.seq, who: found.who })
+    for (const step of found.steps) self.log(step.kind, step.text, step.detail, { at, event: event.seq, ms: step.ms, who: found.who })
     return false
   }
 
@@ -251,7 +251,7 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
 }
 
 export function record(self: Swarm, who: string | null, type: string | undefined, payload: Record<string, unknown>, event: number, at: number) {
-  for (const found of narrate(buffers(self), who, type, payload)) self.log(found.kind, found.text, found.detail, { at, event, who })
+  for (const found of narrate(buffers(self), who, type, payload)) self.log(found.kind, found.text, found.detail, { at, event, ms: found.ms, who })
 }
 
 export function buffers(self: Swarm): Buffers {

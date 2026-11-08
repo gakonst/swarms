@@ -642,6 +642,24 @@ button.said-backed:not(:disabled):hover { background:#2f5f37; }
 .run code::before { content:''; }
 .run pre { border-top:1px dashed #ffffff10; padding-top:8px; }
 .runs { max-height:420px; overflow-y:auto; scrollbar-width:thin; }
+.machine-bar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; font:11.5px var(--mono); color:var(--grey-600); }
+.machine-all { margin:0 0 10px; }
+.machine-link { padding:0; border:0; background:none; color:#2f5d3f; font:11.5px var(--mono); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+.machine-link:disabled { color:var(--grey-600); cursor:default; }
+.machine-link[aria-pressed='true'] { color:#141a16; font-weight:600; text-decoration:none; }
+.machine-more { justify-self:start; padding:6px 12px; border:1px solid #d6e0cf; border-radius:10px; background:var(--white); font:11.5px var(--mono); cursor:pointer; }
+.machine-log { display:grid; gap:8px; }
+.machine-lines { max-height:420px; margin:0; padding:10px 12px; overflow:auto; border-radius:12px; background:#141a16; color:#cfdcc8; font:11.5px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
+.run-meta { display:flex; align-items:baseline; gap:8px; white-space:nowrap; }
+.run-exit { font-size:10.5px; color:#9fb592; }
+.run-exit[data-failed='true'] { color:#ff9b8f; }
+.run-ms { font-size:10.5px; color:#7f8f79; }
+.run-open { display:grid; gap:4px; padding-bottom:8px; }
+.run-note { margin:0; padding:0 12px 0 68px; color:#9fb592; font:11px var(--mono); }
+.run-job { display:grid; gap:4px; padding:0 12px 0 68px; }
+.run-job .machine-link { color:#9fd7a6; justify-self:start; }
+.run-job pre { padding-left:0; }
+@media (max-width:799px) { .run-note, .run-job { padding-left:12px; } .run-meta .run-who { display:none; } }
 .room-gate-wait { min-height:44px; }
 .say-wait { opacity:.7; }
 .say-hold { flex:1; padding:8px 4px; color:var(--grey-500); font:15px var(--serif); }

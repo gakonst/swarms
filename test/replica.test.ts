@@ -28,7 +28,7 @@ function db(log: string[], name: string): D1Database {
 }
 
 test('only reads go to a replica, and money and sign-in stay on the primary', () => {
-  for (const path of ['/', '/join', '/s/abc', '/s/abc/code', '/x', '/x/s/abc', '/api/swarms', '/api/swarms/abc', '/api/swarms/abc/feed', '/api/swarms/abc/git/log', '/api/swarms/abc/chat', '/v1/swarms/abc/updates', '/v1/search', '/v1/me'])
+  for (const path of ['/', '/join', '/s/abc', '/s/abc/code', '/x', '/x/s/abc', '/api/swarms', '/api/swarms/abc', '/api/swarms/abc/feed', '/api/swarms/abc/git/log', '/api/swarms/abc/chat', '/v1/swarms/abc/updates', '/v1/swarms/abc/machines/sb-1/commands', '/v1/swarms/abc/machines/sb-1/commands/12', '/v1/swarms/abc/machines/sb-1/commands/12/log', '/v1/swarms/abc/machines/sb-1/logs', '/v1/swarms/abc/machines/sb-1/export', '/v1/swarms/abc/machines/export', '/v1/search', '/v1/me'])
     assert.ok(Replica.readable('GET', path), path)
   for (const path of ['/v1/auth/challenge', '/api/config', '/a/abc/slug/index.html', '/mcp'])
     assert.ok(!Replica.readable('GET', path), path)

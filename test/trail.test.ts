@@ -111,3 +111,9 @@ test('a thought stops growing once it is longer than what its line shows, and re
   for (let index = 0; index < 5000; index++) narrate(buffers, null, 'reasoning.summary.delta', { text: 'abcdefgh' })
   assert.ok(buffers.take(null).length <= thought + 8)
 })
+
+test('a tool result carries how long the call took, from the gateway event\'s duration_ns', () => {
+  assert.equal(step('tool.result', { duration_ns: 1_499_600, result: '{"exitCode":0}', status: 'completed', tool: 'mcp__gateway__compute_exec' })?.ms, 1)
+  assert.equal(step('tool.result', { duration_ns: 2_600_000_000, result: 'boom', status: 'failed', tool: 'mcp__gateway__compute_exec' })?.ms, 2600)
+  assert.equal(step('tool.result', { result: 'x', status: 'completed', tool: 'mcp__gateway__compute_exec' })?.ms, undefined)
+})
