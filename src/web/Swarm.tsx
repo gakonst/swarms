@@ -3,7 +3,7 @@ import type { Config, Detail, Me, Member, Room as RoomState, Said } from '../sha
 import * as Status from '../shared/Status.ts'
 import * as Api from './api.ts'
 import { useWishes, Viewer } from './Artifacts.tsx'
-import { seeded } from './boot.ts'
+import { here, seeded } from './boot.ts'
 import { Box } from './Box.tsx'
 import { lead, Pill } from './Card.tsx'
 import { asked } from './Contribute.tsx'
@@ -37,7 +37,7 @@ export function Swarm(props: { chat: boolean; config: Config | undefined; id: st
   const backed = useCanBack()
   const [prefill] = useState(() => asked())
   const [note, setNote] = useState(prefill.note)
-  const [open, setOpen] = useState(() => !!prefill.note || new URLSearchParams(location.search).has('fund'))
+  const [open, setOpen] = useState(() => !!prefill.note || here().searchParams.has('fund'))
   const [focus, setFocus] = useState(0)
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<RoomState>(`room:${id}`)?.members ?? [])
   const [unread, setUnread] = useState(0)
