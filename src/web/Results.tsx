@@ -64,16 +64,6 @@ export function Results(props: {
         </section>
       )}
 
-      {props.wishes.length > 0 && (
-        <section className="result-section">
-          <h2>It needs</h2>
-          <ul className="needs">
-            {props.wishes.slice(0, 3).map((wish, index) => <li key={index}>{wish.want}</li>)}
-          </ul>
-          <button className="result-link" onClick={props.onChat} type="button">Can you help? Say so in the chat →</button>
-        </section>
-      )}
-
       {asked.length > 0 && (
         <section className="result-section">
           <h2>Backers want</h2>
@@ -112,6 +102,16 @@ export function Results(props: {
         )}
         {items.length > shown.length && <button className="result-link" onClick={() => setMore(true)} type="button">Show all {items.length}</button>}
       </section>
+      {props.wishes.length > 0 && (
+        <section className="result-section">
+          <h2>It needs</h2>
+          <ul className="needs">
+            {props.wishes.slice(0, 3).map((wish, index) => <li key={index}>{wish.want}</li>)}
+          </ul>
+          <button className="result-link" onClick={props.onChat} type="button">Can you help? Say so in the chat →</button>
+        </section>
+      )}
+
     </div>
   )
 }

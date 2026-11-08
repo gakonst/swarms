@@ -8,7 +8,7 @@ button.swarm-home { border:0; background:none; cursor:pointer; }
 .hero-copy { position:relative; z-index:2; max-width:640px; }
 .hero h1 { font-size:clamp(48px,7vw,100px); font-weight:400; line-height:.94; letter-spacing:-.05em; }
 .hero-copy p { margin-top:20px; max-width:31ch; font-size:clamp(17px,1.6vw,21px); line-height:1.4; color:#3d5232; text-wrap:pretty; }
-.hero-copy .hero-live { margin-top:22px; font:12px/1.6 var(--mono); letter-spacing:.02em; color:#5c7350; visibility:hidden; }
+.hero-copy .hero-live { min-height:3.2em; margin-top:22px; font:12px/1.6 var(--mono); letter-spacing:.02em; color:#5c7350; visibility:hidden; }
 .hero-copy .hero-live[data-ready='true'] { visibility:visible; }
 
 .shelf,.steps,.own { width:100%; max-width:1240px; margin:0 auto; padding:0 var(--margin); }

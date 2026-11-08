@@ -113,7 +113,7 @@ export function Home() {
   const raised = open.reduce((sum, swarm) => sum + Number(swarm.raised), 0)
   const shown = ideas.filter((idea) => (view === 'live' ? fits.running(idea) : view === 'new' ? fits.waiting(idea) : true)).slice(0, 12)
   const path = (id: string) => (id.startsWith('idea:') ? `/new?q=${id.slice(5)}` : `/s/${id}`)
-  const tabs = ([['popular', 'Popular'], ['live', 'Working now'], ['new', 'New ideas']] as const).filter(([key]) => key !== 'live' || working > 0)
+  const tabs = [['popular', 'Popular'], ['live', 'Working now'], ['new', 'New ideas']] as const
 
   return (
     <div className="home">

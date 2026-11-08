@@ -94,10 +94,11 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   if (!rendered(path)) return { data, head: { ...head, title: 'Not found · Swarms' }, status: 404, whole: false }
   const [, raw = ''] = /^\/s\/([^/]+)(\/chat)?$/.exec(path) ?? []
   const id = decodeURIComponent(raw)
-  const [detail, room, updates] = await Promise.all([
+  const [detail, room, updates, shelf] = await Promise.all([
     within(Operations.detail(env, { swarm: id }, false), 2500),
     within(Operations.room(env, { swarm: id }), 2500),
     within(Operations.updates(env, { limit: 30, swarm: id }), 2500),
+    within(Operations.artifacts(env, { swarm: id }, url.origin), 2500),
   ])
   if (!detail) return { data, head, status: 200, whole: false }
   if (!detail.ok) {
@@ -107,6 +108,7 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   data[id] = { ...detail.value, feed: [], updates: [] }
   if (room?.ok) data[`room:${id}`] = { ...room.value, messages: room.value.messages.slice(-firstChat) }
   if (updates?.ok) data[`updates:${id}`] = { updates: updates.value.updates }
+  if (shelf?.ok) data[`artifacts:${id}`] = shelf.value
   const latest = detail.value.answer?.text
   return {
     data,
