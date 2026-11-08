@@ -81,11 +81,11 @@ function settings(input: Record<string, unknown>) {
 }
 
 function sandbox(text: string | null) {
-  return /sandboxId\\?"\s*:\s*\\?"(sb-[A-Za-z0-9]+)/.exec(text ?? '')?.[1]
+  return /sandboxId\\*"\s*:\s*\\*"(sb-[A-Za-z0-9]+)/.exec(text ?? '')?.[1]
 }
 
 function reason(text: string | null) {
-  const found = /\\?"detail\\?"\s*:\s*\\?"(.*?)\\?"\s*[,}]/.exec(text ?? '')?.[1]
+  const found = /\\*"detail\\*"\s*:\s*\\*"(.*?)\\*"\s*[,}]/.exec(text ?? '')?.[1]
   return found ? found.replace(/\\+"/g, '"') : text?.slice(0, 300) ?? null
 }
 

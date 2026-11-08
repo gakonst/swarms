@@ -12,6 +12,10 @@ export const lastTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'comple
 
 export const searched = 5_000
 
+export const fleetWindow = 2_000
+
+export const machined = "(kind = 'machine' OR (kind IN ('output', 'error') AND substr(text, 1, 14) = 'compute_create') OR (kind = 'tool' AND text = 'Called browser_create'))"
+
 export const searchable = "text || ' ' || substr(coalesce(detail, ''), 1, 4000)"
 
 const indexChunk = 1_000

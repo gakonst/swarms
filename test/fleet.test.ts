@@ -80,3 +80,21 @@ test('fleet marks a machine whose compute_create failed as never started, with t
   assert.equal(machines[0]?.failed, 'Every contribution to this swarm is spent.')
   assert.equal(machines[0]?.ended, 2000)
 })
+test('fleet reads a sandbox id from a compute_create output wrapped in more than one layer of JSON', () => {
+  const created = JSON.stringify({ text: JSON.stringify([{ text: JSON.stringify({ gpu: 'H200', hand: null, sandboxId: 'sb-E4MAfaPmjuC8gDgCptT4Md' }), type: 'text' }]) })
+  const machines = fleet(
+    [
+      entry(1, 'machine', 'Starting machine  (lmsysorg/sglang)', '{"cpu":8,"gpu":"H200","image":"lmsysorg/sglang","lease":600}'),
+      entry(2, 'output', 'compute_create output', created),
+      entry(3, 'tool', 'Called compute_exec', '{"command":["nvidia-smi"],"sandboxId":"sb-E4MAfaPmjuC8gDgCptT4Md"}', 'autoresearch branch: moe3'),
+    ],
+    [],
+    [],
+  )
+  assert.equal(machines.length, 1)
+  assert.equal(machines[0]?.name, 'sb-E4MAfaPmjuC8gDgCptT4Md')
+  assert.equal(machines[0]?.by, null)
+  assert.equal(machines[0]?.started, 1000)
+  assert.deepEqual(machines[0]?.config, [['CPU', '8'], ['GPU', 'H200'], ['Image', 'lmsysorg/sglang'], ['Lease', '10 min']])
+  assert.deepEqual(machines[0]?.commands.map((run) => run.who), ['autoresearch branch: moe3'])
+})

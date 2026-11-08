@@ -128,7 +128,7 @@ const columns = [
   ['steered', 'weight', 'ALTER TABLE steered ADD COLUMN weight TEXT'],
 ] as const
 
-const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)']
+const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)', `CREATE INDEX IF NOT EXISTS feed_machines ON feed (seq) WHERE ${Feed.machined}`]
 
 const healMs = 5 * 60_000
 
@@ -501,7 +501,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   fleet(): Fleet.Machine[] {
-    return Fleet.folded(this.feed(0, { before: Number.MAX_SAFE_INTEGER, kinds: ['tool', 'output', 'error', 'machine'], limit: 2000 }), this.kv.get<Hand[]>('hands') ?? [])
+    const recent = this.feed(0, { before: Number.MAX_SAFE_INTEGER, kinds: ['tool', 'output', 'error', 'machine'], limit: Feed.fleetWindow })
+    const older = this.ctx.storage.sql
+      .exec<Record<string, SqlStorageValue>>(`SELECT seq, at, kind, text, detail, who, event FROM feed WHERE ${Feed.machined} AND seq < ? ORDER BY seq`, recent[0]?.seq ?? Number.MAX_SAFE_INTEGER)
+      .toArray()
+      .map(Feed.entry)
+    return Fleet.folded([...older, ...recent], this.kv.get<Hand[]>('hands') ?? [])
   }
 
   page(
