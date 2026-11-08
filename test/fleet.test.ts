@@ -74,6 +74,26 @@ test('fleet names a sandbox started without attach by its id', () => {
   assert.deepEqual(machines[0]?.commands.map((run) => run.text), ['$ python -V', 'write /work/big.py'])
 })
 
+test('fleet tracks an E2B sandbox, whose id has no sb- prefix', () => {
+  const created = JSON.stringify({ text: JSON.stringify([{ text: JSON.stringify({ createdAt: 1, gpu: null, hand: null, image: 'base', provider: 'e2b', sandboxId: 'iajm8koswc342dpzhhv41', tunnels: {} }), type: 'text' }]) })
+  const machines = fleet(
+    [
+      entry(1, 'machine', 'Starting machine  (default image)', '{"lease":900,"timeout":900}'),
+      entry(2, 'output', 'compute_create output', created),
+      entry(3, 'tool', 'Called compute_exec', '{"command":["sh","-c","uname -a"],"sandboxId":"iajm8koswc342dpzhhv41","timeout":10}'),
+      entry(4, 'output', 'compute_exec output', '{"exitCode":0,"stdout":"Linux e2b.local"}'),
+      entry(5, 'machine', 'Shutting down a machine', '{"sandboxId":"iajm8koswc342dpzhhv41"}'),
+    ],
+    [],
+    [],
+  )
+  assert.equal(machines.length, 1)
+  assert.equal(machines[0]?.name, 'iajm8koswc342dpzhhv41')
+  assert.equal(machines[0]?.kind, 'sandbox')
+  assert.deepEqual(machines[0]?.commands.map((run) => run.text), ['$ uname -a'])
+  assert.equal(machines[0]?.ended, 5000)
+})
+
 test('fleet marks a machine whose compute_create failed as never started, with the reason', () => {
   const failed = JSON.stringify([{ text: JSON.stringify({ code: 'payment_failed', detail: 'Every contribution to this swarm is spent.', status: 402 }), type: 'text' }])
   const machines = fleet([entry(1, 'machine', 'Starting machine judge (lmsysorg/sglang, H200)', '{"gpu":"H200","image":"lmsysorg/sglang"}'), entry(2, 'error', 'compute_create failed', failed)], [], [])

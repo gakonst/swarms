@@ -104,8 +104,8 @@ function settings(input: Record<string, unknown>) {
     .map(([key, raw]): [string, string] => [shown[key] ?? key, value(key, raw)])
 }
 
-function sandbox(text: string | null) {
-  return /sandboxId\\*"\s*:\s*\\*"(sb-[A-Za-z0-9]+)/.exec(text ?? '')?.[1]
+export function sandbox(text: string | null) {
+  return /sandboxId\\*"\s*:\s*\\*"([A-Za-z0-9][A-Za-z0-9_-]*)/.exec(text ?? '')?.[1]
 }
 
 function reason(text: string | null) {
@@ -217,7 +217,7 @@ export function folded(entries: readonly Entry[], hands: readonly Hand[]): Machi
     const boxed = sandboxed.test(entry.text) ? sandbox(entry.detail) : undefined
     const on = target(entry, boxed, (id) => sandboxes.get(id))
     if (!on) continue
-    const machine = found.get(on) ?? get(on, on.startsWith('sb-') ? 'sandbox' : 'hand', entry.at, entry.who)
+    const machine = found.get(on) ?? get(on, boxed || on.startsWith('sb-') ? 'sandbox' : 'hand', entry.at, entry.who)
     let output = args ? null : entry.detail
     let failed = false
     for (const next of sorted.slice(index + 1, index + 6)) {

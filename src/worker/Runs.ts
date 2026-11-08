@@ -201,7 +201,7 @@ export function counted(self: Swarm, machines: Fleet.Machine[]) {
   for (const total of totals) {
     let machine = found.get(total.machine)
     if (!machine) {
-      machine = { by: total.who, charged: null, commands: [], config: [], connected: false, ended: null, failed: null, kind: total.machine.startsWith('sb-') ? 'sandbox' : 'hand', label: null, name: total.machine, price: null, requests: null, runs: null, sandboxes: [], started: Number(total.first) }
+      machine = { by: total.who, charged: null, commands: [], config: [], connected: false, ended: null, failed: null, kind: Fleet.named(held.state, total.machine).length ? 'sandbox' : 'hand', label: null, name: total.machine, price: null, requests: null, runs: null, sandboxes: [], started: Number(total.first) }
       found.set(total.machine, machine)
     }
     machine.started ??= Number(total.first)
@@ -390,7 +390,7 @@ export async function job(self: Swarm, swarm: string, machine: Fleet.Machine | u
     .toArray()[0]
   const found = raw ? row(raw) : undefined
   if (!found?.log) return undefined
-  const sandbox = /sandboxId\\*"\s*:\s*\\*"(sb-[A-Za-z0-9]+)/.exec(String(raw?.['input'] ?? ''))?.[1] ?? sandboxes(self, name).at(-1) ?? name
+  const sandbox = Fleet.sandbox(String(raw?.['input'] ?? '')) ?? sandboxes(self, name).at(-1) ?? name
   const key = `job:${seq}`
   const tailed = self.ctx.storage.kv.get<Tailed>(key) ?? { checked: 0, done: false, exit: null, offset: 0 }
   const error = await once(self, key, () => follow(self, swarm, sandbox, found, tailed, finished(machine, Date.now())))
