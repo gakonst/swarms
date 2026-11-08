@@ -1,9 +1,9 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Config, Currency } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
-import { mach, symbols } from './format.ts'
+import { mach } from './format.ts'
 import { message, useWallet } from './hooks.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Wallet from './wallet.ts'
@@ -97,7 +97,7 @@ export async function record(paid: Unrecorded) {
 
 export async function send(config: Config, target: Target, amount: bigint, note: string, token: Currency) {
   if (token === 'mach') {
-    if (!config.channel) throw new Error('MACH is not offered right now. Send USDC.e, OUSD or pathUSD instead.')
+    if (!config.channel) throw new Error('This way of paying is not available right now. Try again with another balance in your wallet.')
     const Channel = await import('../shared/Channel.ts')
     const hash = await Wallet.open(config, Channel.open(config.channel, target.id, amount, note))
     return record({ amount, hash, note, swarm: target.id, token })
@@ -109,19 +109,12 @@ export async function send(config: Config, target: Target, amount: bigint, note:
 }
 
 function dollars(amount: string) {
-  return `$${mach(decimal(units(amount)))}`
-}
-
-export function terms(token: Currency, known: boolean) {
-  if (known && token === 'mach') return 'Paid in MACH, into a payment channel the gateway spends for this swarm and closes back to you. Tempo Wallet opens to approve it and pays the network fee in a stablecoin you hold.'
-  const paid = known ? `Paid in ${symbols[token]}` : 'Paid in the first of OUSD, USDC.e, pathUSD or MACH your wallet holds enough of'
-  return `${paid}, sent once to the swarm's own wallet. Tempo Wallet opens to approve it.`
+  return `$${mach(decimal(units(amount)))}`.replace(/\.00$/, '')
 }
 
 export function Fuel(props: {
-  action?: ((label: string) => string) | undefined
   config: Config | undefined
-  after?: ReactNode
+  focus?: number | undefined
   least?: string | undefined
   locked?: boolean | undefined
   note: string
@@ -135,23 +128,23 @@ export function Fuel(props: {
   const [picked] = useState<Currency | undefined>(props.prefill.token)
   const [flow, setFlow] = useState<Flow>(idle)
   const told = useRef<HTMLDivElement>(null)
+  const steer = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (flow.at === 'done' || flow.at === 'failed' || flow.at === 'unrecorded') told.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [flow.at])
+  useEffect(() => {
+    if (props.focus) steer.current?.focus({ preventScroll: true })
+  }, [props.focus])
   const busy = flow.at === 'busy'
   const step = (next: Working) => setFlow({ at: 'busy', step: next })
   const token = picked ?? choose(amount, wallet.balances, props.config)
   const floor = least(props.config, token, props.least)
   const ok = valid(amount, floor)
-  const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && flow.at !== 'done' && flow.at !== 'unrecorded'
+  const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && flow.at !== 'unrecorded'
   const text = props.note.trim()
   const balance = wallet.balances[token]
   const low = balance !== undefined && ok && balance < units(amount)
-  const label = ok ? `Back with ${dollars(amount)}` : 'Back it'
-  const [noting, setNoting] = useState(!!props.note)
-  useEffect(() => {
-    if (props.note) setNoting(true)
-  }, [props.note])
+  const custom = !amounts.includes(amount as (typeof amounts)[number])
 
   const submit = async () => {
     const config = props.config
@@ -168,9 +161,8 @@ export function Fuel(props: {
       target = await props.target((next) => step(next))
       step('send')
       const hash = await send(config, target, units(amount), text, using)
-      setFlow({ at: 'done', hash, text: `You're in! You backed it with ${dollars(amount)}.` })
+      setFlow({ at: 'done', hash, text: `You backed it with ${dollars(amount)}.` })
       props.onNote('')
-      setNoting(false)
       props.onDone(target)
     } catch (error) {
       const lost = stray(error)
@@ -182,7 +174,7 @@ export function Fuel(props: {
     step('record')
     try {
       const hash = await record(paid)
-      setFlow({ at: 'done', hash, text: `You're in! You backed it with ${dollars(decimal(paid.amount))}.` })
+      setFlow({ at: 'done', hash, text: `You backed it with ${dollars(decimal(paid.amount))}.` })
       props.onNote('')
       props.onDone(target)
     } catch (error) {
@@ -193,77 +185,34 @@ export function Fuel(props: {
 
   return (
     <div className="fuel">
-      <div className="fuel-amount">
-        <label className="fuel-dollar" htmlFor="amount">$</label>
-        <input disabled={busy} id="amount" inputMode="decimal" style={{ width: `${Math.max(1, amount.length) * 0.62 + 0.2}em` }} onChange={(event) => setAmount(event.target.value.replace(',', '.').replace('$', ''))} value={amount} />
-      </div>
-      <div className="fuel-seg" role="radiogroup">
+      <div className="fuel-seg" role="radiogroup" aria-label="Amount">
         {amounts.map((value) => (
           <button aria-checked={amount === value} disabled={busy} key={value} onClick={() => setAmount(value)} role="radio" type="button">${value}</button>
         ))}
-      </div>
-      {floor !== smallest && !ok && <p className="fuel-least" data-bad={amount.trim() !== ''}>Minimum ${mach(floor)}{token === 'mach' ? ' in MACH' : ''}</p>}
-      {noting ? (
-        <label className="fuel-note">
-          <span>A note for the AI <small>optional</small></span>
-          <input disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder="What should it try next?" value={props.note} />
+        <label className="fuel-other" data-on={custom}>
+          {custom && <span aria-hidden="true">$</span>}
+          <input aria-label="Other amount" disabled={busy} id="amount" inputMode="decimal" onChange={(event) => setAmount(event.target.value.replace(',', '.').replace('$', ''))} placeholder="Other" value={custom ? amount : ''} />
         </label>
-      ) : (
-        <button className="fuel-add" disabled={busy} onClick={() => setNoting(true)} type="button">+ Add a note for the AI</button>
-      )}
-      {low && flow.at !== 'failed' && (
-        <Alert title={`You have ${mach(decimal(balance ?? 0n))} ${symbols[token]}.`} tone="warn">
-          That is less than {dollars(amount)}. Swarms take USDC.e, OUSD or pathUSD.
-        </Alert>
-      )}
-      <button className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
-        {flow.at === 'busy' ? working[flow.step] : flow.at === 'failed' && flow.short ? 'Try again' : (props.action ?? ((value: string) => value))(label)}
-      </button>
-      <p className="fuel-terms">One-time. It pays for the AI's work{text ? ', and your note tells it what to try' : ''}. Not an investment.</p>
-      <details className="fuel-terms fuel-how"><summary>How paying works</summary><p>{terms(token, balance !== undefined)}</p></details>
-      <div className="fuel-told" ref={told}>
-      {flow.at === 'done' && <Alert action={{ label: 'Back again', onClick: () => setFlow(idle) }} title={flow.text} tone="good">{flow.hash && props.config ? <a href={`${props.config.explorer}/tx/${flow.hash}`} rel="noreferrer" target="_blank">Receipt ↗</a> : undefined}</Alert>}
-      {flow.at === 'unrecorded' && (
-        <Alert action={{ label: 'Record it', onClick: () => void retry(flow.paid, flow.target) }} title={`${dollars(decimal(flow.paid.amount))} went to the swarm, but it is not counted yet.`} tone="warn">
-          {flow.reason} Record it sends the same transaction again; nothing is paid twice.
-        </Alert>
-      )}
-      {flow.at === 'failed' && (
-        <Alert title={explain(flow.error).title} tone="bad">
-          {explain(flow.error).detail}
-        </Alert>
-      )}
       </div>
-      {props.after}
-    </div>
-  )
-}
-
-export function Fund(props: {
-  action?: (label: string) => string
-  config: Config | undefined
-  least?: string | undefined
-  locked?: boolean
-  note: string
-  onChange?: () => void
-  onDone: (target: Target) => void
-  onNote: (note: string) => void
-  prefill: Prefill
-  target: (step: (step: 'create') => void) => Promise<Target>
-  title: string
-}) {
-  return (
-    <div className="fund">
-      <ol className="tiles-swarm fund-what">
-        <li>
-          {props.onChange ? (
-            <button className="tile-swarm" onClick={props.onChange} type="button"><i className="tile-mark" /><span className="tile-title">{props.title}</span><span className="tile-raised">Change</span></button>
-          ) : (
-            <div className="tile-swarm"><i className="tile-mark" /><span className="tile-title">{props.title}</span></div>
-          )}
-        </li>
-      </ol>
-      <Fuel action={props.action} config={props.config} least={props.least} locked={props.locked} note={props.note} onDone={props.onDone} onNote={props.onNote} prefill={props.prefill} target={props.target} />
+      {floor !== smallest && !ok && <p className="fuel-least" data-bad={amount.trim() !== ''}>At least {dollars(floor)}</p>}
+      <input aria-label="What should it try next?" className="fuel-steer" disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder="What should it try next? (optional)" ref={steer} value={props.note} />
+      <button className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
+        {flow.at === 'busy' ? working[flow.step] : ok ? `Back it · ${dollars(amount)}` : 'Back it'}
+      </button>
+      <div className="fuel-told" ref={told}>
+        {low && flow.at !== 'failed' && <Alert title="Not enough in your wallet." tone="warn">Add money in Tempo Wallet first.</Alert>}
+        {flow.at === 'done' && <Alert action={{ label: 'Back again', onClick: () => setFlow(idle) }} title={flow.text} tone="good">Thank you!</Alert>}
+        {flow.at === 'unrecorded' && (
+          <Alert action={{ label: 'Try again', onClick: () => void retry(flow.paid, flow.target) }} title="Sent, but not counted yet." tone="warn">
+            Nothing is paid twice.
+          </Alert>
+        )}
+        {flow.at === 'failed' && (
+          <Alert title={explain(flow.error).title} tone="bad">
+            {explain(flow.error).detail}
+          </Alert>
+        )}
+      </div>
     </div>
   )
 }

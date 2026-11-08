@@ -9,19 +9,15 @@ export type Idea = { backers: number; href: string; id: string; left: number; mo
 const words: Record<Status.Word, string> = {
   'Needs money': 'Needs funding',
   'Not started': 'New idea',
-  Resting: 'Taking a break',
   Running: 'Working now',
   Starting: 'Starting',
-  'Stopped after errors': 'Stuck',
 }
 
 const lines: Record<Status.Word, string> = {
-  'Needs money': 'It ran out of money and paused. Back it to keep it going.',
-  'Not started': 'Nobody has backed this yet. Be the first.',
-  Resting: 'Taking a break. Back it or leave a note to wake it up.',
-  Running: 'AI agents are working on this right now.',
-  Starting: 'Starting up. The AI gets the plan in a moment.',
-  'Stopped after errors': 'It hit a wall. Back it to try again.',
+  'Needs money': 'Out of money. Back it to keep it going.',
+  'Not started': 'Back it to get it started.',
+  Running: 'AI is working on it right now.',
+  Starting: 'Getting back to work.',
 }
 
 export function pill(word: Status.Word) {
@@ -60,11 +56,9 @@ function hash(text: string, seed: number) {
 }
 
 const tones: Record<Status.Mood, readonly [string, string, string]> = {
-  errors: ['#f7ece9', '#eccdc5', '#a5493a'],
   live: ['#e6f3df', '#bfe0ad', '#1a7a3c'],
   money: ['#fbf3e1', '#f1d9a6', '#b8801a'],
   new: ['#f3f6ee', '#e1e9d6', '#6d8e52'],
-  resting: ['#eef2f7', '#d6dfea', '#4b6a8f'],
 }
 
 export function Cover(props: { id: string; mood: Status.Mood; weight?: number }) {
@@ -112,7 +106,7 @@ export function Pill(props: { word: Status.Word; mood: Status.Mood }) {
 export function Gauge(props: { left: number; raised: number }) {
   const fill = props.raised > 0 ? Math.min(1, Math.max(0, props.left / props.raised)) : 0
   return (
-    <span aria-label={`${usd(String(props.left))} left to spend`} className="gauge" data-low={fill < 0.15} role="img">
+    <span aria-hidden="true" className="gauge" data-low={fill < 0.15}>
       <i style={{ width: `${Math.round(fill * 1000) / 10}%` }} />
     </span>
   )
@@ -130,11 +124,9 @@ export function Card(props: { idea: Idea }) {
         <span className="card-body">
           <b className="card-title">{idea.title}</b>
           {idea.pitch && <span className="card-pitch">{idea.pitch}</span>}
-          <span className="card-foot">
-            <span className="card-stats">
-              <span>{idea.raised > 0 ? <><b>{usd(String(idea.raised))}</b> raised · {idea.backers} backer{idea.backers === 1 ? '' : 's'}</> : 'Be the first backer'}</span>
-              <span className="card-go">Back it →</span>
-            </span>
+          <span className="card-stats">
+            <span>{idea.raised > 0 ? <><b>{usd(String(idea.raised))}</b> · {idea.backers} backer{idea.backers === 1 ? '' : 's'}</> : 'Be the first backer'}</span>
+            <span className="card-go">Back it →</span>
           </span>
         </span>
       </Link>

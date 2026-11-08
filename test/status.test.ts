@@ -8,17 +8,16 @@ test('a running swarm is live whatever its money', () => {
   assert.deepEqual(Status.standing({ ...swarm, remaining: '0.000000', status: 'running' }), { action: null, mood: 'live', word: 'Running' })
 })
 
-test('a swarm nobody funded asks for its first money, and one with money but no first step is starting', () => {
-  assert.deepEqual(Status.standing({ ...swarm, raised: '0.000000', status: 'funding', why: 'unfunded' }), { action: 'Fund $2 to start it', mood: 'new', word: 'Not started' })
+test('a swarm nobody backed is new, and one with money but no first step is starting', () => {
+  assert.deepEqual(Status.standing({ ...swarm, raised: '0.000000', status: 'funding', why: 'unfunded' }), { action: 'Back it to start it', mood: 'new', word: 'Not started' })
   assert.deepEqual(Status.standing({ ...swarm, status: 'funding', why: null }), { action: null, mood: 'live', word: 'Starting' })
-  assert.deepEqual(Status.standing({ ...swarm, status: 'funding', why: 'money' }), { action: 'Add $2 to start it', mood: 'money', word: 'Not started' })
 })
 
-test('a paused swarm names why it waits', () => {
-  assert.equal(Status.word({ ...swarm, why: 'idle' }), 'Resting')
-  assert.equal(Status.word({ ...swarm, why: 'rest' }), 'Stopped after errors')
+test('a swarm only stops for money: out of money needs money, anything else with money left is starting again', () => {
   assert.equal(Status.word({ ...swarm, why: 'money' }), 'Needs money')
-  assert.equal(Status.word({ ...swarm, why: 'costly' }), 'Needs money')
-  assert.equal(Status.word(swarm), 'Resting')
-  assert.deepEqual(Status.standing({ ...swarm, remaining: '0.010000' }), { action: 'Add $2 to wake it', mood: 'money', word: 'Needs money' })
+  assert.equal(Status.word({ ...swarm, status: 'funding', why: 'money' }), 'Needs money')
+  assert.equal(Status.word({ ...swarm, why: 'idle' }), 'Starting')
+  assert.equal(Status.word({ ...swarm, why: 'rest' }), 'Starting')
+  assert.equal(Status.word(swarm), 'Starting')
+  assert.deepEqual(Status.standing({ ...swarm, remaining: '0.010000' }), { action: 'Back it to keep it going', mood: 'money', word: 'Needs money' })
 })

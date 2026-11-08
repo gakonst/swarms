@@ -1,7 +1,5 @@
 import type { Status, Why } from '../shared/Api.ts'
-import * as Answer from '../shared/Answer.ts'
 import * as Memo from '../shared/Memo.ts'
-import * as Store from './Store.ts'
 
 export type Pause =
   | { why: 'unfunded' }
@@ -57,16 +55,16 @@ export function project(run: Run, n: number): { status: Status; why: Why | null 
 }
 
 export function reason(pause: Pause) {
-  const cash = (units: string) => Answer.cash(Number(Memo.decimal(BigInt(units))))
-  if (pause.why === 'unfunded') return 'Not started: nobody has funded it yet.'
-  if (pause.why === 'money') return `Out of money: ${cash(pause.left)} left, and one step can cost up to ${cash(pause.needs ?? String(Store.reserve))}. Fund it to keep going.`
-  if (pause.why === 'costly') return `Paused: its next step needs about ${cash(pause.wanted)} at once, more than any one backer has left in it. Fund it to keep going.`
-  if (pause.why === 'idle') return 'Waiting for backers: new money or a funded steer wakes it.'
-  return `Stopped after ${pause.failures} errors in a row. New money or a note restarts it.`
+  if (pause.why === 'unfunded') return 'Nobody has backed it yet.'
+  return 'Out of money. Back it to keep it going.'
 }
 
 export function same(a: Pause, b: Pause) {
-  return reason(a) === reason(b) && a.why === b.why
+  return a.why === b.why
+}
+
+export function stale(why: Why | null | undefined) {
+  return why === 'idle' || why === 'rest' || why === 'costly'
 }
 
 export function paused(run: Run): Pause | undefined {

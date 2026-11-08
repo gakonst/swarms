@@ -30,7 +30,9 @@ test('each pause says which wakes it', () => {
   assert.ok(Phase.wakes({ wanted: '400000', why: 'costly' }, 'money'))
   assert.ok(Phase.wakes({ why: 'idle' }, 'note'))
   assert.ok(Phase.wakes({ why: 'idle' }, 'money'))
-  assert.equal(Phase.reason({ why: 'idle' }), 'Waiting for backers: new money or a funded steer wakes it.')
+  assert.equal(Phase.reason({ why: 'idle' }), 'Out of money. Back it to keep it going.')
+  assert.equal(Phase.reason({ why: 'unfunded' }), 'Nobody has backed it yet.')
+  assert.ok(Phase.stale('idle') && Phase.stale('rest') && Phase.stale('costly') && !Phase.stale('money') && !Phase.stale(null))
   assert.ok(!Phase.due({ at: 0, pause: money, state: 'paused' }, 10))
   assert.ok(Phase.due({ at: 0, pause: { ...money, wake: 5 }, state: 'paused' }, 10))
   assert.ok(!Phase.due({ at: 0, pause: { failures: 3, why: 'rest' }, state: 'paused' }, 10))
@@ -49,11 +51,10 @@ test('D1 status and why come from one projection', () => {
 })
 
 test('a pause is stored as data and its sentence rendered when read', () => {
-  assert.equal(Phase.reason(money), 'Out of money: $0.021 left, and one step can cost up to $0.05. Fund it to keep going.')
-  assert.equal(Phase.reason({ failures: 3, why: 'rest' }), 'Stopped after 3 errors in a row. New money or a note restarts it.')
-  assert.match(Phase.reason({ wanted: '400000', why: 'costly' }), /about \$0\.40 at once/)
+  assert.equal(Phase.reason(money), 'Out of money. Back it to keep it going.')
   assert.ok(Phase.same(money, { ...money, wake: 7 }))
-  assert.ok(!Phase.same(money, { ...money, left: '1' }))
+  assert.ok(Phase.same(money, { ...money, left: '1' }))
+  assert.ok(!Phase.same(money, { why: 'unfunded' }))
 })
 
 test('old storage becomes one run', () => {

@@ -17,8 +17,6 @@ const filters = [
   ['running', 'Working now'],
   ['money', 'Needs funding'],
   ['waiting', 'New'],
-  ['resting', 'Taking a break'],
-  ['following', 'Following'],
 ] as const
 
 type Filter = (typeof filters)[number][0]
@@ -26,10 +24,8 @@ type Filter = (typeof filters)[number][0]
 const aliases: Record<string, Filter> = { fuel: 'money', live: 'running', new: 'waiting' }
 
 const fits: Record<Filter, (idea: Idea) => boolean> = {
-  following: () => true,
   money: (idea) => idea.word === 'Needs money',
   open: () => true,
-  resting: (idea) => idea.word === 'Resting' || idea.word === 'Stopped after errors',
   running: (idea) => idea.word === 'Running' || idea.word === 'Starting',
   waiting: (idea) => idea.word === 'Not started',
 }
@@ -68,17 +64,7 @@ function asked() {
 }
 
 function keep(filter: Filter) {
-  history.replaceState(history.state, '', href(`/join${filter === 'open' ? '' : `?filter=${filter}`}`))
-}
-
-function useFollowing() {
-  const [following, setFollowing] = useState<string[]>([])
-  useEffect(() => {
-    try {
-      setFollowing(Object.keys(localStorage).filter((key) => key.startsWith('following:')).map((key) => key.slice(10)))
-    } catch {}
-  }, [])
-  return following
+  history.replaceState(history.state, '', href(`/ideas${filter === 'open' ? '' : `?filter=${filter}`}`))
 }
 
 function follow(event: MouseEvent, path: string | undefined) {
@@ -135,7 +121,7 @@ export function Home() {
         <Field hives={hives} homes={{ start: copy }} ignore=".hero-copy" onPick={setLit} surface={sky} />
         <div className="hero-copy" ref={copy}>
           <h1>Back an idea.<br />AI builds it.</h1>
-          <p>Chip in a few dollars and a team of AI agents gets to work on it, in public.</p>
+          <p>Chip in a few dollars. AI agents get to work, in public.</p>
           <p className="hero-live" data-ready={!!list.data}>
             {working > 0 && <><i className="live-dot" />{working} working now · </>}
             {plural(ideas.length, 'idea')}{raised > 0 && <> · {usd(String(raised))} raised</>}
@@ -154,18 +140,17 @@ export function Home() {
         ) : (
           <Grid ideas={shown} loading={!list.data && !list.error} />
         )}
-        <Link className="shelf-more" to="/join">See all {list.data ? plural(ideas.length, 'idea') : 'ideas'} →</Link>
+        <Link className="shelf-more" to="/ideas">See all {list.data ? plural(ideas.length, 'idea') : 'ideas'} →</Link>
       </section>
       <section aria-label="How it works" className="steps">
         <ol>
           <li><b>1</b><span>Pick an idea</span></li>
           <li><b>2</b><span>Chip in a few dollars</span></li>
-          <li><b>3</b><span>Watch AI build it, live</span></li>
+          <li><b>3</b><span>Read what AI finds</span></li>
         </ol>
       </section>
       <section className="own">
         <h2>Got an idea?</h2>
-        <p>Post it, back it with a few dollars, and AI agents start right away.</p>
         <Link className="btn btn-high own-go" to="/new">Start an idea</Link>
       </section>
     </div>
@@ -174,9 +159,8 @@ export function Home() {
 
 export function Join() {
   const { ideas, list } = useIdeas()
-  const following = useFollowing()
   const [filter, setFilter] = useState<Filter>(asked)
-  const fit = (key: Filter, idea: Idea) => (key === 'following' ? following.includes(idea.id) : fits[key](idea))
+  const fit = (key: Filter, idea: Idea) => fits[key](idea)
   const shown = ideas.filter((idea) => fit(filter, idea))
   const count = (key: Filter) => ideas.filter((idea) => fit(key, idea)).length
   const choose = (next: Filter) => {
@@ -202,7 +186,7 @@ export function Join() {
         <button className="world-empty" onClick={() => location.reload()} type="button"><span>Can't reach Swarms.</span><b>Tap to try again ↻</b></button>
       ) : list.data && shown.length === 0 ? (
         <Link className="world-empty" to="/new">
-          <span>{filter === 'following' ? 'Follow an idea to find it here.' : filter === 'running' ? 'Nothing is working right now.' : filter === 'money' ? 'Every idea has money.' : 'Nothing here yet.'}</span>
+          <span>{filter === 'running' ? 'Nothing is working right now.' : filter === 'money' ? 'Every idea has money.' : 'Nothing here yet.'}</span>
           <b>Start an idea →</b>
         </Link>
       ) : (

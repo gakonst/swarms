@@ -51,11 +51,6 @@ test("a swarm's reserve and call come from its lead model, and older swarms keep
   assert.equal(Setup.call(null, 20_000n), 20_000n)
 })
 
-test('the money pause names what one step of its lead can cost', () => {
-  assert.match(Phase.reason({ left: '21000', needs: '220480', wake: null, why: 'money' }), /up to \$0\.22/)
-  assert.match(Phase.reason({ left: '21000', wake: null, why: 'money' }), /up to \$0\.05/)
-})
-
 test('the brief tells the agent its models, their costs and the budget floor', () => {
   const told = Setup.told(priced({ template: 'frontier-mix' }))
   assert.match(told, /Claude Code with vercel\/anthropic\/claude-opus-5\.5/)

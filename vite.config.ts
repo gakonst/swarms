@@ -19,28 +19,19 @@ function graph(bundle: Bundle) {
     return [...files]
   }
   const page = (name: string) => closure(by((id) => id.endsWith(`/src/web/${name}.tsx`)))
-  const highlighter = by((id) => /highlighter\/backends\/shiki\.js$|shiki\/dist\/(core|engine-javascript|langs)\.mjs$|@shikijs\/langs\/dist\/markdown\.mjs$|@pierre\/theme\/dist\/pierre-light\.mjs$|@pierre\/theming\/dist\/themes\.js$/.test(id))
-  const code = closure([...by((id) => id.endsWith('/src/web/Code.tsx')), ...highlighter])
-  const repo = [...new Set([...page('Repo'), ...code])]
   const entry = closure(chunks.filter((chunk) => chunk.isEntry))
-  return { code, entry, page, repo }
+  return { entry, page }
 }
 
 function preloads(): Plugin {
   return {
-    generateBundle(_options, bundle) {
-      if (this.environment.name !== 'client') return
-      const { code, repo } = graph(bundle)
-      this.emitFile({ fileName: 'preload.json', source: JSON.stringify({ code, repo }), type: 'asset' })
-    },
     name: 'swarms-preloads',
     transformIndexHtml: {
       handler(html, context) {
         if (!context.bundle) return html
-        const { entry, page, repo } = graph(context.bundle)
+        const { entry, page } = graph(context.bundle)
         const routes: [string, string[]][] = [
-          ['^/s/[^/]+/?$', page('Swarm')],
-          ['^/s/[^/]+/code/?$', repo],
+          ['^/s/[^/]+(/chat)?/?$', page('Swarm')],
           ['^/new/?$', page('New')],
           ['^/about/?$', page('About')],
           ['^/docs/?$', page('Docs')],

@@ -1,8 +1,8 @@
 import type { Summary } from './Api.ts'
 
-export type Word = 'Running' | 'Starting' | 'Resting' | 'Stopped after errors' | 'Needs money' | 'Not started'
+export type Word = 'Running' | 'Starting' | 'Needs money' | 'Not started'
 
-export type Mood = 'live' | 'money' | 'resting' | 'errors' | 'new'
+export type Mood = 'live' | 'money' | 'new'
 
 export type Standing = { action: string | null; mood: Mood; word: Word }
 
@@ -16,13 +16,9 @@ export function fueled(swarm: Pick<Summary, 'remaining'> & { setup?: Summary['se
 
 export function standing(swarm: Stood): Standing {
   if (swarm.status === 'running') return { action: null, mood: 'live', word: 'Running' }
-  if (swarm.status === 'funding' && Number(swarm.raised) <= 0) return { action: 'Fund $2 to start it', mood: 'new', word: 'Not started' }
-  if (swarm.status === 'funding' && !swarm.why) return { action: null, mood: 'live', word: 'Starting' }
-  if (swarm.why === 'idle') return { action: null, mood: 'resting', word: 'Resting' }
-  if (swarm.why === 'rest') return { action: null, mood: 'errors', word: 'Stopped after errors' }
-  if (swarm.status === 'funding') return { action: 'Add $2 to start it', mood: 'money', word: 'Not started' }
-  if (!swarm.why && fueled(swarm)) return { action: null, mood: 'resting', word: 'Resting' }
-  return { action: 'Add $2 to wake it', mood: 'money', word: 'Needs money' }
+  if (swarm.status === 'funding' && Number(swarm.raised) <= 0) return { action: 'Back it to start it', mood: 'new', word: 'Not started' }
+  if (swarm.why === 'money' || swarm.why === 'unfunded' || !fueled(swarm)) return { action: 'Back it to keep it going', mood: 'money', word: 'Needs money' }
+  return { action: null, mood: 'live', word: 'Starting' }
 }
 
 export function word(swarm: Stood): Word {

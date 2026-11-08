@@ -1,8 +1,6 @@
 import * as Memo from '../shared/Memo.ts'
 import * as Gateway from './Gateway.ts'
 import * as Store from './Store.ts'
-import * as Words from './Words.ts'
-import * as Chat from './Chat.ts'
 import type { Swarm } from './Swarm.ts'
 
 function unspent(branch: Gateway.Subagent) {
@@ -51,7 +49,6 @@ export async function settled(self: Swarm, row: Store.Row) {
   for (const branch of closed.filter((found) => claimed.has(found.agent_id))) {
     const returned = await Store.settle(self.env, { agent, branch: branch.agent_id, claimed: true, left: unspent(branch), swarm: row.id })
     const back = returned.reduce((sum, item) => sum + item.amount, 0n)
-    if (back > 0n) Chat.announce(self, `${branch.role} (branch ${branch.agent_id}) closed with ${Words.dollars(back)} of its backers' money unspent, which is theirs to put behind something else again.`)
   }
 }
 
@@ -65,6 +62,5 @@ export async function release(self: Swarm, swarm: string, current: string) {
       const returned = await Store.settle(self.env, { agent: old.agent, branch, claimed: true, left: found ? unspent(found) : null, swarm })
       back += returned.reduce((sum, item) => sum + item.amount, 0n)
     }
-    if (back > 0n) Chat.announce(self, `The swarm started a new agent, so ${Words.dollars(back)} that backers had put behind the old agent's branches went back to them, to put behind the new agent's work.`)
   }
 }

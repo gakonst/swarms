@@ -49,6 +49,7 @@ import * as Edge from './Edge.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Persona from './Persona.ts'
+import * as Phase from './Phase.ts'
 import * as Problem from './Problem.ts'
 import * as Search from './Search.ts'
 import * as Sessions from './Sessions.ts'
@@ -391,8 +392,14 @@ export async function list(env: Cloudflare.Env, input: Input<'list'>): Promise<P
 
   const status = parsed.value.status
   const swarms = await Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row)))
+  resume(env, swarms)
   Store.know(swarms.map((swarm) => swarm.id))
   return Problem.ok({ swarms })
+}
+
+function resume(env: Cloudflare.Env, swarms: readonly Pick<Summary, 'id' | 'status' | 'why'>[]) {
+  const stale = swarms.filter((swarm) => swarm.status !== 'done' && Phase.stale(swarm.why))
+  if (stale.length) waitUntil(Promise.allSettled(stale.map((swarm) => stub(env, swarm.id).revive())))
 }
 
 export function listed(value: { swarms: Summary[] }) {
@@ -438,6 +445,7 @@ export async function stamped(env: Cloudflare.Env, input: Input<'swarm'>, feed =
   if (!loaded) return missing()
 
   const { ledger, row, view } = loaded
+  resume(env, [Store.summary(row)])
   const detail: Detail = {
     ...Store.summary(row),
     code: view.code,

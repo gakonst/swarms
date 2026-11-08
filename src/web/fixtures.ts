@@ -781,6 +781,11 @@ export function git(url: string): Promise<unknown> {
   return delay({ files: commit.paths.map((path) => added(path, files[path] ?? '')) })
 }
 
+export async function updates(key: string) {
+  const swarm = await find(key)
+  return steady({ updates: swarm.updates })
+}
+
 export function artifacts(key: string) {
   return find(key).then(() => delay({ artifacts: shelves[key] ?? [] }))
 }

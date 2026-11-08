@@ -10,8 +10,12 @@ registerHooks({
 
 const Turns: typeof TurnsModule = await import('../src/worker/Turns.ts')
 
-test('turns failed on squeezed payments back off for one and two minutes, then shut down the machines, then rest after six', () => {
-  assert.deepEqual([1, 2, 3, 4, 5, 6, 7].map(Turns.squeezing), [{ wait: 60_000 }, { wait: 120_000 }, 'sweep', { wait: 15_000 }, { wait: 15_000 }, 'rest', 'rest'])
+test('turns failed on squeezed payments back off for one and two minutes, then shut down the machines, then count as out of money after six', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7].map(Turns.squeezing), [{ wait: 60_000 }, { wait: 120_000 }, 'sweep', { wait: 15_000 }, { wait: 15_000 }, 'broke', 'broke'])
+})
+
+test('failed turns never stop the swarm: they wait 15 s, then back off from a minute up to half an hour', () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 8, 20].map(Turns.backoff), [15_000, 15_000, 15_000, 60_000, 120_000, 240_000, 1_800_000, 1_800_000])
 })
 
 test('turns failed on squeezed payments do not count toward the errors that stop the swarm', () => {
@@ -46,14 +50,6 @@ test('a paused swarm reads its wallet channel again once its calls are over, and
   assert.equal(await Turns.settle(self, row, { at: now - 60_000 }), null)
   store.set('channel:pool', { confirmed: true, signed: '700' })
   assert.ok((await Turns.settle(self, row, { at: now })) !== null)
-})
-
-test('an update waits for backers only when its last line says so', () => {
-  assert.ok(Turns.waiting('Still at 1.316x, and $4 is too little for another experiment.\n\nWaiting for backers.'))
-  assert.ok(Turns.waiting('Holding.\n**Waiting for backers.**\n'))
-  assert.ok(Turns.waiting('Waiting for backers'))
-  assert.ok(!Turns.waiting('Waiting for backers to fund the Wishlist before the next branch.\n\nThe kernel is at 1.316x.'))
-  assert.ok(!Turns.waiting('I am not Waiting for backers yet.'))
 })
 
 test("settledUsd reads the turn's settled spend from the gateway's turn report", () => {

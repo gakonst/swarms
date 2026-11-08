@@ -1,7 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { render } from '#ssr'
-import * as Answer from '../shared/Answer.ts'
-import type { Entry } from '../shared/Api.ts'
 import type { Boot, Face } from '../shared/Boot.ts'
 import * as Edge from './Edge.ts'
 import * as Operations from './Operations.ts'
@@ -11,27 +9,21 @@ const store = new AsyncLocalStorage<Boot>()
 
 globalThis.__swarmsServer = { boot: () => store.getStore() }
 
-const firstFeed = 30
-
 const firstChat = 30
 
-const listed = new Set(['/', '/join', '/new', '/about', '/docs', '/board'])
+const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/board'])
 
 export function rendered(path: string) {
-  return listed.has(path) || /^\/s\/[^/]+(\/code)?\/?$/.test(path)
+  return listed.has(path) || /^\/s\/[^/]+(\/chat)?\/?$/.test(path)
+}
+
+export function moved(url: URL) {
+  if (url.pathname === '/join' || url.pathname === '/join/') return `/ideas${url.search}`
+  const code = /^(\/s\/[^/]+)\/code\/?$/.exec(url.pathname)?.[1]
+  return code ? `${code}${url.search}` : undefined
 }
 
 let template: string | undefined
-
-let chunks: { code: string[]; repo: string[] } | undefined
-
-async function preloads(env: Cloudflare.Env, origin: string) {
-  if (chunks) return chunks
-  chunks = await env.ASSETS.fetch(new Request(`${origin}/preload.json`))
-    .then((response) => (response.ok ? (response.json() as Promise<{ code: string[]; repo: string[] }>) : { code: [], repo: [] }))
-    .catch(() => ({ code: [], repo: [] }))
-  return chunks
-}
 
 async function shell(env: Cloudflare.Env, origin: string) {
   if (template !== undefined) return template
@@ -89,49 +81,41 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   const path = url.pathname.replace(/\/$/, '') || '/'
   const head: Head = { description: 'Back an idea with a few dollars and a team of AI agents researches and builds it, in public.', image: `${url.origin}/xframe-card.jpg?v=3`, title: 'Swarms · Back an idea. AI builds it.' }
   const data: Record<string, unknown> = {}
-  if (path === '/' || path === '/join' || path === '/new') {
+  if (path === '/' || path === '/ideas' || path === '/new') {
     const list = await within(Operations.list(env, {}), 1500)
     if (list?.ok) data['swarms'] = Operations.listed(list.value)
-    if (path === '/join') head.title = 'All ideas · Swarms'
+    if (path === '/ideas') head.title = 'All ideas · Swarms'
     if (path === '/new') head.title = 'Start an idea · Swarms'
-    head.player = `${url.origin}/x${path === '/join' ? '?view=join' : path === '/new' ? '?view=start' : ''}`
+    head.player = `${url.origin}/x${path === '/ideas' ? '?view=join' : path === '/new' ? '?view=start' : ''}`
     return { data, head, status: 200, whole: !!list?.ok }
   }
   if (path === '/about') return { data, head: { ...head, title: 'How it works · Swarms' }, status: 200, whole: true }
   if (path === '/docs') return { data, head: { ...head, title: 'API and MCP · Swarms' }, status: 200, whole: true }
   if (!rendered(path)) return { data, head: { ...head, title: 'Not found · Swarms' }, status: 404, whole: false }
-  const [, raw = '', browsing] = /^\/s\/([^/]+)(\/code)?$/.exec(path) ?? []
+  const [, raw = ''] = /^\/s\/([^/]+)(\/chat)?$/.exec(path) ?? []
   const id = decodeURIComponent(raw)
-  const [detail, room, code] = await Promise.all([
-    within(Operations.detail(env, { swarm: id }), 2500),
-    browsing ? undefined : within(Operations.room(env, { swarm: id }), 2500),
-    browsing ? within(Operations.code(env, { swarm: id }), 2500) : undefined,
+  const [detail, room, updates] = await Promise.all([
+    within(Operations.detail(env, { swarm: id }, false), 2500),
+    within(Operations.room(env, { swarm: id }), 2500),
+    within(Operations.updates(env, { limit: 30, swarm: id }), 2500),
   ])
   if (!detail) return { data, head, status: 200, whole: false }
   if (!detail.ok) {
     data[`!${id}`] = detail.detail
     return { data, head: { ...head, title: 'Not found · Swarms' }, status: detail.status === 404 ? 404 : 200, whole: false }
   }
-  data[id] = { ...detail.value, feed: browsing ? [] : await shown(env, id, detail.value.feed), updates: detail.value.updates.filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) }
+  data[id] = { ...detail.value, feed: [], updates: [] }
   if (room?.ok) data[`room:${id}`] = { ...room.value, messages: room.value.messages.slice(-firstChat) }
-  if (code?.ok && code.value.snapshot) data[`code:${id}`] = code.value.snapshot
+  if (updates?.ok) data[`updates:${id}`] = { updates: updates.value.updates }
   const latest = detail.value.answer?.text
   return {
     data,
-    head: { description: (latest ?? detail.value.goal).replace(/\s+/g, ' ').slice(0, 200), image: head.image, player: `${url.origin}/x/s/${encodeURIComponent(id)}`, title: `${browsing ? 'Code · ' : ''}${detail.value.title} · Swarms` },
+    head: { description: (latest ?? detail.value.goal).replace(/\s+/g, ' ').slice(0, 200), image: head.image, player: `${url.origin}/x/s/${encodeURIComponent(id)}`, title: `${detail.value.title} · Swarms` },
     status: 200,
-    whole: browsing ? !!code?.ok : !!room?.ok,
+    whole: !!room?.ok && !!updates?.ok,
   }
 }
 
-async function shown(env: Cloudflare.Env, id: string, feed: readonly Entry[]) {
-  const visible = (entries: readonly Entry[]) => entries.filter((entry) => !(entry.kind === 'status' && Answer.settled(entry.text)))
-  const kept = visible(feed)
-  const first = feed[0]?.seq ?? 0
-  if (kept.length >= 10 || first <= 1) return kept.slice(-firstFeed)
-  const earlier = await within(Operations.feed(env, { before: first, limit: 200, swarm: id }), 1000)
-  return [...(earlier?.ok ? visible(earlier.value.entries) : []), ...kept].slice(-firstFeed)
-}
 
 function meta(head: Head, url: URL) {
   const tags = [
@@ -188,9 +172,7 @@ async function draw(request: Request, env: Cloudflare.Env) {
   const configuring = Operations.config(env)
   const top = before.replace(/<title>[^<]*<\/title>/, '').replace('</head>', '§HEAD§</head>')
   const [opening = '', closing = ''] = top.split('§HEAD§')
-  const browsing = /^\/s\/[^/]+\/code\/?$/.test(url.pathname)
-  const hinted = browsing ? (await preloads(env, url.origin)).repo.filter((file) => !opening.includes(file)) : []
-  void writer.write(encoder.encode(opening + hinted.map((file) => `<link rel="modulepreload" crossorigin href="/${file}">`).join('')))
+  void writer.write(encoder.encode(opening))
 
   const work = (async () => {
     const { data, head, whole } = await gathering

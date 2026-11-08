@@ -29,7 +29,7 @@ function brief(row: Store.Row, notes: Note[]) {
 }
 
 function next(notes: Note[]) {
-  return ['Keep going.', ...notes.map(weighed)].join('\n\n')
+  return ['Keep going. Never stop to wait for backers: pick the next most useful step toward the goal.', ...notes.map(weighed)].join('\n\n')
 }
 
 function grown(told: bigint | null | undefined, weight: bigint) {
@@ -50,6 +50,8 @@ const maxFailures = 3
 const quickMs = 60_000
 
 const settleMs = 15_000
+
+const maxBackoffMs = 30 * 60_000
 
 export async function step(self: Swarm) {
   const id = self.kv.get<string>('id')
@@ -271,23 +273,15 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   const wanted = BigInt(latest.state === 'working' ? (latest.wanted ?? '0') : '0')
   if (status !== 'completed' && (money.left < Store.reserveOf(money.row) || wanted > money.biggest)) {
     const wake = Paying.rested(self)
-    await pause(self, money.row, wanted > money.biggest ? { wanted: String(wanted), why: 'costly' } : { left: String(money.left), needs: String(Store.reserveOf(money.row)), wake, why: 'money' })
-    return wanted > money.biggest ? null : wake
+    await pause(self, money.row, { left: String(money.left), needs: String(wanted > money.biggest ? wanted : Store.reserveOf(money.row)), wake, why: 'money' })
+    return wake
   }
   if (status === 'completed') {
     self.kv.delete('squeezes')
     self.kv.delete('squeezedTurns')
   } else if ((self.kv.get<number>('squeezed') ?? 0) >= run.started) return squeeze(self, money.row, run)
   const failures = status === 'completed' ? 0 : failing(self, run.since)
-  if (failures >= maxFailures) {
-    await pause(self, money.row, { failures, why: 'rest' })
-    return null
-  }
-  if (status === 'completed' && message && waiting(message) && (await quiet(self, row))) {
-    await pause(self, money.row, { why: 'idle' })
-    return null
-  }
-  const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : Date.now() + settleMs
+  const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : Date.now() + backoff(failures)
   await self.move(money.row, { since: run.since, state: 'waiting', until })
   return until
 }
@@ -304,8 +298,8 @@ async function charged(self: Swarm, row: Store.Row, run: Turning) {
   return report?.ok ? settledUsd(report.value) : undefined
 }
 
-export function waiting(message: string) {
-  return /(?:^|\n)[\s*_]*Waiting for backers\.?[\s*_]*$/.test(message.trim())
+export function backoff(failures: number) {
+  return failures < maxFailures ? settleMs : Math.min(maxBackoffMs, Clock.minuteMs * 2 ** (failures - maxFailures))
 }
 
 async function quiet(self: Swarm, row: Store.Row) {
@@ -325,8 +319,8 @@ export function failing(self: Swarm, since: number) {
   return count
 }
 
-export function squeezing(count: number): { wait: number } | 'sweep' | 'rest' {
-  if (count >= 2 * maxFailures) return 'rest'
+export function squeezing(count: number): { wait: number } | 'sweep' | 'broke' {
+  if (count >= 2 * maxFailures) return 'broke'
   if (count === maxFailures) return 'sweep'
   return { wait: count < maxFailures ? Clock.minuteMs * 2 ** (count - 1) : settleMs }
 }
@@ -336,9 +330,10 @@ async function squeeze(self: Swarm, row: Store.Row, run: Turning) {
   self.kv.put('squeezes', count)
   self.kv.put('squeezedTurns', [...(self.kv.get<number[]>('squeezedTurns') ?? []), run.n])
   const step = squeezing(count)
-  if (step === 'rest') {
-    await pause(self, row, { failures: count, why: 'rest' })
-    return null
+  if (step === 'broke') {
+    const wake = Paying.rested(self)
+    await pause(self, row, { left: '0', needs: String(Store.reserveOf(row)), wake, why: 'money' })
+    return wake
   }
   if (step === 'sweep') {
     await sweep(self, row, ` to return its prepaid time: the gateway found no room on the swarm's contributions for the agent's next model call ${count} times in a row`)

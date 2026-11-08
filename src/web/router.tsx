@@ -11,6 +11,10 @@ export function usePath() {
   return useSyncExternalStore(subscribe, () => location.pathname, () => here().pathname)
 }
 
+export function useQuery(name: string) {
+  return useSyncExternalStore(subscribe, () => new URLSearchParams(location.search).get(name), () => here().searchParams.get(name))
+}
+
 export function href(path: string) {
   if (!fixture) return path
   const base = here()
@@ -31,17 +35,36 @@ export function prefetch(path: string) {
   for (const warm of warmers) warm(path)
 }
 
-export function navigate(path: string, options: { replace?: boolean } = {}) {
-  if (options.replace) history.replaceState(null, '', href(path))
-  else history.pushState(null, '', href(path))
-  dispatchEvent(new PopStateEvent('popstate'))
-  scrollTo(0, 0)
+function depth() {
+  const state: unknown = typeof history === 'undefined' ? null : history.state
+  return typeof state === 'object' && state !== null && 'depth' in state && typeof state.depth === 'number' ? state.depth : 0
 }
 
-export function Link(props: { children: ReactNode; className?: string; data?: Readonly<Record<`data-${string}`, string>> | undefined; lit?: boolean; onHover?: (hovering: boolean) => void; to: string }) {
+export function navigate(path: string, options: { replace?: boolean; keep?: boolean } = {}) {
+  if (options.replace) history.replaceState({ depth: depth() }, '', href(path))
+  else history.pushState({ depth: depth() + 1 }, '', href(path))
+  dispatchEvent(new PopStateEvent('popstate'))
+  if (!options.keep) scrollTo(0, 0)
+}
+
+export function useCanBack() {
+  return useSyncExternalStore(subscribe, () => depth() > 0, () => false)
+}
+
+export function back(fallback: string) {
+  if (depth() > 0) history.back()
+  else navigate(fallback, { replace: true })
+}
+
+function plain(event: MouseEvent<HTMLAnchorElement>) {
+  return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+}
+
+export function Link(props: { children: ReactNode; className?: string; data?: Readonly<Record<`data-${string}`, string>> | undefined; keep?: boolean; label?: string; lit?: boolean; onHover?: (hovering: boolean) => void; replace?: boolean; to: string }) {
   return (
     <a
       {...props.data}
+      aria-label={props.label}
       className={props.className}
       data-lit={props.lit || undefined}
       href={href(props.to)}
@@ -57,9 +80,26 @@ export function Link(props: { children: ReactNode; className?: string; data?: Re
       onPointerLeave={() => props.onHover?.(false)}
       onTouchStart={() => prefetch(props.to)}
       onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+        if (!plain(event)) return
         event.preventDefault()
-        navigate(props.to)
+        navigate(props.to, { ...(props.replace ? { replace: true } : {}), ...(props.keep ? { keep: true } : {}) })
+      }}
+    >
+      {props.children}
+    </a>
+  )
+}
+
+export function Back(props: { children: ReactNode; className?: string; label?: string; to: string }) {
+  return (
+    <a
+      aria-label={props.label}
+      className={props.className}
+      href={href(props.to)}
+      onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+        if (!plain(event)) return
+        event.preventDefault()
+        back(props.to)
       }}
     >
       {props.children}

@@ -63,7 +63,10 @@ app.use('*', async (c, next) => {
 })
 
 app.get('*', async (c, next) => {
-  const path = new URL(c.req.url).pathname
+  const url = new URL(c.req.url)
+  const path = url.pathname
+  const moved = Page.moved(url)
+  if (moved) return c.redirect(moved, 301)
   const accept = c.req.header('accept') ?? ''
   if (!Page.rendered(path) || (accept !== '' && !/text\/html|\*\/\*/.test(accept))) return next()
   return Page.page(c.req.raw, c.env)

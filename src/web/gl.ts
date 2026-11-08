@@ -40,13 +40,13 @@ const lens = Math.tan(fov / 2)
 const eye = 10
 const depth = 2.6
 
-const codes: Record<Mood, number> = { errors: 3, live: 0, money: 1, new: 4, resting: 2 }
+const codes: Record<Mood, number> = { live: 0, money: 1, new: 4 }
 
-const tints: Record<Mood, Vector> = { errors: [0.72, 0.2, 0.16], live: [0.1, 0.55, 0.27], money: [0.78, 0.52, 0.1], new: [0.12, 0.18, 0.1], resting: [0.3, 0.43, 0.55] }
+const tints: Record<Mood, Vector> = { live: [0.1, 0.55, 0.27], money: [0.78, 0.52, 0.1], new: [0.12, 0.18, 0.1] }
 
 const ink: Vector = [0.26, 0.34, 0.22]
 
-const activity: Record<Mood, number> = { errors: 0.45, live: 1, money: 0.14, new: 0.03, resting: 0.08 }
+const activity: Record<Mood, number> = { live: 1, money: 0.14, new: 0.03 }
 
 const shared = `#version 300 es
 precision highp float;

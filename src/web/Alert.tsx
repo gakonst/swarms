@@ -32,8 +32,8 @@ export function explain(error: string) {
   const unsent = /Nothing was sent or charged: (.+)$/.exec(text)?.[1]
   if (unsent) return { detail: unsent.charAt(0).toUpperCase() + unsent.slice(1), title: 'Nothing was sent or charged.' }
   if (/no accounts connected|disconnected/i.test(text)) return { detail: 'Connect Tempo Wallet and try again.', title: 'Tempo Wallet is not connected.' }
-  if (/declined|rejected|denied|cancel/i.test(text)) return { detail: 'Nothing was charged.', title: 'You declined in Tempo Wallet.' }
-  if (/less than|insufficient|too little|balance/i.test(text)) return { detail: text, title: 'Not enough in your wallet.' }
+  if (/declined|rejected|denied|cancel/i.test(text)) return { detail: 'Nothing was charged.', title: 'Cancelled.' }
+  if (/less than|insufficient|too little|balance/i.test(text)) return { detail: 'Add money in Tempo Wallet and try again.', title: 'Not enough in your wallet.' }
   if (/fetch|network|unavailable|not answering|timeout/i.test(text)) return { detail: 'Check your connection and try again.', title: "Couldn't reach Swarms." }
   return { detail: text, title: 'That did not go through.' }
 }

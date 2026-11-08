@@ -8,7 +8,7 @@ import * as Api from './api.ts'
 import { percent, usd, minute } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
 import { code } from './Contribute.tsx'
-import { gate as gated, seated, Steering, useRoster } from './Steering.tsx'
+import { gate as gated, seated, useRoster } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 import * as Wire from './wire.ts'
@@ -22,7 +22,11 @@ export function tint(address: string) {
 }
 
 function arrived(text: string) {
-  return /^(@[\w-]+|0x[0-9a-f]{4}…[0-9a-f]{4}) (pledged|sent|set a budget|funded|put|moved|steered|stopped)\b/.test(text) || /^New artifact:/.test(text)
+  return /^(@[\w-]+|0x[0-9a-f]{4}…[0-9a-f]{4}) (backed|pledged|sent|set a budget|funded|put|moved|steered|stopped)\b/.test(text) || /^New artifact:/.test(text)
+}
+
+function plain(text: string) {
+  return text.replace(/(\d[\d,]*(?:\.\d+)?) (?:MACH|OUSD|USDC\.e|pathUSD|USDT0)\b/g, (_, amount: string) => `$${amount}`).replace(/^New artifact: /, 'New result: ')
 }
 
 function merge(list: readonly Said[], more: readonly Said[]) {
@@ -216,7 +220,7 @@ export const Room = memo(function Room(props: {
   const query = mine && !closed ? /(^|\s)@([a-z0-9_-]*)$/i.exec(text.slice(0, caret)) : null
   const options = query
     ? [
-        { handle: 'swarm', hint: team ? (seat ? 'steer it from your team budget' : 'only its team steers it') : 'steer it with your backing' },
+        { handle: 'swarm', hint: 'tell the AI what to try' },
         ...members.filter((member) => !member.handle.startsWith('0x')).map((member) => ({ handle: member.handle, hint: member.address === me?.address ? 'you' : `${usd(member.backed)} in` })),
       ]
         .filter((option) => option.handle.startsWith((query[2] ?? '').toLowerCase()))
@@ -343,7 +347,7 @@ export const Room = memo(function Room(props: {
     gate = (
       <div className="room-gate room-gate-one">
         <div className="room-cta">
-          <button className="room-cta-main" disabled={!props.config || signing} onClick={() => void signIn()} type="button">{signing ? 'Approve in Tempo Wallet…' : 'Sign in to chat'}</button>
+          <button className="room-cta-main" disabled={!props.config || signing} onClick={() => void signIn()} type="button">{signing ? 'Signing in…' : 'Sign in to chat'}</button>
           <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Back it</button>
         </div>
       </div>
@@ -351,22 +355,20 @@ export const Room = memo(function Room(props: {
   else if (door === 'unnamed')
     gate = (
       <div className="room-gate room-gate-one">
-        <Username why="Pick a username to talk here. People see it beside everything you say and steer." />
+        <Username why="Pick a username to chat." />
       </div>
     )
   else if (door.at === 'not-member')
     gate = (
       <div className="room-gate room-gate-one">
         <div className="room-cta">
-          <button className="room-cta-main" onClick={() => props.onBack('')} type="button">{team ? 'Fund it to talk here' : 'Fund $2 to steer'}</button>
-          <button className="room-cta-side" onClick={() => props.onBack('')} type="button">Fund →</button>
+          <button className="room-cta-main" onClick={() => props.onBack('')} type="button">Back it to join the chat</button>
         </div>
       </div>
     )
 
   return (
-    <section aria-label="The swarm's room" className="room">
-      <Steering onChange={props.onSteered} swarm={props.swarm} />
+    <section aria-label="Chat" className="room">
       <ol
         aria-live="polite"
         className="room-list"
@@ -382,8 +384,8 @@ export const Room = memo(function Room(props: {
             <button className="btn btn-minimal" onClick={() => void older()} type="button">Earlier messages</button>
           </li>
         )}
-        {!loaded && <li className="room-empty">{failed ? `Could not load the room. ${failed}` : 'Opening the room…'}</li>}
-        {loaded && !messages.some((item) => item.artifact || item.author || item.text.startsWith('Update: ') || arrived(item.text)) && <li className="room-empty">Quiet so far. Be the first to say hi.</li>}
+        {!loaded && <li className="room-empty">{failed ? `Could not load the chat. ${failed}` : 'Opening the chat…'}</li>}
+        {loaded && !messages.some((item) => item.artifact || item.author || item.text.startsWith('Update: ') || arrived(item.text)) && <li className="room-empty">Quiet so far. Say hi.</li>}
         {messages.map((item, index) => {
           const author = item.author
           const shown = item.artifact
@@ -391,7 +393,7 @@ export const Room = memo(function Room(props: {
             return (
               <li className="said said-system" data-artifact="true" key={item.id}>
                 <button className="said-link" onClick={() => props.onArtifact(shown.slug)} type="button">
-                  <Words handles={handles} me={myNames} text={item.text} /> <span aria-hidden="true">→</span>
+                  <Words handles={handles} me={myNames} text={plain(item.text)} /> <span aria-hidden="true">→</span>
                   <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
                 </button>
               </li>
@@ -402,7 +404,7 @@ export const Room = memo(function Room(props: {
               return (
                 <li className="said said-update" key={item.id}>
                   <button disabled={!props.onTranscript} onClick={props.onTranscript} type="button">
-                    <span className="said-update-tag">Agent update</span>
+                    <span className="said-update-tag">Update</span>
                     <span className="said-update-text">{Answer.excerpt(item.text.slice(8), 160)}</span>
                     <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
                   </button>
@@ -412,7 +414,7 @@ export const Room = memo(function Room(props: {
             return (
               <li className="said said-system" key={item.id}>
                 <p>
-                  <Words handles={handles} me={myNames} text={Answer.amounts(item.text)} />
+                  <Words handles={handles} me={myNames} text={plain(Answer.amounts(item.text))} />
                   <time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>
                 </p>
               </li>
@@ -485,7 +487,7 @@ export const Room = memo(function Room(props: {
               </ol>
             )}
             <textarea
-              aria-label="Message the room"
+              aria-label="Message"
               maxLength={Mention.maxText}
               onChange={(event) => {
                 setText(event.target.value)
@@ -499,7 +501,7 @@ export const Room = memo(function Room(props: {
               }}
               onKeyDown={keys}
               onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-              placeholder="Chat is free. @swarm to sponsor research"
+              placeholder="Say something… (@swarm to tell the AI)"
               ref={area}
               rows={2}
               value={text}
@@ -516,7 +518,7 @@ export const Room = memo(function Room(props: {
               <>
                 {' '}
                 <button className="btn btn-minimal" onClick={() => props.onBack(idea)} type="button">
-                  Fund it →
+                  Back it →
                 </button>
               </>
             )}

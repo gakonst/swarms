@@ -250,7 +250,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.kv.delete('exhausted:pool')
     if (input.kind === 'noted') {
       this.log('funds', `${Words.short(input.contributor)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
-      Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind "${input.note ?? ''}".`)
+      Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed "${input.note ?? ''}" with $${Words.trim(input.amount)}.`)
       if (input.noteId) await this.steer(input.swarm, input.noteId)
       this.changed('detail', 'members')
       return this.wake('note')
@@ -260,7 +260,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       `${Words.short(input.contributor)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
       [input.note, input.hash].filter(Boolean).join('\n'),
     )
-    Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ` behind "${input.note}"` : ''}.`)
+    Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed it with $${Words.trim(input.amount)}${input.note ? `: "${input.note}"` : ''}.`)
     if (input.noteId) await this.steer(input.swarm, input.noteId)
     this.cue('chain')
     this.cue('sponsors')
@@ -368,6 +368,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   rostered(roster: Roster) {
     Chat.broadcast(this, { roster, type: 'roster' })
+  }
+
+  async revive() {
+    const run = this.run()
+    if (run.state === 'paused' && Phase.stale(run.pause.why)) await this.wake('money')
   }
 
   async wake(reason: Phase.Reason) {

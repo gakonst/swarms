@@ -10,8 +10,6 @@ import { Lost } from './Lost.tsx'
 import { page, preload } from './pages.tsx'
 import * as Wallet from './wallet.ts'
 
-const Repo = page('repo', () => import('./Repo.tsx').then((module) => module.Repo))
-
 const New = page('new', () => import('./New.tsx').then((module) => module.New))
 
 const Docs = page('docs', () => import('./Docs.tsx').then((module) => module.Docs))
@@ -30,18 +28,13 @@ if (typeof window !== 'undefined') {
     if (route === '/new') void import('./New.tsx').then((module) => preload('new', module.New))
     if (route === '/about') void import('./About.tsx').then((module) => preload('about', module.About))
     if (route === '/docs') void import('./Docs.tsx').then((module) => preload('docs', module.Docs))
-    const browsed = /^\/s\/([^/?#]+)\/code\/?(?:[?#]|$)/.exec(path)?.[1]
-    if (browsed) {
-      void import('./Repo.tsx').then((module) => preload('repo', module.Repo))
-      void Api.code(decodeURIComponent(browsed)).catch(() => undefined)
-    }
-    const id = /^\/s\/([^/?#]+)\/?(?:[?#]|$)/.exec(path)?.[1]
+    const id = /^\/s\/([^/?#]+)(?:\/chat)?\/?(?:[?#]|$)/.exec(path)?.[1]
     if (!id) return
     void warmSwarm()
     const swarm = decodeURIComponent(id)
     if (remembered(swarm) !== undefined || Date.now() - (fetching.get(swarm) ?? 0) < 10_000) return
     fetching.set(swarm, Date.now())
-    Api.swarm(swarm).then((detail) => remember(swarm, detail), () => fetching.delete(swarm))
+    Api.swarm(swarm, false).then((detail) => remember(swarm, detail), () => fetching.delete(swarm))
   })
   const idle = (window as { requestIdleCallback?: (run: () => void) => void }).requestIdleCallback ?? ((run: () => void) => setTimeout(run, 1500))
   idle(() => void warmSwarm())
@@ -129,8 +122,8 @@ function Header(props: { config: Config | undefined; path: string }) {
         </Link>
       </p>
       <div className="header-end">
-        <Link className={props.path === '/join' || props.path.startsWith('/s/') ? 'game-nav game-nav-on' : 'game-nav'} to="/join">Ideas</Link>
-        <Link className={props.path === '/new' ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start<span className="nav-long"> an idea</span></Link>
+        <Link className={props.path === '/ideas' || props.path.startsWith('/s/') ? 'game-nav game-nav-on' : 'game-nav'} to="/ideas">Ideas</Link>
+        <Link className={props.path === '/new' && !location.search.includes('q=') ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start<span className="nav-long"> an idea</span></Link>
         <Link className={props.path === '/about' ? 'game-nav game-nav-on nav-long' : 'game-nav nav-long'} to="/about">How it works</Link>
         <WalletButton config={props.config} />
       </div>
@@ -141,12 +134,18 @@ function Header(props: { config: Config | undefined; path: string }) {
 export function App() {
   const path = usePath()
   const config = useConfig()
-  const swarm = /^\/s\/([^/]+)\/?$/.exec(path)?.[1]
-  const code = /^\/s\/([^/]+)\/code\/?$/.exec(path)?.[1]
+  const matched = /^\/s\/([^/]+)(\/chat|\/code)?\/?$/.exec(path)
+  const swarm = matched?.[1]
+  const chat = matched?.[2] === '/chat'
 
   useEffect(() => {
-    if (!swarm && !code && path !== '/board') document.title = path === '/new' ? 'Start an idea · Swarms' : path === '/join' ? 'All ideas · Swarms' : path === '/about' ? 'How it works · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/' ? 'Swarms · Back an idea. AI builds it.' : 'Not found · Swarms'
-  }, [path, swarm, code])
+    if (path === '/join') navigate(`/ideas${location.search}`, { replace: true })
+    if (matched?.[2] === '/code') navigate(`/s/${matched[1]}`, { replace: true })
+  }, [path])
+
+  useEffect(() => {
+    if (!swarm && path !== '/board') document.title = path === '/new' ? 'Start an idea · Swarms' : path === '/ideas' ? 'All ideas · Swarms' : path === '/about' ? 'How it works · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/' ? 'Swarms · Back an idea. AI builds it.' : 'Not found · Swarms'
+  }, [path, swarm])
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -167,13 +166,13 @@ export function App() {
     )
 
   return (
-    <div className="app">
+    <div className="app" data-chat={chat || undefined}>
       <Header config={config} path={path} />
       <main>
         <Suspense fallback={<section aria-busy="true" className="page lost" />}>
         {path === '/' ? (
           <Home />
-        ) : path === '/join' ? (
+        ) : path === '/ideas' || path === '/join' ? (
           <Join />
         ) : path === '/new' ? (
           <New config={config} />
@@ -181,12 +180,8 @@ export function App() {
           <About />
         ) : path === '/docs' ? (
           <Docs config={config} />
-        ) : code ? (
-          <Suspense fallback={<section className="page"><p className="empty">Loading the code browser…</p></section>}>
-            <Repo config={config} id={decodeURIComponent(code)} key={code} />
-          </Suspense>
         ) : swarm ? (
-          <Swarm config={config} id={decodeURIComponent(swarm)} key={swarm} />
+          <Swarm chat={chat} config={config} id={decodeURIComponent(swarm)} key={swarm} />
         ) : (
           <Lost title="Nothing out here.">
             <Link className="lost-row" to="/join">Browse ideas <span aria-hidden="true">→</span></Link>
