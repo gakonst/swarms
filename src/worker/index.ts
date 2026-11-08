@@ -256,5 +256,20 @@ app.get('*', (c) => {
   return Page.lost(c.req.raw, c.env)
 })
 
-export default app
+async function scheduled(_controller: ScheduledController, env: Cloudflare.Env) {
+  const { results } = await env.DB.prepare('SELECT id FROM swarms').all<{ id: string }>()
+  const swept = await Promise.all(
+    results.map(async (row) => {
+      try {
+        return { id: row.id, ...(await env.SWARMS.get(env.SWARMS.idFromName(row.id)).instruct()) }
+      } catch (error) {
+        return { agent: null, error: String(error), id: row.id, instructed: false, state: 'unknown' }
+      }
+    }),
+  )
+  const left = swept.filter((swarm) => swarm.agent && !swarm.instructed)
+  console.log(JSON.stringify({ instruct: swept.length, left: left.map((swarm) => `${swarm.id}:${swarm.state}`), withoutAgent: swept.filter((swarm) => !swarm.agent).length }))
+}
+
+export default { fetch: app.fetch, scheduled } satisfies ExportedHandler<Cloudflare.Env>
 
