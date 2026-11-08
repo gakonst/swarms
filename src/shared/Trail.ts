@@ -12,6 +12,19 @@ export function appended(held: string, text: string) {
   return held.trim().length > thought ? held : held + text
 }
 
+export type Thinking = { done: string; item: string; text: string }
+
+export function spoken(held: Thinking | string | undefined) {
+  return typeof held === 'string' ? held : held ? held.done + held.text : ''
+}
+
+export function placed(held: Thinking | string | undefined, item: string, offset: number | null, text: string): Thinking | string | undefined {
+  if (spoken(held).trim().length > thought) return held
+  const known = typeof held === 'string' ? { done: held, item: '', text: '' } : (held ?? { done: '', item, text: '' })
+  const at = known.item === item ? known : { done: known.done + known.text, item, text: '' }
+  return { ...at, text: offset === null || offset > at.text.length ? at.text + text : at.text.slice(0, offset) + text }
+}
+
 export function clip(text: string, length: number) {
   return text.length > length ? text.slice(0, length - 1) + '…' : text
 }

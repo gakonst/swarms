@@ -159,7 +159,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   kept: SyncKvStorage | undefined
   watchers = new Set<Relay.Watcher>()
   ring: Relay.Ring = { bytes: 0, frames: [] }
-  window: { close: (at: number) => void; live: boolean; stop: AbortController } | undefined
+  window: { close: (at: number) => void; stop: AbortController } | undefined
   fails = 0
   cues = new Map<Follow.Cue, number>()
   polled = new Map<Follow.Cue, number>()

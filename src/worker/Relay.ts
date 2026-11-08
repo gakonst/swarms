@@ -28,12 +28,6 @@ export function join(self: Swarm, watcher: Watcher) {
   watcher.relaying = true
   write(self, watcher, encoded({ at: self.working()?.since ?? Date.now(), type: 'start' }))
   for (const frame of self.ring.frames) if (!write(self, watcher, frame)) return
-  if (self.window && !self.window.live) poke(self)
-}
-
-export function poke(self: Swarm) {
-  self.window?.stop.abort()
-  self.ctx.waitUntil(self.ctx.storage.setAlarm(Date.now()))
 }
 
 export function relay(self: Swarm, event: Live) {

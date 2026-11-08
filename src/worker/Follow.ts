@@ -1,7 +1,7 @@
 import * as Turns from './Turns.ts'
 import * as Repo from './Repo.ts'
 import type { Hand, Live } from '../shared/Api.ts'
-import { type Buffers, type Crew, appended, clip, crew, narrate, redact, subagent, thought, tool } from '../shared/Trail.ts'
+import { type Buffers, type Crew, type Thinking, appended, clip, crew, narrate, placed, redact, spoken, subagent, thought, tool } from '../shared/Trail.ts'
 import * as Gateway from './Gateway.ts'
 import * as Store from './Store.ts'
 import * as Relay from './Relay.ts'
@@ -23,8 +23,8 @@ function streamed(who: string | null, type: string | undefined, payload: Record<
   const text = typeof payload['text'] === 'string' ? redact(payload['text']) : ''
   const offset = typeof payload['offset'] === 'number' ? payload['offset'] : null
   if (type === 'assistant.delta') return [{ channel: 'text', delta: text, item: String(payload['item_id'] ?? ''), offset, type: 'delta', who }]
-  if (type === 'reasoning.summary.delta') return [{ channel: 'thinking', delta: text, item: `reasoning:${String(payload['model_call_index'] ?? '')}`, offset: null, type: 'delta', who }]
-  if (type === 'tool.input.delta') return [{ channel: 'input', delta: text, item: String(payload['call_id'] ?? ''), offset: null, type: 'delta', who }]
+  if (type === 'reasoning.summary.delta') return [{ channel: 'thinking', delta: text, item: `reasoning:${String(payload['item_id'] ?? payload['model_call_index'] ?? '')}`, offset, type: 'delta', who }]
+  if (type === 'tool.input.delta') return [{ channel: 'input', delta: text, item: String(payload['call_id'] ?? ''), offset, type: 'delta', who }]
   return []
 }
 
@@ -105,15 +105,14 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
 
 export async function listen(self: Swarm, row: Store.Row, agent: Lead, run: Turning): Promise<{ ended: boolean } | undefined> {
   const stop = new AbortController()
-  const live = [...self.watchers].some((watcher) => watcher.relaying)
   const opened = Date.now()
   let closing = Math.max(until(self, opened), opened + Clock.refreshMs)
   const timer = setTimeout(() => stop.abort(), closing - opened)
-  self.window = { close: (at) => (closing = Math.min(closing, Math.max(at, opened + Clock.refreshMs))), live, stop }
+  self.window = { close: (at) => (closing = Math.min(closing, Math.max(at, opened + Clock.refreshMs))), stop }
   let ended = false
   let cursor = agent.cursor
   try {
-    const response = await Gateway.stream(self.env, row.id, agent.id, cursor, stop.signal, live).catch(() => undefined)
+    const response = await Gateway.stream(self.env, row.id, agent.id, cursor, stop.signal).catch(() => undefined)
     if (!response?.ok || !response.body) {
       await response?.body?.cancel().catch(() => undefined)
       return undefined
@@ -135,7 +134,10 @@ export async function listen(self: Swarm, row: Store.Row, agent: Lead, run: Turn
         if (!found) continue
         const event = JSON.parse(found.data) as Gateway.Event
         if (found.live) {
-          for (const delta of deltas(self, event, agent.id)) Relay.relay(self, delta)
+          for (const delta of deltas(self, event, agent.id)) {
+            if (delta.type === 'delta' && delta.channel === 'thinking') pondered(self, delta.who, delta.item, delta.offset, delta.delta)
+            Relay.relay(self, delta)
+          }
           continue
         }
         Turns.reached(self)
@@ -254,20 +256,29 @@ export function record(self: Swarm, who: string | null, type: string | undefined
   for (const found of narrate(buffers(self), who, type, payload)) self.log(found.kind, found.text, found.detail, { at, event, ms: found.ms, who })
 }
 
+function pondering(who: string | null) {
+  return who === null ? 'thinking' : `thinking:${who}`
+}
+
 export function buffers(self: Swarm): Buffers {
-  const name = (who: string | null) => (who === null ? 'thinking' : `thinking:${who}`)
   return {
     add: (who, text) => {
-      const held = self.kv.get<string>(name(who)) ?? ''
+      const held = spoken(self.kv.get<Thinking | string>(pondering(who)))
       const next = appended(held, text)
-      if (next !== held) self.kv.put(name(who), next)
+      if (next !== held) self.kv.put(pondering(who), next)
     },
     take: (who) => {
-      const text = self.kv.get<string>(name(who)) ?? ''
-      self.kv.delete(name(who))
+      const text = spoken(self.kv.get<Thinking | string>(pondering(who)))
+      self.kv.delete(pondering(who))
       return text
     },
   }
+}
+
+export function pondered(self: Swarm, who: string | null, item: string, offset: number | null, text: string) {
+  const held = self.kv.get<Thinking | string>(pondering(who))
+  const next = placed(held, item, offset, text)
+  if (next !== held) self.kv.put(pondering(who), next)
 }
 
 export function flush(self: Swarm) {
