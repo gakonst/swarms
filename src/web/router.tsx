@@ -38,13 +38,23 @@ export function navigate(path: string, options: { replace?: boolean } = {}) {
   scrollTo(0, 0)
 }
 
-export function Link(props: { children: ReactNode; className?: string; to: string }) {
+export function Link(props: { children: ReactNode; className?: string; data?: Readonly<Record<`data-${string}`, string>> | undefined; lit?: boolean; onHover?: (hovering: boolean) => void; to: string }) {
   return (
     <a
+      {...props.data}
       className={props.className}
+      data-lit={props.lit || undefined}
       href={href(props.to)}
-      onFocus={() => prefetch(props.to)}
-      onPointerEnter={() => prefetch(props.to)}
+      onBlur={() => props.onHover?.(false)}
+      onFocus={() => {
+        prefetch(props.to)
+        props.onHover?.(true)
+      }}
+      onPointerEnter={() => {
+        prefetch(props.to)
+        props.onHover?.(true)
+      }}
+      onPointerLeave={() => props.onHover?.(false)}
       onTouchStart={() => prefetch(props.to)}
       onClick={(event: MouseEvent<HTMLAnchorElement>) => {
         if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return

@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { type MouseEvent, useMemo, useRef, useState } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
 import * as Status from '../shared/Status.ts'
 import { here } from './boot.ts'
+import { Field, type Hive } from './Field.tsx'
 import { ago, usd } from './format.ts'
 import { open, problems } from './research.ts'
 import { href, Link, navigate, prefetch } from './router.tsx'
@@ -83,10 +84,17 @@ function Title(props: { text: string }) {
   const words = props.text.split(' ')
   const last = words.pop()
   return (
-    <span className="door-title">
-      {words.join(' ')} <span className="door-last">{last}<span aria-hidden="true" className="door-arrow">→</span></span>
+    <span className="sky-title">
+      {words.join(' ')} <span className="sky-last">{last}<span aria-hidden="true" className="sky-arrow">→</span></span>
     </span>
   )
+}
+
+function follow(event: MouseEvent, path: string | undefined) {
+  if (!path || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  event.stopPropagation()
+  navigate(path)
 }
 
 export function Home() {
@@ -95,49 +103,63 @@ export function Home() {
   const open = swarms.filter((swarm) => swarm.status !== 'done')
   const counted = Status.count(swarms)
   const latest = Math.max(0, ...swarms.map((swarm) => swarm.updatedAt))
-  const peek = Status.ranked(open.length ? open : swarms, latest).slice(0, 4)
+  const ranked = Status.ranked(open.length ? open : swarms, latest)
   const free = list.data ? openIdeas(swarms) : problems
-  const ideas = free.slice(0, 4)
+  const sky = useRef<HTMLDivElement>(null)
+  const start = useRef<HTMLDivElement>(null)
+  const join = useRef<HTMLDivElement>(null)
+  const tags = useRef<HTMLDivElement>(null)
+  const [focus, setFocus] = useState<string>()
+  const [lit, setLit] = useState<string>()
+  const [flat, setFlat] = useState(false)
+  const hives = useMemo<Hive[]>(
+    () => {
+      const joins = ranked.slice(0, 52).map((item): Hive => ({ detail: `${Status.word(item)} · ${usd(item.raised)}`, home: 'join', id: item.id, mood: Status.standing(item).mood, title: item.title, weight: Number(item.raised) }))
+      const seeds = free.slice(0, 12).map((item): Hive => ({ detail: item.hint, home: 'start', id: `idea:${item.id}`, mood: 'new', title: item.label, weight: 0 }))
+      return joins.flatMap((hive, index) => (index % 4 === 3 && seeds.length ? [hive, seeds.shift()!] : [hive])).concat(seeds)
+    },
+    [ranked.map((item) => [item.id, item.status, item.why, item.raised, item.remaining, item.title].join()).join('|'), free.map((item) => item.id).join()],
+  )
+  const path = (id: string) => (id.startsWith('idea:') ? `/new?q=${id.slice(5)}` : `/s/${id}`)
+  const tagged = hives.slice(0, 24)
 
   return (
-    <div className="page doors">
-      <div className="door door-start">
-        <Link className="door-link" to="/new">
-          <span className="door-kicker">{Status.ideas(free.length)}</span>
+    <div className="sky" data-lit={!!lit} onClickCapture={(event) => follow(event, lit && path(lit))} ref={sky}>
+      <Field focus={focus} hives={hives} homes={{ join, start }} ignore=".sky-block, .sky-tag, .sky-flat" onFail={() => setFlat(true)} onPick={setLit} surface={sky} tags={tags} />
+      <div className="sky-block sky-start" ref={start}>
+        <Link className="sky-link" to="/new">
+          <span className="sky-kicker">{Status.ideas(free.length)}</span>
           <Title text="Start a breakthrough" />
-          <span className="door-text">A swarm is an AI agent that researches or builds whatever you set it, in public, for as long as it has money: it splits the work into branches with their own subagents, runs code on real machines, and publishes code and live artifacts as it goes.</span>
+          <span className="sky-text">A swarm is an AI agent that researches or builds whatever you set it, in public, for as long as it has money: it splits the work into branches with their own subagents, runs code on real machines, and publishes code and live artifacts as it goes.</span>
         </Link>
-        <span className="door-cards">
-          {ideas.map((item) => (
-            <Link className="door-card" key={item.id} to={`/new?q=${item.id}`}>
-              <i className="tile-mark" data-tone={problems.indexOf(item) % 3} />
-              <b>{item.label}</b>
-              <small>{item.hint}</small>
-            </Link>
-          ))}
-        </span>
       </div>
-      <div className="door door-join">
-        <Link className="door-link" to="/join">
-          <span className="door-kicker">
+      <div className="sky-block sky-join" ref={join}>
+        <Link className="sky-link" to="/join">
+          <span className="sky-kicker">
             {counted.running > 0 && <i className="chip-live" />}
             {!list.data ? (list.error ? 'Offline' : 'Looking…') : counted.text}
           </span>
           <Title text="Be part of the future" />
-          <span className="door-text">Anyone can fund a swarm. The money pays only for its work (models, machines and the services it calls), a note sent with it steers the agent, and every cent shows on its page. No tokens, no returns.</span>
+          <span className="sky-text">Anyone can fund a swarm. The money pays only for its work (models, machines and the services it calls), a note sent with it steers the agent, and every cent shows on its page. No tokens, no returns.</span>
         </Link>
-        <span className="door-cards">
-          {peek.map((swarm) => (
-            <Link className="door-card" key={swarm.id} to={`/s/${swarm.id}`}>
-              <i className="tile-dot" data-status={swarm.status} title={Status.word(swarm)} />
-              <b>{swarm.title}</b>
-              <em>{Status.word(swarm)} · {usd(swarm.raised)}</em>
+      </div>
+      <nav aria-label="Swarms and ideas" className="sky-tags" ref={tags}>
+        {tagged.map((hive) => (
+          <Link className="sky-tag" data={{ 'data-mood': hive.mood, 'data-tag': hive.id }} key={hive.id} lit={lit === hive.id} onHover={(hovering) => setFocus(hovering ? hive.id : undefined)} to={path(hive.id)}>
+            <b>{hive.title}</b>
+            <small>{hive.detail}</small>
+          </Link>
+        ))}
+      </nav>
+      {flat && (
+        <div className="sky-flat">
+          {tagged.slice(0, 6).map((hive) => (
+            <Link className="sky-chip" key={hive.id} to={path(hive.id)}>
+              {hive.title}
             </Link>
           ))}
-          {!list.data && Array.from({ length: 4 }, (_, index) => <span className="door-card door-ghost" key={index} />)}
-          {list.data && !peek.length && <span className="door-card door-none"><b>Nothing yet. Be the first.</b></span>}
-        </span>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

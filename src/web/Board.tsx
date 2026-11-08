@@ -11,7 +11,7 @@ const swarm = (id: string, rest = '') => `/s/${id}?fixture${rest}`
 const flows: readonly Flow[] = [
   {
     frames: [
-      { name: 'Two doors', url: '/?fixture' },
+      { name: 'Home', url: '/?fixture' },
       { name: 'Loading', url: '/?fixture&scene=wait' },
       { name: 'Nothing to join yet', url: '/?fixture&scene=empty' },
       { name: 'Offline', url: '/?fixture&scene=down' },
