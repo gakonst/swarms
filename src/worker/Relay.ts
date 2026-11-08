@@ -81,8 +81,21 @@ export function unwatch(self: Swarm, watcher: Watcher) {
   }
 }
 
+export function current(self: Swarm) {
+  try {
+    return self.ctx.storage.kv.get<string>('instance') === self.boot
+  } catch {
+    return false
+  }
+}
+
 export function beat(self: Swarm) {
   self.beating ??= setInterval(() => {
+    if (!current(self)) {
+      console.log(JSON.stringify({ superseded: self.boot, watchers: self.watchers.size }))
+      for (const watcher of [...self.watchers]) unwatch(self, watcher)
+      return
+    }
     const now = Date.now()
     for (const watcher of self.watchers)
       if (watcher.follow && !watcher.relaying && now > watcher.until) unwatch(self, watcher)

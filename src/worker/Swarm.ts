@@ -198,6 +198,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const statement of indexes) sql.exec(statement)
     const from = ctx.storage.kv.get<number>('v') ?? 0
     if (from < version) migrate(ctx.storage, from)
+    ctx.storage.kv.put('instance', this.boot)
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
   }
 
