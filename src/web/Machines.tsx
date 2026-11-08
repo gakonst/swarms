@@ -235,7 +235,7 @@ function Logs(props: { machine: string; sandboxes: string[]; swarm: string }) {
           Show older lines
         </button>
       )}
-      <pre className="machine-lines">{shown.length ? shown.map((line) => `${clock(line.at)} ${line.stream === 'system' ? '·' : line.stream === 'stderr' ? '!' : ' '} ${line.text.replace(/\n$/, '')}`).join('\n') : busy ? 'Reading the log from the gateway…' : 'The gateway has no log lines for this machine.'}</pre>
+      <pre className="machine-lines">{shown.length ? shown.map((line) => `${clock(line.at)} ${line.stream === 'system' ? '·' : line.stream === 'stderr' ? '!' : ' '} ${line.text.replace(/^\n+|\n+$/g, '')}`).join('\n') : busy ? 'Reading the log from the gateway…' : 'The gateway has no log lines for this machine.'}</pre>
       {state && (
         <p className="run-note">
           {state.complete ? 'This is the whole log; it will not change.' : state.fetchedAt ? `Read from the gateway ${ago(state.fetchedAt)}; the gateway keeps it 7 days after the machine ends.` : ''}
