@@ -361,6 +361,7 @@ html[data-viewing] body { overflow:hidden; }
   .box { gap:10px; padding:16px; border-radius:20px; }
   .box-raised b { font-size:36px; }
   .idea-tab { flex:1; justify-content:center; }
+  .idea-tabs { top:0; }
   .idea-page:not([data-view]) .idea-cover { display:none; }
   .result-gist { font-size:19px; }
   .news li { grid-template-columns:minmax(0,1fr); gap:2px; }
