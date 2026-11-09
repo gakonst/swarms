@@ -2,11 +2,13 @@ import { useState } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import type { Artifact, Branch, Detail, Member, Update } from '../shared/Api.ts'
 import type { Progress } from '../shared/Progress.ts'
+import type * as SurfaceKinds from '../shared/Surface.ts'
 import type * as Wishlist from '../shared/Wishlist.ts'
 import { Explored } from './Explored.tsx'
 import { ago, short, usd } from './format.ts'
 import { useNow } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
+import { Surface } from './Surface.tsx'
 
 type Item = { at: number; key: string } & ({ kind: 'backed'; amount: string; note: string | null; who: string } | { kind: 'update'; text: string })
 
@@ -32,6 +34,7 @@ export function Results(props: {
   artifacts: readonly Artifact[] | undefined
   branches: readonly Branch[] | undefined
   progress: Progress | null | undefined
+  surface: readonly SurfaceKinds.Node[]
   members: readonly Member[]
   onChat: () => void
   onOpen: (slug: string) => void
@@ -44,7 +47,7 @@ export function Results(props: {
   const now = useNow(60_000)
   const [more, setMore] = useState(false)
   const handle = (address: string) => props.members.find((member) => member.address === address)?.handle ?? short(address)
-  const made = (props.artifacts ?? []).filter((artifact) => artifact.slug !== 'wishlist')
+  const made = (props.artifacts ?? []).filter((artifact) => artifact.slug !== 'wishlist' && artifact.slug !== 'surface')
   const asked = [...swarm.notes].sort((a, b) => Number(b.weight) - Number(a.weight)).slice(0, 4)
   const items: Item[] = [
     ...swarm.contributions.map((item, index): Item => ({ amount: item.amount, at: item.at, key: `c${index}`, kind: 'backed', note: item.note, who: handle(item.contributor) })),
@@ -54,6 +57,12 @@ export function Results(props: {
 
   return (
     <div className="results">
+      {props.surface.length > 0 && (
+        <section className="result-section" aria-labelledby="surface-title">
+          <h2 className="sr-only" id="surface-title">Now</h2>
+          <Surface nodes={props.surface} onChat={props.onChat} onSteer={props.onSteer} />
+        </section>
+      )}
       <section className="result-section" aria-labelledby="made-title">
         <h2 className="sr-only" id="made-title">Results</h2>
         {made.length ? (

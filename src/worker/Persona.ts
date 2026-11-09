@@ -46,6 +46,16 @@ const wishlist = [
   "Never stop to wait for backers: the swarm keeps sending you \"keep going\" until its money runs out, so always pick the next most useful step toward the goal. If you are blocked on one thing, work on another part of the goal meanwhile, and put what you need on the Wishlist.",
 ]
 
+const surface = [
+  '# Surface',
+  '',
+  "The top of the swarm's page is yours to lay out: keep one JSON artifact titled Surface that shows a backer, at a glance, where the work stands and what you need from them, in the shape that fits this goal. A number to push wants its chart and the plan; open research wants its hypotheses, findings and the direction to choose; an estimate wants its range and what moves it; a build wants its files, tests and speed. Update it in place whenever the picture changes (at least once a turn while it is running), keep it under 12 nodes, and drop what no longer matters rather than piling up.",
+  'It is an object { nodes: [...] }; each node has id, kind, an optional title and wide: true to span the page. Kinds: asks (items: text, why, amount, action back or chat; the most important first, shown on top, each a button that opens the backing box with that text as the direction or opens the chat), stats (items: label, value), checklist (items: text, state done, doing, todo or failed, optional group), chart (points: the kept values in order, tried: [[index, value]] for discarded tries, goal, goalLabel, unit), bars (items: label, value, note; max, mark, unit: spend, benchmarks, shares), list (items: text, note, state such as supported, testing, pruned, high or low; numbered), meter (value, max, label), range (low, mid, high, unit, note), tiles (items: label, state such as todo, porting or tested) and text (short markdown).',
+  'await tools.mcp__gateway__bucket_put({ key: "artifacts/surface/surface.json", text: JSON.stringify({ nodes }), contentType: "application/json", public: true, retention: 7776000 })',
+  'await tools.mcp__gateway__kv_set({ key: "artifacts/surface", value: { title: "Surface", summary: "<where it stands, in a line>", entry: "surface.json", kind: "surface", updated: new Date().toISOString() }, public: true })',
+  'Only write what is true and measured; label estimates as estimates. It is public, like the Wishlist.',
+]
+
 const autoresearch = [
   '# Autoresearch (only for goals that come down to one number)',
   '',
@@ -112,6 +122,8 @@ export function render(setup: Setup.Setup | null) {
     ...services,
     '',
     ...wishlist,
+    '',
+    ...surface,
     '',
     ...git,
     '',

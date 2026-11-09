@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Artifact } from '../shared/Api.ts'
+import * as Surface from '../shared/Surface.ts'
 import * as Wishlist from '../shared/Wishlist.ts'
 import { message } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
@@ -37,10 +38,9 @@ function rows(text: string, separator: string) {
   return table
 }
 
-export function useWishes(list: readonly Artifact[] | undefined) {
-  const artifact = list?.find(Wishlist.is)
+function useJson<value>(artifact: Artifact | undefined, parse: (text: string) => value, empty: value) {
   const url = artifact ? source(artifact) : undefined
-  const [wishes, setWishes] = useState<readonly Wishlist.Wish[]>([])
+  const [read, setRead] = useState<value>(empty)
 
   useEffect(() => {
     if (!url) return
@@ -48,7 +48,7 @@ export function useWishes(list: readonly Artifact[] | undefined) {
     fetch(url)
       .then((response) => (response.ok ? response.text() : Promise.reject(new Error(String(response.status)))))
       .then(
-        (text) => alive && setWishes(Wishlist.parse(text)),
+        (text) => alive && setRead(parse(text)),
         () => undefined,
       )
     return () => {
@@ -56,7 +56,17 @@ export function useWishes(list: readonly Artifact[] | undefined) {
     }
   }, [url])
 
-  return artifact ? Wishlist.open(wishes) : []
+  return artifact ? read : empty
+}
+
+const none: readonly never[] = []
+
+export function useWishes(list: readonly Artifact[] | undefined) {
+  return Wishlist.open(useJson<readonly Wishlist.Wish[]>(list?.find(Wishlist.is), Wishlist.parse, none))
+}
+
+export function useSurface(list: readonly Artifact[] | undefined) {
+  return useJson<readonly Surface.Node[]>(list?.find(Surface.is), Surface.parse, none)
 }
 
 function Grid(props: { rows: string[][] }) {
