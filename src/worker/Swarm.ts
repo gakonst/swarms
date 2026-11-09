@@ -651,6 +651,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return snapshot && snapshot.name === repo ? snapshot : null
   }
 
+  tree(name: string): Repo.Graph | null {
+    const id = this.kv.get<string>('id')
+    const repo = this.kv.get<string>('repo') ?? name
+    const graph = this.kv.get<Repo.Graph>('graph')
+    if (id && repo && Repo.stale(this, repo)) this.ctx.waitUntil(Repo.graph(this, id, repo).catch((error: unknown) => console.error('Reading the branches failed', error)))
+    return graph && graph.name === repo ? graph : null
+  }
+
   async steer(swarm: string, noteId: string): Promise<Note | undefined> {
     const row = await this.found(swarm)
     const agent = this.agent()?.id

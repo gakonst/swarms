@@ -23,13 +23,21 @@ import * as Branching from './Branching.ts'
 import * as Chat from './Chat.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
 
-function brief(row: Store.Row, notes: Note[]) {
-  const setup = Store.setup(row)
-  return [row.title, row.goal, setup ? Setup.told(setup) : '', ...notes.map(weighed)].filter(Boolean).join('\n\n')
+const repoCost = 1_100_000n
+
+export function repoed(repo: { name: string; state: 'none' | 'ready' }, left: bigint) {
+  if (repo.state === 'ready') return `The swarm's git repository is ${repo.name}.`
+  if (left < repoCost) return ''
+  return `Before anything else, create the swarm's git repository: git_create({ name: "${repo.name}", public: true }). Keep the swarm's work in it: main is the best version so far, every branch of work is a git branch of it, and a branch that beats main is merged into main.`
 }
 
-function next(notes: Note[]) {
-  return ['Keep going. Never stop to wait for backers: pick the next most useful step toward the goal.', ...notes.map(weighed)].join('\n\n')
+function brief(row: Store.Row, notes: Note[], repo: string) {
+  const setup = Store.setup(row)
+  return [row.title, row.goal, setup ? Setup.told(setup) : '', repo, ...notes.map(weighed)].filter(Boolean).join('\n\n')
+}
+
+function next(notes: Note[], repo: string) {
+  return ['Keep going. Never stop to wait for backers: pick the next most useful step toward the goal.', repo, ...notes.map(weighed)].filter(Boolean).join('\n\n')
 }
 
 function grown(told: bigint | null | undefined, weight: bigint) {
@@ -103,7 +111,8 @@ export async function advance(self: Swarm, row: Store.Row) {
   else self.kv.delete('seen')
   const told = self.told()
   const included = agent.briefed ? notes.filter((note) => grown(told.get(note.id), Memo.units(note.weight))) : notes
-  const text = agent.briefed ? next(self.tell(included)) : brief(money.row, self.tell(notes))
+  const repoLine = repoed(repo, money.left)
+  const text = agent.briefed ? next(self.tell(included), repo.state === 'ready' ? '' : repoLine) : brief(money.row, self.tell(notes), repoLine)
   const id = `${agent.id}:${n}`
   const start: Phase.Run =
     run.state === 'starting' && run.id === id ? run : { id, n, since, state: 'starting', told: included.map((note) => [note.id, String(Memo.units(note.weight))]) }

@@ -273,6 +273,7 @@ const fixtures: Live[] = [
       [1, '0.250000', 'usdce', 3, 'Report cost per solved task, not per token'],
       [0, '1.000000', 'usdce', 100, null],
     ],
+    code: { app: 'swarm-bench-coders', clone: 'https://gateway.tempo-dev.workers.dev/p/0x975937feafc6869a260c176854dda8764a78e122/swarm-bench-coders/git/bench-coders.git', name: 'bench-coders', owner: '0x975937feafc6869a260c176854dda8764a78e122' },
     id: 'bench-coders',
     problem: 'coding-models',
     lines: [
@@ -728,6 +729,14 @@ const shelves: Record<string, Artifact[]> = {
 type Change = { additions: number; deletions: number; oldPath: string | null; patch: string; path: string; state: string | null }
 
 const tree: Record<string, Record<string, string>> = {
+  'bench-coders': {
+    'README.md': "# Coding models, benchmarked by money\n\nWhich open model solves the most coding tasks per dollar, run through the same harness.\n\n**Best so far:** DeepSeek V4.1 Flash solves 41% of the tasks at $0.0006 a task.\n\n| model | solved | cost per solved task |\n|---|---:|---:|\n| DeepSeek V4.1 Flash | 41% | $0.0006 |\n| gpt-oss-120b | 33% | $0.0021 |\n| GLM-5.3 | 38% | $0.0044 |\n\n## Run it\n\n```sh\npython harness/run.py --model deepseek-v4.1-flash --tasks tasks/rust-subset\n```\n\nEvery branch of this repository is a direction the swarm tried; `main` keeps the ones that won.\n",
+    'harness/run.py': 'import argparse\nimport json\n\nfrom harness.budget import Budget\n\n\ndef main():\n    parser = argparse.ArgumentParser()\n    parser.add_argument("--model", required=True)\n    parser.add_argument("--tasks", required=True)\n    args = parser.parse_args()\n    budget = Budget(steps=30)\n    print(json.dumps({"model": args.model, "tasks": args.tasks, "steps": budget.steps}))\n\n\nif __name__ == "__main__":\n    main()\n',
+    'harness/budget.py': 'class Budget:\n    def __init__(self, steps):\n        self.steps = steps\n\n    def spend(self):\n        self.steps -= 1\n        return self.steps > 0\n',
+    'results/solve-rate.csv': 'model,solved,cost_per_solved\ndeepseek-v4.1-flash,0.41,0.0006\ngpt-oss-120b,0.33,0.0021\nglm-5.3,0.38,0.0044\n',
+    'tasks/rust-subset/README.md': '# Rust subset\n\n50 tasks with hidden tests, each a small crate.\n',
+    'tasks/rust-subset/001/src/lib.rs': 'pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n',
+  },
   'mev-map': {
     'README.md': "# MEV in Tempo's first million blocks\n\nWhich strategies exist, how much they extract, and who pays for it.\n\n| strategy | bundles | value (USD) |\n|---|---:|---:|\n| DEX arbitrage | 29,349 | 8,105 |\n| Liquidations | 11,066 | 3,316 |\n| Sandwiches | 7,698 | 6,999 |\n\nSee `report.md` for the write-up and `classify/` for the classifier.\n",
     'classify/bundles.py': 'import json\nimport sys\n\nKINDS = ("arbitrage", "liquidation", "sandwich")\n\n\ndef classify(bundle):\n    swaps = [call for call in bundle["calls"] if call["kind"] == "swap"]\n    if len(swaps) >= 2 and swaps[0]["sender"] == swaps[-1]["sender"] and bundle["victim"]:\n        return "sandwich"\n    if any(call["kind"] == "liquidate" for call in bundle["calls"]):\n        return "liquidation"\n    return "arbitrage"\n\n\nif __name__ == "__main__":\n    for line in sys.stdin:\n        bundle = json.loads(line)\n        print(bundle["hash"], classify(bundle))\n',
@@ -738,6 +747,11 @@ const tree: Record<string, Record<string, string>> = {
 }
 
 const pushes: Record<string, readonly (readonly [string, number, readonly string[]])[]> = {
+  'bench-coders': [
+    ['merge rust-subset: compile errors fed back to the model', 34, ['README.md', 'results/solve-rate.csv']],
+    ['retry once on a timeout', 95, ['harness/run.py']],
+    ['merge harness: tool calls and a 30-step budget per task', 240, ['harness/run.py', 'harness/budget.py', 'tasks/rust-subset/README.md', 'tasks/rust-subset/001/src/lib.rs']],
+  ],
   'mev-map': [
     ['Write the final report', 1100, ['report.md', 'README.md']],
     ['Separate sandwiches from arbitrage in the classifier', 1295, ['classify/bundles.py', 'classify/test_bundles.py']],
@@ -782,32 +796,42 @@ export function git(url: string): Promise<unknown> {
   return delay({ files: commit.paths.map((path) => added(path, files[path] ?? '')) })
 }
 
-const tried = [
-  'commit\tsolve rate\tstatus\tdescription',
-  'base\t0.21\tkeep\tbaseline: one prompt, no tools',
-  'harness-1\t0.29\tkeep\tmerge harness: tool calls and a 30-step budget per task',
-  'temp-0\t0.28\tdiscard\ttemperature 0',
-  'swe-2\t0.36\tkeep\tmerge swe-lite: retry once on a failing test',
-  'rust-3\t0.41\tkeep\tmerge rust-subset: compile errors fed back to the model',
-].join('\n')
+const commit = (sha: string, parents: string[], message: string) => ({ date: null, message, parents, sha })
 
-const map = {
-  branches: [
-    { explores: 'a fair harness with tool calls', found: '0.29 solve rate', name: 'harness', state: 'done' },
-    { explores: 'longer context for big repos', found: 'no gain: timeouts doubled', name: 'context', state: 'dead end' },
-    { explores: 'retry on failing tests', found: '0.36', name: 'swe-lite', state: 'done' },
-    { explores: 'compile errors as feedback', found: '0.41', name: 'rust-subset', state: 'done' },
-    { explores: 'a second machine for Qwen3-Coder', found: '', name: 'latency-probe', state: 'exploring' },
-  ],
-  better: 'higher',
-  goal: 0.6,
-  metric: 'solve rate',
-  title: 'Share of benchmark tasks solved',
+const trunk = [
+  commit('m6', ['m5', 'r2'], 'merge rust-subset: compile errors fed back to the model\n\nsolve rate: 0.41'),
+  commit('r2', ['r1'], 'rust-subset: feed compiler output back'),
+  commit('m5', ['m4'], 'retry once on a timeout\n\nsolve rate: 0.37'),
+  commit('m4', ['m3', 's1'], 'merge swe-lite: retry once on a failing test\n\nsolve rate: 0.36'),
+  commit('s1', ['m3'], 'swe-lite: retry failing tests'),
+  commit('r1', ['m3'], 'rust-subset: 50 tasks with hidden tests'),
+  commit('m3', ['m2', 'h1'], 'merge harness: tool calls and a 30-step budget per task\n\nsolve rate: 0.29'),
+  commit('h1', ['m2'], 'harness: tool calls'),
+  commit('m2', ['m1'], 'shortlist the 19 models that call tools'),
+  commit('m1', [], 'baseline: one prompt, no tools\n\nsolve rate: 0.21'),
+]
+
+const forks = {
+  context: [commit('c1', ['m3'], 'context: 128k context doubled timeouts, no gain'), commit('m3', ['m2', 'h1'], '')],
+  harness: [commit('h1', ['m2'], ''), commit('m2', ['m1'], '')],
+  'latency-probe': [commit('l1', ['m6'], 'latency-probe: give Qwen3-Coder its own machine'), commit('m6', ['m5', 'r2'], '')],
+  'rust-subset': [commit('r2', ['r1'], ''), commit('r1', ['m3'], ''), commit('m3', ['m2', 'h1'], '')],
+  'swe-lite': [commit('s1', ['m3'], ''), commit('m3', ['m2', 'h1'], '')],
+  temperature: [commit('t1', ['m4'], 'temperature: 0 instead of 0.2 lost 2 points'), commit('m4', ['m3', 's1'], '')],
 }
 
 export async function progress(key: string) {
   await find(key)
-  return steady({ progress: key.split('~')[0] === 'bench-coders' ? (Progress.parse(map, tried) ?? null) : null })
+  const names = ['main', ...Object.keys(forks)]
+  const tree = Progress.fromGit({
+    branches: names.map((name) => ({ name, sha: name === 'main' ? 'm6' : (forks[name as keyof typeof forks][0]?.sha ?? null) })),
+    hint: { better: 'higher', explores: new Map(), goal: 0.6, metric: 'solve rate', title: 'Share of benchmark tasks solved' },
+    live: ['latency-probe'],
+    logs: forks,
+    main: trunk,
+    trunk: 'main',
+  })
+  return steady({ progress: key.split('~')[0] === 'bench-coders' ? (tree ?? null) : null })
 }
 
 export async function updates(key: string) {

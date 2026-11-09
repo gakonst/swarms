@@ -28,7 +28,7 @@ if (typeof window !== 'undefined') {
     if (route === '/new') void import('./New.tsx').then((module) => preload('new', module.New))
     if (route === '/about') void import('./About.tsx').then((module) => preload('about', module.About))
     if (route === '/docs') void import('./Docs.tsx').then((module) => preload('docs', module.Docs))
-    const id = /^\/s\/([^/?#]+)(?:\/chat)?\/?(?:[?#]|$)/.exec(path)?.[1]
+    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code)?\/?(?:[?#]|$)/.exec(path)?.[1]
     if (!id) return
     void warmSwarm()
     const swarm = decodeURIComponent(id)
@@ -136,11 +136,10 @@ export function App() {
   const config = useConfig()
   const matched = /^\/s\/([^/]+)(\/chat|\/code)?\/?$/.exec(path)
   const swarm = matched?.[1]
-  const chat = matched?.[2] === '/chat'
+  const view = matched?.[2] === '/chat' ? 'chat' : matched?.[2] === '/code' ? 'code' : 'results'
 
   useEffect(() => {
     if (path === '/join') navigate(`/ideas${location.search}`, { replace: true })
-    if (matched?.[2] === '/code') navigate(`/s/${matched[1]}`, { replace: true })
   }, [path])
 
   useEffect(() => {
@@ -166,7 +165,7 @@ export function App() {
     )
 
   return (
-    <div className="app" data-chat={chat || undefined}>
+    <div className="app" data-chat={view === 'chat' || undefined}>
       <Header config={config} path={path} />
       <main>
         <Suspense fallback={<section aria-busy="true" className="page lost" />}>
@@ -181,7 +180,7 @@ export function App() {
         ) : path === '/docs' ? (
           <Docs config={config} />
         ) : swarm ? (
-          <Swarm chat={chat} config={config} id={decodeURIComponent(swarm)} key={swarm} />
+          <Swarm config={config} id={decodeURIComponent(swarm)} key={swarm} view={view} />
         ) : (
           <Lost title="Nothing out here.">
             <Link className="lost-row" to="/join">Browse ideas <span aria-hidden="true">→</span></Link>

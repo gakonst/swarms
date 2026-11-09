@@ -17,13 +17,12 @@ const firstChat = 30
 const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/board'])
 
 export function rendered(path: string) {
-  return listed.has(path) || /^\/s\/[^/]+(\/chat)?\/?$/.test(path)
+  return listed.has(path) || /^\/s\/[^/]+(\/chat|\/code)?\/?$/.test(path)
 }
 
 export function moved(url: URL) {
   if (url.pathname === '/join' || url.pathname === '/join/') return `/ideas${url.search}`
-  const code = /^(\/s\/[^/]+)\/code\/?$/.exec(url.pathname)?.[1]
-  return code ? `${code}${url.search}` : undefined
+  return undefined
 }
 
 let template: string | undefined
@@ -93,15 +92,16 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   }
   if (path === '/about' || path === '/docs') return { data, head: Share.share(url.origin, Share.plain(path === '/about' ? 'about' : 'docs')), status: 200, whole: true }
   if (!rendered(path)) return { data, head: lost, status: 404, whole: false }
-  const [, raw = ''] = /^\/s\/([^/]+)(\/chat)?$/.exec(path) ?? []
+  const [, raw = '', tail] = /^\/s\/([^/]+)(\/chat|\/code)?\/?$/.exec(path) ?? []
   const id = decodeURIComponent(raw)
-  const [detail, room, updates, shelf, branched, progressed] = await Promise.all([
+  const [detail, room, updates, shelf, branched, progressed, snapshot] = await Promise.all([
     within(Operations.detail(env, { swarm: id }, false), 2500),
     within(Operations.room(env, { swarm: id }), 2500),
     within(Operations.updates(env, { limit: 30, swarm: id }), 2500),
     within(Operations.artifacts(env, { swarm: id }, url.origin), 2500),
     within(Operations.branches(env, { swarm: id }), 2500),
     within(Operations.progress(env, { swarm: id }), 2500),
+    tail === '/code' ? within(Operations.code(env, { swarm: id }), 2500) : undefined,
   ])
   if (!detail) return { data, head: Share.share(url.origin, Share.listing('home', [])), status: 200, whole: false }
   if (!detail.ok) {
@@ -114,6 +114,7 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   if (shelf?.ok) data[`artifacts:${id}`] = shelf.value
   if (branched?.ok) data[`branches:${id}`] = branched.value
   if (progressed?.ok) data[`progress:${id}`] = progressed.value
+  if (snapshot?.ok && snapshot.value.snapshot) data[`code:${id}`] = snapshot.value.snapshot
   return {
     data,
     head: Share.share(url.origin, Share.swarm(detail.value)),

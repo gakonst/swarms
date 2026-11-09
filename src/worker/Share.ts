@@ -75,7 +75,7 @@ export function plain(kind: 'about' | 'docs'): Subject {
 
 export function page(url: URL) {
   const path = url.pathname.replace(/\/$/, '') || '/'
-  const id = /^\/s\/([A-Za-z0-9_-]{1,64})(?:\/chat)?$/.exec(path)?.[1]
+  const id = /^\/s\/([A-Za-z0-9_-]{1,64})(?:\/chat|\/code)?$/.exec(path)?.[1]
   if (id) return `s/${id}`
   if (path === '/new' && url.searchParams.has('q')) return problem(url.searchParams.get('q')) ? `new/${url.searchParams.get('q')}` : undefined
   return ({ '/': 'home', '/about': 'about', '/docs': 'docs', '/ideas': 'ideas', '/new': 'new' } as Record<string, string>)[path]

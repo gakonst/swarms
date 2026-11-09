@@ -1,4 +1,5 @@
 import type { Snapshot } from '../shared/Api.ts'
+import type * as Progress from '../shared/Progress.ts'
 import { redact } from '../shared/Trail.ts'
 import * as Follow from './Follow.ts'
 import * as Gateway from './Gateway.ts'
@@ -64,6 +65,7 @@ export async function gatewayWallet(self: Swarm) {
 export async function watch(self: Swarm, row: Store.Row) {
   const repo = await located(self, row)
   if (repo.state !== 'ready') return
+  if (stale(self, repo.name)) await graph(self, row.id, repo.name).catch((error: unknown) => console.error('Reading the branches failed', error))
   const fresh = await pushed(self, row.id, repo.name, self.kv.get<string>('seen') ?? null)
   if (!fresh[0]) return
   saw(self, fresh[0].sha)
@@ -97,6 +99,74 @@ export async function snapshot(self: Swarm, swarm: string, name: string) {
     readme: path && read?.text !== undefined && read.text.length <= snapshotText ? { path, text: redact(read.text) } : null,
   } satisfies Snapshot)
   self.kv.delete('snapping')
+}
+
+export type Graph = {
+  at: number
+  branches: { name: string; sha: string | null }[]
+  logs: Record<string, Progress.Commit[]>
+  main: Progress.Commit[]
+  name: string
+  trunk: string
+}
+
+export const graphMs = 60_000
+
+const graphBranches = 40
+
+const trunkCommits = 100
+
+const branchCommits = 50
+
+const trunkText = 2_000
+
+const branchText = 600
+
+export function stale(self: Swarm, name: string) {
+  const known = self.kv.get<Graph>('graph')
+  if (known && known.name === name && Date.now() - known.at < graphMs) return false
+  return Date.now() - (self.kv.get<number>('graphing') ?? 0) > graphMs
+}
+
+function trimmed(commit: Progress.Commit, most: number): Progress.Commit {
+  return { date: commit.date ?? null, message: redact(commit.message.slice(0, most)), parents: commit.parents ?? [], sha: commit.sha }
+}
+
+export async function graph(self: Swarm, swarm: string, name: string) {
+  self.kv.put('graphing', Date.now())
+  const owner = await gatewayWallet(self)
+  if (!owner) return
+  const base = `/${encodeURIComponent(name)}`
+  type Logged = { commits: Progress.Commit[] }
+  const listed = await Gateway.code<{ branches: { name: string; sha: string | null }[] }>(self.env, owner, swarm, `${base}/branches?limit=100&at=${Date.now()}`)
+  if (!listed) return
+  const trunk = ['main', 'master'].find((wanted) => listed.branches.some((branch) => branch.name === wanted))
+  const head = listed.branches.find((branch) => branch.name === trunk)?.sha
+  if (!trunk || !head) return
+  const known = self.kv.get<Graph>('graph')
+  const prior = known?.name === name ? known : undefined
+  const main =
+    prior?.main[0]?.sha === head
+      ? prior.main
+      : (await Gateway.code<Logged>(self.env, owner, swarm, `${base}/log?ref=${head}&limit=${trunkCommits}`))?.commits.map((commit) => trimmed(commit, trunkText))
+  if (!main) return
+  const onMain = new Set(main.map((commit) => commit.sha))
+  const others = listed.branches.filter((branch) => branch.name !== trunk).slice(0, graphBranches)
+  const logs = Object.fromEntries(
+    await Promise.all(
+      others.map(async (branch) => {
+        const kept = prior?.logs[branch.name]
+        if (kept && branch.sha && prior?.branches.find((found) => found.name === branch.name)?.sha === branch.sha) return [branch.name, kept] as const
+        if (!branch.sha) return [branch.name, kept ?? []] as const
+        const read = await Gateway.code<Logged>(self.env, owner, swarm, `${base}/log?ref=${branch.sha}&limit=${branchCommits}`)
+        if (!read) return [branch.name, kept ?? []] as const
+        const fork = read.commits.findIndex((commit) => onMain.has(commit.sha))
+        return [branch.name, (fork < 0 ? read.commits : read.commits.slice(0, fork + 1)).map((commit) => trimmed(commit, branchText))] as const
+      }),
+    ),
+  )
+  self.kv.put('graph', { at: Date.now(), branches: others, logs, main, name, trunk } satisfies Graph)
+  self.kv.delete('graphing')
 }
 
 export async function history(self: Swarm, swarm: string, name: string, limit: number) {

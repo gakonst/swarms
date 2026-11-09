@@ -39,7 +39,7 @@ type Row =
   | { count: number; kind: 'tweaks'; key: string }
 
 function rows(progress: Progress.Progress): Row[] {
-  const kept = progress.main.filter((step) => step.kept && step.value !== null)
+  const kept = progress.main.filter((step) => step.kept)
   const where = (name: string) => kept.findIndex((step) => step.merged === name)
   const tried = new Map<number, Progress.Line[]>()
   const live: Progress.Line[] = []
@@ -50,19 +50,29 @@ function rows(progress: Progress.Progress): Row[] {
       at = Math.max(at, merged)
       continue
     }
-    if (branch.state === 'exploring' || branch.state === 'promising') live.push(branch)
-    else if (!branch.merged) tried.set(at, [...(tried.get(at) ?? []), branch])
+    if (branch.state === 'exploring' || branch.state === 'promising') {
+      live.push(branch)
+      continue
+    }
+    if (branch.merged) continue
+    const forked = branch.from ? kept.findIndex((step) => step.commit === branch.from) : -1
+    const place = forked >= 0 ? forked : at
+    tried.set(place, [...(tried.get(place) ?? []), branch])
   }
   const tweaks = new Map<number, number>()
   let index = -1
   for (const step of progress.main) {
-    if (step.kept && step.value !== null) index += 1
+    if (step.kept) index += 1
     else if (index >= 0) tweaks.set(index, (tweaks.get(index) ?? 0) + 1)
+  }
+  const before = (position: number) => {
+    for (let back = position - 1; back >= 0; back--) if (kept[back]?.value !== null && kept[back]?.value !== undefined) return kept[back]?.value ?? undefined
+    return undefined
   }
   const out: Row[] = live.map((branch) => ({ branch, key: `l-${branch.name}`, kind: 'live' as const }))
   for (let position = kept.length - 1; position >= 0; position--) {
     const step = kept[position]!
-    const was = kept[position - 1]?.value ?? undefined
+    const was = before(position)
     const count = tweaks.get(position) ?? 0
     if (count) out.push({ count, key: `w-${position}`, kind: 'tweaks' })
     for (const branch of [...(tried.get(position) ?? [])].reverse()) out.push({ branch, key: `t-${branch.name}`, kind: 'tried' })
@@ -74,7 +84,7 @@ function rows(progress: Progress.Progress): Row[] {
 }
 
 function Chart(props: { progress: Progress.Progress }) {
-  const kept = props.progress.main.filter((step) => step.kept && step.value !== null).map((step) => ({ merged: !!step.merged, value: step.value as number }))
+  const kept = props.progress.main.flatMap((step) => (step.kept && step.value !== null ? [{ merged: !!step.merged, value: step.value }] : []))
   if (kept.length < 2) return null
   const values = kept.map((step) => step.value)
   const goal = props.progress.goal
@@ -124,7 +134,7 @@ function Node(props: { row: Row; progress: Progress.Progress }) {
     : row.kind === 'start' ? sentence(row.step.text.replace(/^baseline\s*[:,-]?\s*/i, '')) || 'The baseline'
     : row.kind === 'tried' ? sentence(branch?.found || branch?.explores || '')
     : sentence(branch?.explores ?? '')
-  const title = row.kind === 'merge' ? 'Merged into main' : row.kind === 'main' ? 'On main' : row.kind === 'start' ? 'Started here' : row.kind === 'tried' ? "Tried, didn't beat main" : 'Exploring now'
+  const title = row.kind === 'merge' ? 'Merged into main' : row.kind === 'main' ? 'On main' : row.kind === 'start' ? 'Started here' : row.kind === 'tried' ? (progress.source === 'git' ? 'Tried, not merged' : "Tried, didn't beat main") : 'Exploring now'
   const more = branch && (row.kind === 'merge' ? branch.found : row.kind === 'tried' ? branch.explores : '')
   return (
     <li className="flow-row" data-kind={row.kind}>
@@ -144,20 +154,26 @@ function Node(props: { row: Row; progress: Progress.Progress }) {
 
 function Tree(props: { progress: Progress.Progress; running: boolean }) {
   const progress = props.progress
-  const kept = progress.main.filter((step) => step.kept && step.value !== null)
-  const first = kept[0]?.value ?? 0
-  const now = kept.at(-1)?.value ?? 0
+  const kept = progress.main.filter((step) => step.kept)
+  const valued = kept.filter((step) => step.value !== null)
+  const first = valued[0]?.value ?? null
+  const now = valued.at(-1)?.value ?? null
   const merged = kept.filter((step) => step.merged).length
   const tried = progress.branches.filter((branch) => !branch.merged && branch.state !== 'exploring' && branch.state !== 'promising').length
+  const live = progress.branches.filter((branch) => branch.state === 'exploring' || branch.state === 'promising').length
   const goal = progress.goal
-  const reach = goal !== null && goal !== first ? Math.max(0, Math.min(1, (now - first) / (goal - first))) : null
+  const reach = goal !== null && first !== null && now !== null && goal !== first ? Math.max(0, Math.min(1, (now - first) / (goal - first))) : null
   const listed = rows(progress)
   return (
     <div className="flow">
       <div className="flow-head" data-live={props.running}>
-        <p className="flow-now"><b>{amount(now, progress.metric)}</b>{progress.title && <span>{progress.title}</span>}</p>
+        {now !== null ? (
+          <p className="flow-now"><b>{amount(now, progress.metric)}</b><span>{progress.title || progress.metric}</span></p>
+        ) : (
+          <p className="flow-now flow-now-plain"><span>main has {kept.length} change{kept.length === 1 ? '' : 's'}</span></p>
+        )}
         <p className="flow-stats">
-          {merged} merged into main · {tried} tried and dropped{goal !== null ? ` · goal ${amount(goal, progress.metric)}` : ''}
+          {[`${merged} merged into main`, tried ? `${tried} tried and not merged` : '', live ? `${live} exploring now` : '', goal !== null ? `goal ${amount(goal, progress.metric)}` : ''].filter(Boolean).join(' · ')}
         </p>
         {reach !== null && <span aria-hidden="true" className="flow-reach"><i style={{ width: `${Math.round(reach * 1000) / 10}%` }} /></span>}
         <Chart progress={progress} />

@@ -609,19 +609,36 @@ export async function progress(env: Cloudflare.Env, input: Input<'swarm'>): Prom
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
   const swarm = parsed.value.swarm
-  if (!(await Store.exists(env, swarm))) return missing()
+  const row = await Store.find(env, swarm)
+  if (!row) return missing()
   const value = await Edge.cached(env, `progress/${swarm}`, progressSeconds, async () => {
     const shelf = await Artifacts.list(env, swarm)
-    if (!shelf?.some((artifact) => artifact.slug === Progress.slug)) return null
-    const [data, main] = await Promise.all([Artifacts.read(env, swarm, Progress.slug, 'data.json'), Artifacts.read(env, swarm, Progress.slug, 'main.tsv')])
-    if (data === undefined) return null
-    try {
-      return Progress.parse(JSON.parse(data), main) ?? null
-    } catch {
-      return null
-    }
+    const recorded = shelf?.some((artifact) => artifact.slug === Progress.slug)
+    const [data, main, tree] = await Promise.all([
+      recorded ? Artifacts.read(env, swarm, Progress.slug, 'data.json') : undefined,
+      recorded ? Artifacts.read(env, swarm, Progress.slug, 'main.tsv') : undefined,
+      row.repo ? stub(env, swarm).tree(row.repo) : null,
+    ])
+    const json = (() => {
+      try {
+        return data === undefined ? undefined : (JSON.parse(data) as unknown)
+      } catch {
+        return undefined
+      }
+    })()
+    const graphed = tree ? Progress.fromGit({ ...tree, hint: Progress.hint(json), live: tree.branches.length ? await exploring(env, swarm, tree.branches) : [] }) : undefined
+    return graphed ?? Progress.parse(json, main) ?? null
   })
   return Problem.ok({ progress: value })
+}
+
+async function exploring(env: Cloudflare.Env, swarm: string, names: readonly { name: string }[]) {
+  const running = await branches(env, { swarm }).catch(() => undefined)
+  if (!running?.ok) return []
+  const pattern = (name: string) => new RegExp(`(^|[^\\w-])${name.replace(/[.*+?^${}()|[\]\\/]/g, (char) => `\\${char}`)}($|[^\\w-])`, 'i')
+  return running.value.branches
+    .filter((branch) => branch.state === 'pending' || branch.state === 'running')
+    .flatMap((branch) => names.filter((found) => pattern(found.name).test(branch.role)).map((found) => found.name))
 }
 
 const progressSeconds = 30

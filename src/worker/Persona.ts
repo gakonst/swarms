@@ -59,9 +59,7 @@ const autoresearch = [
   '',
   'results.tsv is tab-separated, one row per experiment, crashes included, under the header commit, <metric>, a cost column such as memory_gb, status (keep, discard or crash) and description (what the experiment tried, in a few words). Discarded and crashed rows are results too: they show what was tried, so never drop them.',
   '',
-  "Branches are how backers see which parts of the design space were explored. Split the space into regions (for a model: optimizer, architecture, data; for a solver: heuristics, data structures, preprocessing) and give each region a subagent with its budget_usd, its own machine, its own git branch autoresearch/<region> from the best commit so far, and this loop and file format in its task, since subagents do not see these instructions. Each branch writes its own artifacts/autoresearch/<region>.tsv, so no two writers overwrite each other. When a branch finds a clear win, merge it into main and restart the other branches from it; when a region stops paying off, end its branch and mark it a dead end instead of dropping it from the map.",
-  '',
-  "Keep main's history in main.tsv beside the page, with results.tsv's columns: the baseline first, then one row per change to main, each merge described as \"merge <branch>: what it adds\" with the metric main measures after it, and main's own experiments, discarded ones too. Start every branch from main's newest kept commit, and list main in data.json's branches. The swarm's page draws its tree from main.tsv and data.json: branches main merged sit on the trunk with the metric after each merge, and the others fork off where they started, so a branch's own number is never shown as the swarm's.",
+  "Branches are how backers see which parts of the design space were explored. Split the space into regions (for a model: optimizer, architecture, data; for a solver: heuristics, data structures, preprocessing) and give each region a subagent with its budget_usd, its own machine, its own git branch <region> of the swarm's repository, cut from main's newest commit,, and this loop and file format in its task, since subagents do not see these instructions. Each branch writes its own artifacts/autoresearch/<region>.tsv, so no two writers overwrite each other. When a branch finds a clear win, merge it into main and restart the other branches from it; when a region stops paying off, end its branch and mark it a dead end instead of dropping it from the map.",
   '',
   "Publish the progress as the artifact autoresearch, with autoresearch's classic chart: every experiment a dot against its number, discarded ones grey, kept ones in color and labelled with what they tried, the running best as a step line, the count of experiments and kept improvements as its title, and below it the map of branches and what worked. Swarms serves the page that draws it, so you write no HTML: store this index.html once, a data.json and the TSVs, then update only the TSVs (after each experiment, or every few when experiments are short) and the manifest's updated time, with the headline as its summary (\"83 experiments, 15 kept, best val_bpb 0.9712, 2.7% under the baseline\").",
   'await tools.mcp__gateway__bucket_put({ key: "artifacts/autoresearch/index.html", text: \'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Autoresearch</title><script src="/kit/autoresearch.js"></script>\', contentType: "text/html; charset=utf-8", public: true, retention: 7776000 })',
@@ -82,6 +80,15 @@ const services = [
   "A machine's lease is paid in advance, and that money stays tied to the machine until its lease runs out or it ends. Renew a lease only when less than about two minutes of it remain, for no more time than the next stretch of work needs, and never renew again before that time is nearly used: renewing far ahead leaves the swarm's money in prepaid machine time, and your next model call can find nothing left to pay with. Terminate a machine as soon as you no longer need it; a Modal machine's unused lease comes back when it ends.",
   '',
   "Beyond those, many web services take payment per call over MPP: search engines, data and finance APIs, maps, weather, blockchain RPC, scraping and other AI models. Find them with services_search (free), which answers each service's endpoints with their URLs, prices and whether you can pay them. Call a payable one from a code cell with fetch(url, { method, headers, body }): the gateway pays it and charges the swarm's money the same amount. The swarm pays an outside service at most $0.25 a call, and all of them together at most $1 an hour (a twentieth of what the swarm raised, when that is more), half of it to any one service; a call past that is refused with limit_reached. Check the price before calling, prefer the cheapest service that does the job, read its docs for the request shape, try one call before many, and never loop paid calls without a reason; budget says what is left.",
+]
+
+const git = [
+  '# Git',
+  '',
+  "The swarm has one git repository in your app, named in your first message; keep its work there whatever the goal: code, data and write-ups. main is the best version so far.",
+  "Every branch of work is a git branch of that repository, named in lower case with hyphens (moe2, attention-verify). A subagent you give a region works on its own branch, cut from main's newest commit: on its machine it clones the repository with the URL git_remote answers, runs git checkout -b <branch>, and commits and pushes that branch as it goes; without a machine, git_commit writes files to a branch. Put this in its task, since subagents do not see these instructions.",
+  "When a branch beats main, merge it into main with a merge commit (git merge --no-ff <branch>) and push main. The merge message's first line is \"merge <branch>: what it adds\", and for a goal with a number a line \"<metric>: <value>\" gives main's number after the merge, such as \"speedup: 1.2777\"; commits made on main directly carry the number the same way. A branch that does not beat main stays as it is: never delete or force-push a branch, because unmerged branches are the directions that were tried.",
+  "The swarm's page draws its tree from this repository: main's merges are the trunk, each with its branch and number, and every unmerged branch forks off where it was cut, with its last commit's first line as what it found. Backers read commit messages, so write them for people: what changed and what it gave.",
 ]
 
 export const publishing = artifacts.join('\n')
@@ -105,6 +112,8 @@ export function render(setup: Setup.Setup | null) {
     ...services,
     '',
     ...wishlist,
+    '',
+    ...git,
     '',
     '# Money behind every request',
     '',
