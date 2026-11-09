@@ -701,6 +701,34 @@ const wishes = JSON.stringify([
   { want: 'Someone who maintains the SWE-bench harness', why: 'Two tasks time out the same way for every model', status: 'no longer needed' },
 ])
 
+const surface = JSON.stringify({
+  nodes: [
+    { id: 'needs', kind: 'asks', title: 'Needs you', items: [
+      { text: 'Fund the 70B runs on an H100', amount: '$12', why: '4 of the 12 models are untested because they do not fit on the A10G machines.' },
+      { text: 'Know the SWE-bench harness?', action: 'chat', label: 'Help in the chat', why: 'Two tasks time out the same way for every model.' },
+    ] },
+    { id: 'stats', kind: 'stats', items: [{ label: 'best solve rate', value: '41%' }, { label: 'models run', value: '8 / 12' }, { label: 'tasks a run', value: '350' }, { label: 'best $ / task', value: '$0.0006' }] },
+    { id: 'plan', kind: 'checklist', title: 'Plan', items: [
+      { group: 'Harness', text: 'Same prompts, 30 tool calls, one attempt', state: 'done' },
+      { group: 'Harness', text: 'Rust subset with hidden tests', state: 'done' },
+      { group: 'Models', text: 'Small and mid open models', state: 'done' },
+      { group: 'Models', text: '70B models on an H100', state: 'todo' },
+      { group: 'Models', text: 'Frontier models on the batch API', state: 'doing' },
+    ] },
+    { id: 'solve', kind: 'bars', title: 'Solved, SWE-bench Lite', unit: '%', max: 100, items: [
+      { label: 'DeepSeek V4.1 Flash', value: 41, tone: 'good' },
+      { label: 'GLM-5.3', value: 38 },
+      { label: 'gpt-oss-120b', value: 33 },
+      { label: 'Qwen 3.5 32B', value: 27 },
+    ] },
+    { id: 'curve', kind: 'chart', title: 'Best solve rate over runs', unit: '%', goal: 50, goalLabel: 'target', points: [22, 27, 31, 33, 38, 41], tried: [[2, 26], [4, 35]] },
+    { id: 'findings', kind: 'list', title: 'Findings', numbered: true, items: [
+      { text: 'Feeding compile errors back to the model lifts the Rust subset from 18% to 29%.', state: 'kept' },
+      { text: 'A second attempt on timeouts adds 2 points and doubles the cost.', state: 'dropped' },
+    ] },
+  ],
+})
+
 function shelf(items: readonly (readonly [string, string, string, string, Form, string, number])[]): Artifact[] {
   return items.map(([slug, title, summary, kind, form, body, minutes]) => ({
     entry: { image: 'chart.svg', json: 'data.json', markdown: 'README.md', page: 'index.html', table: 'results.csv', text: 'notes.txt' }[form],
@@ -722,6 +750,7 @@ const shelves: Record<string, Artifact[]> = {
     ['results', 'SWE-bench Lite results', 'Every model on SWE-bench Lite, as a table.', 'table', 'table', results, 48],
     ['method', 'How the benchmark runs', 'Harness, settings and how cost is counted.', 'write-up', 'markdown', method, 120],
     ['wishlist', 'Wishlist', '2 open: an H100 for the 70B models.', 'wishlist', 'json', wishes, 10],
+    ['surface', 'Surface', 'DeepSeek V4.1 Flash leads at 41%.', 'surface', 'json', surface, 3],
   ]),
   'json-terabyte': shelf([['throughput', 'Parser throughput', 'GiB/s by machine size.', 'dashboard', 'page', throughput, 6]]),
 }

@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { Config, Detail, Me, Member, Room as RoomState, Said } from '../shared/Api.ts'
 import * as Status from '../shared/Status.ts'
 import * as Api from './api.ts'
-import { useWishes, Viewer } from './Artifacts.tsx'
+import { useSurface, useWishes, Viewer } from './Artifacts.tsx'
 import { here, seeded } from './boot.ts'
 import { Box } from './Box.tsx'
 import { lead, Pill } from './Card.tsx'
@@ -41,6 +41,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   const [progress, reprogress] = usePoll(() => Api.progress(id), null, `progress:${id}`)
   const [tree, rebranch] = usePoll(() => Api.branches(id), wired === 'down' && detail.data?.status === 'running' ? 30_000 : null, `branches:${id}`)
   const wishes = useWishes(shelf.data?.artifacts)
+  const surface = useSurface(shelf.data?.artifacts)
   const opened = useQuery('r')
   const phone = useMedia('(max-width: 899px)')
   const small = useMedia('(max-width: 799px)')
@@ -197,7 +198,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
         <div className="idea-results" hidden={view !== 'results'}>
           {boxed(true)}
           <div className="idea-main">
-            <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show('chat')} onOpen={(slug) => navigate(`${base}?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steer} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
+            <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show('chat')} onOpen={(slug) => navigate(`${base}?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steer} surface={surface} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
           </div>
         </div>
         <div className="idea-chat" hidden={view !== 'chat'}>{room}</div>
