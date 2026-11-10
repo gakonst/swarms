@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
+import type * as Phase from '../src/worker/Phase.ts'
 import type * as TurnsModule from '../src/worker/Turns.ts'
 
 registerHooks({
@@ -32,8 +33,8 @@ test("a turn the gateway refused because the swarm's credit ran out counts as ou
 
 test('a swarm paused for money reads its credit once its calls are over, and goes on when enough came back', async () => {
   const now = Date.now()
-  const swarm = (left: string, kv = new Map<string, unknown>()) => {
-    const moved: unknown[] = []
+  const swarm = (left: string, pause: Phase.Pause, at = now - 60_000, settled?: number) => {
+    let run: Phase.Run = { at, pause, settled, state: 'paused' }
     const requests: string[] = []
     const self = {
       agent: () => undefined,
@@ -51,38 +52,56 @@ test('a swarm paused for money reads its credit once its calls are over, and goe
         GATEWAY_URL: 'https://gateway.test',
         SWARMS_GATEWAY_KEY: 'test',
       },
-      kv: { get: (key: string) => kv.get(key), put: (key: string, value: unknown) => void kv.set(key, value) },
+      kv: { get: () => undefined, put: () => undefined },
       remember: () => undefined,
-      set: (run: unknown) => void moved.push(run),
+      run: () => run,
+      set: (next: Phase.Run) => void (run = next),
     }
-    return { kv, moved, requests, self: self as never }
+    return { requests, run: () => run, settle: () => Turns.settle(self as never, row, run as Phase.Paused) }
   }
-  const row = { id: 'abc123abc123', machines: 0, pool_left: Number(left('0.03')), pool_spent: 0, setup: null, sponsor_left: 0, spent: 0 } as never
+  const row = { balance: 10_000_000, id: 'abc123abc123', machines: 0, pool_left: Number(left('0.03')), pool_spent: 0, setup: null, sponsor_left: 0, spent: 0 } as never
   const pause = { left: '30000', wake: null, why: 'money' } as const
 
-  const early = swarm('0.03')
-  const waited = await Turns.settle(early.self, row, { at: now - 5_000, pause })
+  const early = swarm('0.03', pause, now - 5_000)
+  const waited = await early.settle()
   assert.ok(waited !== null && waited >= now + 9_000 && waited <= now + 11_000)
   assert.equal(early.requests.length, 0)
 
-  const short = swarm('0.03')
-  assert.equal(await Turns.settle(short.self, row, { at: now - 60_000, pause }), null)
+  const short = swarm('0.03', pause)
+  assert.equal(await short.settle(), null)
   assert.ok(short.requests.includes('/api/keys/credit'))
-  assert.equal(short.moved.length, 0)
-  assert.equal(await Turns.settle(short.self, row, { at: now - 60_000, pause }), null)
+  const settled = short.run()
+  assert.ok(settled.state === 'paused' && settled.settled !== undefined && settled.settled >= now)
+  assert.equal(await short.settle(), null)
   assert.equal(short.requests.filter((path) => path === '/api/keys/credit').length, 1)
 
-  const back = swarm('0.40')
-  assert.equal(await Turns.settle(back.self, row, { at: now - 60_000, pause }), null)
-  assert.equal((back.moved[0] as { state: string }).state, 'waiting')
+  const back = swarm('0.40', pause)
+  assert.equal(await back.settle(), null)
+  assert.equal(back.run().state, 'waiting')
 
-  const refused = swarm('9.76')
-  assert.equal(await Turns.settle(refused.self, row, { at: now - 60_000, pause: { left: '9760000', needs: '440960', wake: null, why: 'money' } }), null)
-  assert.equal(refused.moved.length, 0)
+  for (const balance of [undefined, '10000000']) {
+    const refused = swarm('9.76', { balance, left: '9760000', needs: '440960', wake: null, why: 'money' })
+    assert.equal(await refused.settle(), null)
+    assert.equal(refused.run().state, 'paused')
+  }
 
-  const unfunded = swarm('5')
-  assert.equal(await Turns.settle(unfunded.self, row, { at: now - 60_000, pause: { why: 'unfunded' } }), null)
+  const ridden = swarm('9.76', { balance: '9000000', left: '9760000', needs: '440960', wake: null, why: 'money' })
+  assert.equal(await ridden.settle(), null)
+  assert.equal(ridden.run().state, 'waiting')
+
+  const unfunded = swarm('5', { why: 'unfunded' }, now - 60_000, now - 60_000)
+  assert.equal(await unfunded.settle(), null)
   assert.equal(unfunded.requests.length, 0)
+
+  const later = swarm('0.03', pause, now - 3_600_000, now - 660_000)
+  assert.equal(await later.settle(), null)
+  assert.deepEqual(later.requests.sort(), ['/api/keys/backings', '/api/keys/credit'])
+  const read = later.run()
+  assert.ok(read.state === 'paused' && read.settled !== undefined && read.settled >= now)
+
+  const found = swarm('5', { why: 'unfunded' }, now - 3_600_000, now - 660_000)
+  assert.equal(await found.settle(), null)
+  assert.equal(found.run().state, 'waiting')
 })
 
 function left(usd: string) {

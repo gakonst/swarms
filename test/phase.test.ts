@@ -38,6 +38,25 @@ test('each pause says which wakes it', () => {
   assert.ok(!Phase.due({ at: 0, pause: { failures: 3, why: 'rest' }, state: 'paused' }, 10))
 })
 
+test('a pause goes on when the money is there, and one the gateway refused with money on paper only once more was put in', () => {
+  const enough = { balance: 5_000_000n, left: 400_000n, reserve: 50_000n }
+  const refused: Phase.Pause = { balance: '5000000', left: '9760000', needs: '440960', wake: null, why: 'money' }
+  assert.ok(!Phase.resumes(money, { ...enough, left: 49_999n }))
+  assert.ok(Phase.resumes(money, enough))
+  assert.ok(Phase.resumes({ ...money, needs: '50000' }, enough))
+  assert.ok(Phase.resumes({ why: 'unfunded' }, enough))
+  assert.ok(!Phase.resumes(refused, enough))
+  assert.ok(!Phase.resumes({ ...refused, balance: undefined }, { ...enough, balance: 9_000_000n }))
+  assert.ok(Phase.resumes(refused, { ...enough, balance: 5_000_001n }))
+  assert.ok(!Phase.resumes(refused, { ...enough, balance: 5_000_001n, left: 0n }))
+})
+
+test('a pause reads its money again ten minutes after it last did', () => {
+  assert.ok(Phase.unread({ at: 0, pause: money, state: 'paused' }, 1))
+  assert.ok(!Phase.unread({ at: 0, pause: money, settled: 5, state: 'paused' }, 5 + Phase.rereadMs - 1))
+  assert.ok(Phase.unread({ at: 0, pause: money, settled: 5, state: 'paused' }, 5 + Phase.rereadMs))
+})
+
 test('D1 status and why come from one projection', () => {
   assert.deepEqual(Phase.project({ state: 'new' }, 0), { status: 'funding', why: null })
   assert.deepEqual(Phase.project({ at: 0, pause: { why: 'unfunded' }, state: 'paused' }, 0), { status: 'funding', why: 'unfunded' })

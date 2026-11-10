@@ -1,6 +1,6 @@
 import type * as Setup from './Setup.ts'
 
-export type Status = 'funding' | 'running' | 'paused' | 'done'
+export type Status = 'funding' | 'running' | 'paused'
 
 export type Token = 'ousd' | 'pathusd' | 'usdce'
 

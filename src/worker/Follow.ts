@@ -39,6 +39,10 @@ function cues(payload: Record<string, unknown>): Cue[] {
 
 export type Cue = 'artifacts' | 'credit' | 'git' | 'hands' | 'turn'
 
+export type Stream = { fails: number; state: 'streaming' } | { retry: number; state: 'polling' }
+
+export const streaming: Stream = { fails: 0, state: 'streaming' }
+
 const streamFails = 2
 
 const fallbackMs = 5 * 60_000
@@ -55,12 +59,16 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
 
   let ended = false
   let down = false
-  const window = self.fails < streamFails ? await listen(self, row, agent, run) : undefined
+  let answered = false
+  const stream = self.stream
+  const tried = stream.state === 'streaming' || Date.now() >= stream.retry
+  const window = tried ? await listen(self, row, agent, run) : undefined
   if (window) {
-    self.fails = 0
+    self.stream = streaming
     ended = window.ended
+    answered = true
   } else {
-    if (self.fails < streamFails) self.fails += 1
+    if (tried) self.stream = stream.state === 'streaming' && stream.fails + 1 < streamFails ? { fails: stream.fails + 1, state: 'streaming' } : { retry: Date.now() + Clock.minuteMs, state: 'polling' }
     let cursor = agent.cursor
     for (let page = 0; page < 5; page++) {
       const read = await Gateway.events(self.env, row.id, agent.id, cursor)
@@ -68,6 +76,7 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
         down = read.status >= 500
         break
       }
+      answered = true
       if (read.value.events.length) Turns.reached(self)
       for (const event of read.value.events) ended = digest(self, event, run.turn) || ended
       if (read.value.next_cursor !== cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor: read.value.next_cursor })
@@ -100,7 +109,9 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   if (report?.ok && !['queued', 'running'].includes(report.value.status)) return Turns.finish(self, row, run, report.value)
   if (report && !report.ok && report.status !== 401 && report.status < 500)
     return Turns.finish(self, row, run, { error: report.detail, request_id: run.turn, status: 'failed' })
-  if ((down || (report && !report.ok && report.status >= 500)) && Turns.unreachable(self, now)) {
+  const failing = down || (!!report && !report.ok && report.status >= 500)
+  if (!failing && (answered || report?.ok)) Turns.reached(self)
+  if (failing && Turns.unreachable(self, now)) {
     const detail = !report || report.ok ? 'its events did not load' : report.detail
     await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
     Turns.abandon(self, agent.id, detail)

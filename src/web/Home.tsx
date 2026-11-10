@@ -10,7 +10,7 @@ import { open as openProblems, problems } from './research.ts'
 import { href, Link, navigate } from './router.tsx'
 import * as Wire from './wire.ts'
 
-const order = { running: 0, paused: 1, funding: 2, done: 3 } as const
+const order = { running: 0, paused: 1, funding: 2 } as const
 
 const filters = [
   ['open', 'All'],
@@ -36,11 +36,10 @@ function sorted(swarms: readonly Summary[] | undefined) {
 
 function useIdeas() {
   const list = Wire.useSwarms()
-  const swarms = sorted(list.data?.swarms)
-  const open = swarms.filter((swarm) => swarm.status !== 'done')
-  const latest = Math.max(0, ...swarms.map((swarm) => swarm.updatedAt))
+  const open = sorted(list.data?.swarms)
+  const latest = Math.max(0, ...open.map((swarm) => swarm.updatedAt))
   const ranked = Status.ranked(open, latest)
-  const free = list.data ? openProblems(swarms) : list.error ? [...problems] : []
+  const free = list.data ? openProblems(open) : list.error ? [...problems] : []
   const seeds = free.map(fromProblem)
   const ideas = ranked.map(fromSwarm).flatMap((idea, index) => (index % 3 === 2 && seeds.length ? [idea, seeds.shift()!] : [idea])).concat(seeds)
   return { free, ideas, latest, list, open, ranked }

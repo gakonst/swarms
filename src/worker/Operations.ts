@@ -65,7 +65,7 @@ import * as Brief from '../shared/ResearchBrief.ts'
 import { clip } from '../shared/Trail.ts'
 import { ids } from '../shared/ResearchBrief.ts'
 
-export const statuses = ['funding', 'running', 'paused', 'done'] as const satisfies readonly Status[]
+export const statuses = ['funding', 'running', 'paused'] as const satisfies readonly Status[]
 
 export const kinds = ['tool', 'output', 'message', 'thinking', 'steer', 'funds', 'status', 'machine', 'error'] as const satisfies readonly Kind[]
 
@@ -401,7 +401,7 @@ export async function list(env: Cloudflare.Env, input: Input<'list'>): Promise<P
 }
 
 function resume(env: Cloudflare.Env, swarms: readonly Pick<Summary, 'id' | 'status' | 'why'>[]) {
-  const stale = swarms.filter((swarm) => swarm.status !== 'done' && Phase.stale(swarm.why))
+  const stale = swarms.filter((swarm) => Phase.stale(swarm.why))
   if (stale.length) waitUntil(Promise.allSettled(stale.map((swarm) => stub(env, swarm.id).revive())))
 }
 
@@ -1463,7 +1463,7 @@ function excerpt(entry: Entry, terms: readonly string[], size = 240) {
 export async function problems(env: Cloudflare.Env): Promise<Problem.Result<{ problems: (Brief.Problem & { open: boolean; swarm: string | null })[] }>> {
   const listed = await list(env, {})
   const rows = listed.ok ? listed.value.swarms : []
-  const taken = new Map(rows.filter((row) => row.status !== 'done' && row.problem).map((row) => [row.problem as string, row.id]))
+  const taken = new Map(rows.filter((row) => row.problem).map((row) => [row.problem as string, row.id]))
   return Problem.ok({ problems: Brief.problems.map((item) => ({ ...item, open: !taken.has(item.id), swarm: taken.get(item.id) ?? null })) })
 }
 

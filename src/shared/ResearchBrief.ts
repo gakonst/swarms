@@ -124,8 +124,8 @@ export const problems: readonly Problem[] = [
 
 export const ids = problems.map((problem) => problem.id) as [string, ...string[]]
 
-export function open(swarms: readonly { problem: string | null; status: string }[]) {
-  const busy = new Set(swarms.flatMap((swarm) => (swarm.status !== 'done' && swarm.problem ? [swarm.problem] : [])))
+export function open(swarms: readonly { problem: string | null }[]) {
+  const busy = new Set(swarms.flatMap((swarm) => (swarm.problem ? [swarm.problem] : [])))
   return problems.filter((problem) => !busy.has(problem.id))
 }
 

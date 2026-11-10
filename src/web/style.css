@@ -597,10 +597,6 @@ kbd::after {
   color: var(--muted);
 }
 
-.status[data-status='done'] i {
-  background: var(--fg);
-}
-
 .missing {
   padding-top: var(--space-7);
 }

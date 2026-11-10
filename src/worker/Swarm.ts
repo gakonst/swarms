@@ -68,7 +68,7 @@ export type Lead = { briefed: boolean; cursor: number; id: string; instructed?: 
 
 export type Turning = Extract<Phase.Run, { state: 'working' }>
 
-const version = 3
+const version = 4
 
 const dead = ['turn', 'started', 'since', 'paused', 'why', 'failures', 'wanted', 'checked', 'n', 'fresh', 'unreachable', 'url', 'persona', 'cursor', 'shelved', 'terms', 'left', 'expected', 'poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'round', 'resting', 'stuck', 'kicked', 'rechecked', 'retired', 'retiring', 'tallied', 'workers', 'refundAt', 'refunded', 'closing', 'returning', 'open', 'source', 'pledge', 'swept']
 
@@ -107,6 +107,7 @@ function migrate(storage: DurableObjectStorage, from: number) {
     if (last !== null) kv.put('unindexed', Number(last))
   }
   if (from < 3 && !kv.get<Lead>('agent')?.instructed) kv.delete('instructions')
+  if (from < 4) kv.delete('settled')
   kv.put('v', version)
 }
 
@@ -155,7 +156,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   watchers = new Set<Relay.Watcher>()
   ring: Relay.Ring = { bytes: 0, frames: [] }
   window: { close: (at: number) => void; stop: AbortController } | undefined
-  fails = 0
+  stream: Follow.Stream = Follow.streaming
   cues = new Map<Follow.Cue, number>()
   polled = new Map<Follow.Cue, number>()
   waiters = new Set<() => void>()
@@ -291,6 +292,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async move(row: Store.Row, run: Phase.Run, fields: Store.Fields = {}) {
     this.set(run)
     for (const waiter of [...this.waiters]) waiter()
+    await this.project(row, fields)
+    this.beacon(row)
+  }
+
+  async project(row: Store.Row, fields: Store.Fields = {}) {
+    const run = this.run()
     const projected = Phase.project(run, run.state === 'starting' || run.state === 'working' ? run.n : this.turned())
     const changed = projected.status !== row.status || projected.why !== (row.why ?? null)
     if (changed || Object.keys(fields).length) {
@@ -298,7 +305,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       row.status = projected.status
       row.why = projected.why
     }
-    this.beacon(row)
+    return changed
   }
 
   async waited(since: number, ms: number): Promise<{ update: Update | null; working: Working | null }> {
@@ -374,6 +381,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (run.state === 'paused' || run.state === 'waiting' || run.state === 'new') await this.ctx.storage.setAlarm(Date.now())
   }
 
+  async funded(swarm: string) {
+    this.marked += 1
+    this.kv.put('id', swarm)
+    this.cue('credit')
+    const run = this.run()
+    if (run.state === 'paused' && run.settled !== undefined) this.set({ at: run.at, pause: run.pause, state: 'paused' })
+    if (run.state === 'paused' || run.state === 'waiting' || run.state === 'new') await this.ctx.storage.setAlarm(Date.now())
+  }
+
   async hand(swarm: string, name: string): Promise<Gateway.Result<Gateway.Minted>> {
     this.marked += 1
     this.kv.put('id', swarm)
@@ -405,7 +421,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     await Feed.reindex(this)
     if (id && now - (this.kv.get<number>('shelvedAt') ?? 0) > coverMs) await this.publish(id).catch((error: unknown) => console.error('Reading the artifacts failed', error))
     const run = this.run()
-    if (run.state === 'paused' || run.state === 'new' || now - (this.kv.get<number>('healed') ?? 0) < healMs) return
+    if (run.state === 'paused' ? !Phase.unread(run, now) : run.state === 'new' ? !id : now - (this.kv.get<number>('healed') ?? 0) < healMs) return
     const alarm = await this.ctx.storage.getAlarm()
     if (alarm !== null) return
     this.kv.put('healed', now)
@@ -590,10 +606,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   override async alarm() {
     const indexing = Feed.indexed(this)
     this.stepping ??= Turns.step(this)
-      .catch((error: unknown) => {
-        this.log('error', 'The swarm hit an error and will retry.', String(error))
-        return Date.now() + Clock.retryMs
-      })
+      .catch((error: unknown) => Turns.threw(this, error))
       .finally(() => {
         this.stepping = undefined
       })
