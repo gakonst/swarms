@@ -39,6 +39,7 @@ test('a step that keeps throwing logs one error row in ten minutes and never sta
     return prepare(query)
   }
   t.after(() => void (w.env.DB.prepare = prepare))
+  t.mock.method(console, 'error', () => undefined)
   await w.swarm.wake('money')
   for (let alarm = 0; alarm < 4; alarm++) {
     await w.ring()
@@ -123,6 +124,7 @@ test('a status write that failed is written again on the next step, so the list 
   await w.ring()
   assert.deepEqual(await w.status(), { status: 'running', why: null })
 
+  t.mock.method(console, 'error', () => undefined)
   const prepare = w.env.DB.prepare
   let failures = 1
   w.env.DB.prepare = (query: string) => {

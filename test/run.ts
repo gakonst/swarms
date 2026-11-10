@@ -20,6 +20,7 @@ const Store: typeof StoreModule = await import('../src/worker/Store.ts')
 
 const timeout = setTimeout
 const clock = Date.now
+let now = clock()
 
 export const id = 'abc123abc123'
 
@@ -61,7 +62,7 @@ export function world(route: Route) {
   const calls: string[] = []
   const store = storage()
   const waits: Promise<unknown>[] = []
-  let now = clock()
+  now = clock()
   Date.now = () => now
   globalThis.setTimeout = ((work: () => void, ms?: number) => timeout(work, ms === 3_000 ? 0 : ms)) as typeof setTimeout
   const env = {
