@@ -108,6 +108,28 @@ async function refused(result: Promise<{ ok: boolean; status?: number }>) {
   return settled.status
 }
 
+test("a roster is not read until the gateway says which wallet holds the swarm's team, and that wallet is never a seat to add or remove", async () => {
+  const { calls, db, down, env, seated, teams } = world()
+  const team = '0x' + '7e'.repeat(20)
+  down.add('/api/keys/me')
+  assert.equal(await refused(Operations.seat(env, { member: bob, swarm: 's' }, ada)), 502)
+  assert.ok(!calls.includes('/v1/teams/create'))
+  teams.set(team, { budget: null, members: new Map([[operator, { limit: null, role: 'admin' }], [ada, { limit: null, role: 'admin' }], [bob, { limit: null, role: 'member' }]]) })
+  db.sqlite.prepare("update swarms set team = ? where id = 's'").run(team)
+  Team.forget('s')
+  assert.equal(await refused(Operations.team(env, { swarm: 's' })), 502)
+
+  down.clear()
+  assert.deepEqual((await value(Operations.team(env, { swarm: 's' }))).seats.map((seat) => seat.address), [ada, bob])
+  calls.length = 0
+  assert.equal(await refused(Operations.unseat(env, { member: operator, swarm: 's' }, ada)), 404)
+  assert.equal(await refused(Operations.seat(env, { member: operator, swarm: 's' }, ada)), 400)
+  assert.equal(await refused(Operations.unseat(env, { member: cyd, swarm: 's' }, ada)), 404)
+  assert.ok(!calls.includes('/v1/teams/remove') && !calls.includes('/v1/teams/add'))
+  assert.ok(teams.get(team)?.members.has(operator))
+  assert.deepEqual(seated(team), ['ada:admin', 'bob:member'])
+})
+
 test('an admin removed on another isolate is refused on this one, whatever roster it holds', async () => {
   const { env, seated, teams } = world()
   const roster = await value(Operations.seat(env, { member: bob, role: 'admin', swarm: 's' }, ada))

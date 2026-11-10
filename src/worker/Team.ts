@@ -26,6 +26,7 @@ type Chair = { address: Address; limit: bigint | null; role: Seat['role'] }
 async function mates(env: Cloudflare.Env, team: string) {
   const [listed, operator] = await Promise.all([Gateway.teammates(env, team), Gateway.wallet(env)])
   if (!listed.ok) throw new Error(`The gateway did not list the swarm's team: ${listed.detail}`)
+  if (!operator) throw new Error("The gateway did not say which wallet holds the swarm's team.")
   return {
     chairs: listed.value.members
       .filter((mate) => mate.member.toLowerCase() !== operator)

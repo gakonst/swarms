@@ -1160,6 +1160,9 @@ export async function seat(env: Cloudflare.Env, input: Input<'seat'>, address?: 
   if (!governing.ok) return governing
   const member = isAddress(request.member) ? request.member : await Store.named(env, request.member)
   if (!member) return Problem.fail(404, 'not_found', `No one is called @${request.member}.`)
+  const operator = await Gateway.wallet(env)
+  if (!operator) return Problem.fail(502, 'unavailable', "The gateway did not answer, so the swarm's team cannot change right now.")
+  if (member.toLowerCase() === operator) return Problem.fail(400, 'invalid_request', "That wallet holds every swarm's team for Swarms and steers none of them.")
   const teamed = await Team.ensure(env, governing.value, address as Address)
   if (!teamed.ok) return teamed
   const row = teamed.value
@@ -1188,6 +1191,7 @@ export async function unseat(env: Cloudflare.Env, input: Input<'unseat'>, addres
     return Problem.fail(403, 'access_denied', "Only this swarm's admins remove others from its team; anyone may leave it.")
   if (roster.admins.length === 1 && roster.admins[0] === request.member)
     return Problem.fail(409, 'conflict', 'The swarm\'s last admin stays: add another admin first.')
+  if (!roster.seats.some((seat) => seat.address === request.member)) return Problem.fail(404, 'not_found', `${request.member} is not on this swarm's team.`)
 
   const removed = await Gateway.dismiss(env, row.team, request.member)
   if (!removed.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not remove ${request.member}: ${removed.detail}`)
