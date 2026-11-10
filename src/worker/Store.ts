@@ -231,10 +231,30 @@ export async function backings(env: Cloudflare.Env, swarm: string) {
 }
 
 export async function lower(env: Cloudflare.Env, swarm: string, id: string, amount: string) {
-  await env.DB.prepare('update contributions set amount = ? where id = ? and swarm = ?')
-    .bind(amount, id.toLowerCase(), swarm)
-    .run()
-    .finally(() => wrote(swarm))
+  const [, taken] = await env.DB.batch<{ agent: string | null; branch: number | null }>([
+    env.DB.prepare('update contributions set amount = ? where id = ? and swarm = ?').bind(amount, id.toLowerCase(), swarm),
+    env.DB.prepare(
+      `with over as (
+        select owner.contributor,
+          coalesce((select sum(cast(amount as integer)) from steers where swarm = ?1 and contributor = owner.contributor and budget = 0), 0)
+          - coalesce((select sum(cast(amount as integer)) from contributions where swarm = ?1 and contributor = owner.contributor and note_id is null), 0) as excess
+        from contributions owner where owner.id = ?2 and owner.swarm = ?1
+      ), held as (
+        select min(s.note) as note, s.note_id, s.branch, s.agent, sum(cast(s.amount as integer)) as net, max(s.created_at) as at
+        from steers s, over where s.swarm = ?1 and s.contributor = over.contributor and s.budget = 0 and (s.branch is null or not exists (
+          select 1 from branches b where b.swarm = s.swarm and b.agent = s.agent and b.branch = s.branch and b.settled_at is not null
+        ))
+        group by s.note_id, s.branch, s.agent having net > 0
+      ), ranked as (
+        select held.*, coalesce(sum(net) over (order by at desc, note_id rows between unbounded preceding and 1 preceding), 0) as before from held
+      )
+      insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
+      select lower(hex(randomblob(6))), ?1, over.contributor, ranked.note, ranked.note_id, -min(ranked.net, over.excess - ranked.before), ?3, 0, ranked.branch, ranked.agent
+      from ranked, over where over.excess > ranked.before
+      returning agent, branch`,
+    ).bind(swarm, id.toLowerCase(), Date.now()),
+  ]).finally(() => wrote(swarm))
+  return (taken?.results ?? []).flatMap((row) => (row.branch === null ? [] : [{ agent: row.agent ?? '', branch: row.branch }]))
 }
 
 export async function gift(env: Cloudflare.Env, id: string) {
@@ -296,7 +316,7 @@ function weighing(env: Cloudflare.Env, swarm: string) {
       select note_id, note, cast(amount as integer) as weight, contributor from contributions where swarm = ?1 and note_id is not null
       union all
       select note_id, note, cast(amount as integer) as weight, contributor from steers where swarm = ?1 and branch is null
-    ) group by note_id order by weight desc limit 50`,
+    ) group by note_id having sum(weight) > 0 order by weight desc limit 50`,
   ).bind(swarm)
 }
 
@@ -572,7 +592,7 @@ export async function note(env: Cloudflare.Env, swarm: string, id: string, balan
       select note_id, note, cast(amount as integer) as weight, contributor from contributions where swarm = ?1 and note_id = ?2
       union all
       select note_id, note, cast(amount as integer) as weight, contributor from steers where swarm = ?1 and branch is null and note_id = ?2
-    ) group by note_id`,
+    ) group by note_id having sum(weight) > 0`,
   )
     .bind(swarm, id)
     .first<Weighed>()

@@ -1,6 +1,7 @@
 import type { Hand } from '../shared/Api.ts'
 import * as Credit from '../shared/Credit.ts'
 import * as Memo from '../shared/Memo.ts'
+import * as Branching from './Branching.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Store from './Store.ts'
@@ -35,11 +36,21 @@ async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {
       continue
     }
     if (!each.ended || BigInt(gift.amount) === counted) continue
-    await Store.lower(self.env, row.id, id, String(counted))
+    const taken = await Store.lower(self.env, row.id, id, String(counted))
     self.log('funds', `${Words.short(each.backer)}'s backing ended after paying $${Words.trim(Memo.decimal(counted))}; the rest never left their wallet`, each.key)
+    await lowered(self, row.id, taken).catch((error: unknown) => console.error('Lowering branch budgets failed', error))
     changed = true
   }
   return changed
+}
+
+async function lowered(self: Swarm, swarm: string, taken: { agent: string; branch: number }[]) {
+  const agent = self.agent()?.id
+  const mine = taken.filter((each) => each.agent === agent)
+  if (!agent || !mine.length) return
+  const { bases } = await Store.funds(self.env, swarm, agent)
+  for (const each of mine) if (bases.has(each.branch)) await Branching.rebudget(self, swarm, agent, each.branch)
+  self.changed('branches')
 }
 
 export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everything): Promise<Money> {

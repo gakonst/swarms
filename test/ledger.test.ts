@@ -83,3 +83,28 @@ test('a note goes on money already counted only while that money is behind nothi
   assert.deepEqual(notes.map((note) => [note.id, note.weight, note.share]), [['n1', '10.000000', 0.7142], ['n2', '4.000000', 0.2857]])
   assert.deepEqual(await member(db), ['14.000000', '14.000000', '0.000000'])
 })
+
+test('a backing lowered to what it paid takes back what was steered with the rest, the newest first', async () => {
+  const db = swarm(open())
+  await give(db, 10_000_000n, 'backing:0xkey', '0xkey')
+  await give(db, 2_000_000n, '0xaa')
+  await db.env.DB.prepare("update contributions set note = 'kept', note_id = 'n0' where id = '0xaa'").run()
+  db.sqlite.prepare("insert into branches (swarm, agent, branch, base, created_at, settled_at) values ('s', 'agt', 9, '0', 1, 5)").run()
+  db.sqlite.prepare("insert into steers (id, swarm, contributor, note, note_id, amount, created_at, branch, agent) values ('spent', 's', ?, 'branch 9', 'branch:9', '1000000', 1, 9, 'agt')").run(rider)
+  db.sqlite.prepare("insert into steers (id, swarm, contributor, note, note_id, amount, created_at) values ('old', 's', ?, 'older idea', 'n1', '3000000', 2)").run(rider)
+  assert.equal(await fund(db, 3, 4_000_000n, 'f1'), true)
+  assert.equal(await Store.steer(db.env, { amount: 2_000_000n, contributor: rider, id: 'new', note: 'newer idea', note_id: 'n2', swarm: 's' }), true)
+  assert.deepEqual(await member(db), ['12.000000', '12.000000', '0.000000'])
+
+  assert.deepEqual(await Store.lower(db.env, 's', 'backing:0xkey', '4000000'), [{ agent: 'agt', branch: 3 }])
+  const row = await Store.find(db.env, 's')
+  const notes = await Store.notes(db.env, 's', BigInt(row?.balance ?? 0), new Set())
+  assert.deepEqual(notes.map((note) => [note.id, note.weight]), [['n1', '3.000000'], ['n0', '2.000000']])
+  assert.equal((await Store.funds(db.env, 's', 'agt')).shares.get(3)?.get(rider), 0n)
+  assert.deepEqual(await member(db), ['6.000000', '6.000000', '0.000000'])
+
+  assert.deepEqual(await Store.lower(db.env, 's', 'backing:0xkey', '2000000'), [])
+  assert.deepEqual(await member(db), ['4.000000', '4.000000', '0.000000'])
+  assert.deepEqual(await Store.lower(db.env, 's', 'backing:0xkey', '2000000'), [])
+  assert.equal(db.sqlite.prepare('select count(*) as n from steers').get()?.['n'], 7)
+})
