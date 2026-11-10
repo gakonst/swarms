@@ -123,9 +123,10 @@ function Seed(props: { config: Config | undefined; problem: Problem }) {
             locked={launch.locked}
             members={[]}
             note={note}
-            onDone={landed}
+            onDone={() => undefined}
             onNote={setNote}
             onOpen={() => undefined}
+            onSent={landed}
             open
             prefill={prefill}
             shared={false}
@@ -174,10 +175,11 @@ function Own(props: { config: Config | undefined }) {
             locked={launch.locked}
             members={[]}
             note={note}
-            onDone={landed}
+            onDone={() => undefined}
             onNote={setNote}
             bare
             onOpen={() => undefined}
+            onSent={landed}
             open
             prefill={prefill}
             shared={false}

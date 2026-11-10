@@ -59,13 +59,7 @@ const working = {
   create: 'Setting up…',
   record: 'Recording…',
   send: 'Approve in Tempo Wallet…',
-} as const
-
-type Working = keyof typeof working
-
-type Flow = { at: 'idle' } | { at: 'busy'; step: Working } | { at: 'done'; hash?: string; kept?: boolean; text: string } | { at: 'failed'; error: string; hash?: string; short: boolean } | { at: 'unrecorded'; owed: Pay.Owed }
-
-const idle: Flow = { at: 'idle' }
+} as const satisfies Record<Pay.Working, string>
 
 export function approves(amount: bigint, token: Currency) {
   return token === 'mach' && amount >= approvable && !Api.fixture
@@ -105,15 +99,17 @@ export function Fuel(props: {
   note: string
   onDone: (target: Target) => void
   onNote: (note: string) => void
+  onSent?: ((target: Target) => void) | undefined
   prefill: Prefill
   sign?: boolean | undefined
+  slot: string
   steers?: boolean | undefined
   target: (step: (step: 'create') => void) => Promise<Target>
 }) {
   const wallet = useWallet()
   const [amount, setAmount] = useState(props.prefill.amount)
   const [picked] = useState<Currency | undefined>(props.prefill.token)
-  const [flow, setFlow] = useState<Flow>(idle)
+  const flow = Pay.useFlow(props.slot)
   const told = useRef<HTMLDivElement>(null)
   const steer = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -123,7 +119,7 @@ export function Fuel(props: {
     if (props.focus) steer.current?.focus({ preventScroll: true })
   }, [props.focus])
   const busy = flow.at === 'busy'
-  const step = (next: Working) => setFlow({ at: 'busy', step: next })
+  const step = (next: Pay.Working) => Pay.move(props.slot, { at: 'busy', step: next })
   const token = picked ?? choose(amount, wallet.balances)
   const floor = props.least ?? smallest
   const ok = valid(amount, floor)
@@ -135,15 +131,12 @@ export function Fuel(props: {
   const marks = least > stops[0] ? [least, ...stops.filter((stop) => stop > least)] : stops
   const at = nearest(amount, marks)
 
-  const riding = (sum: string) => `You're riding. ${dollars(sum)} is in.`
-
-  const count = async (owed: Pay.Owed) => {
-    step('record')
-    const counted = await Pay.count(owed)
-    setFlow(counted.at === 'counted' ? { at: 'done', hash: counted.hash, text: riding(owed.amount) } : counted.at === 'refused' ? { at: 'failed', error: counted.reason, hash: owed.hash, short: false } : { at: 'unrecorded', owed })
-    if (counted.at !== 'counted') return
+  const record = async (owed: Pay.Owed) => {
+    const target = { id: owed.swarm }
+    const counting = Pay.record(owed, props.slot)
     props.onNote('')
-    props.onDone({ id: owed.swarm })
+    props.onSent?.(target)
+    if ((await counting).at === 'counted') props.onDone(target)
   }
 
   const submit = async () => {
@@ -162,12 +155,13 @@ export function Fuel(props: {
       const target = await props.target((next) => step(next))
       step('send')
       const approved = approves(units(amount), using) ? await approve(config, target, units(amount), text) : undefined
-      if (!approved) return await count(await transfer(config, target, units(amount), text, using))
-      setFlow({ at: 'done', hash: approved, kept: true, text: riding(amount) })
+      if (!approved) return await record(await transfer(config, target, units(amount), text, using))
+      Pay.move(props.slot, { amount: decimal(units(amount)), at: 'done', kept: true })
       props.onNote('')
+      props.onSent?.(target)
       props.onDone(target)
     } catch (error) {
-      setFlow({ at: 'failed', error: message(error), short: Pay.code(error) === 'insufficient_balance' })
+      Pay.move(props.slot, { at: 'failed', error: message(error) })
     }
   }
 
@@ -189,9 +183,9 @@ export function Fuel(props: {
       </button>
       <div className="fuel-told" ref={told}>
         {low && flow.at !== 'failed' && <Alert title="Not enough in your wallet." tone="warn">Add money in Tempo Wallet first.</Alert>}
-        {flow.at === 'done' && <Alert action={{ label: 'Add more', onClick: () => setFlow(idle) }} title={flow.text} tone="good">{flow.kept ? 'Thank you! It stays in your wallet until the AI spends it.' : 'Thank you!'}</Alert>}
+        {flow.at === 'done' && <Alert action={{ label: 'Add more', onClick: () => Pay.move(props.slot, Pay.idle) }} title={`You're riding. ${dollars(flow.amount)} is in.`} tone="good">{flow.kept ? 'Thank you! It stays in your wallet until the AI spends it.' : 'Thank you!'}</Alert>}
         {flow.at === 'unrecorded' && (
-          <Alert action={{ label: 'Try again', onClick: () => void count(flow.owed) }} title="Sent, but not counted yet." tone="warn">
+          <Alert action={{ label: 'Try again', onClick: () => void record(flow.owed) }} title="Sent, but not counted yet." tone="warn">
             Nothing is paid twice.
           </Alert>
         )}
