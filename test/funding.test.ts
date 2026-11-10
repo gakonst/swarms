@@ -151,3 +151,27 @@ test('a swarm told of money wakes before it logs and announces it, so a failed a
   await assert.rejects(Swarm.prototype.contributed.call(self as never, { ...input, kind: 'noted', note: 'idea', noteId: 'n1' }), /D1 is down/)
   assert.deepEqual(woken, ['money', 'money'])
 })
+
+test('an approval posted again announces nothing and is not created again, and a note added to a backing already counted is announced once, as a note', async () => {
+  const key = '0x00000000000000000000000000000000000000cc'
+  const { calls, env } = world((path) =>
+    path === '/api/keys/complete'
+      ? { accessKey: key, backs: { app: Credit.app(id), owner, tag: Credit.tag(id, 'go faster') }, expiresAt: 0, limits: [{ limit: '5000000', token: '0x20c000000000000000000000f37de3740ADec032' }], wallet: rider }
+      : {},
+  )
+  const post = async (note?: string) => {
+    const result = await Operations.approved(env, { keyAuthorization: {}, request: 'ab'.repeat(16), swarm: id, ...(note ? { note } : {}) })
+    assert.ok(result.ok)
+    return [result.value.created, result.value.contributed.contribution.note, result.value.contributed.swarm.balance]
+  }
+  const told = () => calls.map(([name, input]) => (name === 'contributed' ? [name, (input as { kind: string }).kind, (input as { note: string | null }).note] : [name, input]))
+
+  assert.deepEqual(await post(), [true, null, '5.000000'])
+  assert.deepEqual(told(), [['contributed', 'approved', null]])
+  assert.deepEqual(await post(), [false, null, '5.000000'])
+  assert.deepEqual(told().slice(1), [['wake', 'money']])
+  assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
+  assert.deepEqual(told().slice(2), [['contributed', 'noted', 'go faster']])
+  assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
+  assert.deepEqual(told().slice(3), [['wake', 'money']])
+})

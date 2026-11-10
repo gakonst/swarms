@@ -1414,15 +1414,16 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
   const text = tagged && (row.steering !== 'team' || (await Team.steerer(env, row, done.value.wallet))) ? tagged : null
   const noteId = text ? await Store.noteId(text) : null
   const id = Credit.backing(done.value.accessKey)
-  const written =
-    (await Store.give(env, { amount: String(amount), channel: done.value.accessKey, contributor: done.value.wallet, id, note: text, note_id: noteId, swarm: row.id, token: 'mach' })) ??
-    (text && noteId ? await Store.annotate(env, row.id, id, { note: text, note_id: noteId }) : null)
-  await stub(env, row.id).contributed({ amount: Memo.decimal(amount), contributor: done.value.wallet, hash: done.value.accessKey, kind: 'approved', note: text, noteId, swarm: row.id, token: 'mach' })
-  if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
+  const given = await Store.give(env, { amount: String(amount), channel: done.value.accessKey, contributor: done.value.wallet, id, note: text, note_id: noteId, swarm: row.id, token: 'mach' })
+  const written = given ?? (text && noteId ? await Store.annotate(env, row.id, id, { note: text, note_id: noteId }) : null)
+  if (written) {
+    await stub(env, row.id).contributed({ amount: Memo.decimal(BigInt(written.amount)), contributor: done.value.wallet, hash: done.value.accessKey, kind: given ? 'approved' : 'noted', note: text, noteId, swarm: row.id, token: 'mach' })
+    if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
+  } else await stub(env, row.id).wake('money')
 
   const [gift, updated] = await Promise.all([written ?? Store.gift(env, id), Store.find(env, row.id)])
   if (!gift) return Problem.fail(502, 'unavailable', 'The backing was not saved.')
-  return Problem.ok({ contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) }, created: true })
+  return Problem.ok({ contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) }, created: given !== null })
 }
 
 function excerpt(entry: Entry, terms: readonly string[], size = 240) {
