@@ -66,6 +66,8 @@ const quickMs = 60_000
 
 const settleMs = 15_000
 
+const calmMs = 10 * 60_000
+
 const maxBackoffMs = 30 * 60_000
 
 export async function step(self: Swarm) {
@@ -313,7 +315,8 @@ async function quiet(self: Swarm, row: Store.Row) {
   const agent = self.agent()?.id
   if (!agent) return true
   const listed = await Gateway.subagents(self.env, row.id, agent)
-  return listed.ok && listed.value.every((subagent) => !['pending', 'queued', 'running'].includes(subagent.status.state))
+  if (!listed.ok) return listed.status < 500
+  return listed.value.every((subagent) => !['pending', 'queued', 'running'].includes(subagent.status.state))
 }
 
 export function failing(self: Swarm, since: number) {
@@ -374,13 +377,16 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause) {
   if (alarm === null || alarm > Date.now() + settleMs) await self.ctx.storage.setAlarm(Date.now() + settleMs)
 }
 
-export async function settle(self: Swarm, row: Store.Row, run: { at: number; pause: Phase.Pause }) {
-  if (run.pause.why === 'unfunded' || (self.kv.get<number>('settled') ?? 0) >= run.at) return null
-  if (Date.now() < run.at + settleMs) return run.at + settleMs
-  if (!(await quiet(self, row))) return Date.now() + Clock.minuteMs
+export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
+  if (run.pause.why === 'unfunded' || run.settled !== undefined) return null
+  const now = Date.now()
+  if (now < run.at + settleMs) return run.at + settleMs
+  if (now < run.at + calmMs && !(await quiet(self, row))) return now + Clock.minuteMs
   const money = await Money.refresh(self, row)
-  self.kv.put('settled', Date.now())
+  const paused = self.run()
+  if (paused.state !== 'paused' || paused.at !== run.at) return null
   const refused = run.pause.why === 'money' && run.pause.needs !== undefined && BigInt(run.pause.left) >= BigInt(run.pause.needs)
   if (!refused && money.left >= Store.reserveOf(money.row)) self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
+  else self.set({ ...paused, settled: Date.now() })
   return null
 }

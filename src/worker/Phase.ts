@@ -15,7 +15,9 @@ export type Run =
   | { from?: Pause | undefined; since: number | null; state: 'waiting'; until: number }
   | { id: string; n: number; since: number | null; state: 'starting'; told: Told[] }
   | { from: number; n: number; since: number; started: number; state: 'working'; turn: string; wanted?: string | undefined }
-  | { at: number; pause: Pause; state: 'paused' }
+  | { at: number; pause: Pause; settled?: number | undefined; state: 'paused' }
+
+export type Paused = Extract<Run, { state: 'paused' }>
 
 export type State = Run['state']
 

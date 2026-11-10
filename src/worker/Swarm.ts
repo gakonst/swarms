@@ -68,7 +68,7 @@ export type Lead = { briefed: boolean; cursor: number; id: string; instructed?: 
 
 export type Turning = Extract<Phase.Run, { state: 'working' }>
 
-const version = 3
+const version = 4
 
 const dead = ['turn', 'started', 'since', 'paused', 'why', 'failures', 'wanted', 'checked', 'n', 'fresh', 'unreachable', 'url', 'persona', 'cursor', 'shelved', 'terms', 'left', 'expected', 'poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'round', 'resting', 'stuck', 'kicked', 'rechecked', 'retired', 'retiring', 'tallied', 'workers', 'refundAt', 'refunded', 'closing', 'returning', 'open', 'source', 'pledge', 'swept']
 
@@ -107,6 +107,7 @@ function migrate(storage: DurableObjectStorage, from: number) {
     if (last !== null) kv.put('unindexed', Number(last))
   }
   if (from < 3 && !kv.get<Lead>('agent')?.instructed) kv.delete('instructions')
+  if (from < 4) kv.delete('settled')
   kv.put('v', version)
 }
 

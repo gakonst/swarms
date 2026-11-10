@@ -146,3 +146,31 @@ test('a status write that failed is written again on the next step, so the list 
   await w.swarm.alarm()
   assert.deepEqual(await w.status(), { status: 'paused', why: 'money' })
 })
+
+test('a pause settles once even when the gateway no longer has the agent or a subagent never stops, instead of asking every minute forever', async (t) => {
+  const paused = async (subagents: () => Response) => {
+    const w = world((_request, url) => {
+      if (url.pathname === '/api/keys/credit') return Response.json({ deposited: '1', left: '0.01', spent: '0.99' })
+      if (url.pathname === '/v1/agents/agt_gone/subagents') return subagents()
+      return undefined
+    })
+    t.after(w.restore)
+    await w.seed()
+    w.swarm.kv.put('agent', { briefed: true, cursor: 0, id: 'agt_gone', instructed: true, unreachable: null, url: 'backers' })
+    w.swarm.kv.put('run', { at: Date.now() - 60_000, pause: { left: '10000', needs: '50000', wake: null, why: 'money' }, state: 'paused' })
+    let alarms = 0
+    for (let next: number | null = Date.now(); next !== null && alarms < 30; next = w.alarm()) {
+      await w.swarm.ctx.storage.deleteAlarm()
+      await w.swarm.alarm()
+      w.pass(60_000)
+      alarms += 1
+    }
+    const run = w.swarm.run()
+    assert.ok(run.state === 'paused' && run.settled !== undefined)
+    assert.equal(w.calls.filter((call) => call === 'GET /api/keys/credit').length, 1)
+    return alarms
+  }
+
+  assert.equal(await paused(() => Response.json({ error: 'No agent has this id.' }, { status: 404 })), 1)
+  assert.equal(await paused(() => Response.json({ agents: [{ agent_id: 2, parent_agent_id: null, role: 'r', status: { state: 'running' }, task: 't' }] })), 10)
+})
