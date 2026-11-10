@@ -134,13 +134,13 @@ export function start(origin: string, swarms: readonly Summary[] = [], request?:
   const live = Status.ranked(swarms.filter((item) => item.status !== 'done'), latest)
   const counted = Status.count(swarms)
   const peekIdeas = ideas.slice(0, 4).map((item) => `<span class="chip"><i class="mark-idea"></i><b>${attribute(item.label)}</b></span>`).join('')
-  const peekSwarms = live.slice(0, 4).map((item) => `<span class="chip"><i class="dot" data-status="${item.status}"></i><b>${attribute(item.title)}</b><em>${dollars(item.raised)}</em></span>`).join('')
+  const peekSwarms = live.slice(0, 4).map((item) => `<span class="chip"><i class="dot" data-status="${item.status}"></i><b>${attribute(item.title)}</b><em>${dollars(item.balance)}</em></span>`).join('')
   const rows = ideas
     .map((item, index) => `<li><button class="row-item idea" data-idea="${index}" type="button"><i class="mark-idea"></i><span>${attribute(item.label)}</span></button></li>`)
     .join('')
   const joins = live
     .slice(0, 6)
-    .map((item) => `<li><a class="row-item" href="${base}/s/${encodeURIComponent(item.id)}"><i class="dot" data-status="${item.status}"></i><span>${attribute(item.title)}<small>${Status.word(item)} · ${backers(item.contributors)}</small></span><em>${dollars(item.raised)}</em></a></li>`)
+    .map((item) => `<li><a class="row-item" href="${base}/s/${encodeURIComponent(item.id)}"><i class="dot" data-status="${item.status}"></i><span>${attribute(item.title)}<small>${Status.word(item)} · ${backers(item.contributors)}</small></span><em>${dollars(item.balance)}</em></a></li>`)
     .join('')
   const content = `<section class="view doors" data-view="home">
     <button class="door door-start" data-open="start" type="button">
@@ -173,14 +173,14 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
   const working = value.status === 'running' ? value.working : null
   const done = value.status === 'done'
   const title = working ? `Live: ${value.title}` : done ? value.title : `Fund ${value.title}`
-  const description = working ? 'Watch this swarm work, live, and steer it.' : `${backers(value.contributors)} · ${dollars(value.raised)} raised.`
+  const description = working ? 'Watch this swarm work, live, and steer it.' : `${backers(value.contributors)} · ${dollars(value.balance)} balance.`
   const page = `${origin}/s/${encodeURIComponent(value.id)}`
   const latest = value.updates.at(-1)?.excerpt ?? null
   const content = `<section class="view room" data-view="room">
     <header class="head">
       <i class="dot" data-status="${value.status}"></i>
       <a class="name" href="${attribute(page)}" target="_blank" rel="noreferrer">${attribute(value.title)}</a>
-      <span class="sum">${dollars(value.raised)} · ${value.contributors}</span>
+      <span class="sum">${dollars(value.balance)} · ${value.contributors}</span>
       ${done ? `<a class="go small" href="${attribute(page)}" target="_blank" rel="noreferrer">Result ↗</a>` : '<button class="go small" data-open="fund" type="button">Fund</button>'}
     </header>
     <nav class="tabs" role="tablist">
@@ -203,7 +203,7 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
     <div class="left">
       <header class="top"><button class="back" data-back type="button">←</button><h1>Fund it</h1></header>
       <p class="fund-name"><i class="dot" data-status="${value.status}"></i>${attribute(value.title)}</p>
-      <p class="hint">${dollars(value.raised)} raised · ${backers(value.contributors)}</p>
+      <p class="hint">${dollars(value.balance)} balance · ${backers(value.contributors)}</p>
       <p class="goal">${attribute(latest ?? value.goal)}</p>
       ${value.notes.length ? `<ol class="list notes">${value.notes.slice(0, 3).map((note) => `<li class="row-item"><span>${attribute(note.note)}</span><em>${dollars(note.weight)}</em></li>`).join('')}</ol>` : ''}
       <p class="behind" id="behind" hidden></p>
@@ -413,10 +413,10 @@ document.querySelectorAll('[data-go]').forEach(button=>button.addEventListener('
 if(frame.kind==='home'&&(demo||query.has('demo'))){
   const sample=[['running','Benchmark every open-weight coding model','9.04'],['running','Parse a terabyte of JSON in under a minute','4.20'],['paused','A field guide to DEX routing','2.75'],['funding','Speedrun nanoGPT on a T4','0.00']];
   const esc=text=>text.replace(/&/g,'&amp;').replace(/</g,'&lt;');
-  document.querySelector('.door-join .door-peek').innerHTML=sample.map(([status,title,raised])=>'<span class="chip"><i class="dot" data-status="'+status+'"></i><b>'+esc(title)+'</b><em>$'+raised+'</em></span>').join('');
+  document.querySelector('.door-join .door-peek').innerHTML=sample.map(([status,title,balance])=>'<span class="chip"><i class="dot" data-status="'+status+'"></i><b>'+esc(title)+'</b><em>$'+balance+'</em></span>').join('');
   document.querySelector('.door-join .door-kicker').innerHTML='<i class="live"></i>2 running';
   const join=document.querySelector('[data-view=join]');join.querySelector('.empty,.list')?.remove();
-  join.insertAdjacentHTML('beforeend','<ol class="list scroll">'+sample.map(([status,title,raised])=>'<li><a class="row-item" href="#"><i class="dot" data-status="'+status+'"></i><span>'+esc(title)+'<small>'+(status==='running'?'Running':status==='paused'?'Resting':'Not started')+' · '+(3+title.length%7)+' backers</small></span><em>$'+raised+'</em></a></li>').join('')+'</ol>');
+  join.insertAdjacentHTML('beforeend','<ol class="list scroll">'+sample.map(([status,title,balance])=>'<li><a class="row-item" href="#"><i class="dot" data-status="'+status+'"></i><span>'+esc(title)+'<small>'+(status==='running'?'Running':status==='paused'?'Resting':'Not started')+' · '+(3+title.length%7)+' backers</small></span><em>$'+balance+'</em></a></li>').join('')+'</ol>');
 }
 if(frame.kind==='home'){
   const custom=document.getElementById('custom'),ideas=[...document.querySelectorAll('[data-idea]')],go=document.querySelector('[data-view=start] [data-go]');

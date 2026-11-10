@@ -107,7 +107,7 @@ function Seed(props: { config: Config | undefined; problem: Problem }) {
             open={open || !phone}
             prefill={prefill}
             shared={false}
-            swarm={{ contributors: 0, id, raised: '0', remaining: '0', status: 'funding', title: problem.title, why: null }}
+            swarm={{ balance: '0', contributors: 0, id, remaining: '0', status: 'funding', title: problem.title, why: null }}
             target={launch.target}
           />
           <div className="idea-main">
@@ -157,7 +157,7 @@ function Own(props: { config: Config | undefined }) {
             open
             prefill={prefill}
             shared={false}
-            swarm={{ contributors: 0, id: 'own', raised: '0', remaining: '0', status: 'funding', title: drafted.title, why: null }}
+            swarm={{ balance: '0', contributors: 0, id: 'own', remaining: '0', status: 'funding', title: drafted.title, why: null }}
             target={launch.target}
           />
           <Runs onPick={pick} template={template} />

@@ -5,6 +5,7 @@ import * as XFrames from '../src/worker/XFrames.ts'
 
 const overview: Overview = {
   answer: null,
+  balance: '1.250000',
   code: null,
   contributions: [],
   contributors: 3,
@@ -15,7 +16,6 @@ const overview: Overview = {
   machines: 0,
   notes: [],
   pool: '0.000000',
-  raised: '1.250000',
   reason: null,
   remaining: '0.750000',
   spent: '0.500000',

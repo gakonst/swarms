@@ -45,9 +45,9 @@ export function field(given: readonly Summary[], now = Date.now()): Cards.Field 
     now,
   )
   return {
+    balance: live.reduce((sum, swarm) => sum + Number(swarm.balance), 0),
     ideas: open(swarms).map((problem) => ({ id: problem.id, title: problem.title })),
     open: live.length,
-    raised: live.reduce((sum, swarm) => sum + Number(swarm.raised), 0),
     swarms: live.slice(0, 12).map((swarm) => ({ ...Cards.item(swarm), left: 0, pitch: '' })),
     working: swarms.filter((swarm) => swarm.status === 'running').length,
   }
@@ -98,7 +98,7 @@ export function moving(subject: Subject) {
 function steady(subject: Subject) {
   if (subject.kind !== 'swarm') return subject
   const item = subject.item
-  const fill = item.raised > 0 ? Math.round(Math.min(1, Math.max(0, item.left / item.raised)) * 20) : 0
+  const fill = item.balance > 0 ? Math.round(Math.min(1, Math.max(0, item.left / item.balance)) * 20) : 0
   return { ...subject, item: { ...item, left: fill } }
 }
 
@@ -115,7 +115,7 @@ export function asset(origin: string, subject: Subject, name: 'card.png' | 'post
 function alt(subject: Subject) {
   if (subject.kind === 'swarm' || subject.kind === 'idea') {
     const item = subject.item
-    const money = item.raised > 0 ? `${Answer.cash(item.raised)} raised from ${backers(item.backers)}` : 'no backers yet'
+    const money = item.balance > 0 ? `${Answer.cash(item.balance)} balance from ${backers(item.backers)}` : 'no backers yet'
     return `${item.title}. ${Status.pill(item.word)}, ${money}.`
   }
   if (subject.kind === 'about') return 'How Swarms works: pick an idea, chip in a few dollars, AI agents work on it, read what they find.'
@@ -161,10 +161,10 @@ function labels(subject: Subject): [string, string][] {
     const item = subject.item
     return [
       ['Status', Status.pill(item.word)],
-      ['Raised', item.raised > 0 ? `${Answer.cash(item.raised)} from ${backers(item.backers)}` : 'Be the first backer'],
+      ['Balance', item.balance > 0 ? `${Answer.cash(item.balance)} from ${backers(item.backers)}` : 'Be the first backer'],
     ]
   }
-  if (subject.kind === 'idea') return [['Status', 'New idea'], ['Raised', 'Be the first backer']]
+  if (subject.kind === 'idea') return [['Status', 'New idea'], ['Balance', 'Be the first backer']]
   if (subject.kind === 'home' || subject.kind === 'ideas' || subject.kind === 'new')
     return [
       ['Working now', String(subject.field.working)],
@@ -176,7 +176,7 @@ function labels(subject: Subject): [string, string][] {
 export function describe(subject: Subject) {
   if (subject.kind === 'swarm') {
     const item = subject.item
-    const money = item.raised > 0 ? `${Answer.cash(item.raised)} raised from ${backers(item.backers)}` : 'No backers yet'
+    const money = item.balance > 0 ? `${Answer.cash(item.balance)} balance from ${backers(item.backers)}` : 'No backers yet'
     return `${Status.pill(item.word)} · ${money}. ${item.pitch || Status.line(item.word)}`.slice(0, 300)
   }
   if (subject.kind === 'idea') return `${subject.item.pitch} Back it with a few dollars and AI agents start on it, in public.`

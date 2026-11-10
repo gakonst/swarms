@@ -70,9 +70,8 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   if (same && !settled) return { left, listed, row }
 
   if (!same) await Store.update(self.env, row.id, pool)
-  const updated = settled
-    ? ((await Store.find(self.env, row.id)) ?? row)
-    : { ...row, ...pool, remaining: pool.pool_left + pool.sponsor_left, spent: Number(row.spent) - Number(row.pool_spent) - Number(row.sponsor_spent) + pool.pool_spent + pool.sponsor_spent }
+  const paid = Number(row.spent) - Number(row.pool_spent) - Number(row.sponsor_spent) + pool.pool_spent + pool.sponsor_spent
+  const updated = settled ? ((await Store.find(self.env, row.id)) ?? row) : { ...row, ...pool, remaining: Number(row.balance) - paid, spent: paid }
   self.remember(updated)
   self.beacon(updated)
   if (settled) self.changed('detail', 'members')
@@ -116,7 +115,7 @@ export function allowance(self: Swarm, row: Store.Row, hand: Gateway.Listed, per
   const day = known && now - known.at < Clock.dayMs ? known : { at: now, usd: String(total) }
   if (day !== known) self.kv.put('handDay:' + hand.name, day)
   const turn = perTurn - (total - BigInt(self.kv.get<string>('handTurn:' + hand.name) ?? String(total)))
-  const today = BigInt(row.raised) / Hands.share - (total - BigInt(day.usd))
+  const today = BigInt(row.balance) / Hands.share - (total - BigInt(day.usd))
   const left = turn < today ? turn : today
   return left > 0n ? left : 0n
 }

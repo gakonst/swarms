@@ -164,7 +164,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
       {tab('chat', 'Chat', unread > 0 && view !== 'chat' && <i className="idea-unread">{unread}</i>)}
       {tab('code', 'Code')}
       <span className="idea-tabs-back" data-shown={view !== 'now'}>
-        <span><b>{usdShort(swarm.raised)}</b> raised</span>
+        <span><b>{usdShort(swarm.balance)}</b> balance</span>
         <button className="btn btn-high" onClick={() => steer('')} type="button">Back it</button>
       </span>
     </nav>
@@ -218,7 +218,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
       </div>
       {view !== 'chat' && (
         <div className="idea-bar" data-shown={(view !== 'now' || past) && phone}>
-          <span><b>{usdShort(swarm.raised)}</b> raised</span>
+          <span><b>{usdShort(swarm.balance)}</b> balance</span>
           <button className="btn btn-high" onClick={() => steer('')} type="button">Back it</button>
         </div>
       )}

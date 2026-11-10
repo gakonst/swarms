@@ -93,7 +93,7 @@ export function Home() {
     const joins = ranked.slice(0, 40).map(
       (item): Hive => ({
         about: (item.answer && Answer.gist(item.answer.text)) || item.goal,
-        detail: `${Status.word(item)} · ${usd(item.raised)}`,
+        detail: `${Status.word(item)} · ${usd(item.balance)}`,
         facts: [plural(item.contributors, 'backer'), now ? `updated ${ago(item.updatedAt, now)}` : ''].filter(Boolean).join(' · '),
         fresh: item.status === 'running' ? 1 : 1 / (1 + Math.max(0, clock - item.updatedAt) / 86_400_000),
         home: 'join',
@@ -101,14 +101,14 @@ export function Home() {
         mood: Status.standing(item).mood,
         title: item.title,
         updated: item.updatedAt,
-        weight: Number(item.raised),
+        weight: Number(item.balance),
       }),
     )
     const seeds = free.slice(0, 10).map((item): Hive => ({ about: item.hint, detail: 'New idea', facts: 'Be the first backer', fresh: 0.35, home: 'start', id: `idea:${item.id}`, mood: 'new', title: item.label, updated: 0, weight: 0 }))
     return joins.concat(seeds)
-  }, [ranked.map((item) => [item.id, item.status, item.why, item.raised, item.contributors, item.updatedAt, item.answer?.text.length].join()).join('|'), free.map((item) => item.id).join(), now])
+  }, [ranked.map((item) => [item.id, item.status, item.why, item.balance, item.contributors, item.updatedAt, item.answer?.text.length].join()).join('|'), free.map((item) => item.id).join(), now])
   const working = open.filter((swarm) => swarm.status === 'running').length
-  const raised = open.reduce((sum, swarm) => sum + Number(swarm.raised), 0)
+  const balance = open.reduce((sum, swarm) => sum + Number(swarm.balance), 0)
   const shown = ideas.filter((idea) => (view === 'live' ? fits.running(idea) : view === 'new' ? fits.waiting(idea) : true)).slice(0, 12)
   const path = (id: string) => (id.startsWith('idea:') ? `/new?q=${id.slice(5)}` : `/s/${id}`)
   const tabs = [['popular', 'Popular'], ['live', 'Working now'], ['new', 'New ideas']] as const
@@ -122,7 +122,7 @@ export function Home() {
           <p>Chip in a few dollars. AI agents get to work, in public.</p>
           <p className="hero-live" data-ready={!!list.data}>
             {working > 0 && <><i className="live-dot" />{working} working now · </>}
-            {plural(ideas.length, 'idea')}{raised > 0 && <> · {usd(String(raised))} raised</>}
+            {plural(ideas.length, 'idea')}{balance > 0 && <> · {usd(String(balance))} balance</>}
           </p>
         </div>
       </section>

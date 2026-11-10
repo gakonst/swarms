@@ -687,7 +687,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (input.steer) {
       const sent = await this.steer(input.swarm, input.steer.noteId)
       const row = sent ? null : await this.found(input.swarm)
-      const note = sent ?? (row ? await Store.note(this.env, row.id, input.steer.noteId, BigInt(row.raised), new Set(this.steered())) : undefined)
+      const note = sent ?? (row ? await Store.note(this.env, row.id, input.steer.noteId, BigInt(row.balance), new Set(this.steered())) : undefined)
       steer = {
         amount: input.steer.amount,
         backers: note?.backers ?? 1,
@@ -869,7 +869,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async notes(row: Store.Row) {
-    return Store.notes(this.env, row.id, BigInt(row.raised), new Set(this.steered()))
+    return Store.notes(this.env, row.id, BigInt(row.balance), new Set(this.steered()))
   }
 
   told() {

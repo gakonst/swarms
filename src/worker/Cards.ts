@@ -22,9 +22,9 @@ export type Link = { ax: number; ay: number; bx: number; by: number }
 
 export type Scene = { gauge: Gauge | null; height: number; hives: Hive[]; lines: Line[]; links: Link[]; parts: string; pulse: Pulse | null; typed: string; width: number }
 
-export type Swarm = { backers: number; id: string; left: number; mood: Mood; pitch: string; raised: number; title: string; word: Status.Word }
+export type Swarm = { backers: number; balance: number; id: string; left: number; mood: Mood; pitch: string; title: string; word: Status.Word }
 
-export type Field = { ideas: { id: string; title: string }[]; open: number; raised: number; swarms: Swarm[]; working: number }
+export type Field = { balance: number; ideas: { id: string; title: string }[]; open: number; swarms: Swarm[]; working: number }
 
 export const ink = '#000000'
 export const soft = '#3d5232'
@@ -43,11 +43,11 @@ export const dots: Record<Mood, string> = { live: '#2fae5a', money: '#e0a43c', n
 export function item(swarm: Summary): Swarm {
   const stood = Status.standing(swarm)
   const pitch = Answer.opening(swarm.goal, swarm.title) || Status.line(stood.word)
-  return { backers: swarm.contributors, id: swarm.id, left: Number(swarm.remaining), mood: stood.mood, pitch, raised: Number(swarm.raised), title: swarm.title, word: stood.word }
+  return { backers: swarm.contributors, balance: Number(swarm.balance), id: swarm.id, left: Number(swarm.remaining), mood: stood.mood, pitch, title: swarm.title, word: stood.word }
 }
 
 export function idea(problem: Problem): Swarm {
-  return { backers: 0, id: `idea:${problem.id}`, left: 0, mood: 'new', pitch: problem.hint, raised: 0, title: problem.title, word: 'Not started' }
+  return { backers: 0, balance: 0, id: `idea:${problem.id}`, left: 0, mood: 'new', pitch: problem.hint, title: problem.title, word: 'Not started' }
 }
 
 function escape(value: string) {
@@ -156,19 +156,19 @@ export function swarm(fonts: Fonts, item: Swarm, width: number, height: number, 
     top: pitchFirst + index * pitchSize * pitchLeading - pitchSize * 0.98,
     wide: Glyphs.width(fonts.serif, row, pitchSize) + 6,
   }))
-  const fill = item.raised > 0 ? Math.min(1, Math.max(0, item.left / item.raised)) : 0
-  const leftLabel = item.raised > 0 ? `${Answer.cash(item.left)} left` : ''
+  const fill = item.balance > 0 ? Math.min(1, Math.max(0, item.left / item.balance)) : 0
+  const leftLabel = item.balance > 0 ? `${Answer.cash(item.left)} left` : ''
   const labelWide = leftLabel ? Glyphs.width(fonts.mono, leftLabel, 17 * k) + 16 * k : 0
   const gauge = { color: fill < 0.15 ? '#e0a43c' : '#3f8a4e', fill, high: 8 * k, left: margin, top: gaugeTop, wide: room - labelWide }
   const track =
-    item.raised > 0
+    item.balance > 0
       ? box(gauge.left, gauge.top, gauge.wide, gauge.high, gauge.high / 2, '#eef2ea')
       : `<line x1="${gauge.left}" y1="${(gauge.top + gauge.high / 2).toFixed(1)}" x2="${gauge.left + room}" y2="${(gauge.top + gauge.high / 2).toFixed(1)}" stroke="#d9e2cf" stroke-width="${gauge.high.toFixed(1)}" stroke-dasharray="${(9 * k).toFixed(1)} ${(7 * k).toFixed(1)}"/>`
   const button = Glyphs.width(fonts.mono, `${cta} →`, 19 * k) + 56 * k
   const money =
-    item.raised > 0
-      ? say(fonts.serif, margin, foot, Answer.cash(item.raised), 52 * k, { spacing: -1.8 * k }) +
-        say(fonts.mono, margin + Glyphs.width(fonts.serif, Answer.cash(item.raised), 52 * k, -1.8 * k) + 14 * k, foot - 2 * k, `raised · ${item.backers} backer${item.backers === 1 ? '' : 's'}`, 18 * k, { fill: quiet })
+    item.balance > 0
+      ? say(fonts.serif, margin, foot, Answer.cash(item.balance), 52 * k, { spacing: -1.8 * k }) +
+        say(fonts.mono, margin + Glyphs.width(fonts.serif, Answer.cash(item.balance), 52 * k, -1.8 * k) + 14 * k, foot - 2 * k, `balance · ${item.backers} backer${item.backers === 1 ? '' : 's'}`, 18 * k, { fill: quiet })
       : say(fonts.serif, margin, foot - 4 * k, 'Be the first backer', 36 * k, { spacing: -0.8 * k })
   const parts = [
     `<defs>${gradient('cover', item.mood)}</defs>`,
@@ -185,7 +185,7 @@ export function swarm(fonts: Fonts, item: Swarm, width: number, height: number, 
     say(fonts.mono, right - button / 2, foot - 40 * k + 27 * k + 7 * k, `${cta} →`, 19 * k, { anchor: 'middle', fill: '#ffffff' }),
   ].join('')
   const typed = stack(fonts.serif, pitch, margin, pitchFirst, pitchSize, pitchLeading, { fill: soft })
-  return { gauge: item.raised > 0 ? gauge : null, height, hives: [hive], lines, links: [], parts, pulse: tag.pulse, typed, width }
+  return { gauge: item.balance > 0 ? gauge : null, height, hives: [hive], lines, links: [], parts, pulse: tag.pulse, typed, width }
 }
 
 function place(spots: { r: number; x: number; y: number }[], avoid: { h: number; w: number; x: number; y: number }[], area: { h: number; w: number; x: number; y: number }, radius: number, seed: string) {
@@ -207,7 +207,7 @@ function sky(field: Field, width: number, height: number, k: number, avoid: { h:
   const spots: { r: number; x: number; y: number }[] = []
   const hives: Hive[] = []
   for (const item of field.swarms.slice(0, 12)) {
-    const reach = (item.mood === 'live' ? 74 : item.mood === 'money' ? 34 + Math.min(34, Math.log10(1 + item.raised) * 22) : 22) * k
+    const reach = (item.mood === 'live' ? 74 : item.mood === 'money' ? 34 + Math.min(34, Math.log10(1 + item.balance) * 22) : 22) * k
     const spot = place(spots, avoid, area, reach * (item.mood === 'money' ? 1.25 : 1), item.id)
     if (spot) hives.push({ kind: item.mood === 'live' ? 'burst' : item.mood === 'money' ? 'smudge' : 'seed', mood: item.mood, reach, seed: item.id, x: spot.x, y: spot.y })
   }
@@ -235,7 +235,7 @@ export function home(fonts: Fonts, field: Field, width: number, height: number):
   const subFirst = heroFirst + size * 0.94 + 30 * k + subSize
   const liveY = subFirst + (sub.length - 1) * subSize * 1.36 + 50 * k
   const count = field.open + field.ideas.length
-  const facts = [field.working ? `${field.working} working now` : '', `${count} idea${count === 1 ? '' : 's'}`, field.raised > 0 ? `${Answer.cash(field.raised)} raised` : ''].filter(Boolean).join(' · ')
+  const facts = [field.working ? `${field.working} working now` : '', `${count} idea${count === 1 ? '' : 's'}`, field.balance > 0 ? `${Answer.cash(field.balance)} balance` : ''].filter(Boolean).join(' · ')
   const dot = field.working ? { color: dots.live, radius: 5.5 * k, x: margin + 5.5 * k, y: liveY - 6.5 * k } : null
   const avoid = [
     { h: 40 * k, w: 160 * k, x: margin, y: top - 32 * k },
@@ -258,7 +258,7 @@ function mini(fonts: Fonts, item: Swarm, x: number, y: number, wide: number, hig
   const size = 23 * k
   const title = Glyphs.wrap(fonts.serif, item.title, size, wide - 36 * k, 2)
   const tag = chip(fonts, x + 14 * k, y + 14 * k, item.word, item.mood, k * 0.82)
-  const stats = item.raised > 0 ? `${Answer.cash(item.raised)} · ${item.backers} backer${item.backers === 1 ? '' : 's'}` : 'Be the first backer'
+  const stats = item.balance > 0 ? `${Answer.cash(item.balance)} · ${item.backers} backer${item.backers === 1 ? '' : 's'}` : 'Be the first backer'
   const svg = [
     `<defs>${gradient(`mini${index}`, item.mood)}<clipPath id="clip${index}">${box(x, y, wide, high, 18 * k, '#fff')}</clipPath></defs>`,
     `<g clip-path="url(#clip${index})">`,

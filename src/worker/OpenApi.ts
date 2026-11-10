@@ -191,7 +191,7 @@ const schemas = {
     backers: integer,
     id: string,
     note: string,
-    share: { description: 'Share of everything raised, 0 to 1.', type: 'number' },
+    share: { description: 'Share of the balance, 0 to 1.', type: 'number' },
     steered: { description: 'The note reached the swarm.', type: 'boolean' },
     weight: mach,
   }),
@@ -234,14 +234,14 @@ const schemas = {
   Status: { enum: [...Operations.statuses], type: 'string' },
   Summary: object({
     answer: nullable(ref('Answer')),
+    balance: { ...mach, description: 'Everything backers put in, which the gateway can pull to pay for the swarm: each transfer at its amount and each approved backing at its limit, or at what it paid once it ended.' },
     contributors: integer,
     createdAt: time,
     goal: string,
     id: string,
     machines: integer,
     pool: { ...usd, description: "What is left of the swarm's credit at the gateway." },
-    raised: { ...mach, description: 'Everything sent to the swarm, at par.' },
-    remaining: { ...mach, description: 'What the swarm has left to spend now.' },
+    remaining: { ...mach, description: 'The balance less what the swarm spent: what it has left to spend.' },
     setup: nullable(
       object(
         {
@@ -325,7 +325,7 @@ const schemas = {
       note: { description: 'The idea: the message without @swarm.', type: 'string' },
       live: { description: 'It reached the working agent at once; otherwise the agent reads it when it resumes.', type: 'boolean' },
       noteId: string,
-      share: { description: 'The note\'s weight as a share of everything raised.', type: 'number' },
+      share: { description: 'The note\'s weight as a share of the balance.', type: 'number' },
       weight: { ...usd, description: 'Everything behind the note now.' },
     },
     'An @swarm message: part of its author\'s backing put behind the rest of the message as a steering note.',

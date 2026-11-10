@@ -9,6 +9,7 @@ const ways = ['transfer', 'machine'] as const satisfies readonly Way[]
 
 export type Row = {
   answer: string | null
+  balance: number
   contributors: number
   created_at: number
   creator: `0x${string}` | null
@@ -18,7 +19,6 @@ export type Row = {
   pool_left: number
   pool_spent: number
   problem: string | null
-  raised: number
   remaining: number
   repo: string | null
   rounds: number
@@ -59,9 +59,9 @@ export function reserveOf(row: Pick<Row, 'setup'>) {
 }
 
 const totals = `select s.*,
-  coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) as raised,
+  coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) as balance,
   s.pool_spent + s.sponsor_spent + s.spent_before as spent,
-  s.pool_left + s.sponsor_left as remaining,
+  coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining,
   (select count(distinct contributor) from contributions where swarm = s.id) as contributors
   from swarms s`
 
@@ -83,6 +83,7 @@ export function setup(row: Pick<Row, 'setup'>): Setup.Setup | null {
 export function summary(row: Row): Summary {
   return {
     answer: answer(row.answer),
+    balance: Memo.decimal(BigInt(row.balance)),
     contributors: row.contributors,
     createdAt: row.created_at,
     goal: row.goal,
@@ -90,7 +91,6 @@ export function summary(row: Row): Summary {
     machines: row.machines,
     pool: Memo.decimal(BigInt(row.pool_left)),
     problem: row.problem ?? null,
-    raised: Memo.decimal(BigInt(row.raised)),
     remaining: Memo.decimal(BigInt(row.remaining)),
     setup: setup(row),
     spent: Memo.decimal(BigInt(row.spent)),
@@ -104,9 +104,9 @@ export function summary(row: Row): Summary {
 
 export async function list(env: Cloudflare.Env, status?: Summary['status']) {
   const { results } = await env.DB.prepare(
-    `select s.*, c.raised, s.pool_spent + s.sponsor_spent + s.spent_before as spent, s.pool_left + s.sponsor_left as remaining, c.contributors
-    from swarms s join (select swarm, sum(cast(amount as integer)) as raised, count(distinct contributor) as contributors from contributions group by swarm) c on c.swarm = s.id
-    where s.hidden = 0 and c.raised > 0${status ? ' and s.status = ?' : ''} order by s.updated_at desc limit 100`,
+    `select s.*, c.balance, s.pool_spent + s.sponsor_spent + s.spent_before as spent, c.balance - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining, c.contributors
+    from swarms s join (select swarm, sum(cast(amount as integer)) as balance, count(distinct contributor) as contributors from contributions group by swarm) c on c.swarm = s.id
+    where s.hidden = 0 and c.balance > 0${status ? ' and s.status = ?' : ''} order by s.updated_at desc limit 100`,
   )
     .bind(...(status ? [status] : []))
     .all<Row>()
@@ -174,7 +174,7 @@ export async function insert(
 ) {
   const now = Date.now()
   const row = await env.DB.prepare(
-    'insert into swarms (id, title, goal, problem, creator, created_at, updated_at, setup) values (?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as raised, pool_spent + sponsor_spent + spent_before as spent, pool_left + sponsor_left as remaining, 0 as contributors',
+    'insert into swarms (id, title, goal, problem, creator, created_at, updated_at, setup) values (?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as balance, pool_spent + sponsor_spent + spent_before as spent, 0 - (pool_spent + sponsor_spent + spent_before) as remaining, 0 as contributors',
   )
     .bind(input.id, input.title, input.goal, input.problem, input.creator, now, now, input.setup ?? null)
     .first<Row>().finally(() => wrote(input.id))
@@ -251,19 +251,19 @@ type Weighed = { backers: number; id: string; note: string; weight: number }
 export async function notes(
   env: Cloudflare.Env,
   swarm: string,
-  raised: bigint,
+  balance: bigint,
   steered: ReadonlySet<string>,
 ): Promise<Note[]> {
   const { results } = await weighing(env, swarm).all<Weighed>()
-  return weighed(results, raised, steered)
+  return weighed(results, balance, steered)
 }
 
-function weighed(results: Weighed[], raised: bigint, steered: ReadonlySet<string>): Note[] {
+function weighed(results: Weighed[], balance: bigint, steered: ReadonlySet<string>): Note[] {
   return results.map((row) => ({
     backers: row.backers,
     id: row.id,
     note: row.note,
-    share: raised > 0n ? Number((BigInt(row.weight) * 10_000n) / raised) / 10_000 : 0,
+    share: balance > 0n ? Number((BigInt(row.weight) * 10_000n) / balance) / 10_000 : 0,
     steered: steered.has(row.id),
     weight: Memo.decimal(BigInt(row.weight)),
   }))
@@ -306,7 +306,7 @@ async function tally(env: Cloudflare.Env, id: string): Promise<Ledger | undefine
   known.add(row.id)
   return {
     contributions: (given?.results as Gift[]).map(contribution),
-    notes: (steered) => weighed(weights?.results as Weighed[], BigInt(row.raised), steered),
+    notes: (steered) => weighed(weights?.results as Weighed[], BigInt(row.balance), steered),
     reports: reports?.results as { ended_at: number; round: number }[],
     row,
   }
@@ -341,7 +341,7 @@ export async function backed(env: Cloudflare.Env, id: string) {
     const row = found?.results[0] as Row | undefined
     if (!row) return undefined
     known.add(row.id)
-    return { members: membered(listed?.results as Backer[]), notes: (steered: ReadonlySet<string>) => weighed(weights?.results as Weighed[], BigInt(row.raised), steered), row }
+    return { members: membered(listed?.results as Backer[]), notes: (steered: ReadonlySet<string>) => weighed(weights?.results as Weighed[], BigInt(row.balance), steered), row }
   })
 }
 
@@ -528,7 +528,7 @@ export async function allotted(env: Cloudflare.Env, swarm: string, since: number
   return new Map(results.map((row) => [row.contributor, BigInt(row.amount)]))
 }
 
-export async function note(env: Cloudflare.Env, swarm: string, id: string, raised: bigint, steered: ReadonlySet<string>) {
+export async function note(env: Cloudflare.Env, swarm: string, id: string, balance: bigint, steered: ReadonlySet<string>) {
   const row = await env.DB.prepare(
     `select note_id as id, min(note) as note, sum(weight) as weight, count(distinct contributor) as backers from (
       select note_id, note, cast(amount as integer) as weight, contributor from contributions where swarm = ?1 and note_id = ?2
@@ -538,7 +538,7 @@ export async function note(env: Cloudflare.Env, swarm: string, id: string, raise
   )
     .bind(swarm, id)
     .first<Weighed>()
-  return row ? weighed([row], raised, steered)[0] : undefined
+  return row ? weighed([row], balance, steered)[0] : undefined
 }
 
 export async function noteId(note: string) {

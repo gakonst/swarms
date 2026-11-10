@@ -10,6 +10,7 @@ export type Answer = { at: number; done: boolean; text: string }
 
 export type Summary = {
   answer: Answer | null
+  balance: string
   contributors: number
   createdAt: number
   goal: string
@@ -17,7 +18,6 @@ export type Summary = {
   machines: number
   pool: string
   problem: string | null
-  raised: string
   remaining: string
   setup: Setup.Setup | null
   spent: string

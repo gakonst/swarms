@@ -23,7 +23,7 @@ function swarm(gifts: { amount: string; channel: string; id: string }[]) {
     first: async () => {
       writes.push({ args, sql })
       if (sql.startsWith('insert or ignore into contributions')) return { amount: args[5], channel: args[2], contributor: args[3], created_at: 1, id: args[0], note: null, note_id: null, swarm: args[1], token: args[4] }
-      return { contributors: 1, id: 'abc123abc123', machines: 0, pool_left: 400_000, pool_spent: 100_000, raised: 6_200_000, remaining: 4_400_000, sponsor_left: 4_000_000, sponsor_spent: 2_200_000, spent: 2_300_000 }
+      return { balance: 6_700_000, contributors: 1, id: 'abc123abc123', machines: 0, pool_left: 400_000, pool_spent: 100_000, remaining: 4_400_000, sponsor_left: 4_000_000, sponsor_spent: 2_200_000, spent: 2_300_000 }
     },
     run: async () => {
       writes.push({ args, sql })
@@ -59,7 +59,7 @@ function swarm(gifts: { amount: string; channel: string; id: string }[]) {
   return { logged, self: self as never, writes }
 }
 
-const row = { id: 'abc123abc123', machines: 0, pool_left: 0, pool_spent: 0, sponsor_left: 0, sponsor_spent: 0, spent: 0 } as never
+const row = { balance: 0, id: 'abc123abc123', machines: 0, pool_left: 0, pool_spent: 0, sponsor_left: 0, sponsor_spent: 0, spent: 0 } as never
 
 test("a swarm's money is its credit and what its backers' keys can still pay, and a backing the gateway lists is counted once", async () => {
   const fresh = swarm([{ amount: '5000000', channel: ended, id: 'backing:' + ended }])

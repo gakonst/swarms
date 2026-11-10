@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import * as Search from '../src/worker/Search.ts'
 import * as Store from '../src/worker/Store.ts'
@@ -41,19 +42,63 @@ test('the list and a swarm read their totals from the backing index, each contri
   give(db, 'd', '0x03', 0)
 
   const listed = await Store.list(db.env)
-  assert.deepEqual(listed.map((row) => [row.id, row.raised, row.contributors, row.spent, row.remaining]), [['a', 175, 2, 0, 0]])
+  assert.deepEqual(listed.map((row) => [row.id, row.balance, row.contributors, row.spent, row.remaining]), [['a', 175, 2, 0, 175]])
   assert.deepEqual((await Store.list(db.env, 'paused')).map((row) => row.id), [])
   assert.match(planned(db, /from swarms s join/), /SCAN contributions USING COVERING INDEX contributions_backing/)
 
   const found = await Store.find(db.env, 'a')
-  assert.deepEqual([found?.raised, found?.contributors], [175, 2])
+  assert.deepEqual([found?.balance, found?.contributors], [175, 2])
   assert.match(planned(db, /where s\.id = \?/), /SEARCH contributions USING COVERING INDEX contributions_backing \(swarm=\?\)/)
   const empty = await Store.find(db.env, 'c')
-  assert.deepEqual([empty?.raised, empty?.contributors], [0, 0])
+  assert.deepEqual([empty?.balance, empty?.contributors], [0, 0])
   assert.equal(await Store.find(db.env, 'zz'), null)
 
   assert.equal(await Store.steering(db.env, 'a'), 'open')
   assert.equal(await Store.steering(db.env, 'zz'), null)
+})
+
+test('what is left is the balance less what was spent, once 0030 counts what the old wallets and channels used as spent', async () => {
+  const db = open()
+  const cutover = 1794273600000
+  const gift = (swarm: string, id: string, amount: number, at: number, channel: string | null = null) =>
+    db.sqlite.prepare("insert into contributions (id, swarm, contributor, token, amount, channel, created_at) values (?, ?, '0x01', 'mach', ?, ?, ?)").run(id, swarm, String(amount), channel, at)
+  const money = (swarm: string, fields: Record<string, number>) =>
+    db.sqlite.prepare(`update swarms set ${Object.keys(fields).map((name) => name + ' = ?').join(', ')} where id = ?`).run(...Object.values(fields), swarm)
+  const totals = async (id: string) => {
+    const row = await Store.find(db.env, id)
+    return [row?.balance, row?.spent, row?.remaining]
+  }
+
+  swarm(db, 'channels')
+  gift('channels', '0xc1', 84_685_281, cutover - 1, '0xk1')
+  money('channels', { sponsor_spent: 84_685_281 })
+  swarm(db, 'wallet')
+  gift('wallet', '0xw1', 3_200_000, cutover - 1)
+  money('wallet', { spent_before: 2_571_806 })
+  swarm(db, 'mixed')
+  gift('mixed', '0xm1', 50_813, cutover - 1, '0xk2')
+  gift('mixed', '0xm2', 1_600, cutover - 1)
+  gift('mixed', '0xm3', 60_000, cutover + 1)
+  money('mixed', { pool_left: 30_980, pool_spent: 29_020, sponsor_spent: 50_813 })
+  swarm(db, 'backed')
+  gift('backed', 'backing:0xb1', 27_000_000, cutover + 1, '0xb1')
+  money('backed', { sponsor_left: 9_762_555, sponsor_spent: 17_237_445 })
+  swarm(db, 'lagging')
+  gift('lagging', '0xl1', 1_000_000, cutover - 1)
+  gift('lagging', '0xl2', 5_000_000, cutover + 1)
+  money('lagging', { spent_before: 1_000_000 })
+
+  assert.deepEqual(await totals('wallet'), [3_200_000, 2_571_806, 628_194])
+  db.sqlite.exec(readFileSync('migrations/0030_balance.sql', 'utf8'))
+
+  assert.deepEqual(await totals('channels'), [84_685_281, 84_685_281, 0])
+  await Store.update(db.env, 'channels', { sponsor_spent: 0 })
+  assert.deepEqual(await totals('channels'), [84_685_281, 84_685_281, 0])
+  assert.deepEqual(await totals('wallet'), [3_200_000, 3_200_000, 0])
+  assert.deepEqual(await totals('mixed'), [112_413, 81_433, 30_980])
+  assert.deepEqual(await totals('backed'), [27_000_000, 17_237_445, 9_762_555])
+  assert.deepEqual(await totals('lagging'), [6_000_000, 1_000_000, 5_000_000])
+  assert.deepEqual((await Store.list(db.env)).map((row) => [row.id, row.remaining]).sort(), [['backed', 9_762_555], ['channels', 0], ['lagging', 5_000_000], ['mixed', 30_980], ['wallet', 0]])
 })
 
 test('a steer spends only backing not yet behind a note, looked up by its author', async () => {
@@ -85,7 +130,7 @@ test('a contribution comes back from its own insert, and a repeat inserts nothin
   assert.equal((await Store.gift(db.env, '0xfeed'))?.note, 'a note')
 
   const inserted = await Store.insert(db.env, { creator: null, goal: 'A goal long enough', id: 'new', problem: null, sealed_wallet: 's', title: 'New', wallet: '0x99' })
-  assert.deepEqual([inserted?.id, inserted?.raised, inserted?.contributors, inserted?.spent, inserted?.remaining, inserted?.status], ['new', 0, 0, 0, 0, 'funding'])
+  assert.deepEqual([inserted?.id, inserted?.balance, inserted?.contributors, inserted?.spent, inserted?.remaining, inserted?.status], ['new', 0, 0, 0, 0, 'funding'])
   assert.equal(Store.seen('new'), true)
 })
 

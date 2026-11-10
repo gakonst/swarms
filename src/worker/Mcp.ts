@@ -49,7 +49,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
     {
       annotations: reading,
       description:
-        'List the funded swarms, most recently active first (at most 100), each with its title, goal, status, money raised, spent and remaining, machines, backers and latest answer. status filters: funding (funded, its agent has not started yet), running (its agent is working), paused (out of money; new money resumes it) or done.',
+        'List the funded swarms, most recently active first (at most 100), each with its title, goal, status, balance (everything its backers put in), spent and remaining (balance less spent), machines, backers and latest answer. status filters: funding (funded, its agent has not started yet), running (its agent is working), paused (out of money; new money resumes it) or done.',
       inputSchema: Operations.schema.list.shape,
     },
     async (input) => reply(await Operations.list(read, input)),
@@ -60,7 +60,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
     {
       annotations: reading,
       description:
-        "One swarm: its goal, status and money, its latest answer, every update (time, what it cost and a short excerpt; read them in full with swarm_updates), whether its agent is working and since when, the steering notes ranked by the money behind them and their share of everything raised, the transfers that funded it and the machines attached now.",
+        "One swarm: its goal, status and money, its latest answer, every update (time, what it cost and a short excerpt; read them in full with swarm_updates), whether its agent is working and since when, the steering notes ranked by the money behind them and their share of the balance, the transfers that funded it and the machines attached now.",
       inputSchema: Operations.schema.swarm.shape,
     },
     async (input) => reply(await Operations.get(read, input)),

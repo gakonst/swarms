@@ -20,12 +20,12 @@ export const Box = forwardRef<HTMLElement, {
   bare?: boolean
   prefill: Prefill
   shared?: boolean
-  swarm: Pick<Summary, 'contributors' | 'id' | 'raised' | 'remaining' | 'status' | 'title' | 'why'>
+  swarm: Pick<Summary, 'balance' | 'contributors' | 'id' | 'remaining' | 'status' | 'title' | 'why'>
   target: (step: (step: 'create') => void) => Promise<Target>
 }>(function Box(props, ref) {
   const swarm = props.swarm
   const stood = Status.standing(swarm)
-  const raised = Number(swarm.raised)
+  const balance = Number(swarm.balance)
   const left = Number(swarm.remaining)
   const backers = props.members.filter((member) => Number(member.backed) > 0)
   const [copied, setCopied] = useState(false)
@@ -44,20 +44,20 @@ export const Box = forwardRef<HTMLElement, {
 
   return (
     <aside className="box" data-open={props.open} id="back" ref={ref}>
-      {!props.bare && (raised > 0 || swarm.contributors > 0) && <div className="box-top">
-        <p className="box-raised"><b>{Answer.cash(raised)}</b> raised</p>
+      {!props.bare && (balance > 0 || swarm.contributors > 0) && <div className="box-top">
+        <p className="box-balance"><b>{Answer.cash(balance)}</b> balance</p>
         <p className="box-people">
           {backers.length > 0 && <span className="box-faces">{backers.slice(0, 5).map((member) => <Avatar address={member.address} handle={member.handle} key={member.address} size="small" />)}</span>}
           {swarm.contributors > 0 ? `${swarm.contributors} backer${swarm.contributors === 1 ? '' : 's'}` : 'No backers yet'}
         </p>
       </div>}
-      {raised > 0 && (
+      {balance > 0 && (
         <p className="box-gauge">
-          <Gauge left={left} raised={raised} />
+          <Gauge balance={balance} left={left} />
           <span>{Answer.cash(left)} left</span>
         </p>
       )}
-      {!props.bare && <p className="box-state" data-mood={stood.mood}>{raised > 0 || swarm.contributors > 0 ? line(stood.word) : 'Be the first to back it.'}</p>}
+      {!props.bare && <p className="box-state" data-mood={stood.mood}>{balance > 0 || swarm.contributors > 0 ? line(stood.word) : 'Be the first to back it.'}</p>}
       {props.open ? (
         <Fuel config={props.config} focus={props.focus} least={props.least} locked={props.locked} note={props.note} onDone={props.onDone} onNote={props.onNote} prefill={props.prefill} target={props.target} />
       ) : (

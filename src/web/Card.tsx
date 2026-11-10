@@ -5,7 +5,7 @@ import * as Status from '../shared/Status.ts'
 import { usd } from './format.ts'
 import { Link } from './router.tsx'
 
-export type Idea = { backers: number; href: string; id: string; left: number; mood: Status.Mood; pitch: string; raised: number; title: string; word: Status.Word }
+export type Idea = { backers: number; balance: number; href: string; id: string; left: number; mood: Status.Mood; pitch: string; title: string; word: Status.Word }
 
 export const pill = Status.pill
 
@@ -15,11 +15,11 @@ export const lead = Answer.opening
 
 export function fromSwarm(swarm: Summary): Idea {
   const stood = Status.standing(swarm)
-  return { backers: swarm.contributors, href: `/s/${swarm.id}`, id: swarm.id, left: Number(swarm.remaining), mood: stood.mood, pitch: lead(swarm.goal, swarm.title), raised: Number(swarm.raised), title: swarm.title, word: stood.word }
+  return { backers: swarm.contributors, balance: Number(swarm.balance), href: `/s/${swarm.id}`, id: swarm.id, left: Number(swarm.remaining), mood: stood.mood, pitch: lead(swarm.goal, swarm.title), title: swarm.title, word: stood.word }
 }
 
 export function fromProblem(problem: Problem): Idea {
-  return { backers: 0, href: `/new?q=${problem.id}`, id: `idea:${problem.id}`, left: 0, mood: 'new', pitch: problem.hint, raised: 0, title: problem.label, word: 'Not started' }
+  return { backers: 0, balance: 0, href: `/new?q=${problem.id}`, id: `idea:${problem.id}`, left: 0, mood: 'new', pitch: problem.hint, title: problem.label, word: 'Not started' }
 }
 
 function hash(text: string, seed: number) {
@@ -76,8 +76,8 @@ export function Pill(props: { word: Status.Word; mood: Status.Mood }) {
   )
 }
 
-export function Gauge(props: { left: number; raised: number }) {
-  const fill = props.raised > 0 ? Math.min(1, Math.max(0, props.left / props.raised)) : 0
+export function Gauge(props: { balance: number; left: number }) {
+  const fill = props.balance > 0 ? Math.min(1, Math.max(0, props.left / props.balance)) : 0
   return (
     <span aria-hidden="true" className="gauge" data-low={fill < 0.15}>
       <i style={{ width: `${Math.round(fill * 1000) / 10}%` }} />
@@ -91,14 +91,14 @@ export function Card(props: { idea: Idea }) {
     <li>
       <Link className="card" data={{ 'data-mood': idea.mood }} to={idea.href}>
         <span className="card-cover">
-          <Cover id={idea.id} mood={idea.mood} weight={idea.raised} />
+          <Cover id={idea.id} mood={idea.mood} weight={idea.balance} />
           <Pill mood={idea.mood} word={idea.word} />
         </span>
         <span className="card-body">
           <b className="card-title">{idea.title}</b>
           {idea.pitch && <span className="card-pitch">{idea.pitch}</span>}
           <span className="card-stats">
-            <span>{idea.raised > 0 ? <><b>{usd(String(idea.raised))}</b> · {idea.backers} backer{idea.backers === 1 ? '' : 's'}</> : 'Be the first backer'}</span>
+            <span>{idea.balance > 0 ? <><b>{usd(String(idea.balance))}</b> · {idea.backers} backer{idea.backers === 1 ? '' : 's'}</> : 'Be the first backer'}</span>
             <span className="card-go">Back it →</span>
           </span>
         </span>

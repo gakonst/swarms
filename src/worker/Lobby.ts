@@ -33,7 +33,7 @@ export class Lobby extends DurableObject<Cloudflare.Env> {
   }
 
   async changed(summary: Summary) {
-    if (Number(summary.raised) <= 0 || !this.ctx.getWebSockets().length) return
+    if (Number(summary.balance) <= 0 || !this.ctx.getWebSockets().length) return
     const swarm = listed(summary)
     const json = JSON.stringify(swarm)
     const last = this.sent.get(swarm.id)

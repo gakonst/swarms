@@ -71,7 +71,6 @@ a.tile-swarm { text-decoration:none; }
 .tile-dot[data-status='done'] { background:var(--grey-800); }
 .tile-title { overflow:hidden; font-size:16px; line-height:1.25; white-space:nowrap; text-overflow:ellipsis; }
 [data-open='true'] .tile-title { white-space:normal; }
-.tile-raised { font:12px var(--mono); color:var(--grey-600); }
 .tile-more { display:grid; grid-column:2 / span 2; gap:10px; padding-top:10px; animation:tile-open .18s ease-out; }
 .tile-goal,.tile-answer { display:-webkit-box; overflow:hidden; font-size:14px; line-height:1.45; color:var(--grey-800); -webkit-box-orient:vertical; -webkit-line-clamp:3; }
 .tile-answer { padding-left:10px; border-left:2px solid #cfd9c6; color:var(--grey-600); -webkit-line-clamp:2; }
@@ -85,7 +84,6 @@ a.tile-swarm { text-decoration:none; }
 .tile-mark[data-tone='2'] { border-radius:50%; background:#1a3d2c; transform:none; }
 .tile-mark[data-tone='more'],.tile-mark[data-tone='own'] { background:none; border:1px dashed #a5b79c; }
 .tile-quiet .tile-title { color:var(--grey-600); }
-.tile-more-ideas .tile-raised { font-size:14px; color:var(--black); }
 .tile-why { font:12px var(--mono); color:var(--grey-600); }
 .tile-lead { font-size:15px; color:var(--black); }
 .tile-own { cursor:default; }
@@ -1133,4 +1131,3 @@ button.said-backed:not(:disabled):hover { background:#2f5f37; }
 @media(max-width:799px) { .campaign { padding:12px 4px 32px; } .campaign-intro { padding:20px 16px; } .campaign-actions { gap:8px; } .campaign-technical { margin-left:10px; padding:6px 0; font-size:11px; } .campaign-fund { padding:16px; } }
 .campaign-thanks { margin:16px 22px; padding:16px; border:1px solid #bdd1ac; border-radius:12px; background:#f0f5e9; color:#1a3d2c; }
 .campaign .lane { overflow-wrap:anywhere; }
-@media(max-width:480px) { .world .tile-raised { max-width:105px; text-align:right; font-size:10px; } }

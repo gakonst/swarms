@@ -19,6 +19,7 @@ const fonts = { mono: Glyphs.face(buffer('../src/worker/fonts/mono.bin'), 'Parad
 
 const swarm: Summary = {
   answer: null,
+  balance: '80.000000',
   contributors: 2,
   createdAt: 1,
   goal: 'Beat "SGLang" on <muse_decode_layer>.\n\nWork in the open.',
@@ -26,7 +27,6 @@ const swarm: Summary = {
   machines: 0,
   pool: '0',
   problem: null,
-  raised: '80.000000',
   remaining: '2.310000',
   setup: null,
   spent: '77.690000',
@@ -67,7 +67,7 @@ test('a swarm shares its own title, numbers, card, poster, video and X player', 
   const html = Share.tags(shared)
   assert.equal(shared.url, 'https://swarms.example/s/abc123')
   assert.equal(shared.title, 'Megakernel for "Muse" <Spark> & co · Swarms')
-  assert.match(shared.description, /^Needs funding · \$80\.00 raised from 2 backers\. Beat "SGLang" on <muse_decode_layer>\.$/)
+  assert.match(shared.description, /^Needs funding · \$80\.00 balance from 2 backers\. Beat "SGLang" on <muse_decode_layer>\.$/)
   assert.match(html, /<meta property="og:title" content="Megakernel for &quot;Muse&quot; &lt;Spark&gt; &amp; co · Swarms">/)
   assert.doesNotMatch(html, /<Spark>/)
   assert.match(html, /<meta property="og:image" content="https:\/\/swarms\.example\/og\/s\/abc123\/card\.png\?v=[a-z0-9]+">/)
@@ -76,7 +76,7 @@ test('a swarm shares its own title, numbers, card, poster, video and X player', 
   assert.match(html, /<meta name="twitter:card" content="player">/)
   assert.match(html, /<meta name="twitter:image" content="https:\/\/swarms\.example\/og\/s\/abc123\/poster\.png\?v=/)
   assert.match(html, /<meta name="twitter:player" content="https:\/\/swarms\.example\/x\/s\/abc123">/)
-  assert.match(html, /<meta name="twitter:label2" content="Raised"><meta name="twitter:data2" content="\$80\.00 from 2 backers">/)
+  assert.match(html, /<meta name="twitter:label2" content="Balance"><meta name="twitter:data2" content="\$80\.00 from 2 backers">/)
   assert.match(html, /<link rel="alternate" type="application\/json\+oembed" href="https:\/\/swarms\.example\/oembed\?url=https%3A%2F%2Fswarms\.example%2Fs%2Fabc123"/)
 })
 
@@ -90,7 +90,7 @@ test('pages without a moving picture share a large image and no player', () => {
 test('a preview keeps its version while only cents move, and changes with money, backers or state', () => {
   const version = Share.version(Share.swarm(swarm))
   assert.equal(Share.version(Share.swarm({ ...swarm, remaining: '2.300000', spent: '77.700000', updatedAt: 9 })), version)
-  assert.notEqual(Share.version(Share.swarm({ ...swarm, raised: '82.000000' })), version)
+  assert.notEqual(Share.version(Share.swarm({ ...swarm, balance: '82.000000' })), version)
   assert.notEqual(Share.version(Share.swarm({ ...swarm, contributors: 3 })), version)
   assert.notEqual(Share.version(Share.swarm({ ...swarm, status: 'running', why: null })), version)
 })

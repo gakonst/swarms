@@ -118,6 +118,7 @@ function build(input: {
     who: who ?? null,
   }))
   return settle({
+    balance: '0',
     chat: [],
     contributions,
     contributors: 0,
@@ -135,7 +136,6 @@ function build(input: {
     pool: '0',
     problem: input.problem ?? null,
     resting: input.resting ?? false,
-    raised: '0',
     remaining: '0',
     setup: input.setup === undefined ? setup({ template: 'frontier-mix' }) : input.setup,
     script: input.script ?? [],
@@ -153,9 +153,8 @@ function build(input: {
 
 function settle(swarm: Live) {
   const given = swarm.contributions.reduce((sum, gift) => sum + units(gift.amount), 0n)
-  const raised = given
-  swarm.raised = decimal(raised)
-  swarm.remaining = decimal(raised > units(swarm.spent) ? raised - units(swarm.spent) : 0n)
+  swarm.balance = decimal(given)
+  swarm.remaining = decimal(given > units(swarm.spent) ? given - units(swarm.spent) : 0n)
   swarm.contributors = new Set(swarm.contributions.map((gift) => gift.contributor)).size
   swarm.pool = decimal(given > units(swarm.spent) / 2n ? given - units(swarm.spent) / 2n : 0n)
   swarm.machines = swarm.hands.filter((hand) => hand.connected).length
@@ -168,7 +167,7 @@ function settle(swarm: Live) {
         backers: new Set(backings.map((backing) => backing.contributor)).size,
         id: id(`${swarm.id}:${note}`),
         note,
-        share: raised > 0n ? Number((weight * 10_000n) / raised) / 10_000 : 0,
+        share: given > 0n ? Number((weight * 10_000n) / given) / 10_000 : 0,
         steered: swarm.steered.has(note),
         weight: decimal(weight),
       }
@@ -432,6 +431,7 @@ function summary(swarm: Live): Summary {
   const latest = swarm.updates.at(-1)
   return {
     answer: latest ? { at: latest.at, done: latest.done, text: latest.text } : null,
+    balance: swarm.balance,
     contributors: swarm.contributors,
     createdAt: swarm.createdAt,
     goal: swarm.goal,
@@ -439,7 +439,6 @@ function summary(swarm: Live): Summary {
     machines: swarm.machines,
     pool: swarm.pool,
     problem: swarm.problem,
-    raised: swarm.raised,
     remaining: swarm.remaining,
     setup: swarm.setup,
     spent: swarm.spent,
@@ -1171,7 +1170,7 @@ export function lobby(listener: (event: Lobby | { type: 'open' | 'closed' }) => 
   let alive = true
   let timer: ReturnType<typeof setInterval> | undefined
   const sent = new Map<string, string>()
-  const listed = () => (scene.has('empty') ? [] : fixtures.map((swarm) => summary(swarm)).filter((swarm) => Number(swarm.raised) > 0))
+  const listed = () => (scene.has('empty') ? [] : fixtures.map((swarm) => summary(swarm)).filter((swarm) => Number(swarm.balance) > 0))
   const opened = setTimeout(() => {
     if (!alive || offline) return
     listener({ type: 'open' })
