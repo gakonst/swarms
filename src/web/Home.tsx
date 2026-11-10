@@ -115,11 +115,8 @@ export function Home() {
   return (
     <div className="home">
       <section className="hero">
-        <h1 className="hero-title">Make a breakthrough.<br />Ride a swarm.</h1>
-        <ol className="go">
-          <li><Link to="/ideas"><b>[1]</b><span>Ride a swarm</span></Link></li>
-          <li><Link to="/new"><b>[2]</b><span>Start a swarm</span></Link></li>
-        </ol>
+        <h1 className="hero-title">Make a breakthrough.</h1>
+        <Go />
       </section>
       <section aria-label="Swarms at work" className="sky" data-lit={!!lit} onClickCapture={(event) => follow(event, lit && path(lit))} ref={sky}>
         <Field hives={hives} homes={{}} onPick={setLit} surface={sky} />
@@ -163,10 +160,18 @@ export function Home() {
         </div>
       </section>
       <section className="own">
-        <h2>Got a problem worth a swarm?</h2>
-        <Link className="band-more" to="/new">Start a swarm</Link>
+        <Go />
       </section>
     </div>
+  )
+}
+
+export function Go() {
+  return (
+    <ol className="go">
+      <li><Link to="/new"><b>[1]</b><span>Start a swarm</span></Link></li>
+      <li><Link to="/ideas"><b>[2]</b><span>Ride a swarm</span></Link></li>
+    </ol>
   )
 }
 

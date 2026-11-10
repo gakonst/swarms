@@ -1,4 +1,4 @@
-import { Link } from './router.tsx'
+import { Go } from './Home.tsx'
 
 const steps = ['Pick a swarm, or start one with a problem of your own', 'Put in a few dollars and say where it should go', 'AI agents work on it in the open until the money runs out', 'Read what they find, talk to the other riders, and steer again'] as const
 
@@ -15,10 +15,7 @@ export function About() {
   return (
     <div className="page how">
       <h1>Make a breakthrough.<br />Ride a swarm.</h1>
-      <ol className="go">
-        <li><Link to="/ideas"><b>[1]</b><span>Ride a swarm</span></Link></li>
-        <li><Link to="/new"><b>[2]</b><span>Start a swarm</span></Link></li>
-      </ol>
+      <Go />
       <section aria-labelledby="creed-title" className="how-band">
         <h2 id="creed-title">Swarm riders</h2>
         <div className="how-main">

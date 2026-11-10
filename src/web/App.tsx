@@ -1,6 +1,7 @@
 import { lazy, type MouseEvent, Suspense, useEffect, useRef, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
+import * as Site from '../shared/Site.ts'
 import { short, usd } from './format.ts'
 import { message, remember, remembered, useConfig, useWallet } from './hooks.ts'
 import * as Api from './api.ts'
@@ -123,6 +124,10 @@ function Header(props: { config: Config | undefined; path: string }) {
         <Link className={props.path === '/about' ? 'game-nav game-nav-on' : 'game-nav'} to="/about">Swarm riders</Link>
       </nav>
       <p className="brand">
+        <a aria-label="Paradigm" className="brand-mark" href={Site.paradigm}>
+          <svg aria-hidden="true" viewBox="0 0 25 29"><path d="m9.249 28.39-1.632-.986v-2.516l-2.21 1.258-1.632-.952v-2.516l-2.142 1.224L0 22.916V5.236l1.53-.85 2.244 1.292V3.094l1.598-.884 2.244 1.292V.918L9.249 0l15.334 8.806v1.87l-2.21 1.292 2.21 1.258v1.904l-2.176 1.258 2.176 1.258v1.904zm-.068-1.87 13.838-7.888-2.278-1.292-11.56 6.63zm-3.774-2.244 2.21-1.258v-2.55l-2.21 1.258zm-3.808-2.21 2.176-1.258V7.548L1.599 6.29zm3.808-2.176 2.21-1.292v-8.84L5.407 8.5zm0-13.26 2.21 1.258v-2.55L5.407 4.08zM9.18 22.1l9.962-5.712-2.244-1.292L9.18 19.55zm0-4.386 6.12-3.536-6.12-3.536zm0-8.942 7.752 4.488 2.244-1.292L9.18 6.256zm0-4.386 11.594 6.664 2.244-1.292L9.18 1.836zm9.35 9.792 2.244 1.292 2.244-1.292-2.278-1.292z" fill="currentColor" /></svg>
+        </a>
+        <i aria-hidden="true">/</i>
         <Link className="wordmark" to="/">
           Swarms
         </Link>
