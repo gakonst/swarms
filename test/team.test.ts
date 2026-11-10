@@ -131,7 +131,8 @@ test("a roster is not read until the gateway says which wallet holds the swarm's
 })
 
 test('an admin removed on another isolate is refused on this one, whatever roster it holds', async () => {
-  const { env, seated, teams } = world()
+  const { db, env, name, seated, teams } = world()
+  name(bob, 'bob')
   const roster = await value(Operations.seat(env, { member: bob, role: 'admin', swarm: 's' }, ada))
   const team = roster.team as string
   assert.deepEqual(roster.admins, [ada, bob])
@@ -141,8 +142,24 @@ test('an admin removed on another isolate is refused on this one, whatever roste
   assert.equal(await refused(Operations.unseat(env, { member: ada, swarm: 's' }, bob)), 403)
   assert.equal(await refused(Operations.seat(env, { member: bob, role: 'admin', swarm: 's' }, bob)), 403)
   assert.equal(await refused(Operations.steer(env, { steering: 'open', swarm: 's' }, bob)), 403)
+  assert.equal(await refused(Operations.say(env, { steer: '1', swarm: 's', text: '@swarm try lattices' }, bob)), 403)
+  assert.equal(db.sqlite.prepare('select count(*) as steers from steers').get()?.['steers'], 0)
   assert.deepEqual(seated(team), ['ada:admin'])
   assert.equal(await refused(Operations.unseat(env, { member: ada, swarm: 's' }, ada)), 409)
+})
+
+test('two admins who leave at once still leave the swarm led by whoever started it', async () => {
+  const { env, seated } = world()
+  const team = (await value(Operations.seat(env, { member: bob, role: 'admin', swarm: 's' }, ada))).team as string
+  await Promise.all([Operations.unseat(env, { member: ada, swarm: 's' }, ada), Operations.unseat(env, { member: bob, swarm: 's' }, bob)])
+  assert.deepEqual(seated(team), [])
+  Team.forget('s')
+
+  const left = await value(Operations.team(env, { swarm: 's' }))
+  assert.deepEqual(left.admins, [ada])
+  assert.deepEqual(left.seats.map((seat) => [seat.address, seat.role]), [[ada, 'admin']])
+  await value(Operations.seat(env, { member: cyd, swarm: 's' }, ada))
+  assert.deepEqual(seated(team).sort(), ['ada:admin', 'cyd:member'])
 })
 
 test('a gateway team left with no admin is led by whoever started the swarm, who is its admin again once they add someone', async () => {
