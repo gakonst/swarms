@@ -70,7 +70,12 @@ function world(swarm: { creator?: string | null; steering?: 'open' | 'team' } = 
     }
     return Response.json({ detail: 'No such route.' }, { status: 404 })
   }
-  const room = { contributed: async () => undefined, rostered: async (roster: Roster) => void told.push(roster) }
+  const room = {
+    contributed: async () => undefined,
+    paced: async () => true,
+    rostered: async (roster: Roster) => void told.push(roster),
+    say: async (input: { author: string; text: string }) => ({ author: input.author, text: input.text }),
+  }
   const env = {
     ...db.env,
     GATEWAY: { fetch: gateway },
@@ -84,7 +89,11 @@ function world(swarm: { creator?: string | null; steering?: 'open' | 'team' } = 
     .run(swarm.steering ?? 'team', swarm.creator === undefined ? ada : swarm.creator)
   const seated = (team: string) => [...(teams.get(team)?.members ?? [])].filter(([address]) => address !== operator).map(([address, mate]) => `${address === ada ? 'ada' : address === bob ? 'bob' : address === cyd ? 'cyd' : address}:${mate.role}`)
   const name = (address: string, called: string) => db.sqlite.prepare('insert into names (address, name, updated_at) values (?, ?, 1)').run(address, called)
-  return { approvals, calls, db, deposits, down, env, name, seated, teams, told }
+  const settled = async () => {
+    while (waited.length) await Promise.all(waited.splice(0))
+    return told
+  }
+  return { approvals, calls, db, deposits, down, env, name, seated, settled, teams, told }
 }
 
 async function value<T>(result: Promise<{ ok: true; value: T } | { detail: string; ok: false; status: number }>) {
@@ -201,4 +210,26 @@ test("while the gateway cannot list a swarm's team, its seats are told to try ag
   assert.equal((await value(Operations.contribute(env, { hash, note: 'try lattices', swarm: 's' }))).contributed.contribution.note, 'try lattices')
   assert.equal((await value(Operations.approved(env, { keyAuthorization: {}, note: 'try isogenies', request, swarm: 's' }))).contributed.contribution.note, 'try isogenies')
   assert.deepEqual(counted().map((row) => row.note).sort(), ['try isogenies', 'try lattices'])
+})
+
+test("a seat's steer tells the room the roster, with what is left of their budget", async () => {
+  const { env, name, settled, told } = world()
+  name(bob, 'bob')
+  await value(Operations.seat(env, { budget: 10, member: bob, swarm: 's' }, ada))
+  await settled()
+  told.length = 0
+
+  await value(Operations.say(env, { steer: '1', swarm: 's', text: '@swarm try lattices' }, bob))
+  assert.deepEqual((await settled()).map((roster) => roster.seats.find((seat) => seat.address === bob)?.left), ['9.000000'])
+})
+
+test('money that makes someone else the biggest rider of a swarm nobody started tells the room who leads it now', async () => {
+  const { deposits, env, settled } = world({ creator: null, steering: 'open' })
+  const hashes = ['0x' + '44'.repeat(32), '0x' + '55'.repeat(32)] as const
+  deposits.set(hashes[0], [{ amount: '5', from: bob, log: 0, tag: Credit.tag('s'), token: 'ousd' }])
+  deposits.set(hashes[1], [{ amount: '9', from: cyd, log: 0, tag: Credit.tag('s'), token: 'ousd' }])
+
+  await value(Operations.contribute(env, { hash: hashes[0], swarm: 's' }))
+  await value(Operations.contribute(env, { hash: hashes[1], swarm: 's' }))
+  assert.deepEqual((await settled()).map((roster) => roster.admins), [[bob], [cyd]])
 })

@@ -744,7 +744,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
           ? `Your team budget has ${dollars(seat.left ?? '0')} left in these 30 days, less than ${dollars(Memo.decimal(amount))}.`
           : `You have ${dollars(author?.available ?? '0')} of backing not yet behind a note, less than ${dollars(Memo.decimal(amount))}. Put new money behind this idea instead.`,
       )
-    if (seat) Team.forget(row.id)
+    if (seat) retold(env, row)
     else backing = amount
     await logged(Search.note(env, row.id, noteId, note))
     steer = { amount: Memo.decimal(amount), note, noteId, ...(request.btw ? { context: Btw.collapse(request.btw, request.artifact) } : {}) }
@@ -940,7 +940,7 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
         ? `Your team budget has ${dollars(seat.left ?? '0')} left in these 30 days, less than ${dollars(Memo.decimal(amount))}, or ${target.who} was just stopped.`
         : `You have ${dollars(author?.available ?? '0')} of backing not yet behind a note or branch, less than ${dollars(Memo.decimal(amount))}, or ${target.who} was just stopped. Put new money behind this branch instead.`,
     )
-  if (seat) Team.forget(row.id)
+  if (seat) retold(env, row)
 
   const capped = target.budget !== null
   if (capped) await Store.base(env, row.id, agent, target.id, Memo.units(target.budget ?? '0'))
@@ -1147,6 +1147,11 @@ function told(env: Cloudflare.Env, swarm: string, result: Problem.Result<Roster>
   return result
 }
 
+function retold(env: Cloudflare.Env, row: Store.Row) {
+  Team.forget(row.id)
+  waitUntil(Team.roster(env, row).then((roster) => stub(env, row.id).rostered(roster)).catch(() => undefined))
+}
+
 export async function seat(env: Cloudflare.Env, input: Input<'seat'>, address?: Address): Promise<Problem.Result<Roster>> {
   const parsed = parse(schema.seat, input)
   if (!parsed.ok) return parsed
@@ -1338,6 +1343,7 @@ export async function contribute(
   if (written) {
     await stub(env, row.id).contributed({ amount: Memo.decimal(total), contributor: first.from, hash: request.hash, kind: existing ? 'noted' : 'new', note: text, noteId, swarm: row.id, token: first.token })
     if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
+    if (!row.creator) retold(env, row)
   }
 
   const [gift, updated] = await Promise.all([written ?? Store.gift(env, request.hash), Store.find(env, row.id)])
@@ -1413,6 +1419,7 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
     (text && noteId ? await Store.annotate(env, id, { note: text, note_id: noteId }) : null)
   await stub(env, row.id).contributed({ amount: Memo.decimal(amount), contributor: done.value.wallet, hash: done.value.accessKey, kind: 'approved', note: text, noteId, swarm: row.id, token: 'mach' })
   if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
+  if (!row.creator) retold(env, row)
 
   const [gift, updated] = await Promise.all([written ?? Store.gift(env, id), Store.find(env, row.id)])
   if (!gift) return Problem.fail(502, 'unavailable', 'The backing was not saved.')
