@@ -10,20 +10,18 @@
     "db:migrate": "wrangler d1 migrations apply swarms --remote",
     "db:migrate:local": "wrangler d1 migrations apply swarms --local",
     "deploy": "vite build && wrangler deploy",
-    "gen:types": "wrangler types worker-configuration.d.ts"
+    "gen:types": "wrangler types worker-configuration.d.ts",
+    "test": "node --test --experimental-strip-types test/*.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@pierre/diffs": "1.6.2",
-    "@pierre/trees": "1.0.0-beta.6",
     "@resvg/resvg-wasm": "2.6.2",
     "accounts": "0.21.0",
     "hono": "^4.13.14",
     "mdast-util-gfm": "3.1.0",
     "micromark-extension-gfm": "3.0.0",
-    "mppx": "0.16.0",
     "nanocode-ts": "https://github.com/gakonst/nanocode-ts/releases/download/build-8f97ea7/nanocode-ts-8f97ea7.tgz",
-    "ox": "0.14.56",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "^10.1.0",
