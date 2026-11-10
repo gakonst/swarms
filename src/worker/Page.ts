@@ -103,7 +103,7 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
     const found = read?.ok ? read.value.artifacts.find(Surface.is) : undefined
     return found ? within(Artifacts.read(env, id, found.slug, found.entry).catch(() => undefined), 1500) : undefined
   })
-  const [detail, room, updates, shelf, branched, progressed, snapshot, surface] = await Promise.all([
+  const [detail, room, updates, shelf, branched, progressed, snapshot, surface, team] = await Promise.all([
     within(Operations.detail(env, { swarm: id }, false), 2500),
     within(Operations.room(env, { swarm: id }), 2500),
     within(Operations.updates(env, { limit: 30, swarm: id }), 2500),
@@ -112,6 +112,7 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
     within(Operations.progress(env, { swarm: id }), 2500),
     tail === '/code' ? within(Operations.code(env, { swarm: id }), 2500) : undefined,
     laid,
+    within(Operations.team(env, { swarm: id }), 2500),
   ])
   if (!detail) return { data, head: Share.share(site, Share.listing('home', [])), status: 200, whole: false }
   if (!detail.ok) {
@@ -126,6 +127,7 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   if (branched?.ok) data[`branches:${id}`] = branched.value
   if (progressed?.ok) data[`progress:${id}`] = progressed.value
   if (snapshot?.ok && snapshot.value.snapshot) data[`code:${id}`] = snapshot.value.snapshot
+  if (team?.ok) data[`team:${id}`] = team.value
   return {
     data,
     head: Share.share(site, Share.swarm(detail.value)),

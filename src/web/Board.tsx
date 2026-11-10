@@ -84,6 +84,19 @@ const flows: readonly Flow[] = [
   },
   {
     frames: [
+      { name: 'Steered by someone else', url: idea('json-terabyte', '&scene=in') },
+      { name: 'Chatting, not steering', url: chat('json-terabyte', '&scene=in') },
+      { name: 'Who steers, as a rider', steps: [{ click: '.reins' }], url: idea('json-terabyte', '&scene=in') },
+      { name: 'Who steers, as its admin', steps: [{ click: '.reins' }], url: idea('bench-coders', '&scene=in') },
+      { name: 'Steering it alone', steps: [{ click: '.reins' }], url: idea('bench-coders', '&scene=in,helm') },
+      { name: 'Letting someone steer', steps: [{ click: '.reins' }, { type: ['.reins-add input', '@mira'] }, { click: '.reins-add button' }, { wait: 800 }], url: idea('bench-coders', '&scene=in,helm') },
+      { name: 'Steering it from the chat', steps: [{ click: '.chat-ai' }, { type: ['.chat-bar textarea', 'Try a second pass at temperature 0'] }], url: chat('bench-coders', '&scene=in,helm') },
+    ],
+    id: 'steers',
+    title: 'Who steers',
+  },
+  {
+    frames: [
       { name: 'Ride it open', steps: [{ click: '.box .fuel-go' }], url: idea('bench-coders', '&scene=in') },
       { name: 'With a direction', url: idea('bench-coders', '&scene=in&fund&note=Try%20a%20second%20pass%20at%20temperature%200') },
       { name: 'Steering a direction', steps: [{ click: '.asked button' }], url: made('bench-coders', '&scene=in') },

@@ -1,19 +1,21 @@
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Config, Detail, Me, Member, Room as RoomState, Said } from '../shared/Api.ts'
 import * as Answer from '../shared/Answer.ts'
-import { maxNote } from '../shared/Memo.ts'
+import { maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Api from './api.ts'
 import { seeded } from './boot.ts'
 import { code } from './Contribute.tsx'
 import { day, minute, usd } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
-import { gate as gated, seated, useRoster } from './Steering.tsx'
+import { gate as gated, steerer, useRoster } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 import * as Wire from './wire.ts'
 
 const roomMs = { closed: 15_000, open: 60_000 }
+
+const seatSteer = '1'
 
 const kept = new Map<string, { members: readonly Member[]; messages: readonly Said[] }>()
 
@@ -258,19 +260,20 @@ export const Room = memo(function Room(props: {
     element.style.height = `${Math.min(element.scrollHeight, 132)}px`
   }, [text])
 
-  const called = new Map(members.map((member) => [member.address, member.handle]))
+  const roster = useRoster(id, props.swarm.steering)
+  const called = new Map([...(roster?.seats ?? []).map((seat) => [seat.address, seat.handle] as const), ...members.map((member) => [member.address, member.handle] as const)])
   const handleOf = (address: string) => called.get(address as `0x${string}`) ?? Mention.short(address)
   const handles = new Set(members.flatMap((member) => [member.handle, Mention.handle(member.address)]))
   const myNames = new Set(me ? [me.handle, Mention.handle(me.address)] : [])
-  const roster = useRoster(id, props.swarm.steering)
-  const team = props.swarm.steering === 'team'
-  const seat = seated(roster, me?.address)
-  const door = gated(wallet, props.swarm.steering, roster, { me })
+  const policy = roster?.steering ?? props.swarm.steering
+  const door = gated(wallet, policy, roster, { me })
   const mine = typeof door === 'object' && door.at === 'open' ? (me ?? undefined) : undefined
+  const helm = typeof door === 'object' && door.at === 'open' && door.from !== null
+  const steers = steerer(policy, roster, wallet.session?.address ?? wallet.address)
   const query = mine && !closed ? /(^|\s)@([a-z0-9_-]*)$/i.exec(text.slice(0, caret)) : null
   const options = query
     ? [
-        { handle: 'swarm', hint: 'tell the AI what to try' },
+        ...(helm ? [{ handle: 'swarm', hint: 'tell the AI what to try' }] : []),
         ...members.filter((member) => !member.handle.startsWith('0x') && member.address !== me?.address).map((member) => ({ handle: member.handle, hint: '' })),
       ]
         .filter((option) => option.handle.startsWith((query[2] ?? '').toLowerCase()))
@@ -325,13 +328,35 @@ export const Room = memo(function Room(props: {
     }
   }
 
+  const tell = async (note: string, left: string | null) => {
+    const amount = left === null || units(left) >= units(seatSteer) ? seatSteer : left
+    if (units(amount) < Mention.smallestSteer) return setProblem({ text: 'Your budget for this swarm is spent for these 30 days.' })
+    setSending(true)
+    setProblem(undefined)
+    try {
+      const posted = await Api.say(id, { steer: amount, text: `@swarm ${note}` })
+      setMe(posted.me)
+      setMessages((previous) => merge(previous, [posted.message]))
+      stick.current = true
+      setFresh(0)
+      setText('')
+      setCaret(0)
+      setAi(false)
+    } catch (error) {
+      setProblem({ text: reason(error) })
+    } finally {
+      setSending(false)
+    }
+  }
+
   const submit = () => {
     const body = text.trim()
     if (!body || sending || !mine) return
     if (steering) {
-      if (team && !seat) return setProblem({ text: 'Only its team can tell the AI what to do.' })
+      if (!helm) return setProblem({ text: 'Only the riders who steer this swarm tell the AI what to do.' })
       if (idea.length < 3) return setProblem({ text: 'Say what the AI should try.' })
       if (idea.length > maxNote) return setProblem({ text: `Keep it under ${maxNote} characters.` })
+      if (typeof door === 'object' && door.at === 'open' && door.from === 'team') return void tell(idea, door.left)
       setProblem(undefined)
       setText('')
       setCaret(0)
@@ -435,19 +460,21 @@ export const Room = memo(function Room(props: {
             ))}
           </ol>
         )}
-        <button
-          aria-label={ai ? 'Talk to people' : 'Tell the AI'}
-          aria-pressed={ai}
-          className="chat-ai"
-          onClick={() => {
-            setAi(!ai)
-            area.current?.focus()
-          }}
-          title={ai ? 'Talk to people' : 'Tell the AI what to try'}
-          type="button"
-        >
-          ✦
-        </button>
+        {helm && (
+          <button
+            aria-label={ai ? 'Talk to people' : 'Tell the AI'}
+            aria-pressed={ai}
+            className="chat-ai"
+            onClick={() => {
+              setAi(!ai)
+              area.current?.focus()
+            }}
+            title={ai ? 'Talk to people' : 'Tell the AI what to try'}
+            type="button"
+          >
+            ✦
+          </button>
+        )}
         <textarea
           aria-label={steering ? 'What should the AI try?' : 'Message'}
           enterKeyHint="send"
@@ -503,7 +530,7 @@ export const Room = memo(function Room(props: {
                 <p>
                   <span aria-hidden="true">♥</span> <Words handles={handles} me={myNames} text={row.text} />
                 </p>
-                {row.note && <button onClick={() => props.onBack(row.note ?? '')} type="button">+ Steer this</button>}
+                {row.note && steers && <button onClick={() => props.onBack(row.note ?? '')} type="button">+ Steer this</button>}
               </div>
             )
           if (row.kind === 'ai')
@@ -542,7 +569,7 @@ export const Room = memo(function Room(props: {
                 {item.steer && (
                   <p className="msg-steer">
                     <span>✦ Told the AI · {usd(item.steer.amount)}</span>
-                    <button onClick={() => props.onBack(item.steer?.note ?? '')} type="button">+ Steer this</button>
+                    {steers && <button onClick={() => props.onBack(item.steer?.note ?? '')} type="button">+ Steer this</button>}
                   </p>
                 )}
                 {self && row.last && <time className="msg-time" dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>}

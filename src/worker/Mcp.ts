@@ -202,8 +202,8 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
     'swarm_create',
     {
       annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false, readOnlyHint: false },
-      description: `Start a swarm with a title, a goal and a model template (cheap by default, the cheapest models; GET /v1/config lists every model's price). It costs nothing and waits in status funding until someone sends it money (swarm_contribute, or Fund on its page), and only funded swarms appear in swarms_list. Returns the swarm; its page is ${origin}/s/<id>.`,
-      inputSchema: Operations.schema.create.shape,
+      description: `Start a swarm with a title, a goal and a model template (frontier-anthropic by default, Fable 5.2 throughout; GET /v1/config lists every model's price). It costs nothing and waits in status funding until someone sends it money (swarm_contribute, or Fund on its page), and only funded swarms appear in swarms_list. Returns the swarm; its page is ${origin}/s/<id>.`,
+      inputSchema: Operations.schema.create.omit({ steering: true }).shape,
     },
     async (input) => reply(await Operations.create(env, input)),
   )

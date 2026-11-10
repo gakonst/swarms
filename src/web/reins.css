@@ -1,0 +1,19 @@
+.reins { display:inline-block; margin-top:var(--space-2); padding:7px 0; border:0; background:none; font:inherit; font-size:var(--size-body); line-height:18px; color:var(--muted); text-align:left; cursor:pointer; }
+.reins b { font-weight:400; color:var(--fg); text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:.2em; }
+.reins:hover b { color:var(--muted); }
+.reins-sheet .sheet-card { max-width:520px; margin:0 auto; }
+.reins-who { display:grid; gap:var(--space-2); padding:14px 6px 6px; }
+.reins-who h2 { padding-right:44px; font-size:var(--size-title); font-weight:400; letter-spacing:-.02em; }
+.reins-say { font-size:var(--size-body); line-height:1.25; color:var(--muted); }
+.reins-list { margin:0; padding:0; list-style:none; }
+.reins-list li { display:flex; align-items:baseline; gap:10px; min-height:44px; padding:11px 0; border-top:1px solid var(--rule); }
+.reins-list li:last-child { border-bottom:1px solid var(--rule); }
+.runs + .reins-list li:first-child { border-top:0; }
+.reins-list b { overflow:hidden; font-size:var(--size-body); font-weight:400; white-space:nowrap; text-overflow:ellipsis; }
+.reins-list span { font:12px var(--mono); letter-spacing:.02em; color:var(--muted); }
+.reins-list button { position:relative; margin-left:auto; padding:0; border:0; background:none; font:inherit; font-size:var(--size-body); color:var(--fg); text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:.2em; cursor:pointer; }
+.reins-list button::after { content:''; position:absolute; inset:-10px -8px; }
+.reins-add { display:flex; align-items:center; gap:12px; }
+.reins-add input { flex:1; min-width:0; height:44px; padding:0; border:0; border-bottom:1px solid var(--edge); border-radius:0; background:none; color:var(--fg); font:16px var(--serif); outline:none; }
+.reins-add input::placeholder { color:var(--faint); }
+.reins-add input:focus { border-bottom-color:var(--fg); }

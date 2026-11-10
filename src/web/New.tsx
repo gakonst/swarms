@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import type { Config } from '../shared/Api.ts'
+import type { Config, Steering } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
 import * as Setup from '../shared/Setup.ts'
@@ -11,17 +11,18 @@ import type { Target } from './Contribute.tsx'
 import { usd } from './format.ts'
 import { brief, open, problems } from './research.ts'
 import { Back, navigate, useCanBack } from './router.tsx'
+import { Steered } from './Steering.tsx'
 import * as Wire from './wire.ts'
 
 const prefill = { amount: '5', note: '', token: undefined } as const
 
-const offered = ['cheap', 'frontier-mix', 'fable'] as const
+const offered = ['frontier-anthropic', 'frontier-openai', 'frontier-mix'] as const
 
 type Offered = (typeof offered)[number]
 
 function asked(): Offered {
   const template = here().searchParams.get('template')
-  return offered.find((name) => name === template) ?? 'cheap'
+  return offered.find((name) => name === template) ?? Setup.fallback
 }
 
 function least(config: Config | undefined, template: Offered) {
@@ -54,16 +55,22 @@ function Runs(props: { config: Config | undefined; onPick: (template: Offered) =
           </label>
         )
       })}
+      <label aria-disabled="true" data-soon="true">
+        <input disabled name="runs" type="radio" value="abliterated" />
+        <i aria-hidden="true" />
+        <span><b>Abliterated</b></span>
+        <small>Soon</small>
+      </label>
     </div>
   )
 }
 
-function useLaunch(title: string, goal: string, problem: string | undefined, template: Offered) {
+function useLaunch(title: string, goal: string, problem: string | undefined, template: Offered, steering: Steering) {
   const created = useRef<Target | undefined>(undefined)
   const target = async (step: (step: 'create') => void) => {
     if (created.current) return created.current
     step('create')
-    const swarm = await Api.create({ template, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}) })
+    const swarm = await Api.create({ steering, template, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}) })
     created.current = { id: swarm.id }
     return created.current
   }
@@ -83,9 +90,14 @@ function Seed(props: { config: Config | undefined; problem: Problem }) {
   const problem = props.problem
   const [note, setNote] = useState('')
   const [template, setTemplate] = useState(asked)
-  const launch = useLaunch(problem.title, problem.goal, problem.id, template)
+  const [steering, setSteering] = useState<Steering>('team')
+  const launch = useLaunch(problem.title, problem.goal, problem.id, template, steering)
   const pick = (next: Offered) => {
     setTemplate(next)
+    launch.reset()
+  }
+  const steer = (next: Steering) => {
+    setSteering(next)
     launch.reset()
   }
   const id = `idea:${problem.id}`
@@ -104,7 +116,7 @@ function Seed(props: { config: Config | undefined; problem: Problem }) {
           </header>
           <Box
             config={props.config}
-            extra={<Runs config={props.config} onPick={pick} template={template} />}
+            extra={<><Runs config={props.config} onPick={pick} template={template} /><Steered onPick={steer} steering={steering} /></>}
             first
             focus={0}
             least={least(props.config, template)}
@@ -117,6 +129,7 @@ function Seed(props: { config: Config | undefined; problem: Problem }) {
             open
             prefill={prefill}
             shared={false}
+            sign={steering === 'team'}
             swarm={{ balance: '0', contributors: 0, id, remaining: '0', status: 'funding', title: problem.title, why: null }}
             target={launch.target}
           />
@@ -132,9 +145,14 @@ function Own(props: { config: Config | undefined }) {
   const [note, setNote] = useState('')
   const drafted = brief(question)
   const [template, setTemplate] = useState(asked)
-  const launch = useLaunch(drafted.title, drafted.goal, undefined, template)
+  const [steering, setSteering] = useState<Steering>('team')
+  const launch = useLaunch(drafted.title, drafted.goal, undefined, template, steering)
   const pick = (next: Offered) => {
     setTemplate(next)
+    launch.reset()
+  }
+  const steer = (next: Steering) => {
+    setSteering(next)
     launch.reset()
   }
   const free = (list.data ? open(list.data.swarms) : problems).slice(0, 3)
@@ -149,7 +167,7 @@ function Own(props: { config: Config | undefined }) {
       <div className="own-box">
         <Box
             config={props.config}
-            extra={<Runs config={props.config} onPick={pick} template={template} />}
+            extra={<><Runs config={props.config} onPick={pick} template={template} /><Steered onPick={steer} steering={steering} /></>}
             first
             focus={0}
             least={least(props.config, template)}
@@ -163,6 +181,7 @@ function Own(props: { config: Config | undefined }) {
             open
             prefill={prefill}
             shared={false}
+            sign={steering === 'team'}
             swarm={{ balance: '0', contributors: 0, id: 'own', remaining: '0', status: 'funding', title: drafted.title, why: null }}
             target={launch.target}
           />

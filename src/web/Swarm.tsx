@@ -10,11 +10,12 @@ import { Tile } from './Cover.tsx'
 import { lead, pill, Pill } from './Card.tsx'
 import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
-import { useMedia, usePoll } from './hooks.ts'
+import { useMedia, usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Now } from './Now.tsx'
 import { Results } from './Results.tsx'
 import { Room } from './Room.tsx'
+import { Reins, steerer, useRoster } from './Steering.tsx'
 import { Back, back, href, Link, navigate, useCanBack, useQuery } from './router.tsx'
 import * as Wire from './wire.ts'
 
@@ -64,6 +65,9 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   const box = useRef<HTMLElement>(null)
   const mark = useRef<HTMLDivElement>(null)
   const [past, setPast] = useState(false)
+  const wallet = useWallet()
+  const roster = useRoster(id, detail.data?.steering ?? 'open')
+  const steers = steerer(roster?.steering ?? detail.data?.steering ?? 'open', roster, wallet.session?.address ?? wallet.address)
 
   useEffect(() => {
     if (location.hash === '#room') navigate(`${base}/chat`, { replace: true })
@@ -98,7 +102,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   const heard = useCallback((_said: readonly Said[], _me: Me | null, list: readonly Member[]) => setMembers(list), [])
 
   const steer = (text: string) => {
-    if (text) setNote(text)
+    if (text && steers) setNote(text)
     setFocus(Date.now())
     if (view !== 'now') return setSheet(true)
     setOpen(true)
@@ -133,13 +137,14 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
       config={props.config}
       focus={focus}
       members={members}
-      note={note}
+      note={steers ? note : ''}
       onDone={() => reload()}
       onNote={setNote}
       onOpen={() => steer('')}
       open={!inline || open || !phone}
       prefill={prefill}
       {...(inline ? { ref: box } : {})}
+      steers={steers}
       swarm={swarm}
       target={() => Promise.resolve({ id: swarm.id })}
     />
@@ -202,6 +207,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
             <h1>{swarm.title}</h1>
             <p className="idea-kind" data-mood={stood.mood}><i />{pill(stood.word)}{swarm.contributors > 0 && <> · {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'}</>}</p>
             {pitch && <p className="idea-pitch">{pitch}</p>}
+            <Reins swarm={swarm} />
           </div>
           <Tile className="idea-tile" cover={swarm.cover} id={swarm.id} mood={stood.mood} />
         </header>
@@ -215,7 +221,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
         </div>
         {made && (
           <div className="idea-made" hidden={view !== 'results'}>
-            <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show('chat')} onOpen={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steer} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
+            <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show('chat')} onOpen={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steers ? steer : undefined} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
           </div>
         )}
         <div className="idea-chat" hidden={view !== 'chat'}>{room}</div>

@@ -149,8 +149,8 @@ export function live(id: string, after: () => number, listener: (event: Live | {
   }
 }
 
-export function create(input: { goal: string; problem?: string; title: string } & Partial<Setup.Choice>) {
-  return fixture ? staged((fixtures) => fixtures.create(input)) : request<Summary>('/api/swarms', input)
+export function create(input: { goal: string; problem?: string; steering?: Steering; title: string } & Partial<Setup.Choice>) {
+  return signed(() => (fixture ? staged((fixtures) => fixtures.create(input, who())) : request<Summary>('/api/swarms', input)))
 }
 
 export function back(id: string, input: { amount: string; note?: string }) {

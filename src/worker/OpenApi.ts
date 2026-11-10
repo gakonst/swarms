@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import * as Setup from '../shared/Setup.ts'
 import * as Feedback from './Feedback.ts'
 import * as Machines from './Machines.ts'
 import * as Operations from './Operations.ts'
@@ -253,7 +254,7 @@ const schemas = {
           step: { description: 'Micro-dollars: a typical step of the lead model, one call at a 50,000-token context, mostly cached.', type: 'string' },
           steps: { additionalProperties: string, description: "Micro-dollars: a typical step of each model the subagents may use.", type: 'object' },
           subagents: nullable(object({ harnesses: { items: { enum: ['claude', 'codex'], type: 'string' }, type: 'array' }, models: { items: string, type: 'array' } })),
-          template: { enum: ['cheap', 'frontier-mix', 'frontier-anthropic', 'frontier-openai', 'free', 'custom'], type: 'string' },
+          template: { enum: [...Setup.templates], type: 'string' },
         },
         "The models the swarm runs on: its template, the lead's harness and model, and the harnesses and models its subagents may use (null: any). null for swarms made before setups, which run on the gateway's default.",
       ),
@@ -413,7 +414,7 @@ export function document(origin: string) {
           summary: 'List swarms',
         },
         post: {
-          description: 'A new swarm waits in funding until someone sends it money.',
+          description: 'A new swarm waits in funding until someone sends it money. Signed in, it starts on steering team: only you and the people you add steer it, and every other backer funds it and chats, unless you send steering open.',
           operationId: 'createSwarm',
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.create) } }, required: true },
           responses: { ...ok(ref('Summary'), 'The swarm.', '201'), ...failures(400, 502, 503) },
@@ -623,14 +624,14 @@ export function document(origin: string) {
       '/v1/swarms/{id}/team': {
         get: {
           description:
-            "Who steers the swarm. steering open: any backer steers with their own money, as @swarm in the room. steering team: only the members of the swarm's gateway team (tempoxyz/gateway Teams) steer it, with the swarm's money, each within their budget (limit, USD per 30 days; null is no limit), and only they ask it side questions; anyone still funds it and talks in its room. admins choose; until the swarm has a team, its admin is whoever started it signed in, or else its first backer.",
+            "Who steers the swarm. steering open: any backer steers with their own money, as @swarm in the room. steering team: only its team (seats) steers it, with the swarm's money, each within their budget (limit, USD per 30 days; null is no limit), and only they ask it side questions; anyone else still funds it and talks in its room, and a note on their money is not kept. The team starts as whoever started it signed in, or else its biggest backer; the people they add are members of the swarm's gateway team (tempoxyz/gateway Teams), created when the first one is added. admins choose.",
           operationId: 'getTeam',
           parameters: [swarm],
           responses: { ...ok(ref('Roster'), "The swarm's steering policy and team."), ...failures(404, 502) },
           summary: 'Who steers',
         },
         post: {
-          description: "As a signed-in admin, sets steering to open or team and the team's default member budget. The first change creates the swarm's gateway team with the caller as its admin.",
+          description: "As a signed-in admin, sets steering to open or team and the team's default member budget. Setting a budget, or steering team on a swarm nobody started signed in, creates the swarm's gateway team with the caller as its admin.",
           operationId: 'setSteering',
           parameters: [swarm],
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.steering.omit({ swarm: true })) } }, required: true },
@@ -640,7 +641,7 @@ export function document(origin: string) {
       },
       '/v1/swarms/{id}/team/members': {
         post: {
-          description: "As a signed-in admin, adds a wallet to the swarm's team, as a member who steers or an admin who also manages, with an optional budget of the swarm's money per 30 days; adding it again changes its role and budget.",
+          description: "As a signed-in admin, adds a wallet or username to the swarm's team, as a member who steers or an admin who also manages, with an optional budget of the swarm's money per 30 days; adding it again changes its role and budget. The first one creates the swarm's gateway team.",
           operationId: 'addSteerer',
           parameters: [swarm],
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.seat.omit({ swarm: true })) } }, required: true },

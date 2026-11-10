@@ -23,6 +23,8 @@ export const Box = forwardRef<HTMLElement, {
   bare?: boolean
   prefill: Prefill
   shared?: boolean
+  sign?: boolean
+  steers?: boolean
   swarm: Pick<Summary, 'balance' | 'contributors' | 'id' | 'remaining' | 'status' | 'title' | 'why'>
   target: (step: (step: 'create') => void) => Promise<Target>
 }>(function Box(props, ref) {
@@ -62,7 +64,7 @@ export const Box = forwardRef<HTMLElement, {
       )}
       {!props.bare && <p className="box-state" data-mood={stood.mood}>{balance > 0 || swarm.contributors > 0 ? line(stood.word) : 'Be the first to ride it.'}</p>}
       {props.open ? (
-        <Fuel config={props.config} extra={props.extra} first={props.first} focus={props.focus} least={props.least} locked={props.locked} note={props.note} onDone={props.onDone} onNote={props.onNote} prefill={props.prefill} target={props.target} />
+        <Fuel config={props.config} extra={props.extra} first={props.first} focus={props.focus} least={props.least} locked={props.locked} note={props.note} onDone={props.onDone} onNote={props.onNote} prefill={props.prefill} sign={props.sign} steers={props.steers} target={props.target} />
       ) : (
         <button className="btn btn-high fuel-go" onClick={props.onOpen} type="button">Ride it</button>
       )}

@@ -140,6 +140,8 @@ export function Fuel(props: {
   onDone: (target: Target) => void
   onNote: (note: string) => void
   prefill: Prefill
+  sign?: boolean | undefined
+  steers?: boolean | undefined
   target: (step: (step: 'create') => void) => Promise<Target>
 }) {
   const wallet = useWallet()
@@ -173,9 +175,9 @@ export function Fuel(props: {
     let target: Target | undefined
     try {
       let using = token
-      if (!Wallet.snapshot().address) {
+      if (props.sign ? !Wallet.snapshot().session : !Wallet.snapshot().address) {
         step('connect')
-        await Wallet.connect(config)
+        await (props.sign ? Wallet.signIn(config) : Wallet.connect(config))
         await Wallet.refresh(config).catch(() => {})
         using = picked ?? choose(amount, Wallet.snapshot().balances)
       }
@@ -218,7 +220,7 @@ export function Fuel(props: {
       </div>
       {floor !== smallest && !ok && <p className="fuel-least" data-bad={amount.trim() !== ''}>At least {dollars(floor)}</p>}
       {props.extra}
-      {!props.first && <input aria-label="What should it try next?" className="fuel-steer" disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder="What should it try next? (optional)" ref={steer} value={props.note} />}
+      {!props.first && props.steers !== false && <input aria-label="What should it try next?" className="fuel-steer" disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder="What should it try next? (optional)" ref={steer} value={props.note} />}
       <button className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
         {flow.at === 'busy' ? working[flow.step] : ok ? `${props.first ? 'Start it' : 'Ride it'} · ${dollars(amount)}` : props.first ? 'Start it' : 'Ride it'}
       </button>

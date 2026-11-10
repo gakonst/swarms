@@ -14,7 +14,7 @@ type Line = readonly [Kind, string, (string | null)?, string?]
 
 type Backing = { amount: string; contributor: `0x${string}`; note: string }
 
-type Live = Omit<Detail, 'answer' | 'reason' | 'updates' | 'why' | 'working'> & { updates: Update[]; chat: Said[]; cursor: number; flicker: readonly string[]; next: number; resting: boolean; script: readonly Line[]; since: number | null; steered: Set<string>; steers: Backing[] }
+type Live = Omit<Detail, 'answer' | 'reason' | 'updates' | 'why' | 'working'> & { updates: Update[]; chat: Said[]; cursor: number; flicker: readonly string[]; next: number; resting: boolean; owner: `0x${string}`; script: readonly Line[]; since: number | null; steered: Set<string>; steers: Backing[] }
 
 const minute = 60_000
 
@@ -93,12 +93,14 @@ function build(input: {
   gifts?: readonly (readonly [number, string, Token, number, string | null])[]
   problem?: string | undefined
   resting?: boolean
+  owner?: `0x${string}`
   script?: readonly Line[]
   setup?: Setup.Setup | null
   since?: number
   spent: string
   status: Status
   steered?: readonly string[]
+  steering?: Steering
   title: string
   updates: readonly (readonly [number, string, string])[]
 }): Live {
@@ -140,13 +142,14 @@ function build(input: {
     problem: input.problem ?? null,
     resting: input.resting ?? false,
     remaining: '0',
+    owner: input.owner ?? visitor,
     setup: input.setup === undefined ? setup({ template: 'frontier-mix' }) : input.setup,
     script: input.script ?? [],
     since: input.status === 'running' ? at(input.since ?? 30) : null,
     spent: input.spent,
     status: input.status,
     steered: new Set(input.steered ?? []),
-    steering: 'open',
+    steering: input.steering ?? (scene.has('helm') ? 'team' : 'open'),
     steers: [],
     title: input.title,
     updatedAt: feed.at(-1)?.at ?? at(input.age),
@@ -307,6 +310,8 @@ const fixtures: Live[] = [
       [3, '0.500000', 'usdce', 68, 'Measure cost per GiB, not just throughput'],
       [5, '0.250000', 'usdce', 30, null],
       [6, '0.100000', 'usdce', 12, 'Include serde_json as the baseline'],
+      [2, '0.300000', 'usdce', 70, null],
+      [0, '0.200000', 'usdce', 8, null],
     ],
     id: 'json-terabyte',
     problem: 'json-terabyte',
@@ -315,7 +320,9 @@ const fixtures: Live[] = [
     since: 66,
     spent: '0.232100',
     status: 'running',
+    owner: people[2],
     steered: ['Measure cost per GiB, not just throughput'],
+    steering: 'team',
     title: 'Parse a terabyte of JSON for under a dollar',
   }),
   build({
@@ -601,9 +608,11 @@ export function live(key: string, after: number, listener: (event: LiveEvent | {
   }
 }
 
-export function create(input: { goal: string; problem?: string; title: string } & Partial<Setup.Choice>) {
+export function create(input: { goal: string; problem?: string; steering?: Steering; title: string } & Partial<Setup.Choice>, who: `0x${string}` | undefined) {
+  const steering = input.steering ?? (who ? 'team' : 'open')
+  if (steering === 'team' && !who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo Wallet to steer the swarm you start.'))
   const key = id(`${input.title}:${Date.now()}`)
-  const swarm = build({ age: 0, goal: input.goal, id: key, problem: input.problem, setup: setup({ ...input, template: input.template ?? Setup.fallback }), lines: [['status', 'Created. The first contribution starts its agent.']], spent: '0', status: 'funding', title: input.title, updates: [] })
+  const swarm = build({ age: 0, goal: input.goal, id: key, problem: input.problem, owner: who ?? visitor, setup: setup({ ...input, template: input.template ?? Setup.fallback }), lines: [['status', 'Created. The first contribution starts its agent.']], spent: '0', status: 'funding', steering, title: input.title, updates: [] })
   fixtures.unshift(swarm)
   return delay(summary(swarm), 400)
 }
@@ -630,7 +639,8 @@ export async function contribute(key: string, input: { hash: string; note?: stri
   }
   const paid = sent.get(hash)
   const token = paid?.token ?? 'usdce'
-  const contribution: Contribution = { amount: decimal(paid?.amount ?? 250_000n), at: Date.now(), contributor: visitor, hash, note: input.note?.trim() || null, token }
+  const steers = swarm.steering !== 'team' || rostered(swarm).seats.some((found) => found.address === visitor.toLowerCase())
+  const contribution: Contribution = { amount: decimal(paid?.amount ?? 250_000n), at: Date.now(), contributor: visitor, hash, note: (steers && input.note?.trim()) || null, token }
   swarm.contributions.push(contribution)
   if (contribution.note) swarm.steered.add(contribution.note)
   push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} sent ${contribution.amount} ${token === 'mach' ? 'MACH' : 'USDC.e'}${contribution.note ? ' with a note' : ''}`, contribution.note, Date.now())
@@ -901,6 +911,7 @@ const talk: Record<string, readonly (readonly [number | null, string, number, st
     [6, '@3 the baseline matters though. serde_json makes the speedup legible to everyone else.', 20],
     [null, 'New artifact: Parser throughput, GiB/s by machine size.', 15],
     [5, 'Curious whether 16 CPUs buys anything. The agent thinks it is memory bound.', 11],
+    [2, '@swarm Measure memory bandwidth on the 16-CPU machine before scaling up', 9, '1.000000'],
   ],
   'mev-map': [
     [null, "Update: Final report. Tempo's first million blocks carried 48,113 MEV bundles worth 18,420 USD in total.", 1100],
@@ -1034,10 +1045,10 @@ export async function say(key: string, input: { artifact?: boolean; steer?: stri
   if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to post in a room.')
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   const self = me(swarm, who) as Me
-  const seated = swarm.steering === 'team' ? rosters.get(key)?.seats.find((found) => found.address === who.toLowerCase()) : undefined
+  const seated = swarm.steering === 'team' ? rostered(swarm).seats.find((found) => found.address === who.toLowerCase()) : undefined
   if (!self?.member && !seated) throw fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
   const text = input.text.trim()
-  if (swarm.steering === 'team' && Mention.steers(text) && !seated) throw fail(403, 'not_member', "Only this swarm's team steers it.")
+  if (swarm.steering === 'team' && Mention.steers(text) && !seated) throw fail(403, 'not_member', "Only this swarm's team steers it. Its admins add who may: ask one of them in the room.")
   let steer: Said['steer'] = null
   if (Mention.steers(text)) {
     const note = Mention.idea(text)
@@ -1062,7 +1073,7 @@ export async function btw(key: string, input: { branch?: number; question: strin
   if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to ask the swarm side questions.')
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   const asker = me(swarm, who)
-  if (!(asker?.member && units(asker.backed) >= 10_000n) && !(swarm.steering === 'team' && rosters.get(key)?.seats.some((found) => found.address === who.toLowerCase())))
+  if (!(asker?.member && units(asker.backed) >= 10_000n) && !(swarm.steering === 'team' && rostered(swarm).seats.some((found) => found.address === who.toLowerCase())))
     throw fail(403, 'not_member', "Side questions are paid from the swarm's money, so they take at least $0.01 of your own sent to it.")
   const branch = input.branch === undefined ? undefined : grown(swarm).find((found) => found.id === input.branch)
   const answer = `${branch ? `${branch.role}, from what it has done on its branch` : `From what it has done so far on "${swarm.title}"`}: ${input.thread.length ? 'building on your earlier questions, ' : ''}it would answer "${input.question.trim()}" from its last update without stopping its work.`
@@ -1194,47 +1205,64 @@ export function lobby(listener: (event: Lobby | { type: 'open' | 'closed' }) => 
 
 const rosters = new Map<string, Roster>()
 
-function rostered(key: string, steering: Steering): Roster {
-  return rosters.get(key) ?? { admins: [visitor.toLowerCase() as `0x${string}`], memberBudget: null, seats: [], steering, team: null }
+const team0 = '0x00000000000000000000000000000000000000aa'
+
+function rostered(swarm: Live): Roster {
+  const found = rosters.get(swarm.id)
+  if (found) return { ...found, steering: swarm.steering }
+  const owner = swarm.owner.toLowerCase() as `0x${string}`
+  const seats = swarm.steering === 'team' ? [{ address: owner, handle: called(owner), left: null, limit: null, role: 'admin' as const, spent: '0.000000' }] : []
+  return { admins: [owner], memberBudget: null, seats, steering: swarm.steering, team: null }
 }
 
 export async function team(key: string): Promise<Roster> {
   const swarm = seed(await find(key))
-  return delay(rostered(key, swarm.steering))
+  return delay(rostered(swarm))
+}
+
+function governed(swarm: Live, who: `0x${string}` | undefined) {
+  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to manage who steers a swarm.')
+  if (!rostered(swarm).admins.includes(who.toLowerCase() as `0x${string}`)) throw fail(403, 'access_denied', "Only this swarm's admins choose who steers it.")
+}
+
+function regrouped(swarm: Live, next: Roster) {
+  rosters.set(swarm.id, next)
+  tell(swarm.id, { roster: next, type: 'roster' })
+  return delay(next, 250)
 }
 
 export async function govern(key: string, input: { memberBudget?: number | null; steering?: Steering }, who: `0x${string}` | undefined): Promise<Roster> {
   const swarm = seed(await find(key))
-  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to manage who steers a swarm.')
-  const current = rostered(key, swarm.steering)
-  if (!current.admins.includes(who.toLowerCase() as `0x${string}`)) throw fail(403, 'access_denied', "Only this swarm's admins choose who steers it.")
+  governed(swarm, who)
   if (input.steering) swarm.steering = input.steering
-  const seats = current.seats.length ? current.seats : [{ address: who.toLowerCase() as `0x${string}`, handle: me(swarm, who)?.handle ?? 'you', left: null, limit: null, role: 'admin' as const, spent: '0.000000' }]
-  const next: Roster = { ...current, memberBudget: input.memberBudget === undefined ? current.memberBudget : input.memberBudget === null ? null : decimal(units(String(input.memberBudget))), seats, steering: swarm.steering, team: current.team ?? '0x00000000000000000000000000000000000000aa' }
-  rosters.set(key, next)
-  tell(key, { roster: next, type: 'roster' })
-  return delay(next, 250)
+  pulsed(key, swarm)
+  const current = rostered(swarm)
+  if (input.memberBudget === undefined) {
+    tell(key, { roster: current, type: 'roster' })
+    return delay(current, 250)
+  }
+  return regrouped(swarm, { ...current, memberBudget: input.memberBudget === null ? null : decimal(units(String(input.memberBudget))), team: current.team ?? team0 })
 }
 
 export async function seat(key: string, input: { budget?: number | null; member: string; role: 'admin' | 'member' }, who: `0x${string}` | undefined): Promise<Roster> {
-  const current = await govern(key, {}, who)
-  const address = input.member.toLowerCase() as `0x${string}`
+  const swarm = seed(await find(key))
+  governed(swarm, who)
+  const asked = input.member.trim().replace(/^@/, '').toLowerCase()
+  const address = (/^0x[0-9a-f]{40}$/.test(asked) ? asked : [...names].find(([, name]) => name === asked)?.[0]) as `0x${string}` | undefined
+  if (!address) throw fail(404, 'not_found', `No one is called @${asked}.`)
+  const current = rostered(swarm)
   const limit = input.budget === undefined || input.budget === null ? current.memberBudget : decimal(units(String(input.budget)))
   const seats = [...current.seats.filter((found) => found.address !== address), { address, handle: called(address), left: limit, limit, role: input.role, spent: '0.000000' }]
-  const next: Roster = { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats }
-  rosters.set(key, next)
-  tell(key, { roster: next, type: 'roster' })
-  return delay(next, 250)
+  return regrouped(swarm, { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats, team: current.team ?? team0 })
 }
 
 export async function unseat(key: string, member: string, who: `0x${string}` | undefined): Promise<Roster> {
+  const swarm = seed(await find(key))
   const current = rosters.get(key)
-  if (!who || !current) throw fail(404, 'not_found', 'This swarm has no team yet.')
+  if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo Wallet to leave or manage a swarm's team.")
+  if (!current) throw member.toLowerCase() === swarm.owner.toLowerCase() ? fail(409, 'conflict', "The swarm's last admin stays: add another admin first.") : fail(404, 'not_found', "No one else is on this swarm's team.")
   const seats = current.seats.filter((found) => found.address !== member.toLowerCase())
-  const next: Roster = { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats }
-  rosters.set(key, next)
-  tell(key, { roster: next, type: 'roster' })
-  return delay(next, 250)
+  return regrouped(swarm, { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats })
 }
 
 
@@ -1300,8 +1328,8 @@ export async function branches(key: string): Promise<Branches> {
 function directing(swarm: Live, key: string, who: `0x${string}` | undefined) {
   if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo Wallet to direct a swarm's money.")
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
-  const seated = swarm.steering === 'team' ? rosters.get(key)?.seats.find((found) => found.address === who.toLowerCase()) : undefined
-  if (swarm.steering === 'team' && !seated) throw fail(403, 'not_member', "Only this swarm's team directs its money.")
+  const seated = swarm.steering === 'team' ? rostered(swarm).seats.find((found) => found.address === who.toLowerCase()) : undefined
+  if (swarm.steering === 'team' && !seated) throw fail(403, 'not_member', "Only this swarm's team directs its money. Its admins add who may: ask one of them in the room.")
   return seated
 }
 
@@ -1312,7 +1340,7 @@ export async function stop(key: string, branch: number, who: `0x${string}` | und
   if (!target) throw fail(404, 'not_found', `This swarm has no branch ${branch}.`)
   const funded = target.funders.reduce((sum, funder) => sum + units(funder.amount), 0n)
   const mine = units(target.funders.find((funder) => funder.address === who?.toLowerCase())?.amount ?? '0')
-  if (!(funded > 0n && mine * 2n > funded) && !rostered(key, swarm.steering).admins.includes(who?.toLowerCase() as `0x${string}`))
+  if (!(funded > 0n && mine * 2n > funded) && !rostered(swarm).admins.includes(who?.toLowerCase() as `0x${string}`))
     throw fail(403, 'access_denied', `Only whoever holds more than half of the money behind ${target.role}, or the swarm's admins, stop it.`)
   halted.add(`${swarm.id}:${branch}`)
   const left = target.budget === null ? funded : target.left === null ? 0n : units(target.left)

@@ -129,8 +129,8 @@ test('a contribution comes back from its own insert, and a repeat inserts nothin
   assert.equal(await Store.annotate(db.env, '0xFEED', { note: 'another', note_id: 'm' }), null)
   assert.equal((await Store.gift(db.env, '0xfeed'))?.note, 'a note')
 
-  const inserted = await Store.insert(db.env, { creator: null, goal: 'A goal long enough', id: 'new', problem: null, sealed_wallet: 's', title: 'New', wallet: '0x99' })
-  assert.deepEqual([inserted?.id, inserted?.balance, inserted?.contributors, inserted?.spent, inserted?.remaining, inserted?.status], ['new', 0, 0, 0, 0, 'funding'])
+  const inserted = await Store.insert(db.env, { creator: null, goal: 'A goal long enough', id: 'new', problem: null, sealed_wallet: 's', steering: 'team', title: 'New', wallet: '0x99' })
+  assert.deepEqual([inserted?.id, inserted?.balance, inserted?.contributors, inserted?.spent, inserted?.remaining, inserted?.status, inserted?.steering], ['new', 0, 0, 0, 0, 'funding', 'team'])
   assert.equal(Store.seen('new'), true)
 })
 

@@ -35,7 +35,7 @@ export function Results(props: {
   members: readonly Member[]
   onChat: () => void
   onOpen: (slug: string) => void
-  onSteer: (note: string) => void
+  onSteer: ((note: string) => void) | undefined
   swarm: Detail
   updates: readonly Update[] | undefined
   wishes: readonly Wishlist.Wish[]
@@ -106,7 +106,7 @@ export function Results(props: {
               <li key={note.id}>
                 <span className="asked-text">“{note.note}”</span>
                 <span className="asked-weight">{usd(note.weight)} · {note.backers} rider{note.backers === 1 ? '' : 's'}</span>
-                <button onClick={() => props.onSteer(note.note)} type="button">+ Steer this</button>
+                {props.onSteer && <button onClick={() => props.onSteer?.(note.note)} type="button">+ Steer this</button>}
               </li>
             ))}
           </ul>

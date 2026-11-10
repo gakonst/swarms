@@ -182,13 +182,13 @@ export async function repo(env: Cloudflare.Env, id: string) {
 
 export async function insert(
   env: Cloudflare.Env,
-  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'title'> & Partial<Pick<Row, 'setup'>>,
+  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'steering' | 'title'> & Partial<Pick<Row, 'setup'>>,
 ) {
   const now = Date.now()
   const row = await env.DB.prepare(
-    'insert into swarms (id, title, goal, problem, creator, created_at, updated_at, setup) values (?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as balance, pool_spent + sponsor_spent + spent_before as spent, 0 - (pool_spent + sponsor_spent + spent_before) as remaining, 0 as contributors',
+    'insert into swarms (id, title, goal, problem, creator, steering, created_at, updated_at, setup) values (?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as balance, pool_spent + sponsor_spent + spent_before as spent, 0 - (pool_spent + sponsor_spent + spent_before) as remaining, 0 as contributors',
   )
-    .bind(input.id, input.title, input.goal, input.problem, input.creator, now, now, input.setup ?? null)
+    .bind(input.id, input.title, input.goal, input.problem, input.creator, input.steering, now, now, input.setup ?? null)
     .first<Row>().finally(() => wrote(input.id))
   if (row) known.add(row.id)
   return row
@@ -391,6 +391,19 @@ export async function account(env: Cloudflare.Env, address: `0x${string}`): Prom
   const lower = address.toLowerCase() as `0x${string}`
   const row = await env.DB.prepare('select name from names where address = ?').bind(lower).first<{ name: string }>()
   return { address: lower, handle: row?.name ?? Mention.short(lower), name: row?.name ?? null }
+}
+
+export async function handles(env: Cloudflare.Env, addresses: readonly `0x${string}`[]) {
+  if (!addresses.length) return new Map<string, string>()
+  const { results } = await env.DB.prepare(`select address, name from names where address in (${addresses.map(() => '?').join(', ')})`)
+    .bind(...addresses.map((address) => address.toLowerCase()))
+    .all<{ address: string; name: string }>()
+  return new Map(results.map((row) => [row.address, row.name]))
+}
+
+export async function named(env: Cloudflare.Env, name: string) {
+  const row = await env.DB.prepare('select address from names where name = ?').bind(name.toLowerCase()).first<{ address: `0x${string}` }>()
+  return row?.address ?? null
 }
 
 export async function rename(env: Cloudflare.Env, address: `0x${string}`, name: string | null) {

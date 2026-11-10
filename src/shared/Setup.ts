@@ -32,7 +32,7 @@ export const glm = 'boundless/z-ai/glm-5.3'
 
 export const kimi = 'boundless/moonshotai/kimi-k3.1-pro'
 
-export const fallback: Template = 'cheap'
+export const fallback = 'frontier-anthropic' satisfies Template
 
 export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hint: string; label: string; model: string; subagents: Offer | null }> = {
   cheap: {
@@ -58,15 +58,15 @@ export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hi
   },
   'frontier-anthropic': {
     harness: 'claude',
-    hint: 'Claude Code on Opus 5.5, for the lead and every subagent.',
-    label: 'Frontier Anthropic',
-    model: opus,
-    subagents: { harnesses: ['claude'], models: [opus] },
+    hint: 'Claude Code on Fable 5.2, for the lead and every subagent.',
+    label: 'Anthropic',
+    model: fable,
+    subagents: { harnesses: ['claude'], models: [fable] },
   },
   'frontier-openai': {
     harness: 'codex',
     hint: 'Codex on GPT-6.1 Sol leads. Subagents use GPT-6.1 Sol or GPT-6 Astra.',
-    label: 'Frontier OpenAI',
+    label: 'OpenAI',
     model: sol,
     subagents: { harnesses: ['codex'], models: [sol, astra] },
   },

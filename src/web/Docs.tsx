@@ -30,7 +30,7 @@ const tools = [
 
 const routes = [
   ['GET', '/v1/swarms', 'Funded swarms, most recently active first.', '?status=funding|running|paused|done'],
-  ['POST', '/v1/swarms', 'Create a swarm.', '{ title, goal }'],
+  ['POST', '/v1/swarms', 'Create a swarm. Signed in, only you steer it until you add others or open it; template defaults to frontier-anthropic, Fable 5.2 throughout.', '{ title, goal, template?, steering? }'],
   ['GET', '/v1/swarms/live', 'A WebSocket of the list: welcome when it opens, then { type: swarm, swarm } each time a listed swarm changes. Read the list again on each welcome.', ''],
   ['GET', '/v1/swarms/:id', 'Summary, latest answer, updates with excerpts and commits, whether the agent is working, notes, transfers, machines, code repository.', ''],
   ['GET', '/v1/swarms/:id/answer', 'The latest answer and whether the agent is working.', ''],
@@ -54,9 +54,9 @@ const routes = [
   ['GET', '/v1/swarms/:id/chat', "The room's newest messages, its backers, and with a session your standing.", '?after=<id>&before=<id>&limit=<n>'],
   ['POST', '/v1/swarms/:id/chat', 'Post as a signed-in backer with a username; @swarm with steer puts backing, or on a team-steered swarm the team budget, behind the idea, and btw collapses a side thread into it, or with artifact asks for an artifact of it.', '{ text, steer?, btw?, artifact? }'],
   ['POST', '/v1/swarms/:id/btw', "Ask the agent, or with branch one of its branches, a side question as a signed-in backer with a username and at least $0.01 in, answered from its context without interrupting it.", '{ question, thread?, branch? }'],
-  ['GET', '/v1/swarms/:id/team', 'Who steers it: open (any backer) or team, its admins, members and their budgets.', ''],
+  ['GET', '/v1/swarms/:id/team', 'Who steers it: open (any backer) or team, its admins, members and their budgets. A team starts as its creator alone.', ''],
   ['POST', '/v1/swarms/:id/team', "An admin's choice of who steers, and each member's default budget in USD per 30 days.", '{ steering?, memberBudget? }'],
-  ['POST', '/v1/swarms/:id/team/members', 'An admin adds a member or admin, with a budget of the swarm\'s money.', '{ member, role?, budget? }'],
+  ['POST', '/v1/swarms/:id/team/members', 'An admin adds a member or admin by wallet or @username, with a budget of the swarm\'s money.', '{ member, role?, budget? }'],
   ['DELETE', '/v1/swarms/:id/team/members/:member', 'An admin removes a member; anyone leaves.', ''],
   ['GET', '/v1/swarms/:id/branches', "The agent's subagents: each branch's role, task, state, budget, what it spent, who put money behind it, and its result once it finished.", ''],
   ['POST', '/v1/swarms/:id/branches/:branch/fund', 'Put backing (or, team-steered, the team budget) behind one branch; it becomes the budget the gateway holds that branch to, and a message steers the branch with it at once.', '{ amount, message? }'],
@@ -302,7 +302,7 @@ export function Docs(props: { config: Config | undefined }) {
               A message with <code>@swarm</code> steers: <code>steer</code> is how much of the author's backing, not yet behind a note, goes behind the rest of the message as a note. It moves weight, not money, and it reaches the agent at once when it is working.
             </p>
             <p>
-              A swarm's admins (whoever started it signed in, or else its biggest backer, and the admins they add) can make it team-steered with <code>POST /v1/swarms/:id/team</code>: anyone still funds it and talks in the room, but only its team, a gateway team, steers it and asks it side questions, putting the swarm's own money behind ideas, each member within their budget per 30 days.
+              A swarm started signed in is team-steered from the start, and its team is whoever started it. Its admins (that person, or on a swarm started signed out its biggest backer, and the admins they add) add people with <code>POST /v1/swarms/:id/team/members</code>, which makes the swarm a gateway team, and switch between team and open with <code>POST /v1/swarms/:id/team</code>. Anyone still funds a team-steered swarm and talks in the room, but only its team steers it and asks it side questions, putting the swarm's own money behind ideas, each member within their budget per 30 days; a note on anyone else's money is not kept.
             </p>
             <p>
               Each subagent the agent starts is a branch, with the subagents under it. <code>POST /v1/swarms/:id/branches/:branch/fund</code> puts backing behind one branch, which becomes its budget: the gateway refuses that branch's paid requests once it is spent, and funding a branch it stopped starts it again. With <code>message</code>, funding a branch also steers it: the message reaches that subagent at once with the money behind it. <code>/move</code> moves what you put behind a branch, and it has not spent, to another, so backers can fund the part of a swarm they believe in and take money away from a part that stalls, and <code>/stop</code> closes a branch and returns what it had not spent to its backers. <code>POST /v1/swarms/:id/btw</code> with <code>branch</code> asks one branch a side question.

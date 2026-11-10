@@ -22,9 +22,15 @@ function priced(choice: Setup.Choice) {
   return setup as Setup.Setup
 }
 
-test('the default runs on the cheapest models Boundless serves: Codex on DeepSeek Flash leads, and subagents use DeepSeek Flash or GLM Flash', () => {
-  assert.equal(Setup.fallback, 'cheap')
+test('the default is Anthropic, Claude Code on Fable 5.2 for the lead and every subagent', () => {
+  assert.equal(Setup.fallback, 'frontier-anthropic')
   const setup = priced({ template: Setup.fallback })
+  assert.deepEqual({ harness: setup.harness, model: setup.model, subagents: setup.subagents }, { harness: 'claude', model: Setup.fable, subagents: { harnesses: ['claude'], models: [Setup.fable] } })
+  assert.equal(setup.step, '65600')
+})
+
+test('the cheap template leads with Codex on DeepSeek Flash, and subagents use DeepSeek Flash or GLM Flash', () => {
+  const setup = priced({ template: 'cheap' })
   assert.deepEqual({ harness: setup.harness, model: setup.model, subagents: setup.subagents }, { harness: 'codex', model: Setup.flash, subagents: { harnesses: ['codex', 'claude'], models: [Setup.flash, Setup.glmFlash] } })
   assert.equal(setup.most, String(Setup.least))
 })
@@ -51,9 +57,9 @@ test('every template but OpenAI names its models by their Boundless ids, which n
   for (const model of [Setup.fable, Setup.opus, Setup.flash, Setup.glmFlash, Setup.glm, Setup.kimi]) assert.match(model, /^boundless\//)
 })
 
-test('frontier OpenAI leads on Sol, frontier Anthropic is Opus only, and free for all offers any subagent model', () => {
+test('OpenAI leads on Sol, Anthropic is Fable 5.2 only, and free for all offers any subagent model', () => {
   assert.equal(priced({ template: 'frontier-openai' }).model, Setup.sol)
-  assert.deepEqual(priced({ template: 'frontier-anthropic' }).subagents, { harnesses: ['claude'], models: [Setup.opus] })
+  assert.deepEqual(priced({ template: 'frontier-anthropic' }).subagents, { harnesses: ['claude'], models: [Setup.fable] })
   const free = priced({ template: 'free' })
   assert.equal(free.subagents, null)
   assert.equal(free.most, String(Setup.least))

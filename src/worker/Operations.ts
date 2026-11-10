@@ -91,6 +91,16 @@ const wallet = z
   .refine((value) => isAddress(value), 'A wallet address, 0x and 40 hex digits.')
   .transform((value) => value.toLowerCase() as Address)
 
+const someone = z
+  .string()
+  .trim()
+  .refine((value) => isAddress(value) || !Mention.invalid(value.replace(/^@/, '')), 'A wallet address, or a username such as @ada.')
+  .transform((value) => (isAddress(value) ? (value.toLowerCase() as Address) : value.replace(/^@/, '').toLowerCase()))
+
+const steerings = z
+  .enum(['open', 'team'])
+  .describe("Who steers the swarm. team: only its team, whoever started it signed in and the people they add; every other backer still funds it and chats in its room. open: every backer, with their own money.")
+
 const allowance = z.number().min(0).max(1_000_000).nullable().describe('USD per 30 days of the swarm\'s money this member may put behind ideas; null means no limit, or the team\'s default.')
 
 const thread = exchanges.default([]).describe('The earlier side questions and their answers in this /btw thread, oldest first.')
@@ -161,11 +171,12 @@ export const schema = {
       .describe('What the swarm should find out or build, what done looks like and what its updates should report.'),
     problem: z.enum(ids).optional().describe('The id of the idea-bank problem this swarm works on, from GET /v1/problems. A problem with an open swarm is not offered again until that swarm finishes.'),
     title: z.string().trim().min(1).max(80).describe('A short name for the swarm.'),
+    steering: steerings.optional().describe("Who steers the swarm. team, the default when signed in: only you and the people you add with POST /v1/swarms/:id/team/members; every other backer still funds it and chats in its room. open, the default otherwise: every backer, with their own money. team needs a session."),
     template: z
       .enum(Setup.templates)
       .default(Setup.fallback)
       .describe(
-        'Which models the swarm runs on. cheap (the default): Codex on DeepSeek V4.1 Flash leads, and subagents use DeepSeek V4.1 Flash or GLM-5.3 Flash on Codex or Claude Code. frontier-mix: Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, Kimi K3.1 Pro or GLM-5.3 on Claude Code or Codex. frontier-anthropic: Claude Code on Opus 5.5 only. Those three run on models the gateway serves through Boundless, which it pays per call. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra, which the gateway serves through Vercel. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
+        'Which models the swarm runs on. frontier-anthropic (the default): Claude Code on Claude Fable 5.2, for the lead and every subagent. frontier-mix: Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, Kimi K3.1 Pro or GLM-5.3 on Claude Code or Codex. fable: Claude Code on Fable 5.2 leads, and subagents use Fable 5.2, Opus 5.5, Kimi K3.1 Pro or GLM-5.3. cheap: Codex on DeepSeek V4.1 Flash leads, and subagents use DeepSeek V4.1 Flash or GLM-5.3 Flash on Codex or Claude Code. Those four run on models the gateway serves through Boundless, which it pays per call. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra, which the gateway serves through Vercel. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
       ),
     harness: z.enum(Setup.harnesses).optional().describe('custom only: the lead agent\'s harness, claude (Claude Code) or codex.'),
     model: z.string().min(1).max(200).optional().describe('custom only: the lead agent\'s gateway model id, such as vercel/anthropic/claude-opus-5.5.'),
@@ -180,13 +191,13 @@ export const schema = {
   }),
   seat: z.object({
     budget: allowance.optional(),
-    member: wallet.describe('The wallet to let steer the swarm.'),
+    member: someone.describe('The wallet or username to let steer the swarm.'),
     role: z.enum(['admin', 'member']).default('member').describe('An admin also manages who steers.'),
     swarm: id,
   }),
   steering: z.object({
     memberBudget: allowance.optional(),
-    steering: z.enum(['open', 'team']).optional().describe('open: any backer steers with their own money. team: only the team steers, with the swarm\'s money, each member within their budget.'),
+    steering: steerings.optional(),
     swarm: id,
   }),
   unseat: z.object({ member: wallet, swarm: id }),
@@ -409,8 +420,10 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   if (!prices) return Problem.fail(503, 'unavailable', "The gateway's model prices could not be read, so the swarm's costs are unknown. Try again shortly.")
   const setup = Setup.priced(chosen, prices)
   if (typeof setup === 'string') return Problem.fail(400, 'invalid_request', `${setup} GET /v1/config lists them.`)
+  const policy = parsed.value.steering ?? (creator ? 'team' : 'open')
+  if (policy === 'team' && !creator) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to steer the swarm you start, or send steering open to let every backer steer it.')
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
-  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup) })
+  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup), steering: policy })
   if (!row) return Problem.fail(502, 'unavailable', 'The swarm was not saved.')
   await logged(Search.swarm(env, swarm))
   return Problem.ok(Store.summary(row))
@@ -684,7 +697,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   let members = found.members
   let author = members.find((member) => member.address === address)
   const policed = row.steering === 'team'
-  const seat = policed ? await Team.seat(env, row, address, members).catch(() => undefined) : undefined
+  const seat = await Team.steerer(env, row, address, members)
   if (!author && !seat && (await lender(env, row.id, address))) {
     members = await Store.members(env, row.id)
     author = members.find((member) => member.address === address)
@@ -837,7 +850,7 @@ async function steerable(env: Cloudflare.Env, input: { address: Address | undefi
   const [row, account] = await Promise.all([Store.find(env, input.swarm), Store.account(env, input.address)])
   if (!row) return missing()
   if (!account.name) return unnamed()
-  const seat = row.steering === 'team' ? await Team.seat(env, row, input.address).catch(() => undefined) : undefined
+  const seat = await Team.steerer(env, row, input.address)
   if (row.steering === 'team' && !seat)
     return Problem.fail(403, 'not_member', "Only this swarm's team directs its money. Its admins add who may: ask one of them in the room.")
   return Problem.ok({ account, address: input.address, row, seat })
@@ -1060,7 +1073,7 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
   if (!found) return missing()
   if (!account.name) return unnamed()
   const row = found.row
-  if (row.steering === 'team' && !(await Team.seat(env, row, address, found.members).catch(() => undefined)))
+  if (row.steering === 'team' && !(await Team.steerer(env, row, address, found.members)))
     return Problem.fail(403, 'not_member', "Only this swarm's team asks it side questions, as only its team steers it.")
   if (row.steering !== 'team' && !found.members.some((member) => member.address === address && units(member.backed) >= Mention.smallestSteer))
     return Problem.fail(
@@ -1094,7 +1107,7 @@ async function governed(env: Cloudflare.Env, swarm: string, address: Address | u
   const row = await Store.find(env, swarm)
   if (!row) return missing()
   if (!(await Team.admin(env, row, address).catch(() => false)))
-    return Problem.fail(403, 'access_denied', "Only this swarm's admins choose who steers it: whoever started it signed in, or else its first backer, and the admins they add.")
+    return Problem.fail(403, 'access_denied', "Only this swarm's admins choose who steers it: whoever started it signed in, or else its biggest backer, and the admins they add.")
   return Problem.ok(row)
 }
 
@@ -1105,7 +1118,8 @@ export async function steer(env: Cloudflare.Env, input: Input<'steering'>, addre
   if (request.steering === undefined && request.memberBudget === undefined) return Problem.fail(400, 'invalid_request', 'Send steering, memberBudget or both.')
   const governing = await governed(env, request.swarm, address)
   if (!governing.ok) return governing
-  const teamed = await Team.ensure(env, governing.value, address as Address)
+  const pinned = request.memberBudget === undefined && governing.value.creator !== null
+  const teamed = pinned ? Problem.ok(governing.value) : await Team.ensure(env, governing.value, address as Address)
   if (!teamed.ok) return teamed
   const row = teamed.value
 
@@ -1130,12 +1144,14 @@ export async function seat(env: Cloudflare.Env, input: Input<'seat'>, address?: 
   const request = parsed.value
   const governing = await governed(env, request.swarm, address)
   if (!governing.ok) return governing
+  const member = isAddress(request.member) ? request.member : await Store.named(env, request.member)
+  if (!member) return Problem.fail(404, 'not_found', `No one is called @${request.member}.`)
   const teamed = await Team.ensure(env, governing.value, address as Address)
   if (!teamed.ok) return teamed
   const row = teamed.value
 
-  const added = await Gateway.enlist(env, row.team as string, { ...(request.budget !== undefined ? { budget: request.budget } : {}), member: request.member, role: request.role })
-  if (!added.ok) return Problem.fail(added.status === 409 ? 409 : 502, added.status === 409 ? 'conflict' : 'upstream_failed', `The gateway did not add ${request.member} to the swarm's team: ${added.detail}`)
+  const added = await Gateway.enlist(env, row.team as string, { ...(request.budget !== undefined ? { budget: request.budget } : {}), member, role: request.role })
+  if (!added.ok) return Problem.fail(added.status === 409 ? 409 : 502, added.status === 409 ? 'conflict' : 'upstream_failed', `The gateway did not add ${member} to the swarm's team: ${added.detail}`)
   Team.forget(row.id)
   return told(env, row.id, await Team.roster(env, row).then(Problem.ok, (error: unknown) => Problem.fail(502, 'upstream_failed', String(error instanceof Error ? error.message : error))))
 }
@@ -1147,7 +1163,10 @@ export async function unseat(env: Cloudflare.Env, input: Input<'unseat'>, addres
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to leave or manage a swarm\'s team.')
   const row = await Store.find(env, request.swarm)
   if (!row) return missing()
-  if (!row.team) return Problem.fail(404, 'not_found', 'This swarm has no team yet.')
+  if (!row.team)
+    return row.creator?.toLowerCase() === request.member
+      ? Problem.fail(409, 'conflict', "The swarm's last admin stays: add another admin first.")
+      : Problem.fail(404, 'not_found', "No one else is on this swarm's team.")
   const roster = await Team.roster(env, row).catch(() => undefined)
   if (!roster) return Problem.fail(502, 'upstream_failed', "The gateway did not list the swarm's team.")
   const self = request.member === address.toLowerCase()
@@ -1295,7 +1314,8 @@ export async function contribute(
 
   const total = credited.value.deposits.reduce((sum, deposit) => sum + Memo.units(deposit.amount), 0n)
   const asked = request.note || null
-  const text = asked && credited.value.deposits.some((deposit) => deposit.tag.toLowerCase() === Credit.tag(row.id, asked).toLowerCase()) ? asked : null
+  const tagged = asked && credited.value.deposits.some((deposit) => deposit.tag.toLowerCase() === Credit.tag(row.id, asked).toLowerCase()) ? asked : null
+  const text = tagged && (row.steering !== 'team' || (await Team.steerer(env, row, first.from))) ? tagged : null
   const noteId = text ? await Store.noteId(text) : null
   let written: Store.Gift | null
   if (existing) {
@@ -1371,7 +1391,8 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
 
   const amount = BigInt(limit.limit)
   const asked = request.note || null
-  const text = asked && backs.tag?.toLowerCase() === Credit.tag(row.id, asked).toLowerCase() ? asked : null
+  const tagged = asked && backs.tag?.toLowerCase() === Credit.tag(row.id, asked).toLowerCase() ? asked : null
+  const text = tagged && (row.steering !== 'team' || (await Team.steerer(env, row, done.value.wallet))) ? tagged : null
   const noteId = text ? await Store.noteId(text) : null
   const id = Credit.backing(done.value.accessKey)
   const written =

@@ -6,6 +6,7 @@ import './style.css'
 import './research.css'
 import './room.css'
 import './ideas.css'
+import './reins.css'
 
 function fit() {
   document.documentElement.style.setProperty('--screen', `${Math.round(visualViewport?.height ?? innerHeight)}px`)
