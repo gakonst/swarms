@@ -50,7 +50,7 @@ export type Gift = {
 }
 
 export type Fields = Partial<
-  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'sponsor_left' | 'sponsor_spent' | 'status' | 'steering' | 'team' | 'why'>
+  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'sponsor_left' | 'sponsor_spent' | 'status' | 'steering' | 'why'>
 >
 
 export const reserve = 50_000n
@@ -201,6 +201,15 @@ export async function update(env: Cloudflare.Env, id: string, fields: Fields) {
   )
     .bind(...entries.map(([, value]) => value), Date.now(), id)
     .run().finally(() => wrote(id))
+}
+
+export async function teamed(env: Cloudflare.Env, id: string, team: `0x${string}`) {
+  const held = await env.DB.prepare(
+    'update swarms set team = coalesce(team, ?1), updated_at = case when team is null then ?2 else updated_at end where id = ?3 returning team',
+  )
+    .bind(team, Date.now(), id)
+    .first<{ team: `0x${string}` }>().finally(() => wrote(id))
+  return held?.team ?? null
 }
 
 export async function pictured(env: Cloudflare.Env, id: string, cover: string | null) {

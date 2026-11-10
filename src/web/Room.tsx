@@ -329,8 +329,7 @@ export const Room = memo(function Room(props: {
   }
 
   const tell = async (note: string, left: string | null) => {
-    const amount = left === null || units(left) >= units(seatSteer) ? seatSteer : left
-    if (units(amount) < Mention.smallestSteer) return setProblem({ text: 'Your budget for this swarm is spent for these 30 days.' })
+    const amount = left !== null && units(left) >= Mention.smallestSteer && units(left) < units(seatSteer) ? left : seatSteer
     setSending(true)
     setProblem(undefined)
     try {

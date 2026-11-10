@@ -41,6 +41,7 @@ import * as Btw from '../shared/Btw.ts'
 import * as Setup from '../shared/Setup.ts'
 import * as Connect from '../shared/Connect.ts'
 import * as Credit from '../shared/Credit.ts'
+import * as Door from '../shared/Door.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Artifacts from './Artifacts.ts'
@@ -696,17 +697,19 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   const row = found.row
   let members = found.members
   let author = members.find((member) => member.address === address)
-  const policed = row.steering === 'team'
-  const seat = await Team.steerer(env, row, address, members)
+  const steers = await Team.steerer(env, row, address, members)
+  if (!steers.ok) return steers
+  const seat = steers.value
   if (!author && !seat && (await lender(env, row.id, address))) {
     members = await Store.members(env, row.id)
     author = members.find((member) => member.address === address)
   }
-  if (!author && !seat)
+  const door = Door.of(row.steering, { rider: !!author, seat: !!seat })
+  if (!door.posts)
     return Problem.fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
 
   const steering = Mention.steers(request.text)
-  if (steering && policed && !seat)
+  if (steering && !door.steers)
     return Problem.fail(403, 'not_member', "Only this swarm's team steers it. Its admins add who may: ask one of them in the room.")
   if (!steering && request.steer !== undefined) return Problem.fail(400, 'invalid_request', 'steer goes with a message that mentions @swarm.')
   if (request.btw && (!steering || Mention.idea(request.text) !== Btw.note(request.btw, request.artifact)))
@@ -741,7 +744,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
           ? `Your team budget has ${dollars(seat.left ?? '0')} left in these 30 days, less than ${dollars(Memo.decimal(amount))}.`
           : `You have ${dollars(author?.available ?? '0')} of backing not yet behind a note, less than ${dollars(Memo.decimal(amount))}. Put new money behind this idea instead.`,
       )
-    if (seat) Team.forget(row.id)
+    if (seat) retold(env, row)
     else backing = amount
     await logged(Search.note(env, row.id, noteId, note))
     steer = { amount: Memo.decimal(amount), note, noteId, ...(request.btw ? { context: Btw.collapse(request.btw, request.artifact) } : {}) }
@@ -850,7 +853,9 @@ async function steerable(env: Cloudflare.Env, input: { address: Address | undefi
   const [row, account] = await Promise.all([Store.find(env, input.swarm), Store.account(env, input.address)])
   if (!row) return missing()
   if (!account.name) return unnamed()
-  const seat = await Team.steerer(env, row, input.address)
+  const steers = await Team.steerer(env, row, input.address)
+  if (!steers.ok) return steers
+  const seat = steers.value
   if (row.steering === 'team' && !seat)
     return Problem.fail(403, 'not_member', "Only this swarm's team directs its money. Its admins add who may: ask one of them in the room.")
   return Problem.ok({ account, address: input.address, row, seat })
@@ -935,7 +940,7 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
         ? `Your team budget has ${dollars(seat.left ?? '0')} left in these 30 days, less than ${dollars(Memo.decimal(amount))}, or ${target.who} was just stopped.`
         : `You have ${dollars(author?.available ?? '0')} of backing not yet behind a note or branch, less than ${dollars(Memo.decimal(amount))}, or ${target.who} was just stopped. Put new money behind this branch instead.`,
     )
-  if (seat) Team.forget(row.id)
+  if (seat) retold(env, row)
 
   const capped = target.budget !== null
   if (capped) await Store.base(env, row.id, agent, target.id, Memo.units(target.budget ?? '0'))
@@ -1073,7 +1078,9 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
   if (!found) return missing()
   if (!account.name) return unnamed()
   const row = found.row
-  if (row.steering === 'team' && !(await Team.steerer(env, row, address, found.members)))
+  const steers = await Team.steerer(env, row, address, found.members)
+  if (!steers.ok) return steers
+  if (row.steering === 'team' && !steers.value)
     return Problem.fail(403, 'not_member', "Only this swarm's team asks it side questions, as only its team steers it.")
   if (row.steering !== 'team' && !found.members.some((member) => member.address === address && units(member.backed) >= Mention.smallestSteer))
     return Problem.fail(
@@ -1106,7 +1113,9 @@ async function governed(env: Cloudflare.Env, swarm: string, address: Address | u
   if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo Wallet to manage who steers a swarm.")
   const row = await Store.find(env, swarm)
   if (!row) return missing()
-  if (!(await Team.admin(env, row, address).catch(() => false)))
+  const admin = await Team.admin(env, row, address).then(Problem.ok, Team.unlisted)
+  if (!admin.ok) return admin
+  if (!admin.value)
     return Problem.fail(403, 'access_denied', "Only this swarm's admins choose who steers it: whoever started it signed in, or else its biggest backer, and the admins they add.")
   return Problem.ok(row)
 }
@@ -1138,6 +1147,11 @@ function told(env: Cloudflare.Env, swarm: string, result: Problem.Result<Roster>
   return result
 }
 
+function retold(env: Cloudflare.Env, row: Store.Row) {
+  Team.forget(row.id)
+  waitUntil(Team.roster(env, row).then((roster) => stub(env, row.id).rostered(roster)).catch(() => undefined))
+}
+
 export async function seat(env: Cloudflare.Env, input: Input<'seat'>, address?: Address): Promise<Problem.Result<Roster>> {
   const parsed = parse(schema.seat, input)
   if (!parsed.ok) return parsed
@@ -1146,6 +1160,9 @@ export async function seat(env: Cloudflare.Env, input: Input<'seat'>, address?: 
   if (!governing.ok) return governing
   const member = isAddress(request.member) ? request.member : await Store.named(env, request.member)
   if (!member) return Problem.fail(404, 'not_found', `No one is called @${request.member}.`)
+  const operator = await Gateway.wallet(env)
+  if (!operator) return Problem.fail(502, 'unavailable', "The gateway did not answer, so the swarm's team cannot change right now.")
+  if (member.toLowerCase() === operator) return Problem.fail(400, 'invalid_request', "That wallet holds every swarm's team for Swarms and steers none of them.")
   const teamed = await Team.ensure(env, governing.value, address as Address)
   if (!teamed.ok) return teamed
   const row = teamed.value
@@ -1174,6 +1191,7 @@ export async function unseat(env: Cloudflare.Env, input: Input<'unseat'>, addres
     return Problem.fail(403, 'access_denied', "Only this swarm's admins remove others from its team; anyone may leave it.")
   if (roster.admins.length === 1 && roster.admins[0] === request.member)
     return Problem.fail(409, 'conflict', 'The swarm\'s last admin stays: add another admin first.')
+  if (!roster.seats.some((seat) => seat.address === request.member)) return Problem.fail(404, 'not_found', `${request.member} is not on this swarm's team.`)
 
   const removed = await Gateway.dismiss(env, row.team, request.member)
   if (!removed.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not remove ${request.member}: ${removed.detail}`)
@@ -1315,7 +1333,9 @@ export async function contribute(
   const total = credited.value.deposits.reduce((sum, deposit) => sum + Memo.units(deposit.amount), 0n)
   const asked = request.note || null
   const tagged = asked && credited.value.deposits.some((deposit) => deposit.tag.toLowerCase() === Credit.tag(row.id, asked).toLowerCase()) ? asked : null
-  const text = tagged && (row.steering !== 'team' || (await Team.steerer(env, row, first.from))) ? tagged : null
+  const steers = tagged ? await Team.steerer(env, row, first.from) : Problem.ok(undefined)
+  if (!steers.ok) return steers
+  const text = tagged && (row.steering !== 'team' || steers.value) ? tagged : null
   const noteId = text ? await Store.noteId(text) : null
   let written: Store.Gift | null
   if (existing) {
@@ -1327,6 +1347,7 @@ export async function contribute(
   if (written) {
     await stub(env, row.id).contributed({ amount: Memo.decimal(total), contributor: first.from, hash: request.hash, kind: existing ? 'noted' : 'new', note: text, noteId, swarm: row.id, token: first.token })
     if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
+    if (!row.creator) retold(env, row)
   }
 
   const [gift, updated] = await Promise.all([written ?? Store.gift(env, request.hash), Store.find(env, row.id)])
@@ -1373,6 +1394,8 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
   const [row, owner] = await Promise.all([Store.find(env, request.swarm), Gateway.wallet(env)])
   if (!row) return missing()
   if (!owner) return Problem.fail(502, 'unavailable', 'The gateway did not answer, so the backing cannot be counted right now.')
+  const steers = request.note ? await Team.steerers(env, row) : undefined
+  if (steers && !steers.ok) return steers
 
   const done = await Gateway.backed(env, {
     id: request.request,
@@ -1392,7 +1415,7 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
   const amount = BigInt(limit.limit)
   const asked = request.note || null
   const tagged = asked && backs.tag?.toLowerCase() === Credit.tag(row.id, asked).toLowerCase() ? asked : null
-  const text = tagged && (row.steering !== 'team' || (await Team.steerer(env, row, done.value.wallet))) ? tagged : null
+  const text = tagged && (row.steering !== 'team' || steers?.value(done.value.wallet)) ? tagged : null
   const noteId = text ? await Store.noteId(text) : null
   const id = Credit.backing(done.value.accessKey)
   const written =
@@ -1400,6 +1423,7 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
     (text && noteId ? await Store.annotate(env, id, { note: text, note_id: noteId }) : null)
   await stub(env, row.id).contributed({ amount: Memo.decimal(amount), contributor: done.value.wallet, hash: done.value.accessKey, kind: 'approved', note: text, noteId, swarm: row.id, token: 'mach' })
   if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
+  if (!row.creator) retold(env, row)
 
   const [gift, updated] = await Promise.all([written ?? Store.gift(env, id), Store.find(env, row.id)])
   if (!gift) return Problem.fail(502, 'unavailable', 'The backing was not saved.')

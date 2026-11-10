@@ -617,7 +617,7 @@ export function document(origin: string) {
           operationId: 'postChat',
           parameters: [swarm],
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.say.omit({ swarm: true })) } }, required: true },
-          responses: { ...ok(ref('Posted'), 'The message and the author\'s standing after it.', '201'), ...failures(400, 401, 403, 404, 409) },
+          responses: { ...ok(ref('Posted'), 'The message and the author\'s standing after it.', '201'), ...failures(400, 401, 403, 404, 409, 429, 502) },
           summary: 'Post to the room',
         },
       },
