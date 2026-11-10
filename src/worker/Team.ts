@@ -69,12 +69,18 @@ export async function roster(env: Cloudflare.Env, row: Store.Row, loaded?: reado
   return value
 }
 
-export async function seat(env: Cloudflare.Env, row: Store.Row, address: Address, loaded?: readonly Member[]) {
-  return (await roster(env, row, loaded)).seats.find((found) => found.address === address.toLowerCase())
+export function unlisted(error: unknown) {
+  return Problem.fail(502, 'upstream_failed', error instanceof Error ? error.message : String(error))
 }
 
-export async function steerer(env: Cloudflare.Env, row: Store.Row, address: Address, loaded?: readonly Member[]) {
-  return row.steering === 'team' ? seat(env, row, address, loaded).catch(() => undefined) : undefined
+export async function steerers(env: Cloudflare.Env, row: Store.Row, loaded?: readonly Member[]): Promise<Problem.Result<(address: Address) => Seat | undefined>> {
+  if (row.steering !== 'team') return Problem.ok(() => undefined)
+  return roster(env, row, loaded).then((found) => Problem.ok((address: Address) => found.seats.find((seat) => seat.address === address.toLowerCase())), unlisted)
+}
+
+export async function steerer(env: Cloudflare.Env, row: Store.Row, address: Address, loaded?: readonly Member[]): Promise<Problem.Result<Seat | undefined>> {
+  const found = await steerers(env, row, loaded)
+  return found.ok ? Problem.ok(found.value(address)) : found
 }
 
 export async function admin(env: Cloudflare.Env, row: Store.Row, address: Address) {

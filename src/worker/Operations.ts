@@ -697,7 +697,9 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   let members = found.members
   let author = members.find((member) => member.address === address)
   const policed = row.steering === 'team'
-  const seat = await Team.steerer(env, row, address, members)
+  const steers = await Team.steerer(env, row, address, members)
+  if (!steers.ok) return steers
+  const seat = steers.value
   if (!author && !seat && (await lender(env, row.id, address))) {
     members = await Store.members(env, row.id)
     author = members.find((member) => member.address === address)
@@ -850,7 +852,9 @@ async function steerable(env: Cloudflare.Env, input: { address: Address | undefi
   const [row, account] = await Promise.all([Store.find(env, input.swarm), Store.account(env, input.address)])
   if (!row) return missing()
   if (!account.name) return unnamed()
-  const seat = await Team.steerer(env, row, input.address)
+  const steers = await Team.steerer(env, row, input.address)
+  if (!steers.ok) return steers
+  const seat = steers.value
   if (row.steering === 'team' && !seat)
     return Problem.fail(403, 'not_member', "Only this swarm's team directs its money. Its admins add who may: ask one of them in the room.")
   return Problem.ok({ account, address: input.address, row, seat })
@@ -1073,7 +1077,9 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
   if (!found) return missing()
   if (!account.name) return unnamed()
   const row = found.row
-  if (row.steering === 'team' && !(await Team.steerer(env, row, address, found.members)))
+  const steers = await Team.steerer(env, row, address, found.members)
+  if (!steers.ok) return steers
+  if (row.steering === 'team' && !steers.value)
     return Problem.fail(403, 'not_member', "Only this swarm's team asks it side questions, as only its team steers it.")
   if (row.steering !== 'team' && !found.members.some((member) => member.address === address && units(member.backed) >= Mention.smallestSteer))
     return Problem.fail(
@@ -1106,7 +1112,9 @@ async function governed(env: Cloudflare.Env, swarm: string, address: Address | u
   if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo Wallet to manage who steers a swarm.")
   const row = await Store.find(env, swarm)
   if (!row) return missing()
-  if (!(await Team.admin(env, row, address).catch(() => false)))
+  const admin = await Team.admin(env, row, address).then(Problem.ok, Team.unlisted)
+  if (!admin.ok) return admin
+  if (!admin.value)
     return Problem.fail(403, 'access_denied', "Only this swarm's admins choose who steers it: whoever started it signed in, or else its biggest backer, and the admins they add.")
   return Problem.ok(row)
 }
@@ -1315,7 +1323,9 @@ export async function contribute(
   const total = credited.value.deposits.reduce((sum, deposit) => sum + Memo.units(deposit.amount), 0n)
   const asked = request.note || null
   const tagged = asked && credited.value.deposits.some((deposit) => deposit.tag.toLowerCase() === Credit.tag(row.id, asked).toLowerCase()) ? asked : null
-  const text = tagged && (row.steering !== 'team' || (await Team.steerer(env, row, first.from))) ? tagged : null
+  const steers = tagged ? await Team.steerer(env, row, first.from) : Problem.ok(undefined)
+  if (!steers.ok) return steers
+  const text = tagged && (row.steering !== 'team' || steers.value) ? tagged : null
   const noteId = text ? await Store.noteId(text) : null
   let written: Store.Gift | null
   if (existing) {
@@ -1373,6 +1383,8 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
   const [row, owner] = await Promise.all([Store.find(env, request.swarm), Gateway.wallet(env)])
   if (!row) return missing()
   if (!owner) return Problem.fail(502, 'unavailable', 'The gateway did not answer, so the backing cannot be counted right now.')
+  const steers = request.note ? await Team.steerers(env, row) : undefined
+  if (steers && !steers.ok) return steers
 
   const done = await Gateway.backed(env, {
     id: request.request,
@@ -1392,7 +1404,7 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
   const amount = BigInt(limit.limit)
   const asked = request.note || null
   const tagged = asked && backs.tag?.toLowerCase() === Credit.tag(row.id, asked).toLowerCase() ? asked : null
-  const text = tagged && (row.steering !== 'team' || (await Team.steerer(env, row, done.value.wallet))) ? tagged : null
+  const text = tagged && (row.steering !== 'team' || steers?.value(done.value.wallet)) ? tagged : null
   const noteId = text ? await Store.noteId(text) : null
   const id = Credit.backing(done.value.accessKey)
   const written =
