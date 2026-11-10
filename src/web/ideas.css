@@ -363,6 +363,9 @@ html[data-viewing] body { overflow:hidden; }
 .own-ask textarea:focus { border-color:#1a3d2c; box-shadow:0 0 0 4px #1a3d2c14; }
 .own-box { margin-top:16px; }
 .own-box .box { position:static; }
+.runs-on { display:flex; align-items:center; gap:8px; margin-top:12px; color:#5c6b55; font:12px var(--mono); }
+.runs-on select { min-height:32px; padding:4px 8px; border:1px solid #cfd9c6; border-radius:8px; background:#fbfcf9; color:var(--black); font:13px var(--mono); }
+@media (pointer:coarse) { .runs-on select { font-size:16px; } }
 .own-ideas { margin-top:52px; }
 .own-ideas h2 { margin-bottom:16px; font-size:22px; font-weight:400; }
 .how { max-width:760px; padding-top:clamp(32px,8vh,80px); padding-bottom:64px; }

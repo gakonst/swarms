@@ -43,7 +43,7 @@ export function roomed(origin: string, swarm: string) {
 }
 
 export function broke(message: string | null) {
-  return !!message && message.includes("This app's credit has $")
+  return !!message && (message.includes("This app's credit has $") || message.includes("None of this app's backers can pay"))
 }
 
 function grown(told: bigint | null | undefined, weight: bigint) {
@@ -178,7 +178,7 @@ export function abandon(self: Swarm, agent: string, detail: string) {
   self.log('error', "The agent's session stopped answering for 15 minutes, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.", `${agent}: ${detail}`)
 }
 
-export const credited = 'credit'
+export const credited = 'backers'
 
 export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail: string; error: string }> {
   const known = self.agent()
@@ -190,7 +190,7 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
       self.kv.put('agent', moved)
       return instructed(self, row, moved)
     }
-    if (patched.status !== 404) return { detail: patched.detail, error: "The gateway did not move the agent to the swarm's credit." }
+    if (patched.status !== 404) return { detail: patched.detail, error: "The gateway did not move the agent to the swarm's backers." }
     self.kv.delete('agent')
   }
 
@@ -201,7 +201,7 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
   Persona.keep(self.kv, instructions)
   const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, instructed: true, unreachable: null, url: credited }
   self.kv.put('agent', agent)
-  self.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it uses is paid from the swarm's credit there, which backers fill.", created.value.id)
+  self.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it uses is paid by the swarm's backers: from the keys they approved, as it spends, and from the money they sent.", created.value.id)
   await Branching.release(self, row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
   return agent
 }

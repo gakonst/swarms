@@ -209,6 +209,18 @@ export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>)
     .first<Gift>().finally(() => wrote(input.swarm))
 }
 
+export async function backings(env: Cloudflare.Env, swarm: string) {
+  const found = await env.DB.prepare('select * from contributions where swarm = ? and channel is not null').bind(swarm).all<Gift>()
+  return found.results.filter((gift) => gift.id.startsWith('backing:'))
+}
+
+export async function lower(env: Cloudflare.Env, swarm: string, id: string, amount: string) {
+  await env.DB.prepare('update contributions set amount = ? where id = ? and swarm = ?')
+    .bind(amount, id.toLowerCase(), swarm)
+    .run()
+    .finally(() => wrote(swarm))
+}
+
 export async function gift(env: Cloudflare.Env, id: string) {
   return env.DB.prepare('select * from contributions where id = ?').bind(id.toLowerCase()).first<Gift>()
 }

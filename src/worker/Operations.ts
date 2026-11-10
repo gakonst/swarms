@@ -6,6 +6,7 @@ import { z } from 'zod'
 import type {
   Account,
   Answered,
+  Approval,
   Branch,
   Branches,
   Roster,
@@ -116,6 +117,27 @@ export const schema = {
     note,
     swarm: id,
   }),
+  backing: z.object({
+    amount: decimal
+      .refine((value) => units(value) >= 1_000_000n && units(value) <= 1_000_000_000n, 'A backing is between 1 and 1000.')
+      .describe('The most the swarm may spend from the wallet, in MACH, as a decimal string such as "5" or a number. Nothing moves when it is approved: the gateway takes MACH from the wallet as the swarm spends it.'),
+    note,
+    swarm: id,
+  }),
+  approved: z.object({
+    keyAuthorization: z.unknown().optional().describe("The wallet's signed key authorization for the approval's authorizeAccessKey, as Tempo Wallet's wallet_connect answers it in capabilities.keyAuthorization."),
+    note,
+    request: z
+      .string()
+      .regex(/^[0-9a-f]{32}$/)
+      .describe('The id the backing was prepared with.'),
+    swarm: id,
+    transaction: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]+$/)
+      .optional()
+      .describe("Instead of keyAuthorization: a Tempo transaction, signed by one of the wallet's admin keys for a fee payer, that carries the key authorization; the gateway pays its fee and sends it."),
+  }),
   transfer: z.object({
     amount: decimal
       .refine((value) => units(value) >= 10_000n, 'A transfer is at least 0.01.')
@@ -135,7 +157,7 @@ export const schema = {
       .string()
       .trim()
       .min(10)
-      .max(2000)
+      .max(12_000)
       .describe('What the swarm should find out or build, what done looks like and what its updates should report.'),
     problem: z.enum(ids).optional().describe('The id of the idea-bank problem this swarm works on, from GET /v1/problems. A problem with an open swarm is not offered again until that swarm finishes.'),
     title: z.string().trim().min(3).max(80).describe('A short name for the swarm.'),
@@ -1293,6 +1315,74 @@ export async function contribute(
     contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) },
     created: !existing && written !== null,
   })
+}
+
+export async function back(env: Cloudflare.Env, input: Input<'backing'>): Promise<Problem.Result<Approval>> {
+  const parsed = parse(schema.backing, input)
+  if (!parsed.ok) return parsed
+  const request = parsed.value
+  const [row, owner] = await Promise.all([Store.find(env, request.swarm), Gateway.wallet(env)])
+  if (!row) return missing()
+  if (!owner) return Problem.fail(502, 'unavailable', 'The gateway did not answer, so a backing cannot be prepared right now.')
+
+  const note = request.note || null
+  const amount = units(request.amount)
+  const limit = Number(Memo.decimal(amount))
+  const share = Math.min(2, Math.max(0.25, Math.round(limit * 10) / 100))
+  const asked = await Gateway.backing(env, row.id, { days: Credit.days, deposit: share, limit, owner, tag: Credit.tag(row.id, note), topUp: share })
+  if (!asked.ok) {
+    if (asked.status === 429) return Problem.fail(429, 'rate_limited', 'Too many approvals were asked for at once. Try again in a minute.')
+    if (asked.status >= 400 && asked.status < 500) return Problem.fail(400, 'invalid_request', `The gateway did not prepare the backing: ${asked.detail}`)
+    return Problem.fail(502, 'upstream_failed', `The gateway did not prepare the backing: ${asked.detail}`)
+  }
+  return Problem.ok({
+    amount: Memo.decimal(amount),
+    authorizeAccessKey: asked.value.authorizeAccessKey,
+    expiresAt: asked.value.authorizeAccessKey.expiry * 1000,
+    id: asked.value.id,
+    note,
+    swarm: row.id,
+  })
+}
+
+export async function approved(env: Cloudflare.Env, input: Input<'approved'>): Promise<Problem.Result<{ contributed: Contributed; created: boolean }>> {
+  const parsed = parse(schema.approved, input)
+  if (!parsed.ok) return parsed
+  const request = parsed.value
+  if (request.keyAuthorization === undefined && !request.transaction) return Problem.fail(400, 'invalid_request', 'Send keyAuthorization or transaction.')
+  const [row, owner] = await Promise.all([Store.find(env, request.swarm), Gateway.wallet(env)])
+  if (!row) return missing()
+  if (!owner) return Problem.fail(502, 'unavailable', 'The gateway did not answer, so the backing cannot be counted right now.')
+
+  const done = await Gateway.backed(env, {
+    id: request.request,
+    ...(request.transaction ? { transaction: request.transaction } : { keyAuthorization: request.keyAuthorization }),
+  })
+  if (!done.ok) {
+    if (done.status === 429) return Problem.fail(429, 'rate_limited', 'Too many approvals at once. Try again in a minute.')
+    if (done.status >= 400 && done.status < 500) return Problem.fail(400, 'invalid_request', `The gateway did not take the approval, so nothing was approved: ${done.detail}`)
+    return Problem.fail(502, 'upstream_failed', `The gateway did not take the approval: ${done.detail}`)
+  }
+  const backs = done.value.backs
+  if (!backs || backs.app !== Gateway.app(row.id) || backs.owner.toLowerCase() !== owner.toLowerCase())
+    return Problem.fail(400, 'invalid_request', 'That approval backs something other than this swarm.')
+  const limit = done.value.limits.find((each) => each.token.toLowerCase() === Chain.mach.address.toLowerCase())
+  if (!limit) return Problem.fail(502, 'upstream_failed', 'The approval carries no MACH limit.')
+
+  const amount = BigInt(limit.limit)
+  const asked = request.note || null
+  const text = asked && backs.tag?.toLowerCase() === Credit.tag(row.id, asked).toLowerCase() ? asked : null
+  const noteId = text ? await Store.noteId(text) : null
+  const id = Credit.backing(done.value.accessKey)
+  const written =
+    (await Store.give(env, { amount: String(amount), channel: done.value.accessKey, contributor: done.value.wallet, id, note: text, note_id: noteId, swarm: row.id, token: 'mach' })) ??
+    (text && noteId ? await Store.annotate(env, id, { note: text, note_id: noteId }) : null)
+  await stub(env, row.id).contributed({ amount: Memo.decimal(amount), contributor: done.value.wallet, hash: done.value.accessKey, kind: 'approved', note: text, noteId, swarm: row.id, token: 'mach' })
+  if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
+
+  const [gift, updated] = await Promise.all([written ?? Store.gift(env, id), Store.find(env, row.id)])
+  if (!gift) return Problem.fail(502, 'unavailable', 'The backing was not saved.')
+  return Problem.ok({ contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) }, created: true })
 }
 
 function excerpt(entry: Entry, terms: readonly string[], size = 240) {

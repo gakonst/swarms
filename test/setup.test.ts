@@ -4,6 +4,7 @@ import * as Setup from '../src/shared/Setup.ts'
 import * as Phase from '../src/worker/Phase.ts'
 
 const prices = new Map<string, Setup.Price>([
+  [Setup.fable, { cached: 0.2, id: Setup.fable, input: 8, output: 40 }],
   [Setup.opus, { cached: 0.2, id: Setup.opus, input: 4, output: 20 }],
   [Setup.sol, { cached: 0.1, id: Setup.sol, input: 2, output: 10 }],
   [Setup.astra, { cached: 1, id: Setup.astra, input: 10, output: 50 }],
@@ -38,6 +39,18 @@ test('frontier mix leads with Claude Code on Opus and offers Opus, Kimi K3.1 Pro
   assert.deepEqual(setup.steps, { [Setup.glm]: '12480', [Setup.kimi]: '21500', [Setup.opus]: '37600' })
 })
 
+test('the Fable template leads with Claude Code on Fable 5.2 and offers Fable, Opus, Kimi K3.1 Pro and GLM-5.3', () => {
+  const setup = priced({ template: 'fable' })
+  assert.deepEqual({ harness: setup.harness, model: setup.model }, { harness: 'claude', model: 'boundless/anthropic/claude-fable-5.2' })
+  assert.deepEqual(setup.subagents, { harnesses: ['claude', 'codex'], models: [Setup.fable, Setup.opus, Setup.kimi, Setup.glm] })
+  assert.equal(setup.step, '65600')
+  assert.equal(setup.most, '440960')
+})
+
+test('every template but OpenAI names its models by their Boundless ids, which no other provider answers for', () => {
+  for (const model of [Setup.fable, Setup.opus, Setup.flash, Setup.glmFlash, Setup.glm, Setup.kimi]) assert.match(model, /^boundless\//)
+})
+
 test('frontier OpenAI leads on Sol, frontier Anthropic is Opus only, and free for all offers any subagent model', () => {
   assert.equal(priced({ template: 'frontier-openai' }).model, Setup.sol)
   assert.deepEqual(priced({ template: 'frontier-anthropic' }).subagents, { harnesses: ['claude'], models: [Setup.opus] })
@@ -63,7 +76,7 @@ test("a swarm's reserve and call come from its lead model, and older swarms keep
 
 test('the brief tells the agent its models, their costs and the budget floor', () => {
   const told = Setup.told(priced({ template: 'frontier-mix' }))
-  assert.match(told, /Claude Code with vercel\/anthropic\/claude-opus-5\.5/)
-  assert.match(told, /vercel\/moonshotai\/kimi-k3\.1-pro \(about \$0\.021 a call\)/)
+  assert.match(told, /Claude Code with boundless\/anthropic\/claude-opus-5\.5/)
+  assert.match(told, /boundless\/moonshotai\/kimi-k3\.1-pro \(about \$0\.021 a call\)/)
   assert.match(told, /at least 20 of its model's calls/)
 })

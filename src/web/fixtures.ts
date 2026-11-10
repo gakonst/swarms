@@ -17,6 +17,12 @@ type Live = Omit<Detail, 'answer' | 'reason' | 'updates' | 'why' | 'working'> & 
 const minute = 60_000
 
 const models: Setup.Price[] = [
+  { cached: 0.2, id: 'boundless/anthropic/claude-fable-5.2', input: 8, output: 40 },
+  { cached: 0.2, id: 'boundless/anthropic/claude-opus-5.5', input: 4, output: 20 },
+  { cached: 0.0048, id: 'boundless/deepseek/deepseek-v4.1-flash-1017', input: 0.24, output: 0.96 },
+  { cached: 0.2, id: 'boundless/moonshotai/kimi-k3.1-pro', input: 1.7, output: 8.5 },
+  { cached: 0.14, id: 'boundless/z-ai/glm-5.3', input: 1.12, output: 3.52 },
+  { cached: 0.024, id: 'boundless/z-ai/glm-5.3-flash', input: 0.12, output: 0.4 },
   { cached: 0.19, id: '@cf/moonshotai/kimi-k2.7-code', input: 0.95, output: 4 },
   { cached: 0.14, id: '@cf/zai-org/glm-5.3', input: 1.12, output: 3.52 },
   { cached: 0.024, id: '@cf/zai-org/glm-5.3-flash', input: 0.12, output: 0.4 },

@@ -15,10 +15,17 @@ import * as Wire from './wire.ts'
 
 const prefill = { amount: '5', note: '', token: undefined } as const
 
-const choice: Setup.Choice = { template: Setup.fallback }
+const offered = ['cheap', 'frontier-mix', 'fable'] as const
 
-function least(config: Config | undefined) {
-  const resolved = Setup.resolve(choice)
+type Offered = (typeof offered)[number]
+
+function asked(): Offered {
+  const template = here().searchParams.get('template')
+  return offered.find((name) => name === template) ?? 'cheap'
+}
+
+function least(config: Config | undefined, template: Offered) {
+  const resolved = Setup.resolve({ template })
   if (typeof resolved === 'string' || !config?.models.length) return undefined
   const priced = Setup.priced(resolved, new Map(config.models.map((model) => [model.id, model])))
   return typeof priced === 'string' ? undefined : decimal(BigInt(priced.most))
@@ -29,16 +36,29 @@ function starter() {
   return asked === null ? undefined : problems.find((problem) => problem.id === asked)
 }
 
-function useLaunch(title: string, goal: string, problem: string | undefined) {
+function Runs(props: { onPick: (template: Offered) => void; template: Offered }) {
+  return (
+    <label className="runs-on">
+      <span>Runs on</span>
+      <select onChange={(event) => props.onPick(event.target.value as Offered)} value={props.template}>
+        {offered.map((name) => (
+          <option key={name} value={name}>{Setup.labels[name]}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function useLaunch(title: string, goal: string, problem: string | undefined, template: Offered) {
   const created = useRef<Target | undefined>(undefined)
   const target = async (step: (step: 'create') => void) => {
     if (created.current) return created.current
     step('create')
-    const swarm = await Api.create({ ...choice, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}) })
+    const swarm = await Api.create({ template, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}) })
     created.current = { id: swarm.id }
     return created.current
   }
-  return { locked: !(title.trim().length >= 3 && title.trim().length <= 80 && goal.trim().length >= 10 && goal.trim().length <= 2000), reset: () => (created.current = undefined), target }
+  return { locked: !(title.trim().length >= 3 && title.trim().length <= 80 && goal.trim().length >= 10 && goal.trim().length <= 12_000), reset: () => (created.current = undefined), target }
 }
 
 function landed(swarm: Target) {
@@ -55,7 +75,12 @@ function Seed(props: { config: Config | undefined; problem: Problem }) {
   const [note, setNote] = useState('')
   const phone = useMedia('(max-width: 899px)')
   const [open, setOpen] = useState(false)
-  const launch = useLaunch(problem.title, problem.goal, problem.id)
+  const [template, setTemplate] = useState(asked)
+  const launch = useLaunch(problem.title, problem.goal, problem.id, template)
+  const pick = (next: Offered) => {
+    setTemplate(next)
+    launch.reset()
+  }
   const id = `idea:${problem.id}`
   const backed = useCanBack()
 
@@ -72,7 +97,7 @@ function Seed(props: { config: Config | undefined; problem: Problem }) {
           <Box
             config={props.config}
             focus={0}
-            least={least(props.config)}
+            least={least(props.config, template)}
             locked={launch.locked}
             members={[]}
             note={note}
@@ -87,6 +112,7 @@ function Seed(props: { config: Config | undefined; problem: Problem }) {
           />
           <div className="idea-main">
             <div className="idea-cover"><Cover id={id} mood="new" /></div>
+            <Runs onPick={pick} template={template} />
           </div>
         </div>
       </div>
@@ -99,7 +125,12 @@ function Own(props: { config: Config | undefined }) {
   const [question, setQuestion] = useState('')
   const [note, setNote] = useState('')
   const drafted = brief(question)
-  const launch = useLaunch(drafted.title, drafted.goal, undefined)
+  const [template, setTemplate] = useState(asked)
+  const launch = useLaunch(drafted.title, drafted.goal, undefined, template)
+  const pick = (next: Offered) => {
+    setTemplate(next)
+    launch.reset()
+  }
   const enough = question.trim().length >= 10
   const free = (list.data ? open(list.data.swarms) : problems).slice(0, 3)
 
@@ -108,14 +139,14 @@ function Own(props: { config: Config | undefined }) {
       <h1>What should AI figure out or build?</h1>
       <label className="own-ask">
         <span className="sr-only">Your idea</span>
-        <textarea autoFocus id="question" maxLength={1000} onChange={(event) => { setQuestion(event.target.value); launch.reset() }} placeholder="e.g. Find the cheapest way to make clean drinking water at home" rows={3} value={question} />
+        <textarea autoFocus id="question" maxLength={10_000} onChange={(event) => { setQuestion(event.target.value); launch.reset() }} placeholder="e.g. Find the cheapest way to make clean drinking water at home" rows={3} value={question} />
       </label>
       {enough && (
         <div className="own-box">
           <Box
             config={props.config}
             focus={0}
-            least={least(props.config)}
+            least={least(props.config, template)}
             locked={launch.locked}
             members={[]}
             note={note}
@@ -129,6 +160,7 @@ function Own(props: { config: Config | undefined }) {
             swarm={{ contributors: 0, id: 'own', raised: '0', remaining: '0', status: 'funding', title: drafted.title, why: null }}
             target={launch.target}
           />
+          <Runs onPick={pick} template={template} />
         </div>
       )}
       {free.length > 0 && (

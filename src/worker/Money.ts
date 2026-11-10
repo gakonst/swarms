@@ -1,9 +1,11 @@
 import type { Hand } from '../shared/Api.ts'
+import * as Credit from '../shared/Credit.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Store from './Store.ts'
 import * as Clock from './Clock.ts'
+import * as Words from './Words.ts'
 import type { Swarm } from './Swarm.ts'
 
 type Money = { left: bigint; listed: Gateway.Listed[] | undefined; row: Store.Row }
@@ -17,23 +19,63 @@ function earned(hand: Gateway.Listed) {
   return typeof charges?.usd === 'number' && charges.usd > 0 ? Memo.units(charges.usd.toFixed(6)) : 0n
 }
 
+async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {
+  if (!listed.length) return false
+  const known = new Map((await Store.backings(self.env, row.id)).map((gift) => [gift.id, gift]))
+  let changed = false
+  for (const each of listed) {
+    const id = Credit.backing(each.key)
+    const gift = known.get(id)
+    const counted = Memo.units(each.ended ? each.spent : each.limit)
+    if (!gift) {
+      if (counted === 0n) continue
+      const adopted = await Store.give(self.env, { amount: String(counted), channel: each.key, contributor: each.backer, id, note: null, note_id: null, swarm: row.id, token: 'mach' })
+      if (adopted) self.log('funds', `${Words.short(each.backer)} backs the swarm with up to $${Words.trim(Memo.decimal(counted))}`, each.key)
+      changed = changed || adopted !== null
+      continue
+    }
+    if (!each.ended || BigInt(gift.amount) === counted) continue
+    await Store.lower(self.env, row.id, id, String(counted))
+    self.log('funds', `${Words.short(each.backer)}'s backing ended after paying $${Words.trim(Memo.decimal(counted))}; the rest never left their wallet`, each.key)
+    changed = true
+  }
+  return changed
+}
+
 export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everything): Promise<Money> {
-  const [hands, credit] = await Promise.all([plan.hands ? Gateway.hands(self.env, row.id) : undefined, plan.credit ? Gateway.credit(self.env, row.id) : undefined])
-  const left = credit?.ok ? Memo.units(credit.value.left) : BigInt(row.pool_left)
+  const [hands, credit, backings] = await Promise.all([
+    plan.hands ? Gateway.hands(self.env, row.id) : undefined,
+    plan.credit ? Gateway.credit(self.env, row.id) : undefined,
+    plan.credit ? Gateway.backings(self.env, row.id) : undefined,
+  ])
+  const credited = credit?.ok ? Memo.units(credit.value.left) : BigInt(row.pool_left)
   const spent = credit?.ok ? Memo.units(credit.value.spent) : BigInt(row.pool_spent)
+  const backed = backings?.ok ? Memo.units(backings.value.left) : BigInt(row.sponsor_left)
+  const used = backings?.ok ? Memo.units(backings.value.spent) : BigInt(row.sponsor_spent)
+  const left = credited + backed
+  const settled = backings?.ok ? await settle(self, row, backings.value.backings).catch((error: unknown) => (console.error('Settling backings failed', error), false)) : false
 
   const previous = self.kv.get<Hand[]>('hands') ?? []
   const connected = hands ? (hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []) : undefined
   if (connected) await joined(self, row, connected, new Set(previous.map((hand) => hand.name)))
 
   const listed = hands?.ok ? hands.value.hands : undefined
-  const pool = { machines: connected?.length ?? previous.length, pool_left: Number(left), pool_spent: Number(spent) }
-  if (Number(row.machines) === pool.machines && Number(row.pool_left) === pool.pool_left && Number(row.pool_spent) === pool.pool_spent) return { left, listed, row }
+  const pool = { machines: connected?.length ?? previous.length, pool_left: Number(credited), pool_spent: Number(spent), sponsor_left: Number(backed), sponsor_spent: Number(used) }
+  const same =
+    Number(row.machines) === pool.machines &&
+    Number(row.pool_left) === pool.pool_left &&
+    Number(row.pool_spent) === pool.pool_spent &&
+    Number(row.sponsor_left) === pool.sponsor_left &&
+    Number(row.sponsor_spent) === pool.sponsor_spent
+  if (same && !settled) return { left, listed, row }
 
-  await Store.update(self.env, row.id, pool)
-  const updated = { ...row, ...pool, remaining: pool.pool_left + Number(row.sponsor_left), spent: Number(row.spent) - Number(row.pool_spent) + pool.pool_spent }
+  if (!same) await Store.update(self.env, row.id, pool)
+  const updated = settled
+    ? ((await Store.find(self.env, row.id)) ?? row)
+    : { ...row, ...pool, remaining: pool.pool_left + pool.sponsor_left, spent: Number(row.spent) - Number(row.pool_spent) - Number(row.sponsor_spent) + pool.pool_spent + pool.sponsor_spent }
   self.remember(updated)
   self.beacon(updated)
+  if (settled) self.changed('detail', 'members')
   return { left, listed, row: updated }
 }
 

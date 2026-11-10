@@ -463,6 +463,40 @@ export function document(origin: string) {
           summary: 'Live stream',
         },
       },
+      '/v1/swarms/{id}/backings': {
+        post: {
+          description:
+            "Prepares a backing in MACH: a spending key of the gateway's for the wallet to approve, limited to amount, that may only open and fund payment channels. Nothing moves when it is approved; the swarm's agent is paid from the wallet as it works, model calls from the wallet to the model's provider and everything else over the key's channel with the gateway. Answers id and authorizeAccessKey, which Tempo Wallet approves with wallet_connect and capabilities.authorizeAccessKey. The approval is posted to /v1/swarms/{id}/backings/{request} within 30 minutes.",
+          operationId: 'prepareBacking',
+          parameters: [swarm],
+          requestBody: {
+            content: { 'application/json': { schema: input(Operations.schema.backing.omit({ swarm: true })) } },
+            required: true,
+          },
+          responses: {
+            ...ok(object({ amount: string, authorizeAccessKey: { type: 'object' }, expiresAt: integer, id: string, note: nullable(string), swarm: string }), 'The key to approve.'),
+            ...failures(400, 404, 429, 502),
+          },
+          summary: 'Prepare a backing',
+        },
+      },
+      '/v1/swarms/{id}/backings/{request}': {
+        post: {
+          description:
+            "Counts an approved backing: the wallet's key authorization for the prepared key, or a transaction signed by one of the wallet's admin keys for a fee payer that carries it. The contribution counts at the approved limit; when the key ends it is lowered to what the key paid. A note counts only when it is the note the backing was prepared with.",
+          operationId: 'countBacking',
+          parameters: [swarm, { in: 'path', name: 'request', required: true, schema: { pattern: '^[0-9a-f]{32}$', type: 'string' } }],
+          requestBody: {
+            content: { 'application/json': { schema: input(Operations.schema.approved.omit({ request: true, swarm: true })) } },
+            required: true,
+          },
+          responses: {
+            ...ok(ref('Contributed'), 'The backing was counted.', '201'),
+            ...failures(400, 404, 429, 502),
+          },
+          summary: 'Count an approved backing',
+        },
+      },
       '/v1/swarms/{id}/contributions': {
         post: {
           description:

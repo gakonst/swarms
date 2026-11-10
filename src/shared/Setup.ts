@@ -2,7 +2,7 @@ export const harnesses = ['claude', 'codex'] as const
 
 export type Harness = (typeof harnesses)[number]
 
-export const templates = ['cheap', 'frontier-mix', 'frontier-anthropic', 'frontier-openai', 'free', 'custom'] as const
+export const templates = ['cheap', 'frontier-mix', 'fable', 'frontier-anthropic', 'frontier-openai', 'free', 'custom'] as const
 
 export type Template = (typeof templates)[number]
 
@@ -16,19 +16,21 @@ export type Setup = { harness: Harness; model: string; subagents: Offer | null; 
 
 export type Choice = { harness?: Harness | undefined; model?: string | undefined; subagents?: Offer | null | undefined; template: Template }
 
-export const opus = 'vercel/anthropic/claude-opus-5.5'
+export const fable = 'boundless/anthropic/claude-fable-5.2'
+
+export const opus = 'boundless/anthropic/claude-opus-5.5'
 
 export const sol = 'vercel/openai/gpt-6.1-sol'
 
 export const astra = 'vercel/openai/gpt-6-astra'
 
-export const flash = '@cf/deepseek-ai/deepseek-v4.1-flash-1017'
+export const flash = 'boundless/deepseek/deepseek-v4.1-flash-1017'
 
-export const glmFlash = '@cf/zai-org/glm-5.3-flash'
+export const glmFlash = 'boundless/z-ai/glm-5.3-flash'
 
-export const glm = '@cf/zai-org/glm-5.3'
+export const glm = 'boundless/z-ai/glm-5.3'
 
-export const kimi = 'vercel/moonshotai/kimi-k3.1-pro'
+export const kimi = 'boundless/moonshotai/kimi-k3.1-pro'
 
 export const fallback: Template = 'cheap'
 
@@ -46,6 +48,13 @@ export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hi
     label: 'Frontier Mix',
     model: opus,
     subagents: { harnesses: ['claude', 'codex'], models: [opus, kimi, glm] },
+  },
+  fable: {
+    harness: 'claude',
+    hint: 'Claude Code on Fable 5.2 leads. Subagents use Fable 5.2, Opus 5.5, Kimi K3.1 Pro or GLM-5.3, on Claude Code or Codex.',
+    label: 'Fable 5.2',
+    model: fable,
+    subagents: { harnesses: ['claude', 'codex'], models: [fable, opus, kimi, glm] },
   },
   'frontier-anthropic': {
     harness: 'claude',
@@ -73,6 +82,7 @@ export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hi
 export const labels: Record<Template, string> = {
   cheap: presets.cheap.label,
   custom: 'Custom',
+  fable: presets.fable.label,
   free: presets.free.label,
   'frontier-anthropic': presets['frontier-anthropic'].label,
   'frontier-mix': presets['frontier-mix'].label,

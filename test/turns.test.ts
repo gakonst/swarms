@@ -25,6 +25,7 @@ test('failed turns count back to the last completed one', () => {
 test("a turn the gateway refused because the swarm's credit ran out counts as out of money", () => {
   assert.ok(Turns.broke("Responses HTTPS request was rejected with HTTP 402: {\"error\":{\"message\":\"This app's credit has $0 left and this request holds $0.002325. Send MACH\"}}"))
   assert.ok(!Turns.broke('vercel/openai/gpt-6-luna failed upstream at vercel with HTTP 402'))
+  assert.ok(Turns.broke("None of this app's backers can pay right now"))
   assert.ok(!Turns.broke(null))
 })
 
@@ -41,7 +42,9 @@ test('a swarm paused for money reads its credit once its calls are over, and goe
         GATEWAY: {
           fetch: async (request: Request) => {
             requests.push(new URL(request.url).pathname)
-            return Response.json(new URL(request.url).pathname === '/api/keys/credit' ? { deposited: '1', left, spent: '0' } : { hands: [] })
+            const path = new URL(request.url).pathname
+            if (path === '/api/keys/backings') return Response.json({ backings: [], left: '0', spent: '0' })
+            return Response.json(path === '/api/keys/credit' ? { deposited: '1', left, spent: '0' } : { hands: [] })
           },
         },
         GATEWAY_URL: 'https://gateway.test',

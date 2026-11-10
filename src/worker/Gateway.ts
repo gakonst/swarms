@@ -63,7 +63,7 @@ type Raw = {
   task: string
 }
 
-type Init = { app?: string; body?: unknown; key?: string; method?: string }
+type Init = { app?: string; body?: unknown; key?: string; method?: string; open?: boolean }
 
 export function call(env: Cloudflare.Env, path: string, init: RequestInit = {}) {
   const request = new Request(env.GATEWAY_URL + path, init)
@@ -75,7 +75,7 @@ export function app(swarm: string) {
 }
 
 async function send<value>(env: Cloudflare.Env, path: string, init: Init = {}): Promise<Result<value>> {
-  const headers = new Headers({ accept: 'application/json', authorization: 'Bearer ' + (init.key ?? env.SWARMS_GATEWAY_KEY) })
+  const headers = new Headers({ accept: 'application/json', ...(init.open ? {} : { authorization: 'Bearer ' + (init.key ?? env.SWARMS_GATEWAY_KEY) }) })
   if (init.body !== undefined) headers.set('content-type', 'application/json')
   if (init.app) headers.set('gateway-app', init.app)
 
@@ -168,6 +168,42 @@ export function credited(env: Cloudflare.Env, swarm: string, hash: string) {
   return send<{ created: boolean; credit: Standing; deposits: Deposit[] }>(env, '/api/keys/credit', { app: app(swarm), body: { hash } })
 }
 
+export type Backing = {
+  backer: `0x${string}`
+  createdAt: number
+  ended: boolean
+  expiresAt: number | null
+  key: `0x${string}`
+  left: string
+  limit: string
+  spent: string
+  tag: string | null
+  token: string | null
+}
+
+export type Approved = {
+  accessKey: `0x${string}`
+  backs?: { app: string; owner: string; tag?: string }
+  expiresAt: number
+  limits: { limit: string; token: string }[]
+  wallet: `0x${string}`
+}
+
+export function backings(env: Cloudflare.Env, swarm: string) {
+  return send<{ backings: Backing[]; left: string; spent: string }>(env, '/api/keys/backings', { app: app(swarm) })
+}
+
+export function backing(env: Cloudflare.Env, swarm: string, input: { days: number; deposit: number; limit: number; owner: string; tag: string; topUp: number }) {
+  return send<{ authorizeAccessKey: { expiry: number } & Record<string, unknown>; id: string }>(env, '/api/keys/request', {
+    body: { backs: { app: app(swarm), owner: input.owner, tag: input.tag }, days: input.days, deposit: input.deposit, limit: input.limit, token: 'mach', topUp: input.topUp },
+    open: true,
+  })
+}
+
+export function backed(env: Cloudflare.Env, input: { id: string; keyAuthorization?: unknown; transaction?: string }) {
+  return send<Approved>(env, '/api/keys/complete', { body: input, open: true })
+}
+
 export type Teammate = { budget: number | string | null; limit: number | string | null; member: `0x${string}`; role: 'admin' | 'member' }
 
 export function team(env: Cloudflare.Env, name: string) {
@@ -196,7 +232,7 @@ export function agent(env: Cloudflare.Env, swarm: string, input: { instructions:
     app: app(swarm),
     body: {
       name: input.name,
-      payer: 'credit',
+      payer: 'backers',
       instructions: input.instructions,
       ...(setup ? { harness: setup.harness, model: setup.model, ...(setup.subagents ? { subagents: setup.subagents } : {}) } : {}),
     },
@@ -208,7 +244,7 @@ export function instruct(env: Cloudflare.Env, swarm: string, agent: string, inst
 }
 
 export function fund(env: Cloudflare.Env, swarm: string, agent: string) {
-  return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { payer: 'credit' }, method: 'PATCH' })
+  return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { payer: 'backers' }, method: 'PATCH' })
 }
 
 export function prompt(env: Cloudflare.Env, swarm: string, agent: string, input: { id?: string; prompt: string; steer: boolean }) {

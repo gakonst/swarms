@@ -14,6 +14,8 @@ const preferred: readonly Currency[] = ['mach', 'ousd', 'usdce', 'pathusd']
 
 const smallest = '0.01'
 
+const approvable = 1_000_000n
+
 export type Target = { id: string }
 
 export type Prefill = { amount: string; note: string; token: Currency | undefined }
@@ -60,7 +62,7 @@ type Working = keyof typeof working
 
 export type Unrecorded = { amount: bigint; hash: string; note: string; swarm: string; token: Currency }
 
-type Flow = { at: 'idle' } | { at: 'busy'; step: Working } | { at: 'done'; hash?: string; text: string } | { at: 'failed'; error: string; short: boolean } | { at: 'unrecorded'; paid: Unrecorded; reason: string; target: Target }
+type Flow = { at: 'idle' } | { at: 'busy'; step: Working } | { at: 'done'; hash?: string; kept?: boolean; text: string } | { at: 'failed'; error: string; short: boolean } | { at: 'unrecorded'; paid: Unrecorded; reason: string; target: Target }
 
 const idle: Flow = { at: 'idle' }
 
@@ -87,7 +89,30 @@ export async function record(paid: Unrecorded) {
   }
 }
 
+export function approves(amount: bigint, token: Currency) {
+  return token === 'mach' && amount >= approvable && !Api.fixture
+}
+
+async function approve(config: Config, target: Target, amount: bigint, note: string) {
+  const approved = await Api.back(target.id, { amount: decimal(amount), ...(note ? { note } : {}) })
+    .then(async (prepared) => ({ id: prepared.id, keyAuthorization: (await Wallet.authorize(config, prepared.authorizeAccessKey)).keyAuthorization }))
+    .catch((error: unknown) => {
+      if (Wallet.declined(error)) throw error
+      console.warn('The approval could not be asked for, so the money is sent instead', error)
+      return undefined
+    })
+  if (!approved) return undefined
+  const counted = await Api.approved(target.id, approved.id, { keyAuthorization: approved.keyAuthorization, ...(note ? { note } : {}) })
+  return counted.contribution.hash ?? approved.id
+}
+
 export async function send(config: Config, target: Target, amount: bigint, note: string, token: Currency) {
+  const approved = approves(amount, token) ? await approve(config, target, amount, note) : undefined
+  if (approved) return { hash: approved, kept: true }
+  return { hash: await transfer(config, target, amount, note, token), kept: false }
+}
+
+async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency) {
   if (!config.credit) throw new Error('Backing is not available right now. Try again in a moment.')
   const { memo } = await import('../shared/Credit.ts')
   const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, note), to: config.credit.recipient, token })
@@ -148,8 +173,8 @@ export function Fuel(props: {
       if (held !== undefined && held < units(amount)) throw Object.assign(new Error('Your wallet holds less than this.'), { code: 'insufficient_balance' })
       target = await props.target((next) => step(next))
       step('send')
-      const hash = await send(config, target, units(amount), text, using)
-      setFlow({ at: 'done', hash, text: `You backed it with ${dollars(amount)}.` })
+      const sent = await send(config, target, units(amount), text, using)
+      setFlow({ at: 'done', hash: sent.hash, kept: sent.kept, text: `You backed it with ${dollars(amount)}.` })
       props.onNote('')
       props.onDone(target)
     } catch (error) {
@@ -189,7 +214,7 @@ export function Fuel(props: {
       </button>
       <div className="fuel-told" ref={told}>
         {low && flow.at !== 'failed' && <Alert title="Not enough in your wallet." tone="warn">Add money in Tempo Wallet first.</Alert>}
-        {flow.at === 'done' && <Alert action={{ label: 'Back again', onClick: () => setFlow(idle) }} title={flow.text} tone="good">Thank you!</Alert>}
+        {flow.at === 'done' && <Alert action={{ label: 'Back again', onClick: () => setFlow(idle) }} title={flow.text} tone="good">{flow.kept ? 'Thank you! It stays in your wallet until the AI spends it.' : 'Thank you!'}</Alert>}
         {flow.at === 'unrecorded' && (
           <Alert action={{ label: 'Try again', onClick: () => void retry(flow.paid, flow.target) }} title="Sent, but not counted yet." tone="warn">
             Nothing is paid twice.

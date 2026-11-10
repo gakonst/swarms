@@ -67,6 +67,8 @@ const routes = [
   ['GET', '/v1/me', 'Your account: address, username and the handle rooms show.', ''],
   ['POST', '/v1/me', 'Set your username, which posting, steering and side questions need.', '{ name }'],
   ['POST', '/v1/swarms/:id/hands', 'Issue a hand to lend a machine.', '{ label? }'],
+  ['POST', '/v1/swarms/:id/backings', "Prepare a backing in MACH: a spending key for the wallet to approve, which the swarm spends from as it works.", '{ amount, note? }'],
+  ['POST', '/v1/swarms/:id/backings/:request', "Count an approved backing: the wallet's key authorization for the prepared key.", '{ keyAuthorization | transaction, note? }'],
   ['POST', '/v1/swarms/:id/contributions', 'Count a transfer of MACH, OUSD, USDC.e or pathUSD sent to the gateway for the swarm.', '{ hash, note? }'],
 ] as const
 
@@ -233,12 +235,21 @@ export function Docs(props: { config: Config | undefined }) {
         id="fund"
         intro={
           <>
-            <p>Money comes one way: you send MACH, OUSD, USDC.e or pathUSD to the Tempo gateway with <code>transferWithMemo</code> and a memo that names the swarm, and the swarm counts it. The gateway holds it as the swarm's credit and spends it only on what the swarm's agent does. A swarm holds no wallet, and money sent is not returned.</p>
+            <p>Money comes two ways. A backing in MACH is an approval: your wallet approves a spending key with a limit, held by the Tempo gateway, and the swarm's agent is paid from your wallet as it works, up to that limit. Nothing moves when you approve, what the swarm never spends never leaves your wallet, and revoking the key in Tempo Wallet ends it. Or you send MACH, OUSD, USDC.e or pathUSD to the gateway with <code>transferWithMemo</code> and a memo that names the swarm; the gateway holds it as the swarm's credit, spends it only on what the swarm's agent does, and money sent is not returned. A swarm spends its backings first and its credit after, and holds no wallet.</p>
           </>
         }
         title="Fund"
       >
-        <h3 className="docs-head">1. Send</h3>
+        <h3 className="docs-head">Back with an approval</h3>
+        <Code>{`curl -s ${origin}/v1/swarms/<id>/backings -H 'content-type: application/json' \\\n  -d '{"amount":"5","note":"Add HTTP/2"}'`}</Code>
+        <p className="docs-text">
+          It answers <code>id</code> and <code>authorizeAccessKey</code>: a key of the gateway's with one limit, the amount in MACH, that may only open and fund payment channels. Have the wallet approve it (Tempo Wallet: <code>wallet_connect</code> with <code>capabilities.authorizeAccessKey</code>, which answers <code>keyAuthorization</code>) and post the approval within 30 minutes:
+        </p>
+        <Code>{`curl -s ${origin}/v1/swarms/<id>/backings/<request id> -H 'content-type: application/json' \\\n  -d '{"keyAuthorization":{…},"note":"Add HTTP/2"}'`}</Code>
+        <p className="docs-text">
+          It answers the contribution, counted at the approved limit, and starts or steers the swarm. The swarm's money left counts what the key can still pay; when the key ends, the contribution is lowered to what it paid. A backing is between 1 and 1000 MACH and lasts 30 days.
+        </p>
+        <h3 className="docs-head">Or send: 1. Send</h3>
         <p className="docs-text">
           Send the token to <code>config.credit.recipient</code> from <code>/v1/config</code>. The memo is 32 bytes: the first 16 of <code>keccak256("gateway:credit:4217:&lt;config.credit.owner&gt;:swarm-&lt;swarm&gt;")</code>, then the first 16 of <code>keccak256("swarm:&lt;swarm&gt;")</code>, or of <code>keccak256("note:&lt;swarm&gt;:&lt;note&gt;")</code> to put the money behind a note. <code>swarm_contribute</code> without a hash answers the address, the memo and the call data.
         </p>

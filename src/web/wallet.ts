@@ -189,7 +189,7 @@ export async function connect(config: Config) {
   return address
 }
 
-function declined(error: unknown) {
+export function declined(error: unknown) {
   const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
   return code === 4001 || (error instanceof Error && /declined|rejected|denied|cancel/i.test(error.message))
 }
@@ -283,6 +283,18 @@ export async function disconnect() {
   if (fixture) return
   localStorage.removeItem(remembered)
   await (await wallet()).request({ method: 'wallet_disconnect' }).catch(() => {})
+}
+
+export async function authorize(config: Config, authorizeAccessKey: unknown) {
+  const result = (await (await wallet()).request({ method: 'wallet_connect', params: [{ capabilities: { authorizeAccessKey }, chainId: config.chainId }] } as never)) as {
+    accounts: readonly { address: Address; capabilities?: { keyAuthorization?: unknown } }[]
+  }
+  const account = result.accounts[0]
+  const keyAuthorization = account?.capabilities?.keyAuthorization
+  if (!account || !keyAuthorization) throw new Error('Tempo Wallet returned no approval.')
+  if (!state.address) set({ address: account.address })
+  void refresh(config).catch(() => {})
+  return { address: account.address, keyAuthorization }
 }
 
 export async function send(config: Config, input: { amount: bigint; memo: Hex; to: Address; token: Currency }) {
