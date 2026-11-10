@@ -280,14 +280,16 @@ function paged(path: string) {
 export default {
   fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext) {
     const url = new URL(request.url)
-    if (Site.under(url.pathname)) {
-      url.pathname = Site.strip(url.pathname)
-      return app.fetch(new Request(url, request), env, context)
-    }
+    const inside = Site.under(url.pathname)
+    const path = Site.strip(url.pathname)
     const accept = request.headers.get('accept') ?? ''
-    if ((request.method === 'GET' || request.method === 'HEAD') && paged(url.pathname) && (accept === '' || /text\/html|\*\/\*/.test(accept)))
-      return new Response(null, { headers: { location: Site.base + (url.pathname === '/' ? '/' : url.pathname) + url.search }, status: 301 })
-    return app.fetch(request, env, context)
+    const page = (request.method === 'GET' || request.method === 'HEAD') && paged(path) && (accept === '' || /text\/html|\*\/\*/.test(accept))
+    const site = Site.url(env, url)
+    if (page && new URL(site).origin !== url.origin && !request.headers.has('cf-worker')) return new Response(null, { headers: { location: site + path + url.search }, status: 301 })
+    if (page && !inside) return new Response(null, { headers: { location: Site.base + path + url.search }, status: 301 })
+    if (!inside) return app.fetch(request, env, context)
+    url.pathname = path
+    return app.fetch(new Request(url, request), env, context)
   },
 } satisfies ExportedHandler<Cloudflare.Env>
 
