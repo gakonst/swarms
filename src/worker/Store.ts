@@ -550,7 +550,15 @@ export async function replaced(env: Cloudflare.Env, swarm: string, current: stri
 }
 
 export async function unsteer(env: Cloudflare.Env, ids: readonly string[]) {
-  await env.DB.batch(ids.map((id) => env.DB.prepare('delete from steers where id = ?').bind(id)))
+  if (!ids.length) return
+  const placed = ids.map((_, index) => '?' + (index + 1)).join(', ')
+  await env.DB.prepare(
+    `delete from steers where id in (${placed}) and not exists (
+      select 1 from steers s join branches b on b.swarm = s.swarm and b.agent = s.agent and b.branch = s.branch where s.id in (${placed}) and b.settled_at is not null
+    )`,
+  )
+    .bind(...ids)
+    .run()
 }
 
 export async function shift(env: Cloudflare.Env, input: { agent: string; amount: bigint; contributor: string; from: number; swarm: string; to: number }) {
