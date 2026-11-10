@@ -590,10 +590,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   override async alarm() {
     const indexing = Feed.indexed(this)
     this.stepping ??= Turns.step(this)
-      .catch((error: unknown) => {
-        this.log('error', 'The swarm hit an error and will retry.', String(error))
-        return Date.now() + Clock.retryMs
-      })
+      .catch((error: unknown) => Turns.threw(this, error))
       .finally(() => {
         this.stepping = undefined
       })

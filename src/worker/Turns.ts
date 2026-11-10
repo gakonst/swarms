@@ -148,17 +148,29 @@ export async function advance(self: Swarm, row: Store.Row) {
 export async function retry(self: Swarm, row: Store.Row, error: string, detail: string) {
   const run = self.run()
   const now = Date.now()
-  const last = run.state === 'waiting' ? run.retry : undefined
-  const repeat = last?.error === error
-  const logged = last && repeat && now - last.logged < Clock.quietMs ? last.logged : now
-  if (logged === now) self.log('error', error, detail)
+  failed(self, error, detail)
   await self.move(row, {
     ...(run.state === 'waiting' && run.from ? { from: run.from } : {}),
-    retry: { count: (last && repeat ? last.count : 0) + 1, error, logged },
     since: Phase.since(run),
     state: 'waiting',
     until: now + Clock.retryMs,
   })
+  return now + Clock.retryMs
+}
+
+function failed(self: Swarm, error: string, detail: string) {
+  const last = self.ctx.storage.sql
+    .exec<{ at: number | null }>("SELECT MAX(at) AS at FROM (SELECT at, kind, text FROM feed ORDER BY seq DESC LIMIT 200) WHERE kind = 'error' AND text = ?", error)
+    .one().at
+  if (last === null || Date.now() - Number(last) >= Clock.quietMs) self.log('error', error, detail)
+}
+
+export function threw(self: Swarm, error: unknown) {
+  const now = Date.now()
+  console.error('A step of the swarm threw', String(error))
+  failed(self, 'The swarm hit an error and will retry.', String(error))
+  const run = self.run()
+  if (run.state === 'starting') self.set({ since: run.since, state: 'waiting', until: now + Clock.retryMs })
   return now + Clock.retryMs
 }
 

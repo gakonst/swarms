@@ -12,12 +12,10 @@ export type Told = [note: string, weight: string]
 
 export type Run =
   | { state: 'new' }
-  | { from?: Pause | undefined; retry?: Retry | undefined; since: number | null; state: 'waiting'; until: number }
+  | { from?: Pause | undefined; since: number | null; state: 'waiting'; until: number }
   | { id: string; n: number; since: number | null; state: 'starting'; told: Told[] }
   | { from: number; n: number; since: number; started: number; state: 'working'; turn: string; wanted?: string | undefined }
   | { at: number; pause: Pause; state: 'paused' }
-
-export type Retry = { count: number; error: string; logged: number }
 
 export type State = Run['state']
 

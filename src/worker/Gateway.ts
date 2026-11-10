@@ -79,14 +79,16 @@ async function send<value>(env: Cloudflare.Env, path: string, init: Init = {}): 
   if (init.body !== undefined) headers.set('content-type', 'application/json')
   if (init.app) headers.set('gateway-app', init.app)
 
-  const [response, text] = await Timing.span(
+  const answered = await Timing.span(
     'gw.' + Timing.label(path),
     call(env, path, {
       body: init.body === undefined ? null : JSON.stringify(init.body),
       headers,
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
     }).then(async (response) => [response, await response.text()] as const),
-  )
+  ).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
+  if ('ok' in answered) return answered
+  const [response, text] = answered
   const parsed = (() => {
     try {
       return JSON.parse(text) as Record<string, unknown>
