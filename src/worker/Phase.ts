@@ -45,18 +45,34 @@ export function wakes(pause: Pause, reason: Reason) {
 
 export const rereadMs = 10 * 60_000
 
+export const maxPatienceMs = 6 * 60 * 60_000
+
 export function unread(run: Paused, now: number) {
-  return run.settled === undefined || now - run.settled >= rereadMs
+  return run.settled === undefined || now - run.settled >= rereadMs || (due(run, now) && run.settled < woken(run))
 }
 
-export function resumes(pause: Pause, money: { balance: bigint; left: bigint; reserve: bigint }) {
+export function resumes(pause: Pause, money: { balance: bigint; left: bigint; now?: number | undefined; reserve: bigint }) {
   if (money.left < money.reserve) return false
   if (pause.why !== 'money' || pause.needs === undefined || BigInt(pause.left) < BigInt(pause.needs)) return true
+  if (pause.wake !== null && money.now !== undefined && pause.wake <= money.now) return true
   return pause.balance !== undefined && money.balance > BigInt(pause.balance)
 }
 
 export function due(run: Run, now: number) {
   return run.state === 'paused' && run.pause.why === 'money' && run.pause.wake !== null && run.pause.wake <= now
+}
+
+function woken(run: Run) {
+  return run.state === 'paused' && run.pause.why === 'money' && run.pause.wake !== null ? run.pause.wake : Infinity
+}
+
+export function waking(run: Run, now: number) {
+  const wake = woken(run)
+  return wake !== Infinity && wake > now ? wake : null
+}
+
+export function patience(failures: number) {
+  return Math.min(maxPatienceMs, rereadMs * 2 ** Math.max(0, failures - 1))
 }
 
 export function project(run: Run, n: number): { status: Status; why: Why | null } {

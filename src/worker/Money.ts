@@ -9,7 +9,7 @@ import * as Clock from './Clock.ts'
 import * as Words from './Words.ts'
 import type { Swarm } from './Swarm.ts'
 
-type Money = { left: bigint; listed: Gateway.Listed[] | undefined; row: Store.Row }
+type Money = { known: boolean; left: bigint; listed: Gateway.Listed[] | undefined; row: Store.Row }
 
 type Plan = { credit: boolean; hands: boolean }
 
@@ -64,6 +64,7 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   const backed = backings?.ok ? Memo.units(backings.value.left) : BigInt(row.sponsor_left)
   const used = backings?.ok ? Memo.units(backings.value.spent) : BigInt(row.sponsor_spent)
   const left = credited + backed
+  const known = !plan.credit || (!!credit?.ok && !!backings?.ok)
   const settled = backings?.ok ? await settle(self, row, backings.value.backings).catch((error: unknown) => (console.error('Settling backings failed', error), false)) : false
 
   const previous = self.kv.get<Hand[]>('hands') ?? []
@@ -78,7 +79,7 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
     Number(row.pool_spent) === pool.pool_spent &&
     Number(row.sponsor_left) === pool.sponsor_left &&
     Number(row.sponsor_spent) === pool.sponsor_spent
-  if (same && !settled) return { left, listed, row }
+  if (same && !settled) return { known, left, listed, row }
 
   if (!same) await Store.update(self.env, row.id, pool)
   const paid = Number(row.spent) - Number(row.pool_spent) - Number(row.sponsor_spent) + pool.pool_spent + pool.sponsor_spent
@@ -86,7 +87,7 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   self.remember(updated)
   self.beacon(updated)
   if (settled) self.changed('detail', 'members')
-  return { left, listed, row: updated }
+  return { known, left, listed, row: updated }
 }
 
 export async function joined(self: Swarm, row: Store.Row, connected: Gateway.Listed[], previous: ReadonlySet<string>) {

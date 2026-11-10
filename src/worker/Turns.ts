@@ -44,7 +44,7 @@ export function roomed(origin: string, swarm: string) {
 }
 
 export function broke(message: string | null) {
-  return !!message && (message.includes("This app's credit has $") || message.includes("None of this app's backers can pay") || message.includes(' was not paid: '))
+  return !!message && (message.includes("This app's credit has $") || message.includes(' was not paid: '))
 }
 
 function grown(told: bigint | null | undefined, weight: bigint) {
@@ -90,6 +90,7 @@ export async function advance(self: Swarm, row: Store.Row) {
   const worked = self.turned()
   const money = await Money.refresh(self, row, { credit: true, hands: Follow.handsDue(self, Date.now()) })
   if (run.state !== 'starting' && money.left < Store.reserveOf(money.row)) {
+    if (!money.known) return retry(self, money.row, 'The gateway did not say how much money the swarm has.', 'Reading its credit and backings failed, so the last figures were not taken as the answer.')
     await pause(self, money.row, worked || money.row.contributors ? { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: null, why: 'money' } : { why: 'unfunded' })
     return null
   }
@@ -284,8 +285,9 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   const kinds = new Set((['kv', 'bucket', 'git'] as const).filter((kind) => stored[kind] > 0 || !self.kv.get<number>('published')))
   if (kinds.size) await expose(self, row, kinds).catch((error: unknown) => console.error('Making the swarm data public failed', error))
   const grew = run.balance !== undefined && BigInt(money.row.balance) > BigInt(run.balance)
-  if (status !== 'completed' && (money.left < Store.reserveOf(money.row) || (broke(message) && !grew))) {
-    await pause(self, money.row, { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: null, why: 'money' })
+  const short = money.known && money.left < Store.reserveOf(money.row)
+  if (status !== 'completed' && (short || (broke(message) && !grew))) {
+    await pause(self, money.row, { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: short ? null : Date.now() + Phase.patience(refusals(self)), why: 'money' })
     return null
   }
   const failures = status === 'completed' ? 0 : failing(self, run.since)
@@ -316,6 +318,15 @@ async function quiet(self: Swarm, row: Store.Row) {
   const listed = await Gateway.subagents(self.env, row.id, agent)
   if (!listed.ok) return listed.status < 500
   return listed.value.every((subagent) => !['pending', 'queued', 'running'].includes(subagent.status.state))
+}
+
+function refusals(self: Swarm) {
+  let count = 0
+  for (const row of self.ctx.storage.sql.exec<{ status: string }>('SELECT status FROM turns ORDER BY n DESC LIMIT 8').toArray()) {
+    if (row.status === 'completed') break
+    count += 1
+  }
+  return count
 }
 
 export function failing(self: Swarm, since: number) {
@@ -379,13 +390,14 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause) {
 
 export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
   const now = Date.now()
-  if (!Phase.unread(run, now)) return null
+  if (!Phase.unread(run, now)) return Phase.waking(run, now)
   if (now < run.at + settleMs) return run.at + settleMs
   if (run.settled === undefined && now < run.at + calmMs && !(await quiet(self, row))) return now + Clock.minuteMs
   const money = await Money.refresh(self, row, { credit: true, hands: run.settled === undefined })
   const paused = self.run()
   if (paused.state !== 'paused' || paused.at !== run.at) return null
-  if (Phase.resumes(run.pause, { balance: BigInt(money.row.balance), left: money.left, reserve: Store.reserveOf(money.row) })) self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
+  if (!money.known) return Date.now() + Clock.minuteMs
+  if (Phase.resumes(run.pause, { balance: BigInt(money.row.balance), left: money.left, now: Date.now(), reserve: Store.reserveOf(money.row) })) self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
   else self.set({ ...paused, settled: Date.now() })
-  return null
+  return Phase.waking(run, Date.now())
 }

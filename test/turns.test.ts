@@ -26,7 +26,7 @@ test('failed turns count back to the last completed one', () => {
 test("a turn the gateway refused because the swarm's credit ran out counts as out of money", () => {
   assert.ok(Turns.broke("Responses HTTPS request was rejected with HTTP 402: {\"error\":{\"message\":\"This app's credit has $0 left and this request holds $0.002325. Send MACH\"}}"))
   assert.ok(!Turns.broke('vercel/openai/gpt-6-luna failed upstream at vercel with HTTP 402'))
-  assert.ok(Turns.broke("None of this app's backers can pay right now"))
+  assert.ok(Turns.broke('Boundless was not paid: fetch failed'))
   assert.ok(!Turns.broke(null))
   assert.ok(Turns.broke('Messages stream error api_error: Boundless was not paid: No method found for challenges: tempo.session'))
 })

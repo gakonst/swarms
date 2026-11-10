@@ -250,7 +250,7 @@ test('money put in while a turn is failing for lack of it is used: the swarm tri
     return undefined
   })
   t.after(w.restore)
-  const broke = { error: "None of this app's backers can pay right now", request_id: 'agt_1:1', status: 'failed' }
+  const broke = { error: 'Boundless was not paid: fetch failed', request_id: 'agt_1:1', status: 'failed' }
   const fail = async () => {
     report = broke
     w.swarm.checked = 0
@@ -273,16 +273,72 @@ test('money put in while a turn is failing for lack of it is used: the swarm tri
 
   await fail()
   const paused = w.swarm.run()
-  assert.deepEqual(paused.state === 'paused' && paused.pause, { balance: '5500000', left: '5500000', needs: '50000', wake: null, why: 'money' })
+  const wake = Date.now() + 20 * 60_000
+  assert.deepEqual(paused.state === 'paused' && paused.pause, { balance: '5500000', left: '5500000', needs: '50000', wake, why: 'money' })
   w.pass(15_000)
   await w.ring()
-  assert.deepEqual([w.swarm.run().state, w.alarm()], ['paused', null])
+  assert.deepEqual([w.swarm.run().state, w.alarm()], ['paused', wake])
 
   await w.give('1000000', '0x' + 'e'.repeat(64))
   w.pass(600_000)
   await w.viewed()
   await w.ring()
   assert.equal(w.swarm.run().state, 'working')
+})
+
+test('a swarm the gateway refused to pay for while it lists money tries again by itself, waiting twice as long after each refusal, and never pauses on figures it could not read', async (t) => {
+  let report: Record<string, unknown> = { request_id: 'agt_1:1', status: 'running' }
+  let down = false
+  const w = world((_request, url) => {
+    if (down && (url.pathname === '/api/keys/credit' || url.pathname === '/api/keys/backings')) return Response.json({ error: 'rate limited' }, { status: 429 })
+    if (url.pathname === '/api/keys/credit') return Response.json({ deposited: '5', left: '5', spent: '0' })
+    if (url.pathname.startsWith('/v1/agents/agt_1/turns/agt_1:')) return Response.json(report)
+    return undefined
+  })
+  t.after(w.restore)
+  const fail = async () => {
+    report = { error: 'Boundless was not paid: fetch failed', request_id: 'agt_1:1', status: 'failed' }
+    w.swarm.checked = 0
+    w.pass(11_000)
+    await w.ring()
+    report = { request_id: 'agt_1:1', status: 'running' }
+  }
+  await w.seed('5000000')
+  await w.swarm.wake('money')
+  await w.ring()
+  await fail()
+  const first = w.swarm.run()
+  assert.equal(first.state === 'paused' && first.pause.why === 'money' && first.pause.wake, Date.now() + 10 * 60_000)
+  w.pass(15_000)
+  await w.ring()
+  assert.deepEqual([w.swarm.run().state, w.alarm()], ['paused', Date.now() - 15_000 + 10 * 60_000])
+  w.pass(10 * 60_000)
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+  await fail()
+  const second = w.swarm.run()
+  assert.equal(second.state === 'paused' && second.pause.why === 'money' && second.pause.wake, Date.now() + 20 * 60_000)
+
+  down = true
+  w.pass(20 * 60_000)
+  await w.ring()
+  assert.deepEqual([w.swarm.run().state, w.alarm()], ['paused', Date.now() + 60_000])
+  down = false
+  w.pass(60_000)
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+
+  const unread = world((_request, url) => (down && url.pathname === '/api/keys/credit' ? Response.json({ error: 'rate limited' }, { status: 429 }) : undefined))
+  t.after(unread.restore)
+  down = true
+  await unread.seed()
+  await unread.swarm.wake('money')
+  await unread.ring()
+  assert.deepEqual([unread.swarm.run().state, unread.errors()], ['waiting', ['The gateway did not say how much money the swarm has.']])
+  down = false
+  unread.pass(30_000)
+  await unread.ring()
+  assert.equal(unread.swarm.run().state, 'working')
 })
 
 test('a turn whose live stream failed twice is polled, and listens again a minute later instead of never', async (t) => {
