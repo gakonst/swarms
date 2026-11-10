@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fleet } from '../src/shared/Fleet.ts'
+import { fleet, folded } from '../src/shared/Fleet.ts'
 
 const entry = (seq: number, kind: string, text: string, detail: string | null = null, who: string | null = null) => ({ at: seq * 1000, detail, event: seq, kind, seq, text, who }) as never
 
@@ -117,4 +117,37 @@ test('fleet reads a sandbox id from a compute_create output wrapped in more than
   assert.equal(machines[0]?.started, 1000)
   assert.deepEqual(machines[0]?.config, [['CPU', '8'], ['GPU', 'H200'], ['Image', 'lmsysorg/sglang'], ['Lease', '10 min']])
   assert.deepEqual(machines[0]?.commands.map((run) => run.who), ['autoresearch branch: moe3'])
+})
+
+test('shutting down a sandbox ends only the machine it names, and only while that sandbox is its latest', () => {
+  const machines = folded([
+    entry(1, 'machine', 'Starting machine sandbox (python:3.12-slim)', '{"attach":"sandbox","image":"python:3.12-slim"}'),
+    entry(2, 'output', 'compute_create output', '{"sandboxId":"sb-AAA111"}'),
+    entry(3, 'machine', 'Starting machine gpu (pytorch)', '{"attach":"gpu","image":"pytorch"}'),
+    entry(4, 'output', 'compute_create output', '{"sandboxId":"sb-BBB222"}'),
+    entry(5, 'machine', 'Starting machine d (pytorch)', '{"attach":"d","image":"pytorch"}'),
+    entry(6, 'output', 'compute_create output', '{"sandboxId":"sb-CCC333"}'),
+    entry(7, 'machine', 'Shutting down a machine', '{"sandboxId":"sb-BBB222"}'),
+    entry(8, 'machine', 'Starting machine sandbox (python:3.12-slim)', '{"attach":"sandbox","image":"python:3.12-slim"}'),
+    entry(9, 'output', 'compute_create output', '{"sandboxId":"sb-DDD444"}'),
+    entry(10, 'machine', 'Shutting down a machine', '{"sandboxId":"sb-AAA111"}'),
+  ], [])
+  assert.deepEqual(Object.fromEntries(machines.map((machine) => [machine.name, machine.ended])), { d: null, gpu: 7000, sandbox: null })
+})
+
+test('a machine that left and joined again is running since it came back, whichever line said it joined', () => {
+  const machines = folded([
+    entry(1, 'machine', "A contributor's machine joined the swarm as hand mbp-abc123 (laptop)."),
+    entry(2, 'machine', 'Machine box-1 joined the swarm.'),
+    entry(3, 'machine', 'Machine mbp-abc123 left.'),
+    entry(4, 'machine', 'Machine box-1 left.'),
+    entry(5, 'machine', 'Machine gone-1 joined the swarm.'),
+    entry(6, 'machine', "A contributor's machine joined the swarm as hand mbp-abc123 (laptop)."),
+    entry(7, 'machine', 'Machine box-1 joined the swarm.'),
+    entry(8, 'machine', 'Machine gone-1 left.'),
+  ], [{ connected: true, name: 'mbp-abc123' }, { connected: true, name: 'box-1' }])
+  assert.deepEqual(
+    machines.map((machine) => [machine.name, machine.kind, machine.label, machine.connected, machine.started, machine.ended]),
+    [['box-1', 'hand', null, true, 7000, null], ['mbp-abc123', 'hand', 'laptop', true, 6000, null], ['gone-1', 'hand', null, false, 5000, 8000]],
+  )
 })

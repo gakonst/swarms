@@ -35,7 +35,10 @@ export function saw(self: Swarm, sha: string) {
 
 export async function located(self: Swarm, row: Store.Row): Promise<Repo> {
   const ready = self.kv.get<string>('repo')
-  if (ready) return { name: ready, state: 'ready' }
+  if (ready) {
+    if (row.repo !== ready) await Store.update(self.env, row.id, { repo: ready })
+    return { name: ready, state: 'ready' }
+  }
   const name = row.repo ?? slug(row.title)
   const looked = self.kv.get<number>('repoLooked') ?? 0
   if (!Follow.cued(self, 'git', looked) && Date.now() - looked < lookMs) return { name, state: 'none' }
@@ -44,8 +47,8 @@ export async function located(self: Swarm, row: Store.Row): Promise<Repo> {
   const listed = owner ? await Gateway.code<{ repos: { name: string }[] }>(self.env, owner, row.id, `?at=${Date.now()}`) : undefined
   const found = listed?.repos.find((repo) => repo.name === name) ?? listed?.repos[0]
   if (found) {
-    self.kv.put('repo', found.name)
     await Store.update(self.env, row.id, { repo: found.name })
+    self.kv.put('repo', found.name)
     self.log('status', `The swarm's code now lives in its public repository ${found.name}, which its page shows.`)
     self.changed('detail', 'code')
     return { name: found.name, state: 'ready' }

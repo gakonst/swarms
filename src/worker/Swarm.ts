@@ -390,7 +390,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const id = this.kv.get<string>('id')
     if (!id) return []
     const listed = await Gateway.hands(this.env, id)
-    return listed.ok ? listed.value.hands : []
+    return listed.ok ? listed.value.hands : undefined
   }
 
   async heal() {

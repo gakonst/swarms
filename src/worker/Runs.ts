@@ -267,7 +267,7 @@ async function refresh(self: Swarm, swarm: string, sandbox: string, machine: Fle
   const kv = self.ctx.storage.kv
   const kept = kv.get<Kept>(key) ?? { checked: 0, complete: false, newest: null, older: undefined }
   const now = Date.now()
-  if (kept.complete || now - kept.checked < logMs) return null
+  if ((kept.complete && finished(machine, now)) || now - kept.checked < logMs) return null
   const sql = self.ctx.storage.sql
   const insert = (entries: Gateway.Logged['entries'], above: number | null) => {
     for (const entry of entries) {
@@ -334,14 +334,14 @@ async function follow(self: Swarm, swarm: string, sandbox: string, run: Run, tai
   const now = Date.now()
   const key = `job:${run.seq}`
   const kv = self.ctx.storage.kv
-  if (tailed.done || now - tailed.checked < jobMs || !run.log) return null
+  if ((tailed.done && (gone || tailed.exit !== null)) || now - tailed.checked < jobMs || !run.log) return null
   if (gone) {
     kv.put(key, { ...tailed, checked: now, done: true })
     return null
   }
   const stop = new AbortController()
   const timer = setTimeout(() => stop.abort(), listenMs)
-  const next = { ...tailed, checked: now }
+  const next = { ...tailed, checked: now, done: false }
   let error: string | null = null
   const held = () => Number(self.ctx.storage.sql.exec<{ n: number | null }>('SELECT SUM(length(data)) AS n FROM job_logs WHERE run = ?', run.seq).one().n ?? 0)
   try {

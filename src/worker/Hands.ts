@@ -1,7 +1,7 @@
 import type { Lent, Terms } from '../shared/Api.ts'
 import type { Listed } from './Gateway.ts'
 
-export type Row = { contributor: string | null; created_at: number; label: string; name: string; seen_at: number | null; swarm: string }
+export type Row = { contributor: string | null; created_at: number; label: string; name: string; returned_at: number | null; seen_at: number | null; swarm: string }
 
 export const limit = 32
 
@@ -46,21 +46,33 @@ export async function forget(env: Cloudflare.Env, swarm: string, name: string) {
   await env.DB.prepare('delete from hands where swarm = ? and name = ?').bind(swarm, name).run()
 }
 
+export async function free(env: Cloudflare.Env, swarm: string, name: string) {
+  await env.DB.batch([
+    env.DB.prepare('delete from hands where swarm = ? and name = ? and seen_at is null').bind(swarm, name),
+    env.DB.prepare('update hands set returned_at = ? where swarm = ? and name = ?').bind(Date.now(), swarm, name),
+  ])
+}
+
+export function held(rows: readonly Row[]) {
+  return rows.filter((row) => row.returned_at === null)
+}
+
 export function used(hand: Listed | undefined) {
   return !!hand && (hand.connected || (typeof hand['requests'] === 'number' && hand['requests'] > 0))
 }
 
-export async function seen(env: Cloudflare.Env, swarm: string, rows: readonly Row[], listed: readonly Listed[]) {
+export async function seen(env: Cloudflare.Env, swarm: string, rows: readonly Row[], listed: readonly Listed[] | undefined) {
   const now = Date.now()
   const names = rows
-    .filter((row) => (row.seen_at === null || row.seen_at < now - freshMs) && used(listed.find((hand) => hand.name === row.name)))
+    .filter((row) => (row.seen_at === null || row.seen_at < now - freshMs) && used(listed?.find((hand) => hand.name === row.name)))
     .map((row) => row.name)
   if (!names.length) return rows
   await env.DB.batch(names.map((name) => env.DB.prepare('update hands set seen_at = ? where swarm = ? and name = ?').bind(now, swarm, name)))
   return rows.map((row) => (names.includes(row.name) ? { ...row, seen_at: now } : row))
 }
 
-export function evictable(rows: readonly Row[], listed: readonly Listed[], now: number) {
+export function evictable(rows: readonly Row[], listed: readonly Listed[] | undefined, now: number) {
+  if (!listed) return []
   const idle = rows.filter((row) => !listed.find((hand) => hand.name === row.name)?.connected)
   const stale = idle.filter((row) => (row.seen_at ?? row.created_at) < now - unseenMs)
   if (rows.length - stale.length < limit) return stale
@@ -98,9 +110,9 @@ function usd(value: unknown) {
   return '$' + (typeof value === 'number' ? Number(value.toFixed(6)) : 0)
 }
 
-export function lent(rows: readonly Row[], listed: readonly Listed[]): Lent[] {
+export function lent(rows: readonly Row[], listed: readonly Listed[] | undefined): Lent[] {
   return rows.map((row) => {
-    const found = listed.find((hand) => hand.name === row.name)
+    const found = listed?.find((hand) => hand.name === row.name)
     return { at: row.created_at, connected: !!found?.connected, label: row.label, name: row.name, ...terms(found) }
   })
 }

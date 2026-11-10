@@ -1206,14 +1206,14 @@ export async function hand(env: Cloudflare.Env, input: Input<'hand'>, contributo
   if (!parsed.ok) return parsed
   const row = await Store.find(env, parsed.value.swarm)
   if (!row) return missing()
-  const existing = await Hands.list(env, row.id)
+  const existing = Hands.held(await Hands.list(env, row.id))
   const listed = existing.length ? await stub(env, row.id).lent() : []
   const rows = await Hands.seen(env, row.id, existing, listed)
   const evicted = Hands.evictable(rows, listed, Date.now())
   if (rows.length - evicted.length >= Hands.limit)
     return Problem.fail(409, 'conflict', `This swarm has ${Hands.limit} machines connected right now.`)
   for (const hand of evicted) {
-    await Hands.forget(env, row.id, hand.name)
+    await Hands.free(env, row.id, hand.name)
     await reached(Gateway.detach(env, row.id, hand.name))
   }
 
@@ -1255,7 +1255,7 @@ export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise
   if (!exists) return missing()
   const listed = rows.length ? await stub(env, parsed.value.swarm).lent() : []
   const lent = Hands.lent(await Hands.seen(env, parsed.value.swarm, rows, listed), listed)
-  lending.set(parsed.value.swarm, { at: Date.now(), hands: lent })
+  if (listed) lending.set(parsed.value.swarm, { at: Date.now(), hands: lent })
   return Problem.ok({ hands: lent })
 }
 

@@ -194,10 +194,14 @@ export function folded(entries: readonly Entry[], hands: readonly Hand[]): Machi
       machine.config = settings(input)
       continue
     }
-    const joined = /^A contributor's machine joined the swarm as hand (\S+?)(?: \((.+)\))?\.$/.exec(entry.text)
+    const joined = /^A contributor's machine joined the swarm as hand (\S+?)(?: \((.+)\))?\.$/.exec(entry.text) ?? /^Machine (\S+) joined the swarm\.$/.exec(entry.text)
     if (entry.kind === 'machine' && joined?.[1]) {
       const machine = get(joined[1], 'hand', entry.at, null)
       machine.label = joined[2] ?? machine.label
+      if (machine.ended !== null) {
+        machine.started = entry.at
+        machine.ended = null
+      }
       continue
     }
     const left = /^Machine (\S+) left\.$/.exec(entry.text)
@@ -208,8 +212,10 @@ export function folded(entries: readonly Entry[], hands: readonly Hand[]): Machi
     }
     if (entry.kind === 'machine' && entry.text === 'Shutting down a machine') {
       const id = sandbox(entry.detail)
-      const named = id ? sandboxes.get(id) : undefined
-      for (const machine of found.values()) if (machine.name === named || entry.detail?.includes(machine.name)) machine.ended = entry.at
+      const named = id ? (sandboxes.get(id) ?? id) : undefined
+      const machine = named ? found.get(named) : undefined
+      const latest = [...sandboxes].findLast(([, name]) => name === named)?.[0] ?? id
+      if (machine && latest === id) machine.ended = entry.at
       continue
     }
     if (entry.kind !== 'tool' || !/^(\$ |Called )/.test(entry.text)) continue
