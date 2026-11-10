@@ -79,7 +79,8 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
 }
 
 export async function joined(self: Swarm, row: Store.Row, connected: Gateway.Listed[], previous: ReadonlySet<string>) {
-  const issued = new Map(connected.some((hand) => !previous.has(hand.name)) ? (await Hands.list(self.env, row.id)).map((hand) => [hand.name, hand]) : [])
+  const arrived = connected.some((hand) => !previous.has(hand.name))
+  const issued = new Map((arrived ? await Hands.seen(self.env, row.id, await Hands.list(self.env, row.id), connected) : []).map((hand) => [hand.name, hand]))
   for (const hand of connected) {
     if (previous.has(hand.name)) continue
     const guest = issued.get(hand.name)
@@ -95,7 +96,7 @@ export async function joined(self: Swarm, row: Store.Row, connected: Gateway.Lis
     if (!connected.some((hand) => hand.name === name)) self.log('machine', `Machine ${name} left.`)
   if (connected.length === previous.size && connected.every((hand) => previous.has(hand.name))) return
   self.kv.put('hands', connected.map((hand) => ({ connected: true, name: hand.name })))
-  self.changed('hands')
+  self.changed('hands', 'members')
 }
 
 export async function cap(self: Swarm, row: Store.Row, amount: bigint, known: Gateway.Listed[] | undefined) {
