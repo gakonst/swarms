@@ -39,6 +39,10 @@ function cues(payload: Record<string, unknown>): Cue[] {
 
 export type Cue = 'artifacts' | 'credit' | 'git' | 'hands' | 'turn'
 
+export type Stream = { fails: number; state: 'streaming' } | { retry: number; state: 'polling' }
+
+export const streaming: Stream = { fails: 0, state: 'streaming' }
+
 const streamFails = 2
 
 const fallbackMs = 5 * 60_000
@@ -56,13 +60,15 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   let ended = false
   let down = false
   let answered = false
-  const window = self.fails < streamFails ? await listen(self, row, agent, run) : undefined
+  const stream = self.stream
+  const tried = stream.state === 'streaming' || Date.now() >= stream.retry
+  const window = tried ? await listen(self, row, agent, run) : undefined
   if (window) {
-    self.fails = 0
+    self.stream = streaming
     ended = window.ended
     answered = true
   } else {
-    if (self.fails < streamFails) self.fails += 1
+    if (tried) self.stream = stream.state === 'streaming' && stream.fails + 1 < streamFails ? { fails: stream.fails + 1, state: 'streaming' } : { retry: Date.now() + Clock.minuteMs, state: 'polling' }
     let cursor = agent.cursor
     for (let page = 0; page < 5; page++) {
       const read = await Gateway.events(self.env, row.id, agent.id, cursor)

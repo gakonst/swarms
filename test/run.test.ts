@@ -282,3 +282,41 @@ test('money put in while a turn is failing for lack of it is used: the swarm tri
   await w.ring()
   assert.equal(w.swarm.run().state, 'working')
 })
+
+test('a turn whose live stream failed twice is polled, and listens again a minute later instead of never', async (t) => {
+  let live: (() => Response) | undefined
+  const w = world((_request, url) => (url.pathname === '/v1/agents/agt_1/events' && url.searchParams.get('live') === '1' ? live?.() : undefined))
+  t.after(w.restore)
+  const listens = () => w.calls.filter((call) => call.includes('live=1')).length
+  await w.seed()
+  await w.swarm.wake('money')
+  for (let alarm = 0; alarm < 6; alarm++) {
+    await w.ring()
+    w.pass(2_000)
+  }
+  assert.deepEqual([w.swarm.run().state, listens()], ['working', 2])
+
+  w.pass(60_000)
+  await w.ring()
+  assert.equal(listens(), 3)
+  assert.equal(w.swarm.stream.state, 'polling')
+
+  const thought = { event: { event: { payload: { item_id: 'rs_1', offset: 0, text: 'Weighing two plans.' }, type: 'reasoning.summary.delta' }, source: 'session' }, seq: 1 }
+  live = () =>
+    new Response(
+      new ReadableStream({
+        pull(controller) {
+          if (w.swarm.kv.get('thinking') !== undefined) {
+            w.pass(6_000)
+            return controller.close()
+          }
+          controller.enqueue(new TextEncoder().encode('event: live\ndata: ' + JSON.stringify(thought) + '\n\n'))
+        },
+      }),
+    )
+  w.pass(60_000)
+  await w.ring()
+  assert.equal(listens(), 4)
+  assert.ok(JSON.stringify(w.swarm.kv.get('thinking')).includes('Weighing two plans.'))
+  assert.equal(w.swarm.stream.state, 'streaming')
+})

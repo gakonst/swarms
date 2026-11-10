@@ -41,7 +41,7 @@ export function relay(self: Swarm, event: Live) {
 
 export function begin(self: Swarm) {
   self.ring = { bytes: 0, frames: [] }
-  self.fails = 0
+  self.stream = { fails: 0, state: 'streaming' }
   for (const watcher of self.watchers) join(self, watcher)
 }
 
