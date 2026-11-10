@@ -381,6 +381,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (run.state === 'paused' || run.state === 'waiting' || run.state === 'new') await this.ctx.storage.setAlarm(Date.now())
   }
 
+  async funded(swarm: string) {
+    this.marked += 1
+    this.kv.put('id', swarm)
+    this.cue('credit')
+    const run = this.run()
+    if (run.state === 'paused' && run.settled !== undefined) this.set({ at: run.at, pause: run.pause, state: 'paused' })
+    if (run.state === 'paused' || run.state === 'waiting' || run.state === 'new') await this.ctx.storage.setAlarm(Date.now())
+  }
+
   async hand(swarm: string, name: string): Promise<Gateway.Result<Gateway.Minted>> {
     this.marked += 1
     this.kv.put('id', swarm)
@@ -412,7 +421,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     await Feed.reindex(this)
     if (id && now - (this.kv.get<number>('shelvedAt') ?? 0) > coverMs) await this.publish(id).catch((error: unknown) => console.error('Reading the artifacts failed', error))
     const run = this.run()
-    if (run.state === 'paused' || run.state === 'new' || now - (this.kv.get<number>('healed') ?? 0) < healMs) return
+    if (run.state === 'paused' ? !Phase.unread(run, now) : run.state === 'new' ? !id : now - (this.kv.get<number>('healed') ?? 0) < healMs) return
     const alarm = await this.ctx.storage.getAlarm()
     if (alarm !== null) return
     this.kv.put('healed', now)

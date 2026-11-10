@@ -43,6 +43,12 @@ export function wakes(pause: Pause, reason: Reason) {
   return reason === 'money' || pause.why === 'rest' || pause.why === 'costly' || pause.why === 'idle'
 }
 
+export const rereadMs = 10 * 60_000
+
+export function unread(run: Paused, now: number) {
+  return run.settled === undefined || now - run.settled >= rereadMs
+}
+
 export function due(run: Run, now: number) {
   return run.state === 'paused' && run.pause.why === 'money' && run.pause.wake !== null && run.pause.wake <= now
 }

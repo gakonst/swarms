@@ -33,8 +33,8 @@ test("a turn the gateway refused because the swarm's credit ran out counts as ou
 
 test('a swarm paused for money reads its credit once its calls are over, and goes on when enough came back', async () => {
   const now = Date.now()
-  const swarm = (left: string, pause: Phase.Pause, at = now - 60_000) => {
-    let run: Phase.Run = { at, pause, state: 'paused' }
+  const swarm = (left: string, pause: Phase.Pause, at = now - 60_000, settled?: number) => {
+    let run: Phase.Run = { at, pause, settled, state: 'paused' }
     const requests: string[] = []
     const self = {
       agent: () => undefined,
@@ -83,9 +83,19 @@ test('a swarm paused for money reads its credit once its calls are over, and goe
   assert.equal(await refused.settle(), null)
   assert.equal(refused.run().state, 'paused')
 
-  const unfunded = swarm('5', { why: 'unfunded' })
+  const unfunded = swarm('5', { why: 'unfunded' }, now - 60_000, now - 60_000)
   assert.equal(await unfunded.settle(), null)
   assert.equal(unfunded.requests.length, 0)
+
+  const later = swarm('0.03', pause, now - 3_600_000, now - 660_000)
+  assert.equal(await later.settle(), null)
+  assert.deepEqual(later.requests.sort(), ['/api/keys/backings', '/api/keys/credit'])
+  const read = later.run()
+  assert.ok(read.state === 'paused' && read.settled !== undefined && read.settled >= now)
+
+  const found = swarm('5', { why: 'unfunded' }, now - 3_600_000, now - 660_000)
+  assert.equal(await found.settle(), null)
+  assert.equal(found.run().state, 'waiting')
 })
 
 function left(usd: string) {

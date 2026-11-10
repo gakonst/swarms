@@ -371,18 +371,19 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause) {
     if (self.turned()) Chat.announce(self, text)
   }
   const shown = Phase.paused(run)
-  await self.move(row, { at: Date.now(), pause, state: 'paused' })
+  const at = Date.now()
+  await self.move(row, { at, pause, ...(pause.why === 'unfunded' ? { settled: at } : {}), state: 'paused' })
   if (shown?.why !== pause.why) self.log('status', text)
   const alarm = await self.ctx.storage.getAlarm()
   if (alarm === null || alarm > Date.now() + settleMs) await self.ctx.storage.setAlarm(Date.now() + settleMs)
 }
 
 export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
-  if (run.pause.why === 'unfunded' || run.settled !== undefined) return null
   const now = Date.now()
+  if (!Phase.unread(run, now)) return null
   if (now < run.at + settleMs) return run.at + settleMs
-  if (now < run.at + calmMs && !(await quiet(self, row))) return now + Clock.minuteMs
-  const money = await Money.refresh(self, row)
+  if (run.settled === undefined && now < run.at + calmMs && !(await quiet(self, row))) return now + Clock.minuteMs
+  const money = await Money.refresh(self, row, { credit: true, hands: run.settled === undefined })
   const paused = self.run()
   if (paused.state !== 'paused' || paused.at !== run.at) return null
   const refused = run.pause.why === 'money' && run.pause.needs !== undefined && BigInt(run.pause.left) >= BigInt(run.pause.needs)

@@ -40,6 +40,7 @@ function storage() {
   }
   return {
     alarm: () => alarm,
+    rung: () => void (alarm = null),
     storage: {
       deleteAlarm: async () => void (alarm = null),
       getAlarm: async () => alarm,
@@ -122,6 +123,10 @@ export function world(route: Route) {
     async viewed() {
       swarm.view({ feed: 0 })
       await Promise.all(waits.splice(0))
+    },
+    async ring() {
+      store.rung()
+      await swarm.alarm()
     },
     restore() {
       Date.now = clock

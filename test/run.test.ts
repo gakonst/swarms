@@ -18,7 +18,7 @@ test('a gateway call that throws is retried as an answer that failed: one error 
   await w.swarm.wake('money')
   for (let alarm = 0; alarm < 6; alarm++) {
     if (alarm === 2) credit = '0'
-    await w.swarm.alarm()
+    await w.ring()
     w.pass(30_000)
   }
   assert.deepEqual(w.errors(), ['The gateway did not take the next message for the agent.'])
@@ -41,16 +41,16 @@ test('a step that keeps throwing logs one error row in ten minutes and never sta
   t.after(() => void (w.env.DB.prepare = prepare))
   await w.swarm.wake('money')
   for (let alarm = 0; alarm < 4; alarm++) {
-    await w.swarm.alarm()
+    await w.ring()
     assert.equal(w.swarm.run().state, 'waiting')
     w.pass(30_000)
   }
   assert.deepEqual(w.errors(), ['The swarm hit an error and will retry.'])
   w.pass(600_000)
-  await w.swarm.alarm()
+  await w.ring()
   assert.equal(w.errors().length, 2)
   credit = '0'
-  await w.swarm.alarm()
+  await w.ring()
   assert.equal(w.swarm.run().state, 'paused')
   assert.equal(w.errors().length, 2)
   assert.equal(prompts(w.calls), 0)
@@ -62,13 +62,13 @@ test('an agent is abandoned only after fifteen minutes in which the gateway neve
   t.after(w.restore)
   await w.seed()
   await w.swarm.wake('money')
-  await w.swarm.alarm()
+  await w.ring()
   assert.equal(w.swarm.run().state, 'working')
   const check = async (minutes: number, down: boolean) => {
     w.pass(minutes * 60_000)
     w.swarm.checked = 0
     failing = down
-    await w.swarm.alarm()
+    await w.ring()
   }
   await check(1, true)
   assert.notEqual(w.swarm.agent()?.unreachable, null)
@@ -95,15 +95,15 @@ test('a swarm with money whose agent the gateway fails to create is retrying, no
   await w.seed('10000')
   w.sql.exec("INSERT INTO turns (n, turn, started_at, ended_at, status, spent_before) VALUES (1, 'agt_0:1', 1, 2, 'completed', '0')")
   await w.swarm.wake('money')
-  await w.swarm.alarm()
+  await w.ring()
   assert.deepEqual(await w.status(), { status: 'paused', why: 'money' })
 
   credit = '10.01'
   await w.give('10000000', '0x' + 'd'.repeat(64))
   await w.swarm.contributed({ amount: '10', contributor: rider, hash: '0x' + 'd'.repeat(64), kind: 'new', note: null, noteId: null, swarm: id, token: 'pathusd' })
-  await w.swarm.alarm()
+  await w.ring()
   w.pass(30_000)
-  await w.swarm.alarm()
+  await w.ring()
   assert.deepEqual(await w.status(), { status: 'running', why: null })
   assert.equal(w.swarm.view({ feed: 0 }).reason, null)
   assert.deepEqual(w.errors(), ['The gateway did not create the agent.'])
@@ -120,7 +120,7 @@ test('a status write that failed is written again on the next step, so the list 
   t.after(w.restore)
   await w.seed()
   await w.swarm.wake('money')
-  await w.swarm.alarm()
+  await w.ring()
   assert.deepEqual(await w.status(), { status: 'running', why: null })
 
   const prepare = w.env.DB.prepare
@@ -135,15 +135,15 @@ test('a status write that failed is written again on the next step, so the list 
   credit = '0.01'
   report = { ok: { message: 'done a step' }, request_id: 'agt_1:1', status: 'completed' }
   w.swarm.checked = 0
-  await w.swarm.alarm()
+  await w.ring()
   w.pass(30_000)
-  await w.swarm.alarm()
+  await w.ring()
   assert.equal(w.swarm.run().state, 'paused')
   assert.equal(failures, 0)
   assert.deepEqual(await w.status(), { status: 'running', why: null })
 
   w.pass(30_000)
-  await w.swarm.alarm()
+  await w.ring()
   assert.deepEqual(await w.status(), { status: 'paused', why: 'money' })
 })
 
@@ -160,8 +160,7 @@ test('a pause settles once even when the gateway no longer has the agent or a su
     w.swarm.kv.put('run', { at: Date.now() - 60_000, pause: { left: '10000', needs: '50000', wake: null, why: 'money' }, state: 'paused' })
     let alarms = 0
     for (let next: number | null = Date.now(); next !== null && alarms < 30; next = w.alarm()) {
-      await w.swarm.ctx.storage.deleteAlarm()
-      await w.swarm.alarm()
+      await w.ring()
       w.pass(60_000)
       alarms += 1
     }
@@ -173,4 +172,69 @@ test('a pause settles once even when the gateway no longer has the agent or a su
 
   assert.equal(await paused(() => Response.json({ error: 'No agent has this id.' }, { status: 404 })), 1)
   assert.equal(await paused(() => Response.json({ agents: [{ agent_id: 2, parent_agent_id: null, role: 'r', status: { state: 'running' }, task: 't' }] })), 10)
+})
+
+test('money whose wake was lost still starts the swarm: when the transfer is recorded again, and when the swarm is next viewed', async (t) => {
+  const recorded = world(() => undefined)
+  t.after(recorded.restore)
+  await recorded.seed()
+  recorded.swarm.kv.delete('id')
+  await recorded.viewed()
+  assert.deepEqual([recorded.swarm.run().state, recorded.alarm()], ['new', null])
+  await recorded.swarm.funded(id)
+  await recorded.ring()
+  assert.equal(recorded.swarm.run().state, 'working')
+
+  const viewed = world(() => undefined)
+  t.after(viewed.restore)
+  await viewed.seed()
+  await viewed.viewed()
+  await viewed.ring()
+  assert.equal(viewed.swarm.run().state, 'working')
+})
+
+test('a paused swarm looks at its money again when a counted transfer is recorded again or it is viewed ten minutes later, and goes on only when the money is there', async (t) => {
+  const paused = async (pause: Record<string, unknown>) => {
+    let credit = '0.01'
+    const w = world((_request, url) => (url.pathname === '/api/keys/credit' ? Response.json({ deposited: '1', left: credit, spent: '0' }) : undefined))
+    t.after(w.restore)
+    await w.seed()
+    w.swarm.kv.put('run', { at: Date.now() - 3_600_000, pause, settled: Date.now(), state: 'paused' })
+    const reads = () => w.calls.filter((call) => call === 'GET /api/keys/credit').length
+    return { fund: () => void (credit = '5'), reads, w }
+  }
+  const money = { left: '10000', needs: '50000', wake: null, why: 'money' }
+
+  const replayed = await paused(money)
+  await replayed.w.swarm.funded(id)
+  await replayed.w.ring()
+  assert.deepEqual([replayed.w.swarm.run().state, replayed.reads(), replayed.w.alarm()], ['paused', 1, null])
+  assert.equal(replayed.w.calls.filter((call) => call.startsWith('POST')).length, 0)
+
+  const recorded = await paused(money)
+  recorded.fund()
+  await recorded.w.viewed()
+  assert.equal(recorded.w.alarm(), null)
+  await recorded.w.swarm.funded(id)
+  await recorded.w.ring()
+  assert.equal(recorded.w.swarm.run().state, 'working')
+
+  for (const pause of [money, { why: 'unfunded' }]) {
+    const viewed = await paused(pause)
+    viewed.fund()
+    viewed.w.pass(9 * 60_000)
+    await viewed.w.viewed()
+    assert.equal(viewed.w.alarm(), null)
+    viewed.w.pass(60_000)
+    await viewed.w.viewed()
+    await viewed.w.ring()
+    assert.equal(viewed.w.swarm.run().state, 'working')
+  }
+
+  const short = await paused(money)
+  short.w.pass(10 * 60_000)
+  await short.w.viewed()
+  await short.w.ring()
+  await short.w.viewed()
+  assert.deepEqual([short.w.swarm.run().state, short.reads(), short.w.alarm()], ['paused', 1, null])
 })
