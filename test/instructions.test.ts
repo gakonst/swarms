@@ -18,6 +18,8 @@ const prices = new Map<string, Setup.Price>([
   [Setup.sol, { cached: 0.1, id: Setup.sol, input: 2, output: 10 }],
   [Setup.astra, { cached: 1, id: Setup.astra, input: 10, output: 50 }],
   [Setup.flash, { cached: 0.0048, id: Setup.flash, input: 0.24, output: 0.96 }],
+  [Setup.glm, { cached: 0.14, id: Setup.glm, input: 1.12, output: 3.52 }],
+  [Setup.kimi, { cached: 0.2, id: Setup.kimi, input: 1.7, output: 8.5 }],
 ])
 
 const mix = (() => {

@@ -28,6 +28,7 @@ const models: Setup.Price[] = [
   { cached: 0.075, id: 'vercel/google/gemini-3.8-flash', input: 0.75, output: 3.75 },
   { cached: 0.1, id: 'vercel/google/gemini-4-argon', input: 2, output: 10 },
   { cached: 0.23, id: 'vercel/moonshotai/kimi-k3', input: 2.3, output: 11.4 },
+  { cached: 0.2, id: 'vercel/moonshotai/kimi-k3.1-pro', input: 1.7, output: 8.5 },
   { cached: 1, id: 'vercel/openai/gpt-6-astra', input: 10, output: 50 },
   { cached: 0.01, id: 'vercel/openai/gpt-6-luna', input: 0.1, output: 0.5 },
   { cached: 0.1, id: 'vercel/openai/gpt-6.1-sol', input: 2, output: 10 },

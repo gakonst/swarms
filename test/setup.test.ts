@@ -8,6 +8,9 @@ const prices = new Map<string, Setup.Price>([
   [Setup.sol, { cached: 0.1, id: Setup.sol, input: 2, output: 10 }],
   [Setup.astra, { cached: 1, id: Setup.astra, input: 10, output: 50 }],
   [Setup.flash, { cached: 0.0048, id: Setup.flash, input: 0.24, output: 0.96 }],
+  [Setup.glmFlash, { cached: 0.024, id: Setup.glmFlash, input: 0.12, output: 0.4 }],
+  [Setup.glm, { cached: 0.14, id: Setup.glm, input: 1.12, output: 3.52 }],
+  [Setup.kimi, { cached: 0.2, id: Setup.kimi, input: 1.7, output: 8.5 }],
 ])
 
 function priced(choice: Setup.Choice) {
@@ -18,21 +21,21 @@ function priced(choice: Setup.Choice) {
   return setup as Setup.Setup
 }
 
-test('the default runs on the cheapest models: Codex on GPT-6 Luna leads, and subagents use Luna, Haiku, DeepSeek Flash or GLM Flash', () => {
+test('the default runs on the cheapest models Boundless serves: Codex on DeepSeek Flash leads, and subagents use DeepSeek Flash or GLM Flash', () => {
   assert.equal(Setup.fallback, 'cheap')
-  const resolved = Setup.resolve({ template: Setup.fallback })
-  assert.notEqual(typeof resolved, 'string')
-  assert.deepEqual(resolved, { harness: 'codex', model: Setup.luna, subagents: { harnesses: ['codex', 'claude'], models: [Setup.luna, Setup.haiku, Setup.flash, Setup.glmFlash] }, template: 'cheap' })
+  const setup = priced({ template: Setup.fallback })
+  assert.deepEqual({ harness: setup.harness, model: setup.model, subagents: setup.subagents }, { harness: 'codex', model: Setup.flash, subagents: { harnesses: ['codex', 'claude'], models: [Setup.flash, Setup.glmFlash] } })
+  assert.equal(setup.most, String(Setup.least))
 })
 
-test('frontier mix leads with Claude Code on Opus and offers Opus, Sol and Astra under both harnesses', () => {
+test('frontier mix leads with Claude Code on Opus and offers Opus, Kimi K3.1 Pro and GLM-5.3 under both harnesses', () => {
   const setup = priced({ template: 'frontier-mix' })
   assert.equal(setup.harness, 'claude')
   assert.equal(setup.model, Setup.opus)
-  assert.deepEqual(setup.subagents, { harnesses: ['claude', 'codex'], models: [Setup.opus, Setup.sol, Setup.astra] })
+  assert.deepEqual(setup.subagents, { harnesses: ['claude', 'codex'], models: [Setup.opus, Setup.kimi, Setup.glm] })
   assert.equal(setup.step, '37600')
   assert.equal(setup.most, '220480')
-  assert.deepEqual(setup.steps, { [Setup.astra]: '118000', [Setup.opus]: '37600', [Setup.sol]: '18800' })
+  assert.deepEqual(setup.steps, { [Setup.glm]: '12480', [Setup.kimi]: '21500', [Setup.opus]: '37600' })
 })
 
 test('frontier OpenAI leads on Sol, frontier Anthropic is Opus only, and free for all offers any subagent model', () => {
@@ -61,6 +64,6 @@ test("a swarm's reserve and call come from its lead model, and older swarms keep
 test('the brief tells the agent its models, their costs and the budget floor', () => {
   const told = Setup.told(priced({ template: 'frontier-mix' }))
   assert.match(told, /Claude Code with vercel\/anthropic\/claude-opus-5\.5/)
-  assert.match(told, /vercel\/openai\/gpt-6\.1-sol \(about \$0\.019 a call\)/)
+  assert.match(told, /vercel\/moonshotai\/kimi-k3\.1-pro \(about \$0\.021 a call\)/)
   assert.match(told, /at least 20 of its model's calls/)
 })
