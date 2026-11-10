@@ -3,9 +3,10 @@ import type { Config, Currency } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
-import { mach } from './format.ts'
+import { mach, short } from './format.ts'
 import { message, useWallet } from './hooks.ts'
 import { Alert, explain } from './Alert.tsx'
+import * as Pay from './pay.ts'
 import * as Wallet from './wallet.ts'
 
 const stops = [1, 2, 3, 5, 8, 10, 15, 20, 25, 35, 50, 75, 100, 150, 250, 500] as const
@@ -53,10 +54,6 @@ export function valid(amount: string, minimum = smallest) {
   return units(text) >= units(minimum)
 }
 
-export function code(error: unknown) {
-  return typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : undefined
-}
-
 const working = {
   connect: 'Connecting Tempo Wallet…',
   create: 'Setting up…',
@@ -66,34 +63,9 @@ const working = {
 
 type Working = keyof typeof working
 
-export type Unrecorded = { amount: bigint; hash: string; note: string; swarm: string; token: Currency }
-
-type Flow = { at: 'idle' } | { at: 'busy'; step: Working } | { at: 'done'; hash?: string; kept?: boolean; text: string } | { at: 'failed'; error: string; short: boolean } | { at: 'unrecorded'; paid: Unrecorded; reason: string; target: Target }
+type Flow = { at: 'idle' } | { at: 'busy'; step: Working } | { at: 'done'; hash?: string; kept?: boolean; text: string } | { at: 'failed'; error: string; hash?: string; short: boolean } | { at: 'unrecorded'; owed: Pay.Owed }
 
 const idle: Flow = { at: 'idle' }
-
-function strayed(paid: Unrecorded, error: unknown) {
-  return Object.assign(new Error(`Sent, but not counted yet. ${message(error)} Try again to count it; nothing is sent twice.`), { code: 'unrecorded', paid, reason: message(error) })
-}
-
-export function stray(error: unknown) {
-  return code(error) === 'unrecorded' && typeof error === 'object' && error !== null && 'paid' in error && 'reason' in error ? { paid: error.paid as Unrecorded, reason: String(error.reason) } : undefined
-}
-
-export async function record(paid: Unrecorded) {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return (await Api.contribute(paid.swarm, { hash: paid.hash, ...(paid.note ? { note: paid.note } : {}) })).contribution.hash ?? paid.hash
-    } catch (error) {
-      if (code(error) === 'conflict') return paid.hash
-      if (attempt < 3 && code(error) === 'not_found') {
-        await new Promise((resolve) => setTimeout(resolve, 1500))
-        continue
-      }
-      throw strayed(paid, error)
-    }
-  }
-}
 
 export function approves(amount: bigint, token: Currency) {
   return token === 'mach' && amount >= approvable && !Api.fixture
@@ -112,17 +84,11 @@ async function approve(config: Config, target: Target, amount: bigint, note: str
   return counted.contribution.hash ?? approved.id
 }
 
-export async function send(config: Config, target: Target, amount: bigint, note: string, token: Currency) {
-  const approved = approves(amount, token) ? await approve(config, target, amount, note) : undefined
-  if (approved) return { hash: approved, kept: true }
-  return { hash: await transfer(config, target, amount, note, token), kept: false }
-}
-
-async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency) {
+async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency): Promise<Pay.Owed> {
   if (!config.credit) throw new Error('Riding is not available right now. Try again in a moment.')
   const { memo } = await import('../shared/Credit.ts')
   const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, note), to: config.credit.recipient, token })
-  return record({ amount, hash, note, swarm: target.id, token })
+  return { amount: decimal(amount), hash, note, swarm: target.id }
 }
 
 function dollars(amount: string) {
@@ -169,10 +135,20 @@ export function Fuel(props: {
   const marks = least > stops[0] ? [least, ...stops.filter((stop) => stop > least)] : stops
   const at = nearest(amount, marks)
 
+  const riding = (sum: string) => `You're riding. ${dollars(sum)} is in.`
+
+  const count = async (owed: Pay.Owed) => {
+    step('record')
+    const counted = await Pay.count(owed)
+    setFlow(counted.at === 'counted' ? { at: 'done', hash: counted.hash, text: riding(owed.amount) } : counted.at === 'refused' ? { at: 'failed', error: counted.reason, hash: owed.hash, short: false } : { at: 'unrecorded', owed })
+    if (counted.at !== 'counted') return
+    props.onNote('')
+    props.onDone({ id: owed.swarm })
+  }
+
   const submit = async () => {
     const config = props.config
     if (!config || !ready) return
-    let target: Target | undefined
     try {
       let using = token
       if (props.sign ? !Wallet.snapshot().session : !Wallet.snapshot().address) {
@@ -183,28 +159,15 @@ export function Fuel(props: {
       }
       const held = Wallet.snapshot().balances[using]
       if (held !== undefined && held < units(amount)) throw Object.assign(new Error('Your wallet holds less than this.'), { code: 'insufficient_balance' })
-      target = await props.target((next) => step(next))
+      const target = await props.target((next) => step(next))
       step('send')
-      const sent = await send(config, target, units(amount), text, using)
-      setFlow({ at: 'done', hash: sent.hash, kept: sent.kept, text: `You're riding. ${dollars(amount)} is in.` })
+      const approved = approves(units(amount), using) ? await approve(config, target, units(amount), text) : undefined
+      if (!approved) return await count(await transfer(config, target, units(amount), text, using))
+      setFlow({ at: 'done', hash: approved, kept: true, text: riding(amount) })
       props.onNote('')
       props.onDone(target)
     } catch (error) {
-      const lost = stray(error)
-      setFlow(lost && target ? { ...lost, at: 'unrecorded', target } : { at: 'failed', error: message(error), short: code(error) === 'insufficient_balance' })
-    }
-  }
-
-  const retry = async (paid: Unrecorded, target: Target) => {
-    step('record')
-    try {
-      const hash = await record(paid)
-      setFlow({ at: 'done', hash, text: `You're riding. ${dollars(decimal(paid.amount))} is in.` })
-      props.onNote('')
-      props.onDone(target)
-    } catch (error) {
-      const lost = stray(error)
-      setFlow(lost ? { ...lost, at: 'unrecorded', target } : { at: 'failed', error: message(error), short: false })
+      setFlow({ at: 'failed', error: message(error), short: Pay.code(error) === 'insufficient_balance' })
     }
   }
 
@@ -228,13 +191,18 @@ export function Fuel(props: {
         {low && flow.at !== 'failed' && <Alert title="Not enough in your wallet." tone="warn">Add money in Tempo Wallet first.</Alert>}
         {flow.at === 'done' && <Alert action={{ label: 'Add more', onClick: () => setFlow(idle) }} title={flow.text} tone="good">{flow.kept ? 'Thank you! It stays in your wallet until the AI spends it.' : 'Thank you!'}</Alert>}
         {flow.at === 'unrecorded' && (
-          <Alert action={{ label: 'Try again', onClick: () => void retry(flow.paid, flow.target) }} title="Sent, but not counted yet." tone="warn">
+          <Alert action={{ label: 'Try again', onClick: () => void count(flow.owed) }} title="Sent, but not counted yet." tone="warn">
             Nothing is paid twice.
           </Alert>
         )}
-        {flow.at === 'failed' && (
+        {flow.at === 'failed' && !flow.hash && (
           <Alert title={explain(flow.error).title} tone="bad">
             {explain(flow.error).detail}
+          </Alert>
+        )}
+        {flow.at === 'failed' && flow.hash && (
+          <Alert action={props.config && { href: `${props.config.explorer}/tx/${flow.hash}`, label: short(flow.hash) }} title="Sent, but it cannot be counted." tone="bad">
+            {flow.error}
           </Alert>
         )}
       </div>
