@@ -276,36 +276,61 @@ export function btw(id: string, input: { branch?: number; question: string; thre
 
 export type Line = { close: () => void; hello: () => void; typing: () => void }
 
+const pingMs = 30_000
+
+const pongMs = 10_000
+
 function socket(url: string, listener: (event: { data: string } | { type: 'open' | 'closed' }) => void, opened?: (send: (data: string) => void) => void) {
   let alive = true
   let line: WebSocket | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
   let ping: ReturnType<typeof setInterval> | undefined
+  let quiet: ReturnType<typeof setTimeout> | undefined
   const send = (data: string) => {
     if (line?.readyState === WebSocket.OPEN) line.send(data)
   }
+  const lost = (from: WebSocket) => {
+    if (line !== from) return
+    line = undefined
+    clearInterval(ping)
+    clearTimeout(quiet)
+    from.close()
+    listener({ type: 'closed' })
+    if (alive) timer = setTimeout(open, 3000)
+  }
+  const probe = () => {
+    const probed = line
+    if (probed?.readyState !== WebSocket.OPEN) return
+    probed.send('ping')
+    clearTimeout(quiet)
+    quiet = setTimeout(() => lost(probed), pongMs)
+  }
   const open = () => {
-    line = new WebSocket(`${boot()?.socket ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${Site.base}`}${url}`)
-    line.onopen = () => {
+    const made = new WebSocket(`${boot()?.socket ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${Site.base}`}${url}`)
+    line = made
+    made.onopen = () => {
       opened?.(send)
       listener({ type: 'open' })
-      ping = setInterval(() => send('ping'), 30_000)
+      ping = setInterval(probe, pingMs)
     }
-    line.onmessage = (message) => {
+    made.onmessage = (message) => {
+      if (line !== made) return
+      clearTimeout(quiet)
       if (message.data !== 'pong') listener({ data: String(message.data) })
     }
-    line.onclose = () => {
-      clearInterval(ping)
-      listener({ type: 'closed' })
-      if (alive) timer = setTimeout(open, 3000)
-    }
+    made.onclose = () => lost(made)
   }
   open()
+  addEventListener('online', probe)
+  document.addEventListener('visibilitychange', probe)
   return {
     close: () => {
       alive = false
       clearTimeout(timer)
       clearInterval(ping)
+      clearTimeout(quiet)
+      removeEventListener('online', probe)
+      document.removeEventListener('visibilitychange', probe)
       line?.close()
     },
     send,
