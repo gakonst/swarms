@@ -99,8 +99,13 @@ async function led(env: Cloudflare.Env, team: string, admin: Address): Promise<P
   return Problem.fail(502, 'upstream_failed', `The gateway did not add the swarm's admin to its team: ${added.detail}`)
 }
 
+export function named(row: { id: string; title: string }) {
+  const kept = row.title.replace(/[^\p{L}\p{M}\p{N} ._&'-]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 64).trim()
+  return kept || 'Swarm ' + row.id
+}
+
 async function founded(env: Cloudflare.Env, row: Store.Row): Promise<Problem.Result<Address>> {
-  const made = await Gateway.team(env, (row.title.trim() || 'Swarm ' + row.id).slice(0, 64))
+  const made = await Gateway.team(env, named(row))
   if (!made.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not create the swarm's team: ${made.detail}`)
   const mine = made.value.address.toLowerCase() as Address
   const held = await Store.teamed(env, row.id, mine)

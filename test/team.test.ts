@@ -272,3 +272,12 @@ test('money that makes someone else the biggest rider of a swarm nobody started 
   await value(Operations.contribute(env, { hash: hashes[1], swarm: 's' }))
   assert.deepEqual((await settled()).map((roster) => roster.admins), [[bob], [cyd]])
 })
+test("a swarm's team is named with only what the gateway takes in a team name, whatever its title holds", () => {
+  const allowed = /^[\p{L}\p{M}\p{N} ._&'-]+$/u
+  for (const title of ['Solve P = NP.', 'Port zlib (C) to Rust: fast, safe?', 'Qué es /esto/ & aquello', '  ', '???', 'x'.repeat(80) + ': tail']) {
+    const name = Team.named({ id: 'abc123abc123', title })
+    assert.ok(allowed.test(name) && name.length >= 1 && name.length <= 64 && name === name.trim(), name)
+  }
+  assert.equal(Team.named({ id: 'abc123abc123', title: 'Solve P = NP.' }), 'Solve P NP.')
+  assert.equal(Team.named({ id: 'abc123abc123', title: '???' }), 'Swarm abc123abc123')
+})
