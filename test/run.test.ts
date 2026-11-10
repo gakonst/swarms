@@ -320,3 +320,24 @@ test('a turn whose live stream failed twice is polled, and listens again a minut
   assert.ok(JSON.stringify(w.swarm.kv.get('thinking')).includes('Weighing two plans.'))
   assert.equal(w.swarm.stream.state, 'streaming')
 })
+
+test('the public API names only the statuses a run can have, and done is not one of them', async () => {
+  const OpenApi = await import('../src/worker/OpenApi.ts')
+  const Operations = await import('../src/worker/Operations.ts')
+  const Phase = await import('../src/worker/Phase.ts')
+  const document = OpenApi.document('https://swarms.test') as unknown as { components: { schemas: { Status: { enum: string[] } } } }
+  assert.deepEqual(document.components.schemas.Status.enum, ['funding', 'running', 'paused'])
+  assert.ok(!Operations.schema.list.safeParse({ status: 'done' }).success)
+  const money = { left: '0', wake: null, why: 'money' } as const
+  const runs = [
+    { state: 'new' },
+    { since: null, state: 'waiting', until: 0 },
+    { from: money, since: null, state: 'waiting', until: 0 },
+    { id: 'a:1', n: 1, since: null, state: 'starting', told: [] },
+    { from: 0, n: 1, since: 1, started: 1, state: 'working', turn: 't' },
+    { at: 0, pause: money, state: 'paused' },
+    { at: 0, pause: { why: 'unfunded' }, state: 'paused' },
+  ] as const
+  const projected = new Set(runs.flatMap((run) => [0, 3].map((n) => Phase.project(run as never, n).status)))
+  assert.deepEqual([...projected].sort(), [...Operations.statuses].sort())
+})

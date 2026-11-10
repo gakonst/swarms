@@ -54,9 +54,8 @@ export function test(swarm: Pick<Summary, 'title'>) {
 }
 
 export function count(swarms: readonly Pick<Summary, 'remaining' | 'status'>[]) {
-  const open = swarms.filter((swarm) => swarm.status !== 'done')
-  const running = open.filter((swarm) => swarm.status === 'running').length
-  return { open: open.length, running, text: running ? `${running} running` : `${open.length} open` }
+  const running = swarms.filter((swarm) => swarm.status === 'running').length
+  return { open: swarms.length, running, text: running ? `${running} running` : `${swarms.length} open` }
 }
 
 export function lively(swarm: Pick<Summary, 'balance' | 'status' | 'updatedAt'>, now: number) {

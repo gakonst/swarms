@@ -41,10 +41,7 @@ function backers(count: number) {
 
 export function field(given: readonly Summary[], now = Date.now()): Cards.Field {
   const swarms = given.filter((swarm) => !Status.test(swarm))
-  const live = Status.ranked(
-    swarms.filter((swarm) => swarm.status !== 'done'),
-    now,
-  )
+  const live = Status.ranked(swarms, now)
   return {
     balance: live.reduce((sum, swarm) => sum + Number(swarm.balance), 0),
     ideas: open(swarms).map((problem) => ({ id: problem.id, title: problem.title })),

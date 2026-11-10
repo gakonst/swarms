@@ -10,7 +10,7 @@ import * as Replica from './Replica.ts'
 
 function instructions(origin: string) {
   return [
-    `Swarms (${origin}) are crowdfunded, long-running AI agents on the Tempo gateway. Anyone starts a swarm with a title and a goal, which can be anything an agent can do with code, machines and the web: research a question, build and ship software, port or audit code, gather data, write. It waits in status funding until someone funds it, and then one nanocode agent works on it in a single continuous thread, spending on models, Modal machines and any subagents it spawns. Whenever it pauses to reply, it posts an update; the newest update is the swarm's answer, and the swarm then tells it to keep going. It keeps the code it writes in a public git repository that swarm_get names, with a read-only clone URL (code.clone) for git clone. A swarm runs until its agent reports the goal met (done), or waits whenever its money runs out (paused, and new money resumes it).`,
+    `Swarms (${origin}) are crowdfunded, long-running AI agents on the Tempo gateway. Anyone starts a swarm with a title and a goal, which can be anything an agent can do with code, machines and the web: research a question, build and ship software, port or audit code, gather data, write. It waits in status funding until someone funds it, and then one nanocode agent works on it in a single continuous thread, spending on models, Modal machines and any subagents it spawns. Whenever it pauses to reply, it posts an update; the newest update is the swarm's answer, and the swarm then tells it to keep going. It keeps the code it writes in a public git repository that swarm_get names, with a read-only clone URL (code.clone) for git clone. A swarm is never done: it works while its money lasts and waits whenever it runs out (paused, and new money resumes it).`,
     "Money comes one way: anyone sends MACH, OUSD, USDC.e or pathUSD from their own wallet to the Tempo gateway with a memo that names the swarm, and the swarm counts it by its transaction hash. The gateway holds it as the swarm's credit and spends it only on what the swarm's agent does; a swarm holds no wallet, and money sent is not returned. Money may carry a note: money behind the same note backs it together, the agent reads the notes ranked by the money behind them whenever it keeps going, and a note that arrives while it works reaches it at once.",
     "Contributors can also lend a swarm their own machine as a hand: swarm_hand issues one and returns the nanocode command (nc hand '<url>' --token <token>) and a nanocode-ts snippet (Hand.connect) to run on that machine. The swarm's agent then runs commands there, and is told the machine and its data belong to a contributor. A hand can set its own prices, such as a price per file; the swarm pays them through the gateway from its money and caps what each hand may charge. Issue a hand only when the user asks, and make sure they know the swarm's agents will run commands on the machine.",
     "Swarms publish artifacts as they work, such as a live dashboard of their results, a chart or a write-up; swarm_artifacts lists them with a url to fetch.",
@@ -50,7 +50,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
     {
       annotations: reading,
       description:
-        'List the funded swarms, most recently active first (at most 100), each with its title, goal, status, balance (everything its backers put in), spent and remaining (balance less spent), machines, backers and latest answer. status filters: funding (funded, its agent has not started yet), running (its agent is working), paused (out of money; new money resumes it) or done.',
+        'List the funded swarms, most recently active first (at most 100), each with its title, goal, status, balance (everything its backers put in), spent and remaining (balance less spent), machines, backers and latest answer. status filters: funding (funded, its agent has not started yet), running (its agent is working) or paused (out of money; new money resumes it).',
       inputSchema: Operations.schema.list.shape,
     },
     async (input) => reply(await Operations.list(read, input)),
@@ -251,7 +251,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
     'swarm_wait',
     {
       annotations: reading,
-      description: `Wait up to timeout seconds (at most ${Operations.maxWait}) for a swarm's agent to post its next update, then return that update and the swarm. It returns at once when an update newer than after was already posted (changed: true, reason updated), or when the agent is not working and the swarm is funding, paused or done (reason idle); otherwise reason timeout. Call it again to keep waiting; the swarm itself has no time limit.`,
+      description: `Wait up to timeout seconds (at most ${Operations.maxWait}) for a swarm's agent to post its next update, then return that update and the swarm. It returns at once when an update newer than after was already posted (changed: true, reason updated), or when the agent is not working and the swarm is funding or paused (reason idle); otherwise reason timeout. Call it again to keep waiting; the swarm itself has no time limit.`,
       inputSchema: Operations.schema.wait.shape,
     },
     async (input, extra) => reply(await Operations.wait(read, input, extra.signal)),

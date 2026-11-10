@@ -138,7 +138,7 @@ export function start(origin: string, swarms: readonly Summary[] = [], request?:
   const free = open(swarms)
   const ideas = free.slice(0, 4)
   const latest = Math.max(0, ...swarms.map((item) => item.updatedAt))
-  const live = Status.ranked(swarms.filter((item) => item.status !== 'done'), latest)
+  const live = Status.ranked(swarms, latest)
   const counted = Status.count(swarms)
   const peekIdeas = ideas.slice(0, 4).map((item) => `<span class="chip"><i class="mark-idea"></i><b>${attribute(item.label)}</b></span>`).join('')
   const peekSwarms = live.slice(0, 4).map((item) => `<span class="chip"><i class="dot" data-status="${item.status}"></i><b>${attribute(item.title)}</b><em>${dollars(item.balance)}</em></span>`).join('')
@@ -178,8 +178,7 @@ export function start(origin: string, swarms: readonly Summary[] = [], request?:
 
 export function swarm(origin: string, value: Overview, request?: URL, bot?: string) {
   const working = value.status === 'running' ? value.working : null
-  const done = value.status === 'done'
-  const title = working ? `Live: ${value.title}` : done ? value.title : `Fund ${value.title}`
+  const title = working ? `Live: ${value.title}` : `Fund ${value.title}`
   const description = working ? 'Watch this swarm work, live, and steer it.' : `${backers(value.contributors)} · ${dollars(value.balance)} balance.`
   const page = `${origin}/s/${encodeURIComponent(value.id)}`
   const latest = value.updates.at(-1)?.excerpt ?? null
@@ -188,7 +187,7 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
       <i class="dot" data-status="${value.status}"></i>
       <a class="name" href="${attribute(page)}" target="_blank" rel="noreferrer">${attribute(value.title)}</a>
       <span class="sum">${dollars(value.balance)} · ${value.contributors}</span>
-      ${done ? `<a class="go small" href="${attribute(page)}" target="_blank" rel="noreferrer">Result ↗</a>` : '<button class="go small" data-open="fund" type="button">Fund</button>'}
+      <button class="go small" data-open="fund" type="button">Fund</button>
     </header>
     <nav class="tabs" role="tablist">
       <button aria-selected="true" data-tab="transcript" role="tab" type="button">Transcript</button>
@@ -199,12 +198,12 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
       <li class="beat now" id="now" hidden><span class="who" id="now-who">Agent</span><span class="say" id="now-text"></span></li>
     </ol>
     <ol class="feed" data-pane="chat" hidden><li class="beat quiet" id="empty-chat">Quiet so far.</li></ol>
-    ${done ? '' : `<form class="steer" id="steer">
+    <form class="steer" id="steer">
       <span class="tag">@swarm</span>
       <input id="note" maxlength="280" placeholder="Steer the agent" autocomplete="off">
       <span class="stake" id="stake" hidden><button aria-checked="true" data-stake="2" role="radio" type="button">$2</button><button aria-checked="false" data-stake="5" role="radio" type="button">$5</button><button aria-checked="false" data-stake="10" role="radio" type="button">$10</button></span>
       <button class="send" disabled type="submit" aria-label="Send">↑</button>
-    </form>`}
+    </form>
   </section>
   <section class="view split" data-view="fund" hidden>
     <div class="left">
@@ -300,7 +299,6 @@ h2{margin:0;font-weight:400;font-size:28px;letter-spacing:-.02em;max-width:620px
 .dot[data-status=running]{background:#2fae5a;box-shadow:0 0 0 4px #2fae5a22}
 .door-join .dot[data-status=running]{background:#7dff7d}
 .dot[data-status=paused],.dot[data-status=funding]{background:#e0a43c}
-.dot[data-status=done]{background:#2b2b2b}
 .empty{flex:0 0 auto;padding:28px;border:1px dashed #cfd9c6;border-radius:14px;background:none;color:#6b6b6b;font-size:16px;cursor:pointer}
 .empty b{font:13px ${mono};font-weight:400;color:#161616}
 .pay{display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid #e3e9dd;border-radius:18px;background:#fff}

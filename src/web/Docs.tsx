@@ -29,7 +29,7 @@ const tools = [
 ] as const
 
 const routes = [
-  ['GET', '/v1/swarms', 'Funded swarms, most recently active first.', '?status=funding|running|paused|done'],
+  ['GET', '/v1/swarms', 'Funded swarms, most recently active first.', '?status=funding|running|paused'],
   ['POST', '/v1/swarms', 'Create a swarm. Signed in, only you steer it until you add others or open it; template defaults to frontier-anthropic, Fable 5.2 throughout.', '{ title, goal, template?, steering? }'],
   ['GET', '/v1/swarms/live', 'A WebSocket of the list: welcome when it opens, then { type: swarm, swarm } each time a listed swarm changes. Read the list again on each welcome.', ''],
   ['GET', '/v1/swarms/:id', 'Summary, latest answer, updates with excerpts and commits, whether the agent is working, notes, transfers, machines, code repository.', ''],
