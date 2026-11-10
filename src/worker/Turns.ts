@@ -149,12 +149,7 @@ export async function retry(self: Swarm, row: Store.Row, error: string, detail: 
   const run = self.run()
   const now = Date.now()
   failed(self, error, detail)
-  await self.move(row, {
-    ...(run.state === 'waiting' && run.from ? { from: run.from } : {}),
-    since: Phase.since(run),
-    state: 'waiting',
-    until: now + Clock.retryMs,
-  })
+  await self.move(row, { since: Phase.since(run), state: 'waiting', until: now + Clock.retryMs })
   return now + Clock.retryMs
 }
 

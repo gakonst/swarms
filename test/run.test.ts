@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { world } from './run.ts'
+import { id, rider, world } from './run.ts'
 
 const error = () => Response.json({ error: 'upstream hiccup' }, { status: 503 })
 
@@ -82,4 +82,29 @@ test('an agent is abandoned only after fifteen minutes in which the gateway neve
   assert.deepEqual([w.swarm.run().state, w.swarm.agent()], ['waiting', undefined])
   assert.ok(w.calls.includes('POST /v1/agents/agt_1/turns/agt_1:1/cancel'))
   assert.ok(w.errors().some((text) => /stopped answering for 15 minutes/.test(text)))
+})
+
+test('a swarm with money whose agent the gateway fails to create is retrying, not out of money', async (t) => {
+  let credit = '0.01'
+  const w = world((request, url) => {
+    if (url.pathname === '/api/keys/credit') return Response.json({ deposited: credit, left: credit, spent: '0' })
+    if (url.pathname === '/v1/agents' && request.method === 'POST') return error()
+    return undefined
+  })
+  t.after(w.restore)
+  await w.seed('10000')
+  w.sql.exec("INSERT INTO turns (n, turn, started_at, ended_at, status, spent_before) VALUES (1, 'agt_0:1', 1, 2, 'completed', '0')")
+  await w.swarm.wake('money')
+  await w.swarm.alarm()
+  assert.deepEqual(await w.status(), { status: 'paused', why: 'money' })
+
+  credit = '10.01'
+  await w.give('10000000', '0x' + 'd'.repeat(64))
+  await w.swarm.contributed({ amount: '10', contributor: rider, hash: '0x' + 'd'.repeat(64), kind: 'new', note: null, noteId: null, swarm: id, token: 'pathusd' })
+  await w.swarm.alarm()
+  w.pass(30_000)
+  await w.swarm.alarm()
+  assert.deepEqual(await w.status(), { status: 'running', why: null })
+  assert.equal(w.swarm.view({ feed: 0 }).reason, null)
+  assert.deepEqual(w.errors(), ['The gateway did not create the agent.'])
 })
