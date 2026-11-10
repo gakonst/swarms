@@ -69,7 +69,7 @@ export function spoken(text: string): string | null {
   if (resting) return `Resting: the agent found nothing more worth doing. ${amounts(resting[1] ?? '')} is kept for later; a note or new money wakes it.`
   const back = /^(Back at work|Started working) with \$[\d.]+ to spend\./.exec(said)
   if (back) return `${back[1]}.`
-  return amounts(unround(said))
+  return amounts(unround(said)).replace(/\bBack it to\b/, 'Ride it to').replace(/^Nobody has backed it yet\./, 'Nobody is riding it yet.')
 }
 
 export function local(text: string, at: number, format: (at: number) => string) {

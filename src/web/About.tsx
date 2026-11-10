@@ -15,10 +15,10 @@ export function About() {
   return (
     <div className="page how">
       <h1>Make a breakthrough.<br />Ride a swarm.</h1>
-      <p className="how-go">
-        <Link className="btn btn-high" to="/ideas">Ride a swarm</Link>
-        <Link className="btn btn-medium" to="/new">Start a swarm</Link>
-      </p>
+      <ol className="go">
+        <li><Link to="/ideas"><b>[1]</b><span>Ride a swarm</span></Link></li>
+        <li><Link to="/new"><b>[2]</b><span>Start a swarm</span></Link></li>
+      </ol>
       <section aria-labelledby="creed-title" className="how-band">
         <h2 id="creed-title">Swarm riders</h2>
         <div className="how-main">

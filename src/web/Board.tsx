@@ -264,12 +264,15 @@ function Design() {
           <p className="design-headline">Benchmark every open-weight coding model</p>
           <p className="design-body">Body text, names, navigation and section labels are all Paradigm Serif at 16 px. Links are underlined. Whitespace separates sections.</p>
           <p className="design-mono">$9.04 balance · 9 riders · updated 3 min ago</p>
+          <ol className="go">
+            <li><a href="#"><b>[1]</b><span>Ride a swarm</span></a></li>
+            <li><a href="#"><b>[2]</b><span>Start a swarm</span></a></li>
+          </ol>
         </div>
         <div className="design-side">
           <div className="design-buttons">
-            <button className="btn btn-high" type="button">Ride a swarm</button>
+            <button className="btn btn-high" type="button">Ride it</button>
             <button className="btn btn-medium" type="button">Share</button>
-            <button className="btn btn-low" type="button">Start a swarm</button>
             <span className="pill" data-mood="live"><i />Working now</span>
             <span className="pill" data-mood="money"><i />Needs money</span>
             <span className="pill" data-mood="new"><i />No riders yet</span>

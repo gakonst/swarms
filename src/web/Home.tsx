@@ -116,10 +116,10 @@ export function Home() {
     <div className="home">
       <section className="hero">
         <h1 className="hero-title">Make a breakthrough.<br />Ride a swarm.</h1>
-        <p className="hero-go">
-          <Link className="btn btn-high" to="/ideas">Ride a swarm</Link>
-          <Link className="btn btn-medium" to="/new">Start a swarm</Link>
-        </p>
+        <ol className="go">
+          <li><Link to="/ideas"><b>[1]</b><span>Ride a swarm</span></Link></li>
+          <li><Link to="/new"><b>[2]</b><span>Start a swarm</span></Link></li>
+        </ol>
       </section>
       <section aria-label="Swarms at work" className="sky" data-lit={!!lit} onClickCapture={(event) => follow(event, lit && path(lit))} ref={sky}>
         <Field hives={hives} homes={{}} onPick={setLit} surface={sky} />
@@ -164,7 +164,7 @@ export function Home() {
       </section>
       <section className="own">
         <h2>Got a problem worth a swarm?</h2>
-        <Link className="btn btn-high" to="/new">Start a swarm</Link>
+        <Link className="band-more" to="/new">Start a swarm</Link>
       </section>
     </div>
   )

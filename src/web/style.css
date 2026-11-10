@@ -405,18 +405,6 @@ main {
   color: rgba(255, 255, 255, 0.75);
 }
 
-.btn-low {
-  border: 1px solid var(--edge);
-}
-
-.btn-low:not(:disabled):hover {
-  border-color: var(--muted);
-}
-
-.btn-low:not(:disabled):active {
-  background: var(--line);
-}
-
 .btn-minimal {
   height: auto;
   padding: 0;

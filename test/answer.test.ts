@@ -21,6 +21,7 @@ test('system lines read as plain words with short amounts', () => {
   assert.equal(Answer.cash(0.046235), '$0.046')
   assert.equal(Answer.cash(0.0038), '$0.0038')
   assert.equal(Answer.cash(0.5), '$0.50')
+  assert.equal(Answer.spoken('Out of money. Back it to keep it going.'), 'Out of money. Ride it to keep it going.')
   assert.equal(Answer.spoken('Waiting for money: $0.0038 is payable now, less than one model call holds. New money keeps it going.'), 'Out of money: $0.0038 left, and one step can cost up to $0.05. Fund it to keep going.')
   assert.equal(Answer.spoken('Waiting for money: $1.10 is payable now, less than one model call holds. The next budget pull or resting contribution is at 16:37 UTC.'), 'Out of money: $1.10 left, and one step can cost up to $0.05. Fund it to keep going.')
   assert.equal(Answer.spoken("Waiting for money: the agent's next model call holds $0.2147, more than the $0.2083 any one contribution can pay at once."), 'Paused: its next step needs about $0.21 at once, more than any one backer has left in it. Fund it to keep going.')
