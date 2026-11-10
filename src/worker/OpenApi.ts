@@ -486,7 +486,7 @@ export function document(origin: string) {
       '/v1/swarms/{id}/backings/{request}': {
         post: {
           description:
-            "Counts an approved backing: the wallet's key authorization for the prepared key, or a transaction signed by one of the wallet's admin keys for a fee payer that carries it. The contribution counts at the approved limit; when the key ends it is lowered to what the key paid. A note counts only when it is the note the backing was prepared with. 201 when counted, 200 when it already was: a backing counts and is announced once.",
+            "Counts an approved backing: the wallet's key authorization for the prepared key, or a transaction signed by one of the wallet's admin keys for a fee payer that carries it. The contribution counts at the approved limit; when the key ends it is lowered to what the key paid. A note counts only when it is the note the backing was prepared with. 201 when counted, 200 when it already was: a backing counts and is announced once, and the same approval may be posted again until it is answered.",
           operationId: 'countBacking',
           parameters: [swarm, { in: 'path', name: 'request', required: true, schema: { pattern: '^[0-9a-f]{32}$', type: 'string' } }],
           requestBody: {
