@@ -1255,7 +1255,7 @@ export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise
   if (!exists) return missing()
   const listed = rows.length ? await stub(env, parsed.value.swarm).lent() : []
   const lent = Hands.lent(await Hands.seen(env, parsed.value.swarm, rows, listed), listed)
-  lending.set(parsed.value.swarm, { at: Date.now(), hands: lent })
+  if (listed) lending.set(parsed.value.swarm, { at: Date.now(), hands: lent })
   return Problem.ok({ hands: lent })
 }
 
