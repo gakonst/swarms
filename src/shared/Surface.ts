@@ -75,7 +75,7 @@ function asks(items: unknown[]) {
     const said = fields ? text(fields['text'] ?? fields['ask'] ?? fields['want'], 160) : text(item, 160)
     if (!said) return []
     const action = fields && /chat|room|help|lend|invite|talk/i.test(String(fields['action'] ?? '')) ? 'chat' : 'back'
-    const label = text(fields?.['label'] ?? fields?.['button'], 24) ?? (action === 'chat' ? 'Help in the chat' : 'Back this')
+    const label = text(fields?.['label'] ?? fields?.['button'], 24) ?? (action === 'chat' ? 'Help in the chat' : 'Steer this')
     return [{ action, amount: text(fields?.['amount'], 16), label, text: said, why: text(fields?.['why'], 240) }]
   })
 }

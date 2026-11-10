@@ -116,16 +116,18 @@ function WalletButton(props: { config: Config | undefined }) {
 
 function Header(props: { config: Config | undefined; path: string }) {
   return (
-    <header className="header game-header">
+    <header className="game-header">
+      <nav className="header-nav">
+        <Link className={props.path === '/ideas' || props.path.startsWith('/s/') ? 'game-nav game-nav-on' : 'game-nav'} to="/ideas">All<span className="nav-long"> swarms</span></Link>
+        <Link className={props.path === '/new' && !here().searchParams.has('q') ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start<span className="nav-long"> a swarm</span></Link>
+        <Link className={props.path === '/about' ? 'game-nav game-nav-on' : 'game-nav'} to="/about">Swarm riders</Link>
+      </nav>
       <p className="brand">
         <Link className="wordmark" to="/">
           Swarms
         </Link>
       </p>
       <div className="header-end">
-        <Link className={props.path === '/ideas' || props.path.startsWith('/s/') ? 'game-nav game-nav-on' : 'game-nav'} to="/ideas">Ideas</Link>
-        <Link className={props.path === '/new' && !here().searchParams.has('q') ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start<span className="nav-long"> an idea</span></Link>
-        <Link className={props.path === '/about' ? 'game-nav game-nav-on nav-long' : 'game-nav nav-long'} to="/about">How it works</Link>
         <WalletButton config={props.config} />
       </div>
     </header>
@@ -144,7 +146,7 @@ export function App() {
   }, [path])
 
   useEffect(() => {
-    if (!swarm && path !== '/board') document.title = path === '/new' ? 'Start an idea · Swarms' : path === '/ideas' ? 'All ideas · Swarms' : path === '/about' ? 'How it works · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/' ? 'Swarms · Back an idea. AI builds it.' : 'Not found · Swarms'
+    if (!swarm && path !== '/board') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
   }, [path, swarm])
 
   useEffect(() => {
@@ -184,8 +186,8 @@ export function App() {
           <Swarm config={config} id={decodeURIComponent(swarm)} key={swarm} view={view} />
         ) : (
           <Lost title="Nothing out here.">
-            <Link className="lost-row" to="/join">Browse ideas <span aria-hidden="true">→</span></Link>
-            <Link className="lost-row" to="/new">Start an idea <span aria-hidden="true">→</span></Link>
+            <Link className="lost-row" to="/join">All swarms <span aria-hidden="true">→</span></Link>
+            <Link className="lost-row" to="/new">Start a swarm <span aria-hidden="true">→</span></Link>
           </Lost>
         )}
         </Suspense>

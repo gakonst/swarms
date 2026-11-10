@@ -160,7 +160,7 @@ export const schema = {
       .max(12_000)
       .describe('What the swarm should find out or build, what done looks like and what its updates should report.'),
     problem: z.enum(ids).optional().describe('The id of the idea-bank problem this swarm works on, from GET /v1/problems. A problem with an open swarm is not offered again until that swarm finishes.'),
-    title: z.string().trim().min(3).max(80).describe('A short name for the swarm.'),
+    title: z.string().trim().min(1).max(80).describe('A short name for the swarm.'),
     template: z
       .enum(Setup.templates)
       .default(Setup.fallback)
@@ -690,7 +690,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
     author = members.find((member) => member.address === address)
   }
   if (!author && !seat)
-    return Problem.fail(403, 'not_member', 'Back this swarm first: money or a lent machine lets you post in its room.')
+    return Problem.fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
 
   const steering = Mention.steers(request.text)
   if (steering && policed && !seat)
@@ -904,7 +904,7 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
     return Problem.fail(404, 'not_found', `This swarm has no branch ${request.branch}: fund one of the subagents its agent started itself, from GET /v1/swarms/${row.id}/branches.`)
   if (ended(target)) return Problem.fail(409, 'conflict', `${target.who} is stopped; fund another branch.`)
   const author = found.value.members.find((member) => member.address === allowed.value.address)
-  if (!seat && !author) return Problem.fail(403, 'not_member', 'Back this swarm first: money or a lent machine lets you direct its money.')
+  if (!seat && !author) return Problem.fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you direct its money.')
 
   const amount = units(request.amount)
   const identity = identifier()

@@ -9,15 +9,15 @@ export type Standing = { action: string | null; mood: Mood; word: Word }
 export type Stood = Pick<Summary, 'balance' | 'remaining' | 'status'> & { setup?: Summary['setup'] | undefined; why?: Summary['why'] | undefined }
 
 const pills: Record<Word, string> = {
-  'Needs money': 'Needs funding',
-  'Not started': 'New idea',
+  'Needs money': 'Needs money',
+  'Not started': 'No riders yet',
   Running: 'Working now',
   Starting: 'Starting',
 }
 
 const lines: Record<Word, string> = {
-  'Needs money': 'Out of money. Back it to keep it going.',
-  'Not started': 'Back it to get it started.',
+  'Needs money': 'Out of money. Ride it to keep it going.',
+  'Not started': 'Ride it to get it started.',
   Running: 'AI is working on it right now.',
   Starting: 'Getting back to work.',
 }
@@ -38,8 +38,8 @@ export function fueled(swarm: Pick<Summary, 'remaining'> & { setup?: Summary['se
 
 export function standing(swarm: Stood): Standing {
   if (swarm.status === 'running') return { action: null, mood: 'live', word: 'Running' }
-  if (swarm.status === 'funding' && Number(swarm.balance) <= 0) return { action: 'Back it to start it', mood: 'new', word: 'Not started' }
-  if (swarm.why === 'money' || swarm.why === 'unfunded' || !fueled(swarm)) return { action: 'Back it to keep it going', mood: 'money', word: 'Needs money' }
+  if (swarm.status === 'funding' && Number(swarm.balance) <= 0) return { action: 'Ride it to start it', mood: 'new', word: 'Not started' }
+  if (swarm.why === 'money' || swarm.why === 'unfunded' || !fueled(swarm)) return { action: 'Ride it to keep it going', mood: 'money', word: 'Needs money' }
   return { action: null, mood: 'live', word: 'Starting' }
 }
 

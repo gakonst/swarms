@@ -15,8 +15,8 @@ const order = { running: 0, paused: 1, funding: 2, done: 3 } as const
 const filters = [
   ['open', 'All'],
   ['running', 'Working now'],
-  ['money', 'Needs funding'],
-  ['waiting', 'New'],
+  ['money', 'Needs money'],
+  ['waiting', 'No riders yet'],
 ] as const
 
 type Filter = (typeof filters)[number][0]
@@ -79,7 +79,6 @@ function plural(count: number, word: string) {
 export function Home() {
   const { free, ideas, latest, list, open, ranked } = useIdeas()
   const sky = useRef<HTMLElement>(null)
-  const copy = useRef<HTMLDivElement>(null)
   const [lit, setLit] = useState<string>()
   const [view, setView] = useState<'popular' | 'live' | 'new'>('popular')
   const [now, setNow] = useState<number>()
@@ -94,7 +93,7 @@ export function Home() {
       (item): Hive => ({
         about: (item.answer && Answer.gist(item.answer.text)) || item.goal,
         detail: `${Status.word(item)} · ${usd(item.balance)}`,
-        facts: [plural(item.contributors, 'backer'), now ? `updated ${ago(item.updatedAt, now)}` : ''].filter(Boolean).join(' · '),
+        facts: [plural(item.contributors, 'rider'), now ? `updated ${ago(item.updatedAt, now)}` : ''].filter(Boolean).join(' · '),
         fresh: item.status === 'running' ? 1 : 1 / (1 + Math.max(0, clock - item.updatedAt) / 86_400_000),
         home: 'join',
         id: item.id,
@@ -104,52 +103,68 @@ export function Home() {
         weight: Number(item.balance),
       }),
     )
-    const seeds = free.slice(0, 10).map((item): Hive => ({ about: item.hint, detail: 'New idea', facts: 'Be the first backer', fresh: 0.35, home: 'start', id: `idea:${item.id}`, mood: 'new', title: item.label, updated: 0, weight: 0 }))
+    const seeds = free.slice(0, 10).map((item): Hive => ({ about: item.hint, detail: 'No riders yet', facts: 'Be the first rider', fresh: 0.35, home: 'start', id: `idea:${item.id}`, mood: 'new', title: item.label, updated: 0, weight: 0 }))
     return joins.concat(seeds)
   }, [ranked.map((item) => [item.id, item.status, item.why, item.balance, item.contributors, item.updatedAt, item.answer?.text.length].join()).join('|'), free.map((item) => item.id).join(), now])
   const working = open.filter((swarm) => swarm.status === 'running').length
   const balance = open.reduce((sum, swarm) => sum + Number(swarm.balance), 0)
   const shown = ideas.filter((idea) => (view === 'live' ? fits.running(idea) : view === 'new' ? fits.waiting(idea) : true)).slice(0, 12)
   const path = (id: string) => (id.startsWith('idea:') ? `/new?q=${id.slice(5)}` : `/s/${id}`)
-  const tabs = [['popular', 'Popular'], ['live', 'Working now'], ['new', 'New ideas']] as const
+  const tabs = [['popular', 'Popular'], ['live', 'Working now'], ['new', 'No riders yet']] as const
 
   return (
     <div className="home">
-      <section className="hero" data-lit={!!lit} onClickCapture={(event) => follow(event, lit && path(lit))} ref={sky}>
-        <Field hives={hives} homes={{ start: copy }} ignore=".hero-copy" onPick={setLit} surface={sky} />
-        <div className="hero-copy" ref={copy}>
-          <h1>Back an idea.<br />AI builds it.</h1>
-          <p>Chip in a few dollars. AI agents get to work, in public.</p>
-          <p className="hero-live" data-ready={!!list.data}>
-            {working > 0 && <><i className="live-dot" />{working} working now · </>}
-            {plural(ideas.length, 'idea')}{balance > 0 && <> · {usd(String(balance))} balance</>}
-          </p>
-        </div>
+      <section className="hero">
+        <h1 className="hero-title">Make a breakthrough.<br />Ride a swarm.</h1>
+        <p className="hero-go">
+          <Link className="btn btn-high" to="/ideas">Ride a swarm</Link>
+          <Link className="btn btn-medium" to="/new">Start a swarm</Link>
+        </p>
       </section>
-      <section aria-labelledby="ideas-title" className="shelf">
-        <header className="shelf-head">
-          <h2 id="ideas-title">Pick an idea to back</h2>
+      <section aria-label="Swarms at work" className="sky" data-lit={!!lit} onClickCapture={(event) => follow(event, lit && path(lit))} ref={sky}>
+        <Field hives={hives} homes={{}} onPick={setLit} surface={sky} />
+      </section>
+      <p className="hero-live" data-ready={!!list.data}>
+        {working > 0 && <><i className="live-dot" />{working} working now · </>}
+        {plural(ideas.length, 'swarm')}{balance > 0 && <> · {usd(String(balance))} to spend</>}
+      </p>
+      <section className="intro">
+        <p>A swarm is many AI agents working one hard problem, in the open. A rider points it: names the goal, puts in a few dollars of compute, and steers by what it finds.</p>
+      </section>
+      <section aria-labelledby="ideas-title" className="band">
+        <header className="band-head">
+          <h2 id="ideas-title">Swarms</h2>
           <div aria-label="Show" className="chips" role="tablist">
             {tabs.map(([key, label]) => <button aria-selected={view === key} className="chip" key={key} onClick={() => setView(key)} role="tab" type="button">{label}</button>)}
           </div>
         </header>
-        {list.error && !list.data ? (
-          <button className="world-empty" onClick={() => location.reload()} type="button"><span>Can't reach Swarms.</span><b>Tap to try again ↻</b></button>
-        ) : (
-          <Grid ideas={shown} loading={!list.data && !list.error} />
-        )}
-        <Link className="shelf-more" to="/ideas">See all {list.data ? plural(ideas.length, 'idea') : 'ideas'} →</Link>
+        <div className="band-main">
+          {list.error && !list.data ? (
+            <button className="world-empty" onClick={() => location.reload()} type="button"><span>Can't reach Swarms.</span><b>Tap to try again ↻</b></button>
+          ) : (
+            <Grid ideas={shown} loading={!list.data && !list.error} />
+          )}
+          <Link className="band-more" to="/ideas">All {list.data ? plural(ideas.length, 'swarm') : 'swarms'}</Link>
+        </div>
       </section>
-      <section aria-label="How it works" className="steps">
-        <ol>
-          <li><b>1</b><span>Pick an idea</span></li>
-          <li><b>2</b><span>Chip in a few dollars</span></li>
-          <li><b>3</b><span>Read what AI finds</span></li>
+      <section aria-labelledby="how-title" className="band">
+        <header className="band-head"><h2 id="how-title">How it works</h2></header>
+        <ol className="band-main steps">
+          <li><b>[1]</b><span>Pick a swarm, or start one with a problem of your own</span></li>
+          <li><b>[2]</b><span>Put in a few dollars and say where it should go</span></li>
+          <li><b>[3]</b><span>Read what it finds, and steer again</span></li>
         </ol>
       </section>
+      <section aria-labelledby="riders-title" className="band">
+        <header className="band-head"><h2 id="riders-title">Swarm riders</h2></header>
+        <div className="band-main creed">
+          <p>Commanding a swarm of agents to a productive end is a new skill. It is closer to running experiments than to writing software: say what counts as better, build the test, and let the swarm cook.</p>
+          <Link className="band-more" to="/about">Read the manifesto</Link>
+        </div>
+      </section>
       <section className="own">
-        <h2>Got an idea?</h2>
-        <Link className="btn btn-high own-go" to="/new">Start an idea</Link>
+        <h2>Got a problem worth a swarm?</h2>
+        <Link className="btn btn-high" to="/new">Start a swarm</Link>
       </section>
     </div>
   )
@@ -169,7 +184,7 @@ export function Join() {
   return (
     <div className="page browse">
       <header className="browse-head">
-        <h1>All ideas</h1>
+        <h1>Swarms</h1>
         <div aria-label="Show" className="chips" role="tablist">
           {filters.filter(([key]) => key === 'open' || key === filter || !list.data || count(key) > 0).map(([key, label]) => (
             <button aria-selected={filter === key} className="chip" key={key} onClick={() => choose(key)} role="tab" type="button">
@@ -184,8 +199,8 @@ export function Join() {
         <button className="world-empty" onClick={() => location.reload()} type="button"><span>Can't reach Swarms.</span><b>Tap to try again ↻</b></button>
       ) : list.data && shown.length === 0 ? (
         <Link className="world-empty" to="/new">
-          <span>{filter === 'running' ? 'Nothing is working right now.' : filter === 'money' ? 'Every idea has money.' : 'Nothing here yet.'}</span>
-          <b>Start an idea →</b>
+          <span>{filter === 'running' ? 'Nothing is working right now.' : filter === 'money' ? 'Every swarm has money.' : 'Nothing here yet.'}</span>
+          <b>Start a swarm →</b>
         </Link>
       ) : (
         <Grid ideas={shown} loading={!list.data} />

@@ -1,10 +1,12 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { Address } from 'viem'
-import type { Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
+import type { Artifact, Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
 import { clip, redact } from '../shared/Trail.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Fleet from '../shared/Fleet.ts'
 import * as Memo from '../shared/Memo.ts'
+import * as Shelf from '../shared/Artifact.ts'
+import * as Site from '../shared/Site.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
@@ -129,6 +131,8 @@ const columns = [
 const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)', `CREATE INDEX IF NOT EXISTS feed_machines ON feed (seq) WHERE ${Feed.machined}`, ...Runs.indexes]
 
 const healMs = 5 * 60_000
+
+const coverMs = 6 * 60 * 60_000
 
 const rowMs = 10_000
 
@@ -399,6 +403,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       this.kv.delete('exposing')
     }
     await Feed.reindex(this)
+    if (id && now - (this.kv.get<number>('shelvedAt') ?? 0) > coverMs) await this.publish(id).catch((error: unknown) => console.error('Reading the artifacts failed', error))
     const run = this.run()
     if (run.state === 'paused' || run.state === 'new' || now - (this.kv.get<number>('healed') ?? 0) < healMs) return
     const alarm = await this.ctx.storage.getAlarm()
@@ -668,10 +673,22 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       if (changed) this.log('status', `Updated the artifact "${artifact.title}" (version ${artifact.version})`, artifact.summary)
       next[artifact.slug] = { title: artifact.title, turn: !seen || changed ? turn : seen.turn, version: artifact.version }
     }
+    await this.covered(swarm, found)
     const moved = Object.keys(next).length !== Object.keys(known).length || Object.entries(next).some(([slug, seen]) => known[slug]?.version !== seen.version)
     if (!moved) return
     this.kv.put('artifacts', next)
     if (this.listened()) Chat.broadcast(this, { artifacts: found, type: 'artifacts' })
+  }
+
+  async covered(swarm: string, found: readonly Artifact[]) {
+    const picked = Shelf.cover(found)
+    const cover = picked ? JSON.stringify({ ...picked, url: Site.at(picked.url) }) : null
+    const row = await this.found(swarm)
+    if (!row || (row.cover ?? null) === cover) return
+    await Store.pictured(this.env, swarm, cover)
+    const fresh = await this.found(swarm)
+    if (fresh) this.beacon(fresh)
+    this.changed('detail')
   }
 
   chat(query: { after: number; before?: number | undefined; limit: number }) {

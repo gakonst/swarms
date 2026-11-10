@@ -57,7 +57,7 @@ function dollars(value: string) {
 }
 
 function backers(count: number) {
-  return `${count} backer${count === 1 ? '' : 's'}`
+  return `${count} rider${count === 1 ? '' : 's'}`
 }
 
 function document(origin: string, path: string, subject: Share.Subject, title: string, description: string, content: string, context: object, status = 200, request?: URL, bot?: string) {

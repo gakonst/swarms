@@ -1,4 +1,4 @@
-import type { Artifact, Form } from './Api.ts'
+import type { Artifact, Cover, Form } from './Api.ts'
 
 export const prefix = 'artifacts/'
 
@@ -74,6 +74,7 @@ export function read(key: string, value: unknown, version: number, base: string)
   const manifest = typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
   const entry = path(manifest['entry']) ?? 'index.html'
   return {
+    cover: manifest['cover'] === true,
     entry,
     form: form(entry),
     kind: text(manifest['kind'], 24) ?? form(entry),
@@ -84,4 +85,15 @@ export function read(key: string, value: unknown, version: number, base: string)
     url: `${base}/${name}/${entry.split('/').map(encodeURIComponent).join('/')}`,
     version,
   }
+}
+
+const usual = ['cover', 'autoresearch']
+
+export function cover(list: readonly Artifact[]): Cover | null {
+  const able = list.filter((artifact) => artifact.form === 'page' || artifact.form === 'image')
+  const chosen = able.filter((artifact) => artifact.cover).sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0) || b.version - a.version)[0]
+  const found = chosen ?? usual.flatMap((slug) => able.find((artifact) => artifact.slug === slug) ?? [])[0]
+  if (!found) return null
+  const stamped = /^data:/.test(found.url) ? found.url : found.url + '?' + (found.form === 'page' ? 'cover=1&' : '') + 'v=' + found.version
+  return { form: found.form === 'page' ? 'page' : 'image', url: stamped }
 }

@@ -122,7 +122,7 @@ function chip(fonts: Fonts, x: number, y: number, word: Status.Word, mood: Mood,
   }
 }
 
-export function swarm(fonts: Fonts, item: Swarm, width: number, height: number, cta = 'Back it'): Scene {
+export function swarm(fonts: Fonts, item: Swarm, width: number, height: number, cta = 'Ride it'): Scene {
   const { k, margin } = scale(width, height)
   const inset = Math.round(margin / 2)
   const panel = { h: height - inset * 2, w: Math.round(width * 0.4), x: 0, y: inset }
@@ -168,8 +168,8 @@ export function swarm(fonts: Fonts, item: Swarm, width: number, height: number, 
   const money =
     item.balance > 0
       ? say(fonts.serif, margin, foot, Answer.cash(item.balance), 52 * k, { spacing: -1.8 * k }) +
-        say(fonts.mono, margin + Glyphs.width(fonts.serif, Answer.cash(item.balance), 52 * k, -1.8 * k) + 14 * k, foot - 2 * k, `balance · ${item.backers} backer${item.backers === 1 ? '' : 's'}`, 18 * k, { fill: quiet })
-      : say(fonts.serif, margin, foot - 4 * k, 'Be the first backer', 36 * k, { spacing: -0.8 * k })
+        say(fonts.mono, margin + Glyphs.width(fonts.serif, Answer.cash(item.balance), 52 * k, -1.8 * k) + 14 * k, foot - 2 * k, `balance · ${item.backers} rider${item.backers === 1 ? '' : 's'}`, 18 * k, { fill: quiet })
+      : say(fonts.serif, margin, foot - 4 * k, 'Be the first rider', 36 * k, { spacing: -0.8 * k })
   const parts = [
     `<defs>${gradient('cover', item.mood)}</defs>`,
     box(0, 0, width, height, 0, '#ffffff'),
@@ -228,7 +228,7 @@ export function home(fonts: Fonts, field: Field, width: number, height: number):
   const top = margin + 36 * k
   const size = 104 * k
   const heroFirst = height * 0.5 - size * 0.62
-  const hero = ['Back an idea.', 'AI builds it.']
+  const hero = ['Make a breakthrough.', 'Ride a swarm.']
   const heroWide = Math.max(...hero.map((row) => Glyphs.width(fonts.serif, row, size, -0.05 * size)))
   const subSize = 28 * k
   const sub = Glyphs.wrap(fonts.serif, 'Chip in a few dollars. AI agents get to work, in public.', subSize, 520 * k, 2)
@@ -258,7 +258,7 @@ function mini(fonts: Fonts, item: Swarm, x: number, y: number, wide: number, hig
   const size = 23 * k
   const title = Glyphs.wrap(fonts.serif, item.title, size, wide - 36 * k, 2)
   const tag = chip(fonts, x + 14 * k, y + 14 * k, item.word, item.mood, k * 0.82)
-  const stats = item.balance > 0 ? `${Answer.cash(item.balance)} · ${item.backers} backer${item.backers === 1 ? '' : 's'}` : 'Be the first backer'
+  const stats = item.balance > 0 ? `${Answer.cash(item.balance)} · ${item.backers} rider${item.backers === 1 ? '' : 's'}` : 'Be the first rider'
   const svg = [
     `<defs>${gradient(`mini${index}`, item.mood)}<clipPath id="clip${index}">${box(x, y, wide, high, 18 * k, '#fff')}</clipPath></defs>`,
     `<g clip-path="url(#clip${index})">`,
@@ -270,7 +270,7 @@ function mini(fonts: Fonts, item: Swarm, x: number, y: number, wide: number, hig
     tag.svg,
     stack(fonts.serif, title, x + 18 * k, y + coverHigh + 22 * k + size * 0.8, size, 1.2, { spacing: -0.3 * k }),
     say(fonts.mono, x + 18 * k, y + high - 20 * k, stats, 15 * k, { fill: quiet }),
-    say(fonts.mono, x + wide - 18 * k, y + high - 20 * k, 'Back it →', 15 * k, { anchor: 'end', fill: deep }),
+    say(fonts.mono, x + wide - 18 * k, y + high - 20 * k, 'Ride it →', 15 * k, { anchor: 'end', fill: deep }),
   ].join('')
   return { hive, pulse: tag.pulse, svg }
 }
@@ -322,7 +322,7 @@ export function start(fonts: Fonts, field: Field, width: number, height: number)
       return [
         index ? `<line x1="${margin}" y1="${y.toFixed(1)}" x2="${width - margin}" y2="${y.toFixed(1)}" stroke="${line}" stroke-width="1.5"/>` : '',
         say(fonts.serif, margin + 48 * k, y + rowHigh / 2 + 9 * k, Glyphs.wrap(fonts.serif, idea.title, 26 * k, width - margin * 2 - 260 * k, 1)[0] ?? '', 26 * k),
-        say(fonts.mono, width - margin, y + rowHigh / 2 + 6 * k, 'Back it →', 17 * k, { anchor: 'end', fill: deep }),
+        say(fonts.mono, width - margin, y + rowHigh / 2 + 6 * k, 'Ride it →', 17 * k, { anchor: 'end', fill: deep }),
       ].join('')
     })
     .join('')
@@ -345,7 +345,7 @@ export function about(fonts: Fonts, width: number, height: number): Scene {
   const top = margin + 36 * k
   const size = 72 * k
   const headY = top + 52 * k + size * 0.8
-  const steps = ['Pick an idea', 'Chip in a few dollars', 'AI agents work on it until the money runs out', 'Read what they find and chat with other backers']
+  const steps = ['Pick a swarm, or start one', 'Put in a few dollars and say where it should go', 'AI agents work on it until the money runs out', 'Read what they find and steer again']
   const rowTop = headY + 52 * k
   const rowHigh = (height - margin - rowTop) / steps.length
   const rows = steps

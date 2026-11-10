@@ -55,8 +55,8 @@ export function project(run: Run, n: number): { status: Status; why: Why | null 
 }
 
 export function reason(pause: Pause) {
-  if (pause.why === 'unfunded') return 'Nobody has backed it yet.'
-  return 'Out of money. Back it to keep it going.'
+  if (pause.why === 'unfunded') return 'Nobody is riding it yet.'
+  return 'Out of money. Ride it to keep it going.'
 }
 
 export function same(a: Pause, b: Pause) {

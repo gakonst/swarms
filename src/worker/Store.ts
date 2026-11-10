@@ -1,4 +1,4 @@
-import type { Account, Answer, Contribution, Currency, Member, Note, Summary, Way } from '../shared/Api.ts'
+import type { Account, Answer, Contribution, Cover, Currency, Member, Note, Summary, Way } from '../shared/Api.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Setup from '../shared/Setup.ts'
@@ -11,6 +11,7 @@ export type Row = {
   answer: string | null
   balance: number
   contributors: number
+  cover?: string | null
   created_at: number
   creator: `0x${string}` | null
   goal: string
@@ -71,6 +72,16 @@ function answer(text: string | null): Answer | null {
   return { at: parsed.at, done: parsed.done, text: parsed.text }
 }
 
+export function cover(row: Pick<Row, 'cover'>): Cover | null {
+  if (!row.cover) return null
+  try {
+    const parsed = JSON.parse(row.cover) as Cover
+    return typeof parsed.url === 'string' && (parsed.form === 'page' || parsed.form === 'image') ? { form: parsed.form, url: parsed.url } : null
+  } catch {
+    return null
+  }
+}
+
 export function setup(row: Pick<Row, 'setup'>): Setup.Setup | null {
   if (!row.setup) return null
   try {
@@ -85,6 +96,7 @@ export function summary(row: Row): Summary {
     answer: answer(row.answer),
     balance: Memo.decimal(BigInt(row.balance)),
     contributors: row.contributors,
+    cover: cover(row),
     createdAt: row.created_at,
     goal: row.goal,
     id: row.id,
@@ -189,6 +201,10 @@ export async function update(env: Cloudflare.Env, id: string, fields: Fields) {
   )
     .bind(...entries.map(([, value]) => value), Date.now(), id)
     .run().finally(() => wrote(id))
+}
+
+export async function pictured(env: Cloudflare.Env, id: string, cover: string | null) {
+  await env.DB.prepare('update swarms set cover = ? where id = ?').bind(cover, id).run().finally(() => wrote(id))
 }
 
 export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>) {

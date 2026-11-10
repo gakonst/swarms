@@ -38,9 +38,11 @@ function backing(text: string) {
 function friendly(text: string) {
   const line = dollars(text).replace(/\.$/, '')
   const behind = /^(\S+) (?:pledged|sent|put|put the) (\$[\d.,]+)(?: [A-Za-z.]+)?(?: they sent)? behind "(.+)"$/.exec(line)
-  if (behind) return `${behind[1]} backed "${behind[3]}" with ${behind[2]}`
-  const sent = /^(\S+) (?:pledged|sent|funded it with) (\$[\d.,]+)$/.exec(line)
-  if (sent) return `${sent[1]} backed it with ${sent[2]}`
+  if (behind) return `${behind[1]} put ${behind[2]} behind "${behind[3]}"`
+  const backed = /^(\S+) backed "(.+)" with (\$[\d.,]+)$/.exec(line)
+  if (backed) return `${backed[1]} put ${backed[3]} behind "${backed[2]}"`
+  const sent = /^(\S+) (?:pledged|sent|funded it with|backed it with) (\$[\d.,]+)(:.*)?$/.exec(line)
+  if (sent) return `${sent[1]} rode in with ${sent[2]}${sent[3] ?? ''}`
   return line
 }
 
@@ -407,7 +409,7 @@ export const Room = memo(function Room(props: {
   else if (door.at === 'not-member')
     foot = (
       <button className="chat-gate" onClick={() => props.onBack('')} type="button">
-        Back it to chat
+        Ride it to chat
       </button>
     )
   else
@@ -467,8 +469,8 @@ export const Room = memo(function Room(props: {
           rows={1}
           value={text}
         />
-        <button aria-label={steering ? 'Back it' : 'Send'} className="chat-send" data-ai={steering} disabled={!text.trim() || sending} onClick={submit} type="button">
-          {steering ? 'Back it' : '↑'}
+        <button aria-label={steering ? 'Steer it' : 'Send'} className="chat-send" data-ai={steering} disabled={!text.trim() || sending} onClick={submit} type="button">
+          {steering ? 'Steer it' : '↑'}
         </button>
       </div>
     )
@@ -477,7 +479,7 @@ export const Room = memo(function Room(props: {
     <section aria-label="Chat" className="chat">
       <header className="chat-here">
         {here.length > 0 && <span className="chat-faces">{here.map((member) => <Avatar address={member.address} handle={member.handle} key={member.address} size="small" />)}</span>}
-        <span>{props.swarm.contributors} backer{props.swarm.contributors === 1 ? '' : 's'}</span>
+        <span>{props.swarm.contributors} rider{props.swarm.contributors === 1 ? '' : 's'}</span>
         {watching > 0 && <span className="chat-live"><i />{watching} here</span>}
       </header>
       <div
@@ -501,7 +503,7 @@ export const Room = memo(function Room(props: {
                 <p>
                   <span aria-hidden="true">♥</span> <Words handles={handles} me={myNames} text={row.text} />
                 </p>
-                {row.note && <button onClick={() => props.onBack(row.note ?? '')} type="button">+ Back this</button>}
+                {row.note && <button onClick={() => props.onBack(row.note ?? '')} type="button">+ Steer this</button>}
               </div>
             )
           if (row.kind === 'ai')
@@ -540,7 +542,7 @@ export const Room = memo(function Room(props: {
                 {item.steer && (
                   <p className="msg-steer">
                     <span>✦ Told the AI · {usd(item.steer.amount)}</span>
-                    <button onClick={() => props.onBack(item.steer?.note ?? '')} type="button">+ Back this</button>
+                    <button onClick={() => props.onBack(item.steer?.note ?? '')} type="button">+ Steer this</button>
                   </p>
                 )}
                 {self && row.last && <time className="msg-time" dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>}
@@ -567,7 +569,7 @@ export const Room = memo(function Room(props: {
         {problem && (
           <p className="chat-error" role="alert">
             {problem.text}
-            {problem.short && <button onClick={() => props.onBack(idea)} type="button">Back it →</button>}
+            {problem.short && <button onClick={() => props.onBack(idea)} type="button">Steer it →</button>}
           </p>
         )}
         {foot}

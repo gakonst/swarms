@@ -6,7 +6,8 @@ import * as Api from './api.ts'
 import { useSurface, useWishes, Viewer } from './Artifacts.tsx'
 import { here, seeded } from './boot.ts'
 import { Box } from './Box.tsx'
-import { lead, Pill } from './Card.tsx'
+import { Tile } from './Cover.tsx'
+import { lead, pill, Pill } from './Card.tsx'
 import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
 import { useMedia, usePoll } from './hooks.ts'
@@ -106,9 +107,9 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
 
   if (!detail.data)
     return detail.error ? (
-      <Lost title={/no swarm/i.test(detail.error) ? 'This idea is gone.' : "Can't reach Swarms."}>
+      <Lost title={/no swarm/i.test(detail.error) ? 'This swarm is gone.' : "Can't reach Swarms."}>
         {!/no swarm/i.test(detail.error) && <button className="lost-row" onClick={() => location.reload()} type="button">Try again <span aria-hidden="true">↻</span></button>}
-        <Link className="lost-row" replace to="/ideas">Browse ideas <span aria-hidden="true">→</span></Link>
+        <Link className="lost-row" replace to="/ideas">All swarms <span aria-hidden="true">→</span></Link>
       </Lost>
     ) : (
       <section className="page lost" aria-busy="true"><span className="lost-orbit" aria-hidden="true"><i /><i /><i /></span></section>
@@ -159,14 +160,14 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
     <a aria-current={view === to ? 'page' : undefined} className="idea-tab" href={href(to === 'now' ? base : `${base}/${to}`)} onClick={(event) => { event.preventDefault(); show(to) }}>{label}{extra}</a>
   )
   const tabs = (
-    <nav aria-label="Idea" className="idea-tabs">
+    <nav aria-label="Swarm" className="idea-tabs">
       {tab('now', 'Now')}
       {tab('results', 'Results')}
       {tab('chat', 'Chat', unread > 0 && view !== 'chat' && <i className="idea-unread">{unread}</i>)}
       {tab('code', 'Code')}
       <span className="idea-tabs-back" data-shown={view !== 'now'}>
         <span><b>{usdShort(swarm.balance)}</b> balance</span>
-        <button className="btn btn-high" onClick={() => steer('')} type="button">Back it</button>
+        <button className="btn btn-high" onClick={() => steer('')} type="button">Ride it</button>
       </span>
     </nav>
   )
@@ -185,7 +186,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
         <header className="chat-top">
           <Back className="chat-back" label="Back" to={base}>←</Back>
           <Back className="chat-title" to={base}><b>{swarm.title}</b><Pill mood={stood.mood} word={stood.word} /></Back>
-          <button className="btn btn-high chat-back-it" onClick={() => steer('')} type="button">Back it</button>
+          <button className="btn btn-high chat-back-it" onClick={() => steer('')} type="button">Ride it</button>
         </header>
         <div className="chat-room">{room}</div>
         {backing}
@@ -195,11 +196,14 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   return (
     <article className="page idea-page" data-view={view}>
       <div className="idea">
-        <Back className="idea-back" to="/ideas">{backed ? '← Back' : '← All ideas'}</Back>
+        <Back className="idea-back" to="/ideas">{backed ? '← Back' : '← All swarms'}</Back>
         <header className="idea-head">
-          <Pill mood={stood.mood} word={stood.word} />
-          <h1>{swarm.title}</h1>
-          {pitch && <p className="idea-pitch">{pitch}</p>}
+          <div className="idea-info">
+            <h1>{swarm.title}</h1>
+            <p className="idea-kind" data-mood={stood.mood}><i />{pill(stood.word)}{swarm.contributors > 0 && <> · {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'}</>}</p>
+            {pitch && <p className="idea-pitch">{pitch}</p>}
+          </div>
+          <Tile className="idea-tile" cover={swarm.cover} id={swarm.id} mood={stood.mood} />
         </header>
         <div className="idea-mark" ref={mark} />
         {tabs}
@@ -220,7 +224,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
       {view !== 'chat' && (
         <div className="idea-bar" data-shown={(view !== 'now' || past) && phone}>
           <span><b>{usdShort(swarm.balance)}</b> balance</span>
-          <button className="btn btn-high" onClick={() => steer('')} type="button">Back it</button>
+          <button className="btn btn-high" onClick={() => steer('')} type="button">Ride it</button>
         </div>
       )}
       {backing}

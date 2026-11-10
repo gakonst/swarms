@@ -1,10 +1,12 @@
 import * as Answer from '../shared/Answer.ts'
+import * as Shelf from '../shared/Artifact.ts'
 import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, Note, Part, Posted, Pulse, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
 import * as Progress from '../shared/Progress.ts'
 import * as Setup from '../shared/Setup.ts'
+import * as Site from '../shared/Site.ts'
 import { usd } from './format.ts'
 import { pace, scene, visitor } from './stage.ts'
 
@@ -122,6 +124,7 @@ function build(input: {
     chat: [],
     contributions,
     contributors: 0,
+    cover: null,
     createdAt: at(input.age),
     code: input.code ?? null,
     cursor: 0,
@@ -433,6 +436,7 @@ function summary(swarm: Live): Summary {
     answer: latest ? { at: latest.at, done: latest.done, text: latest.text } : null,
     balance: swarm.balance,
     contributors: swarm.contributors,
+    cover: Shelf.cover(shelves[swarm.id] ?? []),
     createdAt: swarm.createdAt,
     goal: swarm.goal,
     id: swarm.id,
@@ -637,42 +641,36 @@ export async function contribute(key: string, input: { hash: string; note?: stri
   return delay({ contribution, swarm: summary(swarm) }, 500)
 }
 
+const kit = typeof location === 'undefined' ? '' : location.origin + Site.at('/kit/swarm.css')
+
 const board = `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-*{box-sizing:border-box}body{margin:0;padding:20px;font:15px/1.4 Georgia,serif;color:#111;background:#fbfcf9}
-h1{margin:0;font-weight:400;font-size:24px;letter-spacing:-.02em}.at{margin:4px 0 18px;font:11px ui-monospace,monospace;color:#5c7350}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px}
-.card{padding:12px;border:1px solid #dbe2d0;border-radius:10px;background:#fff}.card b{display:block;font-weight:400;font-size:22px}.card span{font:10px ui-monospace,monospace;color:#666}
-.row{display:grid;grid-template-columns:minmax(90px,150px) 1fr 64px;align-items:center;gap:10px;margin:8px 0;font-size:14px}
-.bar{height:14px;border-radius:4px;background:#e7eddd;overflow:hidden}.bar i{display:block;height:100%;background:#3f7d4e;transition:width .8s}
-.cost{font:12px ui-monospace,monospace;color:#555;text-align:right}h2{font-weight:400;font-size:16px;margin:22px 0 6px}
-</style></head><body>
-<h1>Coding model leaderboard</h1><p class="at" id="at"></p>
-<div class="cards"><div class="card"><span>MODELS RUN</span><b>6</b></div><div class="card"><span>TASKS</span><b>1,560</b></div><div class="card"><span>BEST SOLVE RATE</span><b>41%</b></div><div class="card"><span>CHEAPEST PER SOLVE</span><b>$0.0006</b></div></div>
-<h2>SWE-bench Lite solve rate</h2><div id="rows"></div>
-<h2>Cost per solved task</h2><div id="cost"></div>
-<script>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="${kit}">
+<style>.rows{display:grid;gap:12px}.row{display:grid;grid-template-columns:minmax(90px,160px) 1fr 64px;align-items:center;gap:16px}.row .sw-num{text-align:right;font-size:12px}.at{font:12px var(--mono);letter-spacing:.02em}</style></head><body><main class="sw-page">
+<h1>Coding model leaderboard</h1><p class="at sw-muted" id="at"></p>
+<div class="sw-grid" style="margin-top:32px"><div class="sw-stat"><span>Models run</span><span>6</span></div><div class="sw-stat"><span>Tasks</span><span>1,560</span></div><div class="sw-stat"><span>Best solve rate</span><span>41%</span></div><div class="sw-stat"><span>Cheapest per solve</span><span>$0.0006</span></div></div>
+<h3>SWE-bench Lite solve rate</h3><div class="rows" id="rows"></div>
+<h3>Cost per solved task</h3><div class="rows" id="cost"></div>
+</main><script>
 const rows=[["GLM-5.3",124,300,0.002],["Kimi K2.7",118,300,0.0031],["DeepSeek V4.1",109,300,0.0006],["gpt-oss-120b",92,300,0.0011],["Qwen3-Coder",71,260,0.0042]]
-const draw=(id,value,label)=>document.getElementById(id).innerHTML=rows.map(r=>'<div class="row"><span>'+r[0]+'</span><div class="bar"><i style="width:'+value(r)+'%"></i></div><span class="cost">'+label(r)+'</span></div>').join('')
+const draw=(id,value,label)=>document.getElementById(id).innerHTML=rows.map(r=>'<div class="row"><span>'+r[0]+'</span><div class="sw-bar"><i style="width:'+value(r)+'%"></i></div><span class="sw-num sw-muted">'+label(r)+'</span></div>').join('')
 draw('rows',r=>r[1]/r[2]*100/0.5,r=>Math.round(r[1]/r[2]*100)+'%')
 draw('cost',r=>r[3]/0.0042*100,r=>'$'+r[3].toFixed(4))
-const tick=()=>document.getElementById('at').textContent='LIVE · updated '+new Date().toLocaleTimeString()
+const tick=()=>document.getElementById('at').textContent='Live · updated '+new Date().toLocaleTimeString()
 tick();setInterval(tick,1000)
 </script></body></html>`
 
 const throughput = `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>body{margin:0;padding:20px;font:15px/1.4 Georgia,serif;background:#fbfcf9}h1{font-weight:400;font-size:24px;margin:0 0 16px}svg{width:100%;height:auto}text{font:11px ui-monospace,monospace;fill:#555}</style>
-</head><body><h1>Parser throughput, GiB/s</h1><svg id="chart" viewBox="0 0 420 220"></svg>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="${kit}">
+<style>svg{display:block;width:100%;height:auto;margin-top:24px}text{font:11px var(--mono);fill:var(--muted)}.at{font:12px var(--mono);letter-spacing:.02em}</style>
+</head><body><main class="sw-page"><p class="at sw-muted">Parser throughput, GiB/s · best</p><p class="sw-big">2.01</p><svg id="chart" viewBox="0 0 480 200"></svg></main>
 <script>
 const data=[["serde_json",0.41,0.44],["simd-json",1.36,1.62],["sonic-rs",1.55,2.01]]
 const svg=document.getElementById('chart');let out=''
-data.forEach((d,i)=>{const y=20+i*66;out+='<text x="0" y="'+(y+12)+'">'+d[0]+'</text>';[[d[1],'#3f7d4e','8 CPU'],[d[2],'#a5b79c','16 CPU']].forEach((b,j)=>{const w=b[0]/2.1*300;out+='<rect x="100" y="'+(y+j*22)+'" width="'+w+'" height="18" rx="3" fill="'+b[1]+'"/><text x="'+(106+w)+'" y="'+(y+j*22+13)+'">'+b[0]+' · '+b[2]+'</text>'})})
+data.forEach((d,i)=>{const y=8+i*64;out+='<text x="0" y="'+(y+13)+'">'+d[0]+'</text>';[[d[1],'var(--edge)','8 CPU'],[d[2],'var(--high)','16 CPU']].forEach((b,j)=>{const w=b[0]/2.1*250;out+='<rect x="100" y="'+(y+j*22)+'" width="'+w+'" height="18" fill="'+b[1]+'"/><text x="'+(106+w)+'" y="'+(y+j*22+13)+'">'+b[0]+' · '+b[2]+'</text>'})})
 svg.innerHTML=out
 </script></body></html>`
 
-const curve = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 260" font-family="monospace" font-size="11"><rect width="480" height="260" fill="#fbfcf9"/><text x="16" y="24" font-size="14" font-family="Georgia,serif">Solved tasks per dollar</text><g stroke="#e3e9dd"><line x1="50" y1="220" x2="460" y2="220"/><line x1="50" y1="160" x2="460" y2="160"/><line x1="50" y1="100" x2="460" y2="100"/><line x1="50" y1="40" x2="460" y2="40"/></g><g fill="#3f7d4e"><rect x="70" y="60" width="50" height="160" rx="3"/><rect x="150" y="150" width="50" height="70" rx="3"/><rect x="230" y="170" width="50" height="50" rx="3"/><rect x="310" y="185" width="50" height="35" rx="3"/><rect x="390" y="196" width="50" height="24" rx="3"/></g><g fill="#555" text-anchor="middle"><text x="95" y="238">DeepSeek</text><text x="175" y="238">gpt-oss</text><text x="255" y="238">GLM</text><text x="335" y="238">Kimi</text><text x="415" y="238">Qwen</text><text x="95" y="54">1,667</text><text x="175" y="144">909</text><text x="255" y="164">500</text><text x="335" y="179">323</text><text x="415" y="190">238</text></g></svg>`
+const curve = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270" font-family="ui-monospace,Menlo,monospace" font-size="11"><g stroke="#dddddd"><line x1="40" y1="230" x2="460" y2="230"/><line x1="40" y1="170" x2="460" y2="170"/><line x1="40" y1="110" x2="460" y2="110"/><line x1="40" y1="50" x2="460" y2="50"/></g><g fill="#161616"><rect x="60" y="70" width="56" height="160"/><rect x="142" y="160" width="56" height="70"/><rect x="224" y="180" width="56" height="50"/><rect x="306" y="195" width="56" height="35"/><rect x="388" y="206" width="56" height="24"/></g><g fill="#666666" text-anchor="middle"><text x="88" y="248">DeepSeek</text><text x="170" y="248">gpt-oss</text><text x="252" y="248">GLM</text><text x="334" y="248">Kimi</text><text x="416" y="248">Qwen</text><text x="88" y="62">1,667</text><text x="170" y="152">909</text><text x="252" y="172">500</text><text x="334" y="187">323</text><text x="416" y="198">238</text></g><text x="40" y="24" fill="#666666">Solved tasks per dollar</text></svg>`
 
 const results = `model,solved,tasks,solve rate,median latency s,cost per solved task
 GLM-5.3,124,300,41%,94,0.0020
@@ -737,8 +735,9 @@ const surface = JSON.stringify({
   ],
 })
 
-function shelf(items: readonly (readonly [string, string, string, string, Form, string, number])[]): Artifact[] {
-  return items.map(([slug, title, summary, kind, form, body, minutes]) => ({
+function shelf(items: readonly (readonly [string, string, string, string, Form, string, number, boolean?])[]): Artifact[] {
+  return items.map(([slug, title, summary, kind, form, body, minutes, cover]) => ({
+    cover: cover === true,
     entry: { image: 'chart.svg', json: 'data.json', markdown: 'README.md', page: 'index.html', table: 'results.csv', text: 'notes.txt' }[form],
     form,
     kind,
@@ -754,13 +753,13 @@ function shelf(items: readonly (readonly [string, string, string, string, Form, 
 const shelves: Record<string, Artifact[]> = {
   'bench-coders': shelf([
     ['leaderboard', 'Coding model leaderboard', 'Solve rate and cost per solved task, live.', 'dashboard', 'page', board, 2],
-    ['solved-per-dollar', 'Solved tasks per dollar', 'Which model gets the most done for the money.', 'chart', 'image', curve, 18],
+    ['solved-per-dollar', 'Solved tasks per dollar', 'Which model gets the most done for the money.', 'chart', 'image', curve, 18, true],
     ['results', 'SWE-bench Lite results', 'Every model on SWE-bench Lite, as a table.', 'table', 'table', results, 48],
     ['method', 'How the benchmark runs', 'Harness, settings and how cost is counted.', 'write-up', 'markdown', method, 120],
     ['wishlist', 'Wishlist', '2 open: an H100 for the 70B models.', 'wishlist', 'json', wishes, 10],
     ['surface', 'Surface', 'DeepSeek V4.1 Flash leads at 41%.', 'surface', 'json', surface, 3],
   ]),
-  'json-terabyte': shelf([['throughput', 'Parser throughput', 'GiB/s by machine size.', 'dashboard', 'page', throughput, 6]]),
+  'json-terabyte': shelf([['throughput', 'Parser throughput', 'GiB/s by machine size.', 'dashboard', 'page', throughput, 6, true]]),
 }
 
 type Change = { additions: number; deletions: number; oldPath: string | null; patch: string; path: string; state: string | null }
@@ -1036,7 +1035,7 @@ export async function say(key: string, input: { artifact?: boolean; steer?: stri
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   const self = me(swarm, who) as Me
   const seated = swarm.steering === 'team' ? rosters.get(key)?.seats.find((found) => found.address === who.toLowerCase()) : undefined
-  if (!self?.member && !seated) throw fail(403, 'not_member', 'Back this swarm first: money or a lent machine lets you post in its room.')
+  if (!self?.member && !seated) throw fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
   const text = input.text.trim()
   if (swarm.steering === 'team' && Mention.steers(text) && !seated) throw fail(403, 'not_member', "Only this swarm's team steers it.")
   let steer: Said['steer'] = null

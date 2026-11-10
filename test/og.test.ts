@@ -67,7 +67,7 @@ test('a swarm shares its own title, numbers, card, poster, video and X player', 
   const html = Share.tags(shared)
   assert.equal(shared.url, 'https://swarms.example/s/abc123')
   assert.equal(shared.title, 'Megakernel for "Muse" <Spark> & co · Swarms')
-  assert.match(shared.description, /^Needs funding · \$80\.00 balance from 2 backers\. Beat "SGLang" on <muse_decode_layer>\.$/)
+  assert.match(shared.description, /^Needs money · \$80\.00 balance from 2 riders\. Beat "SGLang" on <muse_decode_layer>\.$/)
   assert.match(html, /<meta property="og:title" content="Megakernel for &quot;Muse&quot; &lt;Spark&gt; &amp; co · Swarms">/)
   assert.doesNotMatch(html, /<Spark>/)
   assert.match(html, /<meta property="og:image" content="https:\/\/swarms\.example\/og\/s\/abc123\/card\.png\?v=[a-z0-9]+">/)
@@ -76,7 +76,7 @@ test('a swarm shares its own title, numbers, card, poster, video and X player', 
   assert.match(html, /<meta name="twitter:card" content="player">/)
   assert.match(html, /<meta name="twitter:image" content="https:\/\/swarms\.example\/og\/s\/abc123\/poster\.png\?v=/)
   assert.match(html, /<meta name="twitter:player" content="https:\/\/swarms\.example\/x\/s\/abc123">/)
-  assert.match(html, /<meta name="twitter:label2" content="Balance"><meta name="twitter:data2" content="\$80\.00 from 2 backers">/)
+  assert.match(html, /<meta name="twitter:label2" content="Balance"><meta name="twitter:data2" content="\$80\.00 from 2 riders">/)
   assert.match(html, /<link rel="alternate" type="application\/json\+oembed" href="https:\/\/swarms\.example\/oembed\?url=https%3A%2F%2Fswarms\.example%2Fs%2Fabc123"/)
 })
 

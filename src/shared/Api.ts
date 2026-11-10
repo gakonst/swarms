@@ -8,10 +8,13 @@ export type Currency = 'mach' | Token
 
 export type Answer = { at: number; done: boolean; text: string }
 
+export type Cover = { form: 'image' | 'page'; url: string }
+
 export type Summary = {
   answer: Answer | null
   balance: string
   contributors: number
+  cover: Cover | null
   createdAt: number
   goal: string
   id: string
@@ -234,6 +237,7 @@ export type Steer = { amount: string; backers: number; live: boolean; note: stri
 export type Form = 'page' | 'image' | 'markdown' | 'table' | 'json' | 'text'
 
 export type Artifact = {
+  cover: boolean
   entry: string
   form: Form
   kind: string

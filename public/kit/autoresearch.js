@@ -3,56 +3,60 @@
   const theme = new URL('swarm.css', document.currentScript?.src ?? location.href).href
   const svg = 'http://www.w3.org/2000/svg'
   const colors = [
-    ['#3f7d4e', '#2f5f37'],
-    ['#2f6690', '#22496a'],
-    ['#b07a1e', '#7a5412'],
-    ['#7a4f9a', '#55376c'],
-    ['#b3261e', '#8a1d17'],
-    ['#2a8a86', '#1d605d'],
+    ['#161616', '#161616'],
+    ['#0a82e1', '#0a6cbb'],
+    ['#e0449c', '#b02a76'],
+    ['#7a52e0', '#5a38b8'],
+    ['#e8742c', '#b3541a'],
+    ['#1fa39c', '#167a75'],
   ]
   const states = { 'dead end': 'dead', 'dead-end': 'dead', done: 'done', exploring: 'exploring', promising: 'promising' }
 
   const css = `
-.ar{max-width:1040px;margin:0 auto;padding:20px 16px 28px}
-.ar h1{margin:0;font-size:22px;font-weight:400;line-height:1.15;letter-spacing:-.01em}
-.ar .eyebrow{margin:18px 0 0;font:11px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
-.ar .big{margin:6px 0 0;font-size:56px;line-height:1;font-weight:400;letter-spacing:-.02em}
-.ar .sub{margin:10px 0 0;color:var(--muted)}
+.ar{max-width:1040px;margin:0 auto;padding:24px 24px 48px}
+.ar h1{margin:0;font-size:28px;font-weight:400;line-height:1.1;letter-spacing:-.03em}
+.ar .eyebrow{margin:24px 0 0;font:12px var(--mono);letter-spacing:.02em;color:var(--muted)}
+.ar .big{margin:6px 0 0;font-size:56px;line-height:1;font-weight:400;letter-spacing:-.03em}
+.ar .sub{margin:12px 0 0;color:var(--muted)}
 .ar .sub b{color:var(--fg);font-weight:400}
 .ar .goal{margin:16px 0 0;max-width:420px}
-.ar .bar{height:6px;border-radius:3px;background:var(--wash);overflow:hidden}
-.ar .bar i{display:block;height:100%;background:var(--accent)}
-.ar .goal p{margin:8px 0 0;color:var(--muted);font-size:14px}
-.ar section{margin-top:28px}
-.ar h2{margin:0 0 10px;font:11px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--fg)}
-.ar h2 span{color:var(--muted);text-transform:none;letter-spacing:0}
-.ar .plot{position:relative;width:100%;overflow:hidden;padding:12px 8px 4px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+.ar .bar{height:3px;background:var(--line);overflow:hidden}
+.ar .bar i{display:block;height:100%;background:var(--fg)}
+.ar .goal p{margin:8px 0 0;color:var(--muted);font:12px var(--mono);letter-spacing:.02em}
+.ar section{margin-top:48px}
+.ar h2{margin:0 0 16px;font:16px/1.25 var(--serif);letter-spacing:0;color:var(--fg)}
+.ar h2 span{color:var(--muted)}
+.ar .plot{position:relative;width:100%;overflow:hidden;padding:0;background:none;border:0}
 .ar .plot svg{display:block;width:100%}
 .ar .plot text{font:11px var(--mono);fill:var(--muted)}
 .ar .plot .label{fill:var(--t)}
-.ar .legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:10px 0 0;padding:0;list-style:none;color:var(--muted);font:11px var(--mono)}
+.ar .legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:12px 0 0;padding:0;list-style:none;color:var(--muted);font:12px var(--mono);letter-spacing:.02em}
 .ar .legend li{display:flex;align-items:center;gap:6px}
-.ar .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--c);flex:none}
-.ar .dot.grey{background:var(--faint)}
+.ar .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+.ar .dot.grey{background:var(--edge)}
 .ar .dash{display:inline-block;width:16px;border-top:2px solid var(--c);flex:none}
 .ar .dash.goal{border-top-style:dashed;border-color:var(--muted)}
-.ar .note{margin:8px 0 0;color:var(--muted);font-size:14px}
-.ar ol{margin:0;padding:0;list-style:none;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
-.ar ol li{padding:12px 14px;border-top:1px solid var(--line)}
-.ar ol li:first-child{border-top:0}
+.ar .note{margin:8px 0 0;color:var(--muted);font:12px var(--mono);letter-spacing:.02em}
+.ar ol{margin:0;padding:0;list-style:none;background:none;border:0}
+.ar ol li{padding:12px 0;border-top:1px solid var(--line)}
+.ar ol li:first-child{border-top:0;padding-top:0}
 .ar .row{display:flex;align-items:baseline;gap:8px;min-width:0}
-.ar .row .name{font-size:17px;overflow-wrap:anywhere}
-.ar .row .end{margin-left:auto;white-space:nowrap;font-family:var(--mono)}
-.ar .chip{display:inline-block;padding:0 8px;border-radius:999px;background:var(--wash);color:var(--muted);font:11px/20px var(--mono);white-space:nowrap}
-.ar .chip.promising{color:var(--good)}
-.ar .chip.done{color:var(--accent)}
-.ar .chip.dead{text-decoration:line-through}
-.ar .meta{margin:3px 0 0;color:var(--muted);font-size:14px;overflow-wrap:anywhere}
-.ar .delta{font-family:var(--mono);color:var(--good);min-width:72px}
+.ar .row .name{font-size:16px;overflow-wrap:anywhere}
+.ar .row .end{margin-left:auto;white-space:nowrap;font:12px var(--mono);letter-spacing:.02em}
+.ar .chip{display:inline-block;padding:0 8px;border-radius:12px;background:var(--glass);color:var(--fg);font:11px/20px var(--mono);letter-spacing:.02em;white-space:nowrap}
+.ar .chip.promising{background:rgba(0,255,0,.16)}
+.ar .chip.done{background:var(--high);color:var(--bg)}
+.ar .chip.dead{color:var(--muted);text-decoration:line-through}
+.ar .meta{margin:3px 0 0;color:var(--muted);overflow-wrap:anywhere}
+.ar .delta{font:12px var(--mono);letter-spacing:.02em;color:var(--fg);min-width:72px}
 .ar .what{overflow-wrap:anywhere}
-.ar footer{margin-top:24px;color:var(--muted);font-size:14px}
+.ar footer{margin-top:48px;color:var(--muted)}
 .ar footer a{color:inherit}
 .ar .empty{margin:18px 0 0;color:var(--muted)}
+html[data-cover] .ar{display:flex;flex-direction:column;max-width:none;height:100%;padding:24px}
+html[data-cover] .ar .eyebrow{margin-top:0}
+html[data-cover] .ar .big{font-size:72px}
+html[data-cover] .ar .plot{flex:1;min-height:0;margin-top:16px}
 `
 
   let loaded
@@ -60,6 +64,7 @@
   let stamp = 0
   let root
   let plot
+  const cover = document.documentElement.hasAttribute('data-cover') || new URLSearchParams(location.search).has('cover')
 
   function node(tag, attrs, ...children) {
     const made = document.createElement(tag)
@@ -257,7 +262,7 @@
 
   function chart(data, width) {
     const narrow = width < 560
-    const height = Math.round(Math.min(420, Math.max(230, width * 0.46)))
+    const height = cover ? Math.max(160, Math.round(plot.clientHeight)) : Math.round(Math.min(420, Math.max(230, width * 0.46)))
     const pad = { bottom: 34, left: narrow ? 52 : 72, right: 12, top: narrow ? 12 : 30 }
     const valid = data.branches.flatMap((branch) => branch.rows.filter((row) => row.status !== 'crash'))
     const anchors = [data.baseline, data.best, data.goal].filter((value) => value !== null)
@@ -294,7 +299,7 @@
       shape('line', { 'stroke-dasharray': '4 4', style: 'stroke:var(--muted)', x1: pad.left, x2: width - pad.right, y1: y(data.goal), y2: y(data.goal) }),
       shape('text', { 'text-anchor': 'end', x: width - pad.right - 4, y: y(data.goal) - 5 }, `goal ${format(data.goal, data.places)}`),
     ] : []
-    const discarded = data.branches.flatMap((branch) => branch.rows.filter((row) => row.status === 'discard' && inside(row.value)).map((row) => shape('circle', { cx: x(row.n), cy: y(row.value), 'fill-opacity': 0.7, r: 2.6, style: 'fill:var(--faint)' })))
+    const discarded = data.branches.flatMap((branch) => branch.rows.filter((row) => row.status === 'discard' && inside(row.value)).map((row) => shape('circle', { cx: x(row.n), cy: y(row.value), 'fill-opacity': 0.7, r: 2.6, style: 'fill:var(--edge)' })))
     const lines = data.branches.filter((branch) => branch.steps.length).map((branch) => {
       const steps = [...branch.steps, [Math.max(branch.rows.length, branch.steps.at(-1)[0]), branch.steps.at(-1)[1]]]
       const path = steps.map(([n, value], index) => (index ? `H${x(n).toFixed(1)}V${y(value).toFixed(1)}` : `M${x(n).toFixed(1)} ${y(value).toFixed(1)}`)).join('')
@@ -302,7 +307,7 @@
     })
     const kept = data.branches.flatMap((branch) => branch.rows.filter((row) => row.status === 'keep' && inside(row.value)).map((row) => shape('circle', { cx: x(row.n), cy: y(row.value), fill: branch.color, r: 4.5, 'stroke-width': 1.5, style: 'stroke:var(--bg)' }, shape('title', null, `#${row.n} ${row.description} (${row.value})`))))
     const labels = []
-    if (!narrow) {
+    if (!narrow && !cover) {
       const placed = []
       const wins = data.branches.flatMap((branch) => branch.wins.filter((row) => row.description && inside(row.value)).map((row) => ({ branch, row })))
       for (const { branch, row } of wins.sort((a, b) => b.row.delta - a.row.delta)) {
@@ -420,6 +425,10 @@
     const data = loaded
     if (!document.title) document.title = data.title
     plot = node('div', { class: 'plot' })
+    if (cover) {
+      root.replaceChildren(...[headline(data).slice(0, 2), data.best !== null && plot].flat().filter(Boolean))
+      return drawPlot()
+    }
     const body = [node('h1', null, data.title), headline(data)]
     if (data.best !== null) {
       body.push(node('section', null, node('h2', null, `${data.experiments} experiments, ${data.kept} kept improvements`), plot, legend(data), node('p', { class: 'note ar-hidden' })))
@@ -464,6 +473,7 @@
   function start() {
     if (![...document.querySelectorAll('link[rel=stylesheet]')].some((link) => link.href === theme)) document.head.append(node('link', { href: theme, rel: 'stylesheet' }))
     document.head.append(node('style', null, css))
+    if (cover) document.documentElement.setAttribute('data-cover', '')
     root = document.querySelector('main.ar') ?? document.body.appendChild(node('main', { class: 'ar' }))
     let width = 0
     new ResizeObserver(() => {

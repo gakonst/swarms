@@ -100,13 +100,13 @@ export function Results(props: {
 
       {asked.length > 0 && (
         <section className="result-section">
-          <h2>Backers want</h2>
+          <h2>Riders want</h2>
           <ul className="asked">
             {asked.map((note) => (
               <li key={note.id}>
                 <span className="asked-text">“{note.note}”</span>
-                <span className="asked-weight">{usd(note.weight)} · {note.backers} backer{note.backers === 1 ? '' : 's'}</span>
-                <button onClick={() => props.onSteer(note.note)} type="button">+ Back this</button>
+                <span className="asked-weight">{usd(note.weight)} · {note.backers} rider{note.backers === 1 ? '' : 's'}</span>
+                <button onClick={() => props.onSteer(note.note)} type="button">+ Steer this</button>
               </li>
             ))}
           </ul>
@@ -121,7 +121,7 @@ export function Results(props: {
               <li data-kind={item.kind} key={item.key}>
                 <span className="news-when">{ago(item.at, now)}</span>
                 {item.kind === 'backed' ? (
-                  <p><b>{item.who}</b> backed it · {usd(item.amount)}{item.note ? <span className="news-note"> “{item.note}”</span> : null}</p>
+                  <p><b>{item.who}</b> rode in · {usd(item.amount)}{item.note ? <span className="news-note"> “{item.note}”</span> : null}</p>
                 ) : (
                   <details>
                     <summary>{Answer.gist(item.text) || 'An update'}</summary>

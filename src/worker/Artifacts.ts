@@ -82,6 +82,7 @@ export function policy(origins: readonly string[], gateway: string) {
 export async function serve(env: Cloudflare.Env, request: Request, swarm: string, name: string, rest: string) {
   const origins = [new URL(Site.url(env, request.url)).origin, new URL(request.url).origin]
   const file = Shelf.path(rest || 'index.html')
+  const cover = new URL(request.url).searchParams.has('cover')
   if (!Shelf.slug.test(name) || !file) return text(404, 'No such artifact file.')
   const owner = await Gateway.wallet(env)
   if (!owner) return text(502, 'The gateway did not say whose artifacts these are.')
@@ -115,7 +116,7 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
     if (upstream.status !== 200 || !html) return new Response(upstream.status === 304 ? null : upstream.body, { headers: answer, status: upstream.status })
     answer.delete('content-length')
     answer.delete('accept-ranges')
-    return themed(new Response(upstream.body, { headers: answer, status: 200 }))
+    return themed(new Response(upstream.body, { headers: answer, status: 200 }), cover)
   }
   const body = await upstream.text()
   const inner = Shelf.unwrapped(body, Shelf.prefix + name + '/' + file)
@@ -123,15 +124,20 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
   answer.delete('content-length')
   answer.delete('accept-ranges')
   const response = new Response(inner, { headers: answer, status: 200 })
-  return html ? themed(response) : response
+  return html ? themed(response, cover) : response
 }
 
 const theme = `<link rel="stylesheet" href="${Site.base}/kit/swarm.css">`
 
-const kept = "<style>html,body{color-scheme:light;background:#ffffff!important;color:#000000!important}body{font-family:'Paradigm Serif',Georgia,'Times New Roman',serif!important}</style>"
+const kept = "<style>html,body{color-scheme:light;background:#ffffff!important;color:#000000!important}body{font-family:'Paradigm Serif',Georgia,'Times New Roman',serif!important;-webkit-font-smoothing:antialiased}h1,h2,h3,h4,h5,h6{font-family:'Paradigm Serif',Georgia,'Times New Roman',serif!important;font-weight:400!important}code,pre,kbd,samp{font-family:'Paradigm SemiMono','SFMono-Regular',Menlo,Monaco,Consolas,monospace!important}</style>"
 
-function themed(response: Response) {
+const covering = "<script>document.documentElement.setAttribute('data-cover','')</script>"
+
+const dark = /prefers-color-scheme\s*:\s*dark/g
+
+function themed(response: Response, cover: boolean) {
   let placed = false
+  const first = cover ? theme + covering : theme
   return new HTMLRewriter()
     .onDocument({
       end(end) {
@@ -142,8 +148,14 @@ function themed(response: Response) {
       element(element) {
         if (placed || element.tagName === 'html') return
         placed = true
-        if (element.tagName === 'head') element.prepend(theme, { html: true })
-        else element.before(theme, { html: true })
+        if (element.tagName === 'head') element.prepend(first, { html: true })
+        else element.before(first, { html: true })
+      },
+    })
+    .on('style', {
+      text(chunk) {
+        if (dark.test(chunk.text)) chunk.replace(chunk.text.replace(dark, 'max-width:0'), { html: true })
+        dark.lastIndex = 0
       },
     })
     .on('script[src^="/kit/"]', { element: (element) => void element.setAttribute('src', Site.base + (element.getAttribute('src') ?? '')) })

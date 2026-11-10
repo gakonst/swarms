@@ -33,10 +33,10 @@ export const poster = { height: 720, width: 1280 }
 
 export const player = { height: 450, width: 800 }
 
-const blurb = 'Back an idea with a few dollars and a team of AI agents researches and builds it, in public.'
+const blurb = 'Make a breakthrough. Ride a swarm: point a team of AI agents at a hard problem with a few dollars, and steer it in public.'
 
 function backers(count: number) {
-  return `${count} backer${count === 1 ? '' : 's'}`
+  return `${count} rider${count === 1 ? '' : 's'}`
 }
 
 export function field(given: readonly Summary[], now = Date.now()): Cards.Field {
@@ -116,19 +116,19 @@ export function asset(origin: string, subject: Subject, name: 'card.png' | 'post
 function alt(subject: Subject) {
   if (subject.kind === 'swarm' || subject.kind === 'idea') {
     const item = subject.item
-    const money = item.balance > 0 ? `${Answer.cash(item.balance)} balance from ${backers(item.backers)}` : 'no backers yet'
+    const money = item.balance > 0 ? `${Answer.cash(item.balance)} balance from ${backers(item.backers)}` : 'no riders yet'
     return `${item.title}. ${Status.pill(item.word)}, ${money}.`
   }
-  if (subject.kind === 'about') return 'How Swarms works: pick an idea, chip in a few dollars, AI agents work on it, read what they find.'
+  if (subject.kind === 'about') return 'Swarm riders: pick a swarm, put in a few dollars, say where it should go, read what it finds.'
   if (subject.kind === 'docs') return 'Use swarms from code: a public REST API and an MCP server.'
   if (subject.kind === 'ideas') return `All ideas on Swarms: ${subject.field.swarms.slice(0, 3).map((item) => item.title).join(', ')}.`
-  if (subject.kind === 'new') return 'What should AI figure out or build? Start an idea on Swarms.'
+  if (subject.kind === 'new') return 'What breakthrough are you after? Start a swarm.'
   return `Swarms: back an idea, AI builds it. ${subject.field.working} working now, ${subject.field.open + subject.field.ideas.length} ideas.`
 }
 
 export function title(subject: Subject) {
   if (subject.kind === 'swarm' || subject.kind === 'idea') return `${subject.item.title} · Swarms`
-  return { about: 'How it works · Swarms', docs: 'API and MCP · Swarms', home: 'Swarms · Back an idea. AI builds it.', ideas: 'All ideas · Swarms', new: 'Start an idea · Swarms' }[subject.kind]
+  return { about: 'Swarm riders · Swarms', docs: 'API and MCP · Swarms', home: 'Swarms · Make a breakthrough. Ride a swarm.', ideas: 'All swarms · Swarms', new: 'Start a swarm · Swarms' }[subject.kind]
 }
 
 export function playing(origin: string, subject: Subject) {
@@ -163,10 +163,10 @@ function labels(subject: Subject): [string, string][] {
     const item = subject.item
     return [
       ['Status', Status.pill(item.word)],
-      ['Balance', item.balance > 0 ? `${Answer.cash(item.balance)} from ${backers(item.backers)}` : 'Be the first backer'],
+      ['Balance', item.balance > 0 ? `${Answer.cash(item.balance)} from ${backers(item.backers)}` : 'Be the first rider'],
     ]
   }
-  if (subject.kind === 'idea') return [['Status', 'New idea'], ['Balance', 'Be the first backer']]
+  if (subject.kind === 'idea') return [['Status', 'No riders yet'], ['Balance', 'Be the first rider']]
   if (subject.kind === 'home' || subject.kind === 'ideas' || subject.kind === 'new')
     return [
       ['Working now', String(subject.field.working)],
@@ -178,12 +178,12 @@ function labels(subject: Subject): [string, string][] {
 export function describe(subject: Subject) {
   if (subject.kind === 'swarm') {
     const item = subject.item
-    const money = item.balance > 0 ? `${Answer.cash(item.balance)} balance from ${backers(item.backers)}` : 'No backers yet'
+    const money = item.balance > 0 ? `${Answer.cash(item.balance)} balance from ${backers(item.backers)}` : 'No riders yet'
     return `${Status.pill(item.word)} · ${money}. ${item.pitch || Status.line(item.word)}`.slice(0, 300)
   }
-  if (subject.kind === 'idea') return `${subject.item.pitch} Back it with a few dollars and AI agents start on it, in public.`
+  if (subject.kind === 'idea') return `${subject.item.pitch} Ride it with a few dollars and AI agents start on it, in public.`
   if (subject.kind === 'new') return 'Ask AI to figure out or build anything. Chip in a few dollars and AI agents work on it, in public.'
-  if (subject.kind === 'about') return 'Pick an idea, chip in a few dollars, and AI agents work on it until the money runs out. Read what they find and chat with other backers.'
+  if (subject.kind === 'about') return 'Pick a swarm, put in a few dollars and say where it should go. AI agents work on it in the open until the money runs out.'
   if (subject.kind === 'docs') return 'Everything on Swarms is a public REST API and an MCP server. Reading is free and needs no account.'
   return blurb
 }

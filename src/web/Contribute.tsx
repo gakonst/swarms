@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Config, Currency } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Api from './api.ts'
@@ -8,7 +8,13 @@ import { message, useWallet } from './hooks.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Wallet from './wallet.ts'
 
-export const amounts = ['2', '5', '10', '25'] as const
+const stops = [1, 2, 3, 5, 8, 10, 15, 20, 25, 35, 50, 75, 100, 150, 250, 500] as const
+
+function nearest(amount: string, marks: readonly number[]) {
+  const value = Number(amount)
+  if (!(value > 0)) return 0
+  return marks.reduce((best, mark, index) => (Math.abs(Math.log(mark / value)) < Math.abs(Math.log(marks[best]! / value)) ? index : best), 0)
+}
 
 const preferred: readonly Currency[] = ['mach', 'ousd', 'usdce', 'pathusd']
 
@@ -113,7 +119,7 @@ export async function send(config: Config, target: Target, amount: bigint, note:
 }
 
 async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency) {
-  if (!config.credit) throw new Error('Backing is not available right now. Try again in a moment.')
+  if (!config.credit) throw new Error('Riding is not available right now. Try again in a moment.')
   const { memo } = await import('../shared/Credit.ts')
   const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, note), to: config.credit.recipient, token })
   return record({ amount, hash, note, swarm: target.id, token })
@@ -125,6 +131,8 @@ function dollars(amount: string) {
 
 export function Fuel(props: {
   config: Config | undefined
+  extra?: ReactNode
+  first?: boolean | undefined
   focus?: number | undefined
   least?: string | undefined
   locked?: boolean | undefined
@@ -155,7 +163,9 @@ export function Fuel(props: {
   const text = props.note.trim()
   const balance = wallet.balances[token]
   const low = balance !== undefined && ok && balance < units(amount)
-  const custom = !amounts.includes(amount as (typeof amounts)[number])
+  const least = Math.ceil(Number(floor) * 100) / 100
+  const marks = least > stops[0] ? [least, ...stops.filter((stop) => stop > least)] : stops
+  const at = nearest(amount, marks)
 
   const submit = async () => {
     const config = props.config
@@ -174,7 +184,7 @@ export function Fuel(props: {
       target = await props.target((next) => step(next))
       step('send')
       const sent = await send(config, target, units(amount), text, using)
-      setFlow({ at: 'done', hash: sent.hash, kept: sent.kept, text: `You backed it with ${dollars(amount)}.` })
+      setFlow({ at: 'done', hash: sent.hash, kept: sent.kept, text: `You're riding. ${dollars(amount)} is in.` })
       props.onNote('')
       props.onDone(target)
     } catch (error) {
@@ -187,7 +197,7 @@ export function Fuel(props: {
     step('record')
     try {
       const hash = await record(paid)
-      setFlow({ at: 'done', hash, text: `You backed it with ${dollars(decimal(paid.amount))}.` })
+      setFlow({ at: 'done', hash, text: `You're riding. ${dollars(decimal(paid.amount))} is in.` })
       props.onNote('')
       props.onDone(target)
     } catch (error) {
@@ -198,23 +208,23 @@ export function Fuel(props: {
 
   return (
     <div className="fuel">
-      <div className="fuel-seg" role="radiogroup" aria-label="Amount">
-        {amounts.map((value) => (
-          <button aria-checked={amount === value} disabled={busy} key={value} onClick={() => setAmount(value)} role="radio" type="button">${value}</button>
-        ))}
-        <label className="fuel-other" data-on={custom}>
-          {custom && <span aria-hidden="true">$</span>}
-          <input aria-label="Other amount" disabled={busy} id="amount" inputMode="decimal" onChange={(event) => setAmount(event.target.value.replace(',', '.').replace('$', ''))} placeholder="Other" value={custom ? amount : ''} />
+      <div className="fuel-amount">
+        <label className="fuel-sum">
+          <span aria-hidden="true">$</span>
+          <input aria-label="Amount in dollars" disabled={busy} id="amount" inputMode="decimal" onChange={(event) => setAmount(event.target.value.replace(',', '.').replace('$', ''))} style={{ width: `${Math.max(1, amount.length) + 0.4}ch` }} value={amount} />
         </label>
+        <input aria-label="Amount" aria-valuetext={dollars(String(marks[at]))} className="fuel-slide" disabled={busy} max={marks.length - 1} min={0} onChange={(event) => setAmount(String(marks[Number(event.target.value)]))} step={1} style={{ '--fill': `${(at / (marks.length - 1)) * 100}%` } as CSSProperties} type="range" value={at} />
+        <p className="fuel-ends"><span>{dollars(String(marks[0]))}</span><span>{dollars(String(marks[marks.length - 1]))}</span></p>
       </div>
       {floor !== smallest && !ok && <p className="fuel-least" data-bad={amount.trim() !== ''}>At least {dollars(floor)}</p>}
-      <input aria-label="What should it try next?" className="fuel-steer" disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder="What should it try next? (optional)" ref={steer} value={props.note} />
+      {props.extra}
+      {!props.first && <input aria-label="What should it try next?" className="fuel-steer" disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder="What should it try next? (optional)" ref={steer} value={props.note} />}
       <button className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
-        {flow.at === 'busy' ? working[flow.step] : ok ? `Back it · ${dollars(amount)}` : 'Back it'}
+        {flow.at === 'busy' ? working[flow.step] : ok ? `${props.first ? 'Start it' : 'Ride it'} · ${dollars(amount)}` : props.first ? 'Start it' : 'Ride it'}
       </button>
       <div className="fuel-told" ref={told}>
         {low && flow.at !== 'failed' && <Alert title="Not enough in your wallet." tone="warn">Add money in Tempo Wallet first.</Alert>}
-        {flow.at === 'done' && <Alert action={{ label: 'Back again', onClick: () => setFlow(idle) }} title={flow.text} tone="good">{flow.kept ? 'Thank you! It stays in your wallet until the AI spends it.' : 'Thank you!'}</Alert>}
+        {flow.at === 'done' && <Alert action={{ label: 'Add more', onClick: () => setFlow(idle) }} title={flow.text} tone="good">{flow.kept ? 'Thank you! It stays in your wallet until the AI spends it.' : 'Thank you!'}</Alert>}
         {flow.at === 'unrecorded' && (
           <Alert action={{ label: 'Try again', onClick: () => void retry(flow.paid, flow.target) }} title="Sent, but not counted yet." tone="warn">
             Nothing is paid twice.

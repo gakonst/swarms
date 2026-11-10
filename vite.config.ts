@@ -55,7 +55,7 @@ export default defineConfig(({ command }) => {
       client: { build: { rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'hash', test: /\/viem\/_esm\/utils\/(hash\/keccak256|encoding\/toHex)\.js$/ }] } } } } },
       swarms: { build: { minify: true } },
     },
-    server: { allowedHosts: ['terminal.local'] },
+    server: { allowedHosts: ['terminal.local'], cors: { origin: '*' } },
     plugins: [
       react(),
       preloads(),

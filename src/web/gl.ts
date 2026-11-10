@@ -42,9 +42,9 @@ const depth = 2.6
 
 const codes: Record<Mood, number> = { live: 0, money: 1, new: 4 }
 
-const tints: Record<Mood, Vector> = { live: [0.1, 0.55, 0.27], money: [0.78, 0.52, 0.1], new: [0.12, 0.18, 0.1] }
+const tints: Record<Mood, Vector> = { live: [0, 0.8, 0], money: [0.86, 0.55, 0.08], new: [0.4, 0.4, 0.4] }
 
-const ink: Vector = [0.26, 0.34, 0.22]
+const ink: Vector = [0.09, 0.09, 0.09]
 
 const activity: Record<Mood, number> = { live: 1, money: 0.14, new: 0.03 }
 

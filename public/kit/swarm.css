@@ -56,19 +56,26 @@
   color-scheme: light;
   --bg: #ffffff;
   --fg: #000000;
+  --soft: #333333;
   --muted: #666666;
-  --faint: #a5b79c;
-  --surface: #fbfcf9;
-  --wash: #eef2ea;
-  --line: #e3e9dd;
-  --rule: #d6decf;
-  --accent: #1a3d2c;
-  --good: #3f7d4e;
-  --warn: #9a6a12;
-  --bad: #b3261e;
+  --faint: #999999;
+  --edge: #cccccc;
+  --rule: #dddddd;
+  --line: #ebebeb;
+  --wash: #f6f6f6;
+  --surface: #f6f6f6;
+  --high: #161616;
+  --accent: #161616;
+  --glass: rgba(224, 224, 224, 0.6);
+  --green: #00ff00;
+  --blue: #0a82e1;
+  --good: #0a7d0a;
+  --warn: #8a5600;
+  --bad: #e04545;
   --serif: 'Paradigm Serif', Georgia, 'Times New Roman', serif;
   --mono: 'Paradigm SemiMono', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
-  --radius: 14px;
+  --radius: 0px;
+  --gap: 24px;
 }
 
 *,
@@ -87,46 +94,57 @@ body {
 body {
   font-family: var(--serif);
   font-size: 16px;
-  line-height: 1.35;
+  line-height: 1.25;
   font-variant-numeric: tabular-nums;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
 }
 
+::selection {
+  background: var(--rule);
+  color: var(--fg);
+}
+
 h1,
-h2 {
-  margin: 0 0 8px;
+h2,
+h3,
+h4 {
+  font-family: var(--serif);
   font-weight: 400;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
 }
 
 h1 {
+  margin: 0 0 8px;
   font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
 }
 
 h2 {
+  margin: 0 0 8px;
   font-size: 21px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 
 h3,
-h4,
+h4 {
+  margin: 48px 0 16px;
+  font-size: 16px;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg);
+}
+
 th,
 caption,
 label,
 small {
   font-family: var(--mono);
   font-weight: 400;
-}
-
-h3,
-h4 {
-  margin: 20px 0 8px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
+  letter-spacing: 0.02em;
 }
 
 p {
@@ -137,7 +155,7 @@ a {
   color: inherit;
   text-decoration: underline;
   text-decoration-thickness: 1px;
-  text-underline-offset: 0.15em;
+  text-underline-offset: 0.2em;
 }
 
 a:hover {
@@ -153,33 +171,37 @@ pre {
 }
 
 pre {
-  margin: 0 0 12px;
+  margin: 0 0 16px;
   padding: 12px 14px;
   overflow: auto;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  background: var(--wash);
+  border: 0;
+  border-radius: 0;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 table {
   width: 100%;
-  margin: 0 0 12px;
-  border-collapse: separate;
+  margin: 0 0 16px;
+  border-collapse: collapse;
   border-spacing: 0;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
+  background: none;
+  border: 0;
 }
 
 th,
 td {
-  padding: 8px 12px;
+  padding: 10px 16px 10px 0;
   text-align: left;
   vertical-align: baseline;
+  border: 0;
   border-top: 1px solid var(--line);
+}
+
+th:last-child,
+td:last-child {
+  padding-right: 0;
 }
 
 thead tr:first-child > *,
@@ -189,47 +211,69 @@ tbody:first-child tr:first-child > * {
 }
 
 th {
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 12px;
+  text-transform: none;
   color: var(--muted);
 }
 
 td {
-  font-size: 15px;
+  font-size: 16px;
 }
 
 hr {
-  margin: 16px 0;
+  margin: 24px 0;
   border: 0;
   border-top: 1px solid var(--line);
 }
 
+button,
+.sw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--glass);
+  color: var(--fg);
+  font: 12px/1.25 var(--mono);
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sw-btn.high {
+  background: var(--high);
+  color: var(--bg);
+}
+
 .sw-page {
-  max-width: 960px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 20px 16px 28px;
+  padding: 24px 24px 48px;
 }
 
 .sw-card {
-  padding: 14px 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  padding: 16px 0 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  border-radius: 0;
 }
 
 .sw-rows {
-  margin: 0 0 12px;
+  margin: 0 0 16px;
   padding: 0;
   list-style: none;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
+  background: none;
+  border: 0;
+  border-radius: 0;
 }
 
 .sw-rows > * {
-  padding: 10px 14px;
+  padding: 10px 0;
 }
 
 .sw-rows > * + * {
@@ -238,25 +282,27 @@ hr {
 
 .sw-stat {
   display: grid;
-  gap: 2px;
+  gap: 4px;
 }
 
 .sw-stat > :first-child {
-  font: 11px var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font: 12px var(--mono);
+  letter-spacing: 0.02em;
+  text-transform: none;
   color: var(--muted);
 }
 
 .sw-stat > :nth-child(2) {
+  font-weight: 400;
   font-size: 28px;
   line-height: 1.1;
+  letter-spacing: -0.03em;
 }
 
 .sw-big {
   font-size: 56px;
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
 .sw-num {
@@ -277,42 +323,46 @@ th.sw-num {
 .sw-chip {
   display: inline-block;
   padding: 0 8px;
-  border-radius: 999px;
-  background: var(--wash);
-  color: var(--accent);
+  border-radius: 12px;
+  background: var(--glass);
+  color: var(--fg);
   font: 11px/20px var(--mono);
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
 .sw-chip.good {
-  color: var(--good);
+  background: rgba(0, 255, 0, 0.16);
+  color: var(--fg);
 }
 
 .sw-chip.warn {
+  background: rgba(240, 160, 32, 0.12);
   color: var(--warn);
 }
 
 .sw-chip.bad {
+  background: rgba(224, 69, 69, 0.1);
   color: var(--bad);
 }
 
 .sw-bar {
-  height: 6px;
+  height: 3px;
   overflow: hidden;
-  background: var(--wash);
-  border-radius: 3px;
+  background: var(--line);
+  border-radius: 0;
 }
 
 .sw-bar > i {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: var(--fg);
 }
 
 .sw-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
+  gap: var(--gap);
 }
 
 .good {
@@ -325,4 +375,28 @@ th.sw-num {
 
 .bad {
   color: var(--bad);
+}
+
+.sw-cover {
+  display: none;
+}
+
+html[data-cover],
+html[data-cover] body {
+  height: 100%;
+  overflow: hidden;
+}
+
+html[data-cover] .sw-page {
+  max-width: none;
+  height: 100%;
+  padding: 24px;
+}
+
+html[data-cover] .sw-cover {
+  display: revert;
+}
+
+html[data-cover] .sw-nocover {
+  display: none !important;
 }

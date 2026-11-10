@@ -5,6 +5,7 @@ import * as Shelf from '../src/shared/Artifact.ts'
 test('a manifest becomes an artifact with its entry, form and url', () => {
   const artifact = Shelf.read('artifacts/leaderboard', { entry: 'index.html', kind: 'dashboard', summary: ' Solve rate by model. ', title: 'Leaderboard', updated: '2026-11-02T00:00:00Z' }, 3, '/a/abc')
   assert.deepEqual(artifact, {
+    cover: false,
     entry: 'index.html',
     form: 'page',
     kind: 'dashboard',
@@ -59,4 +60,18 @@ test('a file an agent wrote back wrapped in its own bucket_get answer is served 
   const data = JSON.stringify({ key: 'value', text: 'a data file of its own' })
   assert.equal(Shelf.unwrapped(data, 'artifacts/x/data.json'), data)
   assert.equal(Shelf.unwrapped('{"key": broken', key), '{"key": broken')
+})
+
+test('a swarm chooses its cover by marking a manifest, and an autoresearch page stands in until it does', () => {
+  const read = (slug: string, value: object, version = 1) => Shelf.read('artifacts/' + slug, value, version, '/a/abc')!
+  const chart = read('autoresearch', { entry: 'index.html' }, 4)
+  const notes = read('notes', { cover: true, entry: 'README.md' })
+  const proofs = read('proofs', { cover: true, entry: 'map.svg', updated: '2026-11-09T00:00:00Z' }, 2)
+  const older = read('grid', { cover: true, entry: 'index.html', updated: '2026-11-08T00:00:00Z' }, 7)
+  assert.equal(proofs.cover, true)
+  assert.equal(Shelf.cover([]), null)
+  assert.equal(Shelf.cover([notes]), null)
+  assert.deepEqual(Shelf.cover([notes, chart]), { form: 'page', url: '/a/abc/autoresearch/index.html?cover=1&v=4' })
+  assert.deepEqual(Shelf.cover([chart, older, proofs]), { form: 'image', url: '/a/abc/proofs/map.svg?v=2' })
+  assert.deepEqual(Shelf.cover([chart, older]), { form: 'page', url: '/a/abc/grid/index.html?cover=1&v=7' })
 })

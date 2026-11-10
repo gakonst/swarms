@@ -1,4 +1,4 @@
-import { forwardRef, useState } from 'react'
+import { forwardRef, type ReactNode, useState } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import type { Config, Member, Summary } from '../shared/Api.ts'
 import * as Status from '../shared/Status.ts'
@@ -9,6 +9,8 @@ import { Avatar } from './Room.tsx'
 
 export const Box = forwardRef<HTMLElement, {
   config: Config | undefined
+  extra?: ReactNode
+  first?: boolean
   focus: number
   least?: string | undefined
   locked?: boolean | undefined
@@ -49,7 +51,7 @@ export const Box = forwardRef<HTMLElement, {
         <p className="box-balance"><b>{Answer.cash(balance)}</b> balance</p>
         <p className="box-people">
           {backers.length > 0 && <span className="box-faces">{backers.slice(0, 5).map((member) => <Avatar address={member.address} handle={member.handle} key={member.address} size="small" />)}</span>}
-          {swarm.contributors > 0 ? `${swarm.contributors} backer${swarm.contributors === 1 ? '' : 's'}` : 'No backers yet'}
+          {swarm.contributors > 0 ? `${swarm.contributors} rider${swarm.contributors === 1 ? '' : 's'}` : 'No riders yet'}
         </p>
       </div>}
       {balance > 0 && (
@@ -58,11 +60,11 @@ export const Box = forwardRef<HTMLElement, {
           <span>{Answer.cash(left)} left</span>
         </p>
       )}
-      {!props.bare && <p className="box-state" data-mood={stood.mood}>{balance > 0 || swarm.contributors > 0 ? line(stood.word) : 'Be the first to back it.'}</p>}
+      {!props.bare && <p className="box-state" data-mood={stood.mood}>{balance > 0 || swarm.contributors > 0 ? line(stood.word) : 'Be the first to ride it.'}</p>}
       {props.open ? (
-        <Fuel config={props.config} focus={props.focus} least={props.least} locked={props.locked} note={props.note} onDone={props.onDone} onNote={props.onNote} prefill={props.prefill} target={props.target} />
+        <Fuel config={props.config} extra={props.extra} first={props.first} focus={props.focus} least={props.least} locked={props.locked} note={props.note} onDone={props.onDone} onNote={props.onNote} prefill={props.prefill} target={props.target} />
       ) : (
-        <button className="btn btn-high fuel-go" onClick={props.onOpen} type="button">Back it</button>
+        <button className="btn btn-high fuel-go" onClick={props.onOpen} type="button">Ride it</button>
       )}
       {props.shared !== false && <button className="box-share" onClick={() => void share()} type="button">{copied ? 'Link copied' : 'Share ↗'}</button>}
     </aside>

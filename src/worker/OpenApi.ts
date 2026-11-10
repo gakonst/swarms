@@ -74,6 +74,7 @@ const schemas = {
   ),
   Artifact: object(
     {
+      cover: { description: "Whether the swarm marked it as its preview: the picture its card and page show. The manifest's cover: true.", type: 'boolean' },
       entry: { description: 'The file the artifact opens at, relative to its folder.', type: 'string' },
       form: { description: 'How the page shows it: page is HTML, run sandboxed.', enum: ['page', 'image', 'markdown', 'table', 'json', 'text'], type: 'string' },
       kind: { description: 'What the swarm calls it, such as dashboard, chart or write-up.', type: 'string' },
@@ -236,6 +237,7 @@ const schemas = {
     answer: nullable(ref('Answer')),
     balance: { ...mach, description: 'Everything backers put in, which the gateway can pull to pay for the swarm: each transfer at its amount and each approved backing at its limit, or at what it paid once it ended.' },
     contributors: integer,
+    cover: nullable(object({ form: { enum: ['image', 'page'], type: 'string' }, url: { description: 'A path on this site: an image, or an HTML artifact to show in a sandboxed frame, with cover=1 in its query.', type: 'string' } }, "The swarm's preview, which it chooses by marking one artifact's manifest with cover: true. null: none yet.")),
     createdAt: time,
     goal: string,
     id: string,
