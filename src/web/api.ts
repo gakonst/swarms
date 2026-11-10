@@ -4,7 +4,7 @@ import type { Progress } from '../shared/Progress.ts'
 import type * as Setup from '../shared/Setup.ts'
 import type { Job, Listed, Logged, Machine, Shown } from '../shared/Fleet.ts'
 import * as Site from '../shared/Site.ts'
-import { seeded } from './boot.ts'
+import { boot, seeded } from './boot.ts'
 import { visitor } from './stage.ts'
 
 export const fixture = typeof location !== 'undefined' && new URLSearchParams(location.search).has('fixture')
@@ -285,7 +285,7 @@ function socket(url: string, listener: (event: { data: string } | { type: 'open'
     if (line?.readyState === WebSocket.OPEN) line.send(data)
   }
   const open = () => {
-    line = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${Site.at(url)}`)
+    line = new WebSocket(`${boot()?.socket ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${Site.base}`}${url}`)
     line.onopen = () => {
       opened?.(send)
       listener({ type: 'open' })

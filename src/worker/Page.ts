@@ -176,7 +176,7 @@ async function draw(request: Request, env: Cloudflare.Env) {
 
   const work = (async () => {
     const { data, head, whole } = await gathering
-    const boot: Boot = { config: await configuring, data, face: face(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), site: Site.url(env, url), url: url.href, zone: zone(request.headers.get('cookie')) }
+    const boot: Boot = { config: await configuring, data, face: face(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), site: Site.url(env, url), socket: `${url.protocol === 'https:' ? 'wss' : 'ws'}://${url.host}${Site.base}`, url: url.href, zone: zone(request.headers.get('cookie')) }
     await writer.write(encoder.encode(`<title>${escape(head.title)}</title><meta name="description" content="${escape(head.description)}">${Share.tags(head)}${closing}<div id="root">`))
     try {
       const stream = await store.run(boot, () => render(request.signal))
