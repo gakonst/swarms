@@ -1,7 +1,7 @@
 import { createRoot, hydrateRoot } from 'react-dom/client'
 import * as Site from '../shared/Site.ts'
 import { App } from './App.tsx'
-import { preload } from './pages.tsx'
+import { preload } from './pages.ts'
 import './style.css'
 import './research.css'
 import './room.css'
@@ -32,5 +32,5 @@ const route = /^\/s\/[^/]+(\/chat|\/code|\/results)?\/?$/.test(path)
           : undefined
 const root = document.getElementById('root')!
 
-if (root.firstChild && globalThis.__SWARMS_BOOT__) void Promise.resolve(route).then(() => hydrateRoot(root, <App />, { onRecoverableError: (error) => console.warn('Hydration', error) }))
+if (root.firstChild && globalThis.__SWARMS_BOOT__) void Promise.resolve(route).catch(() => {}).then(() => hydrateRoot(root, <App />, { onRecoverableError: (error) => console.warn('Hydration', error) }))
 else createRoot(root).render(<App />)
