@@ -30,6 +30,3 @@ export function same(a: string, b: string) {
   return left.length === right.length && crypto.subtle.timingSafeEqual(left, right)
 }
 
-export function hex(bytes: Uint8Array) {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
-}

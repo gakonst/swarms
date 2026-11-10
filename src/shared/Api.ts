@@ -25,7 +25,6 @@ export type Summary = {
   steering: Steering
   title: string
   updatedAt: number
-  wallet: `0x${string}` | null
   why: Why | null
 }
 
@@ -110,16 +109,15 @@ export type Snapshot = {
 export type Prepared = {
   amount: string | null
   call: { data: `0x${string}`; to: `0x${string}` } | null
-  channel: Channel | null
   link: string
   memo: `0x${string}`
   memoText: string
   note: string | null
   swarm: string
   symbol: string
+  to: `0x${string}`
   token: Currency
   tokenAddress: `0x${string}`
-  wallet: `0x${string}`
 }
 
 export type Terms = { channels: string | null; charged: string | null; earned: string | null; price: string | null; requests: number }
@@ -165,11 +163,11 @@ export type Config = {
   models: Setup.Price[]
   reserve: string
   rpc: string
-  channel: Channel | null
+  credit: Credit | null
   tokens: { address: `0x${string}`; id: Currency; symbol: string }[]
 }
 
-export type Channel = { escrow: `0x${string}`; least: string; operator: `0x${string}`; recipient: `0x${string}`; signer: `0x${string}` }
+export type Credit = { owner: `0x${string}`; recipient: `0x${string}` }
 
 export type Brief = Omit<Update, 'text'> & { excerpt: string }
 

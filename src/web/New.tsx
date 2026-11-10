@@ -35,7 +35,7 @@ function useLaunch(title: string, goal: string, problem: string | undefined) {
     if (created.current) return created.current
     step('create')
     const swarm = await Api.create({ ...choice, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}) })
-    created.current = { id: swarm.id, wallet: swarm.wallet }
+    created.current = { id: swarm.id }
     return created.current
   }
   return { locked: !(title.trim().length >= 3 && title.trim().length <= 80 && goal.trim().length >= 10 && goal.trim().length <= 2000), reset: () => (created.current = undefined), target }

@@ -133,7 +133,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
       prefill={prefill}
       {...(inline ? { ref: box } : {})}
       swarm={swarm}
-      target={() => Promise.resolve({ id: swarm.id, wallet: swarm.wallet })}
+      target={() => Promise.resolve({ id: swarm.id })}
     />
   )
   const room = (

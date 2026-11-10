@@ -1,9 +1,7 @@
 import { waitUntil } from 'cloudflare:workers'
-import { decodeFunctionData, encodeFunctionData, isAddress, parseEventLogs } from 'viem'
+import { encodeFunctionData, isAddress } from 'viem'
 import type { Address, Hex } from 'viem'
-import { getTransactionReceipt } from 'viem/actions'
-import { Abis, Transaction } from 'viem/tempo'
-import { Session } from 'mppx/tempo'
+import { Abis } from 'viem/tempo'
 import { z } from 'zod'
 import type {
   Account,
@@ -29,6 +27,7 @@ import type {
   Posted,
   Prepared,
   Room,
+  Snapshot,
   Update,
   Working,
 
@@ -40,8 +39,8 @@ import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Setup from '../shared/Setup.ts'
 import * as Connect from '../shared/Connect.ts'
+import * as Credit from '../shared/Credit.ts'
 import * as Memo from '../shared/Memo.ts'
-import * as Transfer from '../shared/Transfer.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
@@ -57,14 +56,10 @@ import * as Sessions from './Sessions.ts'
 import * as Timing from './Timing.ts'
 import * as Store from './Store.ts'
 import * as Team from './Team.ts'
-import type { Snapshot } from './Payer.ts'
-import type { Paid } from './Paying.ts'
 import type { Stamp, Swarm } from './Swarm.ts'
-import * as Vault from './Vault.ts'
 import * as Words from './Words.ts'
 import * as Fleet from '../shared/Fleet.ts'
 import * as Brief from '../shared/ResearchBrief.ts'
-import * as Channels from '../shared/Channel.ts'
 import { clip } from '../shared/Trail.ts'
 import { ids } from '../shared/ResearchBrief.ts'
 
@@ -108,15 +103,6 @@ const note = z
   .nullish()
   .describe('Optional steering note, weighted by the money behind it. The same text backs an existing note.')
 
-const transaction = z
-  .string()
-  .regex(/^0x[0-9a-fA-F]+$/)
-  .max(65_536)
-  .optional()
-  .describe(
-    "A MACH contribution not sent yet: a Tempo transaction signed for a fee payer (feePayer true, an expiring nonce) whose one call is the escrow open that swarm_contribute with token mach prepares. The gateway pays its network fee and sends it. Post it within about 10 seconds of signing.",
-  )
-
 function seconds(fallback: number, description: string) {
   return z.coerce.number().int().min(0).max(maxWait).default(fallback).describe(description)
 }
@@ -126,11 +112,9 @@ export const schema = {
     hash: z
       .string()
       .regex(/^0x[0-9a-fA-F]{64}$/)
-      .optional()
-      .describe("The hash of a transferWithMemo of USDC.e, pathUSD or OUSD to the swarm's wallet, or of a MACH channel already opened for the swarm."),
+      .describe("The hash of a transferWithMemo of MACH, OUSD, USDC.e or pathUSD to the gateway's recipient (config.credit.recipient) whose memo names this swarm, as the MCP tool swarm_contribute prepares it."),
     note,
     swarm: id,
-    transaction,
   }),
   transfer: z.object({
     amount: decimal
@@ -141,14 +125,10 @@ export const schema = {
       .string()
       .regex(/^0x[0-9a-fA-F]{64}$/)
       .optional()
-      .describe('The hash of a transfer or MACH channel open already sent. With it the money is counted instead of prepared.'),
+      .describe('The hash of a transfer already sent. With it the money is counted instead of prepared.'),
     note,
     swarm: id,
-    token: z
-      .enum(['mach', ...Chain.ids])
-      .default('usdce')
-      .describe('What to send: usdce (USDC.e), pathusd (pathUSD), ousd (OUSD), or mach (MACH, which opens a channel the gateway spends for this swarm).'),
-    transaction,
+    token: z.enum(['mach', ...Chain.ids]).default('mach').describe('What to send: mach (MACH), ousd (OUSD), usdce (USDC.e) or pathusd (pathUSD). Each counts at $1.'),
   }),
   create: z.object({
     goal: z
@@ -328,21 +308,12 @@ function logged(task: Promise<unknown>) {
   return task.catch((error: unknown) => console.error('Indexing for search failed', error))
 }
 
-async function provisioned(env: Cloudflare.Env, row: Store.Row) {
-  if (row.wallet) return { ...row, wallet: row.wallet }
-  await Store.provision(env, row.id, await Vault.create(env.SWARMS_SECRET))
-  const updated = await Store.find(env, row.id)
-  if (!updated?.wallet) throw new Error('The swarm has no wallet.')
-  return { ...updated, wallet: updated.wallet }
-}
-
 type Shape = { feed?: number; pushed?: boolean; texts?: boolean }
 
 async function load(env: Cloudflare.Env, id: string, shape: Shape = {}) {
   const viewing = Store.seen(id) ? Promise.resolve(stub(env, id).view(shape)) : undefined
-  const found = await Store.find(env, id)
-  if (!found) return undefined
-  const row = await provisioned(env, found)
+  const row = await Store.find(env, id)
+  if (!row) return undefined
   const view = await (viewing ?? stub(env, id).view(shape))
   await backfill(env, row, view.updates.at(-1), shape)
   return { row, view }
@@ -352,7 +323,7 @@ async function ledgered(env: Cloudflare.Env, id: string, shape: Shape) {
   const viewing = Store.seen(id) ? Promise.resolve(stub(env, id).view(shape)) : undefined
   const ledger = await Store.ledger(env, id)
   if (!ledger) return undefined
-  const row = await provisioned(env, ledger.row)
+  const row = ledger.row
   const view = await (viewing ?? stub(env, id).view(shape))
   await backfill(env, row, view.updates.at(-1), shape)
   if (Search.lags(view.ended, ledger.reports)) {
@@ -370,20 +341,17 @@ async function backfill(env: Cloudflare.Env, row: Store.Row, latest: Update | un
 }
 
 export async function config(env: Cloudflare.Env): Promise<Config> {
-  const [terms, prices] = await Promise.all([Gateway.sponsorship(env), Gateway.prices(env)])
+  const [owner, prices] = await Promise.all([Gateway.wallet(env), Gateway.prices(env)])
   return {
     models: [...(prices?.values() ?? [])],
     auth: Sessions.path,
     chainId: Chain.chain.id,
-    channel: terms ? { escrow: terms.escrow, least: terms.least, operator: terms.operator, recipient: terms.recipient, signer: terms.signer } : null,
+    credit: owner ? { owner: owner as Address, recipient: Chain.recipient } : null,
     explorer: Chain.chain.blockExplorers.default.url,
     gateway: env.GATEWAY_URL,
     reserve: Memo.decimal(Store.reserve),
     rpc: env.TEMPO_RPC,
-    tokens: [
-      ...Chain.ids.map((id) => ({ address: Chain.tokens[id].address, id, symbol: Chain.tokens[id].symbol })),
-      ...(terms ? [{ address: Chain.mach.address, id: 'mach' as const, symbol: Chain.mach.symbol }] : []),
-    ],
+    tokens: [{ address: Chain.mach.address, id: 'mach' as const, symbol: Chain.mach.symbol }, ...Chain.ids.map((id) => ({ address: Chain.tokens[id].address, id, symbol: Chain.tokens[id].symbol }))],
   }
 }
 
@@ -420,7 +388,7 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   const setup = Setup.priced(chosen, prices)
   if (typeof setup === 'string') return Problem.fail(400, 'invalid_request', `${setup} GET /v1/config lists them.`)
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
-  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup), ...(await Vault.create(env.SWARMS_SECRET)) })
+  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup) })
   if (!row) return Problem.fail(502, 'unavailable', 'The swarm was not saved.')
   await logged(Search.swarm(env, swarm))
   return Problem.ok(Store.summary(row))
@@ -1195,9 +1163,8 @@ async function self(env: Cloudflare.Env, members: readonly Member[], address: Ad
 export async function hand(env: Cloudflare.Env, input: Input<'hand'>, contributor?: Address): Promise<Problem.Result<Issued>> {
   const parsed = parse(schema.hand, input)
   if (!parsed.ok) return parsed
-  const found = await Store.find(env, parsed.value.swarm)
-  if (!found) return missing()
-  const row = await provisioned(env, found)
+  const row = await Store.find(env, parsed.value.swarm)
+  if (!row) return missing()
   const existing = await Hands.list(env, row.id)
   const listed = existing.length ? await stub(env, row.id).lent() : []
   const rows = await Hands.seen(env, row.id, existing, listed)
@@ -1255,162 +1222,32 @@ export async function transfer(env: Cloudflare.Env, input: Input<'transfer'>, or
   const parsed = parse(schema.transfer, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
-  const found = await Store.find(env, request.swarm)
-  if (!found) return missing()
-  const row = await provisioned(env, found)
+  const [row, owner] = await Promise.all([Store.find(env, request.swarm), Gateway.wallet(env)])
+  if (!row) return missing()
+  if (!owner) return Problem.fail(502, 'unavailable', 'The gateway did not answer, so a transfer cannot be prepared right now.')
 
   const note = request.note || null
   const amount = request.amount === undefined ? null : units(request.amount)
-  const memo = Transfer.memo(row.id, note)
+  const memo = Credit.memo(owner, row.id, note)
+  const token = request.token === 'mach' ? Chain.mach : Chain.tokens[request.token]
   const query = new URLSearchParams({
     fund: '',
     token: request.token,
     ...(amount === null ? {} : { amount: Memo.decimal(amount) }),
     ...(note ? { note } : {}),
   })
-  const common = {
+  return Problem.ok({
     amount: amount === null ? null : Memo.decimal(amount),
+    call: amount === null ? null : { data: encodeFunctionData({ abi: Abis.tip20, args: [Chain.recipient, amount, memo], functionName: 'transferWithMemo' }), to: token.address },
     link: `${origin}/s/${row.id}?${query}`,
     memo,
-    memoText: note ? `note:${row.id}:${note}` : `swarm:${row.id}`,
+    memoText: `bytes16(keccak256("gateway:credit:${Credit.chainId}:${owner}:${Credit.app(row.id)}")) ++ bytes16(keccak256("${note ? `note:${row.id}:${note}` : `swarm:${row.id}`}"))`,
     note,
     swarm: row.id,
-    wallet: row.wallet,
-  }
-  if (request.token === 'mach') {
-    const terms = await Gateway.sponsorship(env)
-    if (!terms) return Problem.fail(502, 'unavailable', unsponsored)
-    if (amount !== null && amount < units(terms.least)) return Problem.fail(400, 'invalid_request', `A MACH contribution opens a channel of at least ${terms.least} MACH.`)
-    const channel = { escrow: terms.escrow, least: terms.least, operator: terms.operator, recipient: terms.recipient, signer: terms.signer }
-    return Problem.ok({ ...common, call: amount === null ? null : Channels.open(channel, row.id, amount, note), channel, symbol: Chain.mach.symbol, token: 'mach', tokenAddress: Chain.mach.address })
-  }
-  const token = Chain.tokens[request.token]
-  return Problem.ok({
-    ...common,
-    call:
-      amount === null
-        ? null
-        : { data: encodeFunctionData({ abi: Abis.tip20, args: [row.wallet, amount, memo], functionName: 'transferWithMemo' }), to: token.address },
-    channel: null,
     symbol: token.symbol,
+    to: Chain.recipient,
     token: request.token,
     tokenAddress: token.address,
-  })
-}
-
-const unsponsored = 'MACH reaches a swarm through a channel the gateway spends for it, and the gateway is not offering those channels right now. Send USDC.e, pathUSD or OUSD instead.'
-
-type Opened = { args: { authorizedSigner: Address; channelId: Hex; deposit: bigint; expiringNonceHash: Hex; operator: Address; payee: Address; payer: Address; salt: Hex; token: Address } }
-
-async function channeled(
-  env: Cloudflare.Env,
-  row: Store.Row & { wallet: Address },
-  input: { hash: Hex; opened: Opened } | { transaction: Hex },
-  note: string | null,
-): Promise<Problem.Result<{ contributed: Contributed; created: boolean }>> {
-  const terms = await Gateway.sponsorship(env)
-  if (!terms) return Problem.fail(502, 'unavailable', unsponsored)
-
-  const parsed = (() => {
-    if (!('transaction' in input)) return undefined
-    try {
-      return Transaction.deserialize(input.transaction as never) as { calls?: readonly { data?: Hex; to?: Address | null }[]; feePayerSignature?: unknown; from?: Address }
-    } catch {
-      return undefined
-    }
-  })()
-  if (parsed && parsed.feePayerSignature === undefined)
-    return Problem.fail(400, 'invalid_request', 'This open was signed to pay its own network fee, not for a fee payer, so the gateway cannot send it. Send it from the wallet and post its hash.')
-
-  const read = (() => {
-    if ('opened' in input) {
-      const { channelId, deposit, ...descriptor } = input.opened.args
-      return { deposit, descriptor, id: channelId }
-    }
-    const call = parsed?.calls?.length === 1 ? parsed.calls[0] : undefined
-    if (!parsed?.from || !call?.data || !call.to || call.to.toLowerCase() !== terms.escrow.toLowerCase()) return undefined
-    const decoded = (() => {
-      try {
-        return decodeFunctionData({ abi: Session.Precompile.escrowAbi, data: call.data })
-      } catch {
-        return undefined
-      }
-    })()
-    if (decoded?.functionName !== 'open') return undefined
-    const [payee, operator, token, deposit, salt, authorizedSigner] = decoded.args
-    const expiringNonceHash = Session.Precompile.Channel.computeExpiringNonceHash(
-      Session.Precompile.Channel.transactionForExpiringNonceHash({ feePayer: true, transaction: parsed as never }),
-      { sender: parsed.from },
-    )
-    const descriptor = { authorizedSigner, expiringNonceHash, operator, payee, payer: parsed.from, salt, token }
-    return { deposit, descriptor, id: Session.Precompile.Channel.computeId({ ...descriptor, chainId: Chain.chain.id, escrow: Chain.escrow }) }
-  })()
-  if (!read) return Problem.fail(400, 'invalid_request', 'That is not a Tempo transaction whose one call opens a channel on the escrow.')
-
-  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
-  const descriptor = read.descriptor
-  if (!same(descriptor.payee, terms.recipient) || !same(descriptor.operator, terms.operator) || !same(descriptor.token, Chain.mach.address) || !same(descriptor.authorizedSigner, terms.signer))
-    return Problem.fail(
-      400,
-      'invalid_request',
-      `A MACH channel for a swarm pays the gateway ${terms.recipient}, names ${terms.operator} as operator, holds MACH and lets ${terms.signer}, the swarms' gateway key, sign for it.`,
-    )
-  if (!same(descriptor.salt, Transfer.memo(row.id, note)))
-    return Problem.fail(
-      400,
-      'invalid_request',
-      note && same(descriptor.salt, Transfer.memo(row.id))
-        ? "The channel's salt does not commit to this note, so it counts only without one."
-        : `This channel was not opened for this swarm: its salt must be keccak256("swarm:${row.id}"), or keccak256("note:${row.id}:<note>") with a note.`,
-    )
-  if (read.deposit < units(terms.least)) return Problem.fail(400, 'invalid_request', `A MACH contribution opens a channel of at least ${terms.least} MACH.`)
-  if (await Store.channel(env, read.id)) return Problem.fail(409, 'conflict', 'This channel is already counted.')
-
-  const registered = await Gateway.sponsor(env, row.id, { descriptor, ...('transaction' in input ? { transaction: input.transaction } : {}) })
-  if (!registered.ok) {
-    const [status, code] =
-      registered.status === 404 ? ([404, 'not_found'] as const) : registered.status === 409 ? ([409, 'conflict'] as const) : registered.status === 429 ? ([429, 'rate_limited'] as const) : registered.status < 500 ? ([400, 'invalid_request'] as const) : registered.status === 503 ? ([503, 'unavailable'] as const) : ([502, 'upstream_failed'] as const)
-    return Problem.fail(status, code, `The gateway did not open the channel: ${registered.detail}`)
-  }
-  const hash = (registered.value.tx ?? ('hash' in input ? input.hash : undefined))?.toLowerCase() as Hex | undefined
-  if (!hash) return Problem.fail(502, 'upstream_failed', 'The gateway took the channel but answered no transaction.')
-
-  const noteId = note ? await Store.noteId(note) : null
-  const given = await Store.give(env, { amount: String(read.deposit), channel: read.id, contributor: descriptor.payer, id: hash, note, note_id: noteId, swarm: row.id, token: 'mach' })
-  if (given) {
-    await stub(env, row.id).contributed({ amount: Memo.decimal(read.deposit), contributor: descriptor.payer, hash, note, noteId, swarm: row.id, token: 'mach' })
-    if (note && noteId) await logged(Search.note(env, row.id, noteId, note))
-  }
-
-  const [gift, updated] = await Promise.all([given ?? Store.gift(env, hash), Store.find(env, row.id)])
-  if (!gift) return Problem.fail(502, 'unavailable', 'The contribution was not saved.')
-  return Problem.ok({ contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) }, created: given !== null })
-}
-
-export async function pay(env: Cloudflare.Env, swarm: string, authorization: string, input: Record<string, unknown>): Promise<Paid> {
-  const secret = /^Bearer (.+)$/.exec(authorization)?.[1]
-  const challenge = input['challenge']
-  if (secret && input['operation'] === 'budget') {
-    if (!(await Store.exists(env, swarm))) return { code: 'unauthorized', detail: 'No swarm has this id.', status: 401 }
-    return stub(env, swarm).budget(secret, typeof input['app'] === 'string' ? input['app'] : undefined)
-  }
-  if (!secret || !(typeof challenge === 'string' || (Array.isArray(challenge) && challenge.every((value) => typeof value === 'string'))))
-    return { code: 'unauthorized', detail: 'Send the payer secret as a bearer token, and the challenge.', status: 401 }
-  if (!(await Store.exists(env, swarm))) return { code: 'unauthorized', detail: 'No swarm has this id.', status: 401 }
-  return stub(env, swarm).pay({
-    amount: typeof input['amount'] === 'string' ? input['amount'] : undefined,
-    operation: typeof input['operation'] === 'string' ? input['operation'] : undefined,
-    path: typeof input['path'] === 'string' ? input['path'].slice(0, 2048) : undefined,
-    app: typeof input['app'] === 'string' ? input['app'] : undefined,
-    attempt: typeof input['attempt'] === 'number' ? input['attempt'] : undefined,
-    challenge: challenge as string | string[],
-    channels: Array.isArray(input['channels']) ? (input['channels'] as Snapshot[]) : undefined,
-    hand: typeof input['hand'] === 'string' ? input['hand'].slice(0, 64) : undefined,
-    recipient: typeof input['recipient'] === 'string' && isAddress(input['recipient']) ? input['recipient'] : undefined,
-    rejected: typeof input['rejected'] === 'object' && input['rejected'] !== null ? (input['rejected'] as { detail: string; status: number }) : undefined,
-    secret,
-    subagent: typeof input['subagent'] === 'number' ? input['subagent'] : undefined,
-    tree: typeof input['tree'] === 'number' ? input['tree'] : undefined,
   })
 }
 
@@ -1421,84 +1258,32 @@ export async function contribute(
   const parsed = parse(schema.contribution, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
-  const found = await Store.find(env, request.swarm)
-  if (!found) return missing()
-  const row = await provisioned(env, found)
-  const text = request.note || null
-  if (request.transaction) return channeled(env, row, { transaction: request.transaction as Hex }, text)
-  if (!request.hash)
-    return Problem.fail(400, 'invalid_request', 'Send hash, the hash of a transfer or of a MACH channel opened for the swarm, or transaction, a MACH channel open signed for a fee payer.')
+  const row = await Store.find(env, request.swarm)
+  if (!row) return missing()
 
-  const [receipt, existing] = await Promise.all([getTransactionReceipt(Chain.client(env), { hash: request.hash as Hex }).catch(() => undefined), Store.gift(env, request.hash)])
-  if (!receipt) return Problem.fail(404, 'not_found', 'Tempo has no receipt for this transaction yet.')
-  if (receipt.status !== 'success') return Problem.fail(400, 'invalid_request', 'The transaction reverted.')
-
-  const wallet = row.wallet.toLowerCase()
-  const sender = receipt.from.toLowerCase()
-  const logs = parseEventLogs({ abi: Abis.tip20, logs: receipt.logs })
-  const transfers = logs.flatMap((log) => {
-    const token = Chain.token(log.address)
-    return log.eventName === 'Transfer' &&
-      token &&
-      log.args.to.toLowerCase() === wallet &&
-      log.args.from.toLowerCase() === sender &&
-      sender !== wallet
-      ? [{ amount: log.args.amount, token }]
-      : []
-  })
-  const first = transfers[0]
-  if (!first) {
-    const opened = parseEventLogs({ abi: Session.Precompile.escrowAbi, eventName: 'ChannelOpened', logs: receipt.logs }).find(
-      (log) => log.address.toLowerCase() === Chain.escrow.toLowerCase() && log.args.payer.toLowerCase() === sender,
-    )
-    if (opened) return channeled(env, row, { hash: request.hash as Hex, opened: opened as Opened }, text)
-    return Problem.fail(
-      400,
-      'invalid_request',
-      `That transaction sends no USDC.e, pathUSD or OUSD from its sender to this swarm's address ${row.wallet}, and opens no MACH channel for it.`,
-    )
+  const [credited, existing] = await Promise.all([Gateway.credited(env, row.id, request.hash), Store.gift(env, request.hash)])
+  if (!credited.ok) {
+    if (credited.status === 404) return Problem.fail(404, 'not_found', 'Tempo has no receipt for this transaction yet.')
+    if (credited.status === 400)
+      return Problem.fail(400, 'invalid_request', `That transaction is not a transfer to the gateway for this swarm: ${credited.detail}`)
+    return Problem.fail(502, 'upstream_failed', `The gateway did not credit the transfer: ${credited.detail}`)
   }
+  const first = credited.value.deposits[0]
+  if (!first) return Problem.fail(502, 'upstream_failed', 'The gateway credited no transfer for this transaction.')
 
-  const memos = logs.flatMap((log) =>
-    log.eventName === 'TransferWithMemo' && log.args.to.toLowerCase() === wallet ? [log.args.memo.toLowerCase()] : [],
-  )
-  if (text && !memos.includes(Transfer.memo(row.id, text).toLowerCase()))
-    return Problem.fail(
-      400,
-      'invalid_request',
-      `The transfer's memo does not commit to this note. Send it with the memo keccak256("note:${row.id}:<note>").`,
-    )
-
-  const total = transfers.reduce((sum, transfer) => sum + transfer.amount, 0n)
+  const total = credited.value.deposits.reduce((sum, deposit) => sum + Memo.units(deposit.amount), 0n)
+  const asked = request.note || null
+  const text = asked && credited.value.deposits.some((deposit) => deposit.tag.toLowerCase() === Credit.tag(row.id, asked).toLowerCase()) ? asked : null
   const noteId = text ? await Store.noteId(text) : null
   let written: Store.Gift | null
   if (existing) {
-    if (!text || existing.note || !noteId)
-      return Problem.fail(409, 'conflict', 'This transaction is already counted.')
+    if (!text || existing.note || !noteId) return Problem.fail(409, 'conflict', 'This transaction is already counted.')
     written = await Store.annotate(env, request.hash, { note: text, note_id: noteId })
   } else {
-    written = await Store.give(env, {
-      amount: String(total),
-      channel: null,
-      contributor: sender as Address,
-      id: request.hash as Hex,
-      note: text,
-      note_id: noteId,
-      swarm: row.id,
-      token: first.token,
-    })
+    written = await Store.give(env, { amount: String(total), channel: null, contributor: first.from, id: request.hash as Hex, note: text, note_id: noteId, swarm: row.id, token: first.token })
   }
   if (written) {
-    await stub(env, row.id).contributed({
-      amount: Memo.decimal(total),
-      contributor: sender as Address,
-      hash: request.hash,
-      kind: existing ? 'noted' : 'new',
-      note: text,
-      noteId,
-      swarm: row.id,
-      token: first.token,
-    })
+    await stub(env, row.id).contributed({ amount: Memo.decimal(total), contributor: first.from, hash: request.hash, kind: existing ? 'noted' : 'new', note: text, noteId, swarm: row.id, token: first.token })
     if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
   }
 

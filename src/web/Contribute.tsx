@@ -10,11 +10,11 @@ import * as Wallet from './wallet.ts'
 
 export const amounts = ['2', '5', '10', '25'] as const
 
-const preferred: readonly Currency[] = ['ousd', 'usdce', 'pathusd', 'mach']
+const preferred: readonly Currency[] = ['mach', 'ousd', 'usdce', 'pathusd']
 
 const smallest = '0.01'
 
-export type Target = { id: string; wallet: `0x${string}` | null }
+export type Target = { id: string }
 
 export type Prefill = { amount: string; note: string; token: Currency | undefined }
 
@@ -33,18 +33,10 @@ function needed(amount: string) {
   return /^(\d+\.?\d{0,6}|\.\d{1,6})$/.test(amount.trim()) ? units(amount.trim()) : 0n
 }
 
-export function choose(amount: string, balances: Partial<Record<Currency, bigint>>, config: Config | undefined): Currency {
+export function choose(amount: string, balances: Partial<Record<Currency, bigint>>): Currency {
   const need = needed(amount)
-  const offered = preferred.filter((token) => token !== 'mach' || (!!config?.channel && need >= units(config.channel.least)))
-  const enough = offered.find((token) => (balances[token] ?? 0n) >= need && (balances[token] ?? 0n) > 0n)
-  if (enough) return enough
-  const most = offered.reduce((best, token) => ((balances[token] ?? 0n) > (balances[best] ?? 0n) ? token : best))
-  return (balances[most] ?? 0n) > 0n ? most : 'usdce'
-}
-
-export function least(config: Config | undefined, token: Currency, floor = smallest) {
-  const channel = token === 'mach' ? config?.channel?.least : undefined
-  return channel && units(channel) > units(floor) ? channel : floor
+  const enough = preferred.find((token) => (balances[token] ?? 0n) >= need && (balances[token] ?? 0n) > 0n)
+  return enough ?? preferred.reduce((best, token) => ((balances[token] ?? 0n) > (balances[best] ?? 0n) ? token : best))
 }
 
 export function valid(amount: string, minimum = smallest) {
@@ -96,15 +88,9 @@ export async function record(paid: Unrecorded) {
 }
 
 export async function send(config: Config, target: Target, amount: bigint, note: string, token: Currency) {
-  if (token === 'mach') {
-    if (!config.channel) throw new Error('This way of paying is not available right now. Try again with another balance in your wallet.')
-    const Channel = await import('../shared/Channel.ts')
-    const hash = await Wallet.open(config, Channel.open(config.channel, target.id, amount, note))
-    return record({ amount, hash, note, swarm: target.id, token })
-  }
-  if (!target.wallet) throw new Error('This swarm has no wallet yet. Try again in a moment.')
-  const { memo } = await import('../shared/Transfer.ts')
-  const hash = await Wallet.send(config, { amount, memo: memo(target.id, note), to: target.wallet, token })
+  if (!config.credit) throw new Error('Backing is not available right now. Try again in a moment.')
+  const { memo } = await import('../shared/Credit.ts')
+  const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, note), to: config.credit.recipient, token })
   return record({ amount, hash, note, swarm: target.id, token })
 }
 
@@ -137,8 +123,8 @@ export function Fuel(props: {
   }, [props.focus])
   const busy = flow.at === 'busy'
   const step = (next: Working) => setFlow({ at: 'busy', step: next })
-  const token = picked ?? choose(amount, wallet.balances, props.config)
-  const floor = least(props.config, token, props.least)
+  const token = picked ?? choose(amount, wallet.balances)
+  const floor = props.least ?? smallest
   const ok = valid(amount, floor)
   const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && flow.at !== 'unrecorded'
   const text = props.note.trim()
@@ -156,8 +142,10 @@ export function Fuel(props: {
         step('connect')
         await Wallet.connect(config)
         await Wallet.refresh(config).catch(() => {})
-        using = picked ?? choose(amount, Wallet.snapshot().balances, config)
+        using = picked ?? choose(amount, Wallet.snapshot().balances)
       }
+      const held = Wallet.snapshot().balances[using]
+      if (held !== undefined && held < units(amount)) throw Object.assign(new Error('Your wallet holds less than this.'), { code: 'insufficient_balance' })
       target = await props.target((next) => step(next))
       step('send')
       const hash = await send(config, target, units(amount), text, using)

@@ -22,11 +22,11 @@ A completed run means its agent reported completion, not independent scientific 
 
 The direction is a network where communities fund research, independent operators contribute execution, and independent reviewers reproduce the evidence. Today, funding is permissionless through Tempo Wallet and contributors can lend machines; reports and activity can be read without an account through the web app, REST and MCP.
 
-Orchestration currently uses a Cloudflare Worker and Durable Object per swarm, the Tempo gateway and an app-managed swarm wallet. Pooled funds are custodied by the app. It does not add decentralized orchestration, independent verification, milestone escrow, research ownership tokens, investment returns or cross-swarm artifact sharing. The next protocol work should make execution and verification independently operable with explicit provenance and reproducible artifact delivery.
+Orchestration currently uses a Cloudflare Worker and Durable Object per swarm and the Tempo gateway. Backers' money goes straight to the gateway, which holds it as the swarm's credit and spends it on the agent's work; the app holds no funds and no keys. It does not add decentralized orchestration, independent verification, milestone escrow, research ownership tokens, investment returns or cross-swarm artifact sharing. The next protocol work should make execution and verification independently operable with explicit provenance and reproducible artifact delivery.
 
 ## Funding and access
 
-One-off transfers and daily budgets use USDC.e, pathUSD or OUSD. Pledges additionally support MACH. Wallet approval is required for funding. The existing spending limits, contribution accounting and unspent-fund return rules are documented in [AGENTS.md](AGENTS.md). Reading research is free.
+Backing is one transfer of MACH, OUSD, USDC.e or pathUSD, approved in Tempo Wallet. How it is counted and spent is documented in [AGENTS.md](AGENTS.md). Reading research is free.
 
 - Live app: https://swarms.tempo-dev.workers.dev
 - API reference: https://swarms.tempo-dev.workers.dev/docs

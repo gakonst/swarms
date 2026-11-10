@@ -37,7 +37,7 @@ function cues(payload: Record<string, unknown>): Cue[] {
   ]
 }
 
-export type Cue = 'artifacts' | 'chain' | 'git' | 'hands' | 'sponsors' | 'turn'
+export type Cue = 'artifacts' | 'credit' | 'git' | 'hands' | 'turn'
 
 const streamFails = 2
 
@@ -82,10 +82,10 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
 
   self.checked = now
   const plan = window ? planned(self, now) : { ...Money.everything, artifacts: now - (self.kv.get<number>('shelvedAt') ?? 0) >= Clock.shelfMs, git: true, turn: true }
-  const refreshing = plan.chain || plan.hands || plan.sponsors
+  const refreshing = plan.credit || plan.hands
   const reported = ended ? self.reported : undefined
   self.reported = undefined
-  const [report, money] = await Promise.all([
+  const [report] = await Promise.all([
     reported ? ({ ok: true, value: reported } as const) : ended || plan.turn ? Gateway.turn(self.env, row.id, agent.id, run.turn) : undefined,
     refreshing ? Money.refresh(self, row, plan) : undefined,
     plan.git ? Repo.watch(self, row) : undefined,
@@ -100,7 +100,6 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
     Turns.abandon(self, agent.id, detail)
     return Turns.finish(self, row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
   }
-  if (money && plan.chain && (money.left < Store.reserveOf(money.row) + Store.headroom || BigInt(self.kv.get<string>('loose') ?? '0') >= Money.smallestSwap)) await Money.fund(self, money.row)
   return window ? Date.now() : now + Clock.followMs
 }
 
@@ -182,10 +181,9 @@ function every(self: Swarm, now: number): Record<Cue, number> {
   const lent = (self.kv.get<Hand[]>('hands') ?? []).length > 0 || now - (self.kv.get<number>('issued') ?? 0) < lendingMs
   return {
     artifacts: fallbackMs,
-    chain: fallbackMs,
+    credit: self.listened() ? Clock.minuteMs : fallbackMs,
     git: fallbackMs,
     hands: lent ? Clock.minuteMs : fallbackMs,
-    sponsors: self.listened() ? Clock.minuteMs : fallbackMs,
     turn: fallbackMs,
   }
 }
@@ -198,10 +196,9 @@ export function planned(self: Swarm, now: number) {
   const intervals = every(self, now)
   return {
     artifacts: due(self, 'artifacts', intervals.artifacts, now),
-    chain: due(self, 'chain', intervals.chain, now),
+    credit: due(self, 'credit', intervals.credit, now),
     git: due(self, 'git', intervals.git, now),
     hands: due(self, 'hands', intervals.hands, now),
-    sponsors: due(self, 'sponsors', intervals.sponsors, now),
     turn: due(self, 'turn', intervals.turn, now),
   }
 }

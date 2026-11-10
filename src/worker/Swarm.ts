@@ -9,18 +9,15 @@ import * as Mention from '../shared/Mention.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Gateway from './Gateway.ts'
-import * as Payer from './Payer.ts'
 import * as Phase from './Phase.ts'
 import type { Why } from '../shared/Api.ts'
 import * as Search from './Search.ts'
 import * as Sessions from './Sessions.ts'
 import * as Lobby from './Lobby.ts'
 import * as Store from './Store.ts'
-import * as Vault from './Vault.ts'
 import * as Words from './Words.ts'
 import * as Relay from './Relay.ts'
 import * as Clock from './Clock.ts'
-import * as Paying from './Paying.ts'
 import * as Follow from './Follow.ts'
 import * as Repo from './Repo.ts'
 import * as Branching from './Branching.ts'
@@ -141,20 +138,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   declare ctx: DurableObjectState<{}>
   declare env: Cloudflare.Env
   stepping: Promise<number | null> | undefined
-  lanes = new Map<string, { depth: number; flow: { amount: bigint; at: number }[]; tail: Promise<unknown> }>()
-  callers = new Map<string, { at: number; lane: string }>()
-  holding = new Map<string, Paying.Lane>()
-  heldAt = 0
-  balancing: Promise<void> | undefined
-  funding: Promise<void> | undefined
-  wallet: Promise<unknown> = Promise.resolve()
   checked = 0
   born = Date.now()
   branched = 0
   reported: Gateway.Report | undefined
-  vended = 0
-  signers = new Map<string, Promise<Paying.Signer>>()
-  clients = new Map<string, Payer.Client>()
   memos = new Map<string, { at: number; epoch: number; marked: number; value: unknown }>()
   marked = 0
   boot = crypto.randomUUID().slice(0, 8)
@@ -167,12 +154,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   fails = 0
   cues = new Map<Follow.Cue, number>()
   polled = new Map<Follow.Cue, number>()
-  held: Vault.Balances | undefined
-  pledged = { biggest: 0n, left: 0n, spent: 0n }
   waiters = new Set<() => void>()
   pending: Pending = { at: 0, parts: new Set(), pulse: undefined, timer: undefined }
   holders = new Map<string, { address: Address | undefined; at: number }>()
-  steady: Store.Row | undefined
   beating: ReturnType<typeof setInterval> | undefined
 
   budgeting: Promise<unknown> = Promise.resolve()
@@ -227,9 +211,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async found(id: string) {
-    const row = await this.memo(`row:${id}`, id, () => Store.find(this.env, id), (row) => !!row?.wallet)
-    if (row?.wallet) this.steady = structuredClone(row)
-    return row
+    return this.memo(`row:${id}`, id, () => Store.find(this.env, id), (row) => !!row)
   }
 
   remember(row: Store.Row) {
@@ -251,7 +233,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async contributed(input: Contributed) {
     this.marked += 1
     this.kv.put('id', input.swarm)
-    Paying.revive(this)
     if (input.kind === 'noted') {
       this.log('funds', `${Words.short(input.contributor)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
       Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed "${input.note ?? ''}" with $${Words.trim(input.amount)}.`)
@@ -266,8 +247,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     )
     Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed it with $${Words.trim(input.amount)}${input.note ? `: "${input.note}"` : ''}.`)
     if (input.noteId) await this.steer(input.swarm, input.noteId)
-    this.cue('chain')
-    this.cue('sponsors')
+    this.cue('credit')
     this.changed('detail', 'members')
     await this.wake('money')
     if (this.listened()) {
@@ -597,7 +577,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   streaming() {
-    return !!(this.kv.get<string>('id') && this.agent() && this.turn() && this.kv.get<string>('secret'))
+    return !!(this.kv.get<string>('id') && this.agent() && this.turn())
   }
 
   override async alarm() {
@@ -621,23 +601,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const now = Date.now()
     this.cues.set(cue, now)
     this.window?.close(Follow.until(this, now))
-  }
-
-  async budget(secret: string, app: string | undefined): Promise<Paying.Paid> {
-    const known = this.kv.get<string>('secret')
-    if (!known || !Words.same(known, secret)) return { code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 }
-    const row = await this.found(this.kv.get<string>('id') ?? '')
-    if (!row) return { code: 'unauthorized', detail: 'No swarm has this id.', status: 401 }
-    if (app !== undefined && app !== Gateway.app(row.id)) return { code: 'unauthorized', detail: 'This payer pays only for its own swarm.', status: 401 }
-    const summary = Store.summary(row)
-    const page = new URL(`/s/${row.id}`, this.env.SWARMS_URL).href
-    return { daily: '0.000000', page, raised: summary.raised, room: new URL(`/v1/swarms/${row.id}/chat`, this.env.SWARMS_URL).href, spent: summary.spent, swarm: row.id, usd: summary.remaining }
-  }
-
-  pay(input: Paying.Pay): Promise<Paying.Paid> {
-    const secret = this.kv.get<string>('secret')
-    if (!secret || !Words.same(secret, input.secret)) return Promise.resolve({ code: 'unauthorized', detail: 'Unknown payer secret.', status: 401 })
-    return Paying.queued(this, input)
   }
 
   code(): Snapshot | null {
@@ -664,7 +627,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const agent = this.agent()?.id
     const turn = this.turn()
     if (!turn) await this.wake('note')
-    if (!row || !agent || !turn || !this.kv.get<string>('secret')) return undefined
+    if (!row || !agent || !turn) return undefined
 
     const note = (await this.notes(row)).find((found) => found.id === noteId)
     if (!note) return undefined

@@ -10,13 +10,13 @@ import * as Replica from './Replica.ts'
 function instructions(origin: string) {
   return [
     `Swarms (${origin}) are crowdfunded, long-running AI agents on the Tempo gateway. Anyone starts a swarm with a title and a goal, which can be anything an agent can do with code, machines and the web: research a question, build and ship software, port or audit code, gather data, write. It waits in status funding until someone funds it, and then one nanocode agent works on it in a single continuous thread, spending on models, Modal machines and any subagents it spawns. Whenever it pauses to reply, it posts an update; the newest update is the swarm's answer, and the swarm then tells it to keep going. It keeps the code it writes in a public git repository that swarm_get names, with a read-only clone URL (code.clone) for git clone. A swarm runs until its agent reports the goal met (done), or waits whenever its money runs out (paused, and new money resumes it).`,
-    "Money comes one way: anyone sends it from their own wallet, and the swarm counts it by its transaction hash. USDC.e, OUSD or pathUSD go to the swarm's own wallet. MACH reaches only whitelisted merchants such as the gateway, so MACH goes into a payment channel the gateway spends for the swarm's agent, which the contributor opens in one transaction whose network fee the gateway pays; what the swarm never spends goes back to them when the channel closes. Money may carry a note: money behind the same note backs it together, the agent reads the notes ranked by the money behind them whenever it keeps going, and a note that arrives while it works reaches it at once.",
+    "Money comes one way: anyone sends MACH, OUSD, USDC.e or pathUSD from their own wallet to the Tempo gateway with a memo that names the swarm, and the swarm counts it by its transaction hash. The gateway holds it as the swarm's credit and spends it only on what the swarm's agent does; a swarm holds no wallet, and money sent is not returned. Money may carry a note: money behind the same note backs it together, the agent reads the notes ranked by the money behind them whenever it keeps going, and a note that arrives while it works reaches it at once.",
     "Contributors can also lend a swarm their own machine as a hand: swarm_hand issues one and returns the nanocode command (nc hand '<url>' --token <token>) and a nanocode-ts snippet (Hand.connect) to run on that machine. The swarm's agent then runs commands there, and is told the machine and its data belong to a contributor. A hand can set its own prices, such as a price per file; the swarm pays them through the gateway from its money and caps what each hand may charge. Issue a hand only when the user asks, and make sure they know the swarm's agents will run commands on the machine.",
     "Swarms publish artifacts as they work, such as a live dashboard of their results, a chart or a write-up; swarm_artifacts lists them with a url to fetch.",
     "Every swarm has a room where its backers talk. Anyone can read it with swarm_chat. Backers post on the swarm's page after signing in with Tempo Wallet, mention each other by username (or, without one, a name made from their address such as @quark-1a2b), and steer with @swarm: such a message puts an amount of its author's backing, not yet behind a note, behind the rest of the message as a note, which weighs like any other note and reaches the agent at once if it is working.",
     'To answer questions about what the swarms found or did, search first (swarms_search with keywords; set swarm to include that swarm\'s feed of tool calls, commands, machines and messages), then read what matched with swarm_updates, swarm_answer, swarm_get or swarm_feed, and cite the swarm and when. swarms_list shows the funded swarms. Reading is free and needs no account.',
     "When something in Swarms is broken or confusing, or the user wants to report it, swarm_feedback files it with the team that runs Swarms and answers a link where its status shows.",
-    `Fund only when the user asks to. swarm_contribute prepares a transfer (the swarm's address, the memo for a note, call data and a link to the page that sends it) and counts one by its hash. swarm_wait waits up to ${Operations.maxWait} s for the agent's next update.`,
+    `Fund only when the user asks to. swarm_contribute prepares a transfer (the gateway's address, the memo that names the swarm and its note, call data and a link to the page that sends it) and counts one by its hash. swarm_wait waits up to ${Operations.maxWait} s for the agent's next update.`,
   ].join('\n\n')
 }
 
@@ -49,7 +49,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
     {
       annotations: reading,
       description:
-        'List the funded swarms, most recently active first (at most 100), each with its title, goal, status, money raised, spent and remaining, its wallet, machines, backers and latest answer. status filters: funding (funded, its agent has not started yet), running (its agent is working), paused (out of money; new money resumes it) or done.',
+        'List the funded swarms, most recently active first (at most 100), each with its title, goal, status, money raised, spent and remaining, machines, backers and latest answer. status filters: funding (funded, its agent has not started yet), running (its agent is working), paused (out of money; new money resumes it) or done.',
       inputSchema: Operations.schema.list.shape,
     },
     async (input) => reply(await Operations.list(read, input)),
@@ -212,17 +212,14 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
     {
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true, readOnlyHint: false },
       description:
-        "Send money to a swarm from the user's own wallet: USDC.e, pathUSD or OUSD as a transfer to its wallet, or MACH (token mach) as a payment channel the gateway spends for it. Without hash or transaction it prepares one: the swarm's wallet address, the token's address, the memo (keccak256(\"note:<swarm>:<note>\") with a note, else keccak256(\"swarm:<swarm>\")), with amount the call to send (transferWithMemo, or for MACH the escrow's open, whose salt is the memo, at least channel.least), and a link to the swarm's page with it filled in, where Tempo Wallet sends it and the page counts it. Show the link to the user, or send the call from a wallet the user controls. A MACH open is signed for a fee payer (feePayer true, an expiring nonce) and posted unsent as transaction, and the gateway pays its fee and sends it; one the wallet sent itself is counted by hash. With hash it counts money already sent: a hash counts once, a note counts only when the memo commits to it, and a transfer counted without a note can get its note later. Nothing moves until the user signs. Call it only when the user asks to fund the swarm.",
+        "Send money to a swarm from the user's own wallet: MACH, OUSD, USDC.e or pathUSD, each counted at $1. Without hash it prepares the transfer: the gateway's address (to), the token's address, the memo that names the swarm and commits to the note, with amount the transferWithMemo call to send, and a link to the swarm's page with it filled in, where Tempo Wallet sends it and the page counts it. Show the link to the user, or send the call from a wallet the user controls. With hash it counts a transfer already sent; each transaction counts once. A note counts only when the memo commits to it.",
       inputSchema: Operations.schema.transfer.shape,
     },
     async (input) => {
-      if (input.hash || input.transaction)
-        return reply(await Operations.contribute(env, { hash: input.hash, note: input.note, swarm: input.swarm, transaction: input.transaction }), (value) => value.contributed)
+      if (input.hash) return reply(await Operations.contribute(env, { hash: input.hash, note: input.note, swarm: input.swarm }), (value) => value.contributed)
       return reply(await Operations.transfer(env, input, origin), (value) => ({
         ...value,
-        message: value.channel
-          ? `Open a MACH channel of ${value.amount ?? `at least ${value.channel.least}`} MACH on the escrow ${value.channel.escrow} with the call above (salt ${value.memo}), signed for a fee payer and posted unsent as transaction, or open ${value.link} to do it with Tempo Wallet from the swarm's page, which counts it.`
-          : `Send ${value.amount ?? 'any amount of'} ${value.symbol} to the swarm's wallet ${value.wallet} with transferWithMemo and the memo ${value.memo}, or open ${value.link} to send it with Tempo Wallet from the swarm's page, which counts it. After sending it any other way, call swarm_contribute with the transaction hash.`,
+        message: `Send ${value.amount ?? 'any amount of'} ${value.symbol} to ${value.to} with transferWithMemo and the memo ${value.memo}, or open ${value.link} to send it with Tempo Wallet from the swarm's page, which counts it. After sending it any other way, call swarm_contribute with the transaction hash.`,
       }))
     },
   )

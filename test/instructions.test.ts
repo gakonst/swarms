@@ -93,6 +93,7 @@ test('a new lead is created with the swarm\'s own instructions and no persona', 
   const body = created?.body as Record<string, unknown>
   assert.equal(body['instructions'], Persona.render(mix))
   assert.equal(body['persona'], undefined)
+  assert.equal(body['payer'], 'credit')
   assert.equal(body['model'], Setup.opus)
   assert.ok(!sent.some((request) => request.path.startsWith('/v1/personas')))
   assert.equal(kv.get('instructions'), Persona.render(mix))
@@ -105,8 +106,20 @@ test('a lead re-created later gets the text the swarm froze, not a newer one', a
   assert.equal((sent.find((request) => request.path === '/v1/agents')?.body as Record<string, unknown>)['instructions'], 'the text frozen at creation')
 })
 
-test('a lead on the shared persona gets the frozen text once, on its next turn, and the shared persona is never set', async () => {
+test("a lead that still has a payer route is moved to the swarm's credit once", async () => {
   const url = 'https://swarms.test/api/swarms/abc123def456/pay'
+  const kv = store([['agent', { briefed: true, cursor: 7, id: 'agt_old', instructed: true, unreachable: null, url }]])
+  const { self, sent } = swarm(kv, () => Response.json({ id: 'agt_old' }))
+  const lead = await Turns.lead(self, row)
+  assert.ok(!('error' in lead))
+  assert.equal(lead.url, 'credit')
+  assert.deepEqual(sent, [{ body: { payer: 'credit' }, method: 'PATCH', path: '/v1/agents/agt_old' }])
+  await Turns.lead(self, row)
+  assert.equal(sent.length, 1)
+})
+
+test('a lead on the shared persona gets the frozen text once, on its next turn, and the shared persona is never set', async () => {
+  const url = 'credit'
   const kv = store([['agent', { briefed: true, cursor: 7, id: 'agt_old', persona: true, unreachable: null, url }], ['secret', 's'.repeat(64)]])
   const { self, sent } = swarm(kv, () => Response.json({ id: 'agt_old' }))
   const lead = await Turns.lead(self, row)
@@ -119,7 +132,7 @@ test('a lead on the shared persona gets the frozen text once, on its next turn, 
 })
 
 test('a lead whose instructions the gateway refuses to give tries again next turn', async () => {
-  const url = 'https://swarms.test/api/swarms/abc123def456/pay'
+  const url = 'credit'
   const kv = store([['agent', { briefed: true, cursor: 7, id: 'agt_old', persona: true, unreachable: null, url }], ['secret', 's'.repeat(64)]])
   const { self, sent } = swarm(kv, () => Response.json({ detail: 'down' }, { status: 503 }))
   const lead = await Turns.lead(self, row)

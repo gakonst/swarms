@@ -46,7 +46,6 @@ const started = Date.now()
 
 export const balances: Record<Currency, bigint> = scene.has('broke') ? { mach: 0n, ousd: 0n, pathusd: 0n, usdce: 0n } : { mach: 1_250_000n, ousd: 420_000n, pathusd: 3_000_000n, usdce: 8_750_000n }
 
-const wallet = '0x3c93fC3eA108A4E738c10f64c4360d53C9415e5F'
 
 const people = [
   visitor,
@@ -132,7 +131,6 @@ function build(input: {
     raised: '0',
     remaining: '0',
     setup: input.setup === undefined ? setup({ template: 'frontier-mix' }) : input.setup,
-    wallet,
     script: input.script ?? [],
     since: input.status === 'running' ? at(input.since ?? 30) : null,
     spent: input.spent,
@@ -442,7 +440,6 @@ function summary(swarm: Live): Summary {
     steering: swarm.steering,
     title: swarm.title,
     updatedAt: swarm.updatedAt,
-    wallet: swarm.wallet,
     why: reason(swarm) ? why(swarm) : null,
   }
 }
@@ -466,7 +463,7 @@ export function config(): Promise<Config> {
   return steady({
     auth: '/v1/auth',
     chainId: 4217,
-    channel: { escrow: '0x4d50500000000000000000000000000000000000', least: '0.050000', operator: '0x4cC7C5c526B16a0137270C48D84f826E16C99965', recipient: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE', signer: '0xa47b45c12b7588b56e3a11fe3e808fc1b72577b2' },
+    credit: { owner: '0x975937feafc6869a260c176854dda8764a78e122', recipient: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE' },
     explorer: 'https://explore.tempo.xyz',
     gateway: 'https://gateway.tempo-dev.workers.dev',
     models,

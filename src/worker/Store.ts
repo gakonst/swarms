@@ -22,7 +22,6 @@ export type Row = {
   remaining: number
   repo: string | null
   rounds: number
-  sealed_wallet: string | null
   setup: string | null
   spent: number
   sponsor_left: number
@@ -32,7 +31,6 @@ export type Row = {
   team: `0x${string}` | null
   title: string
   updated_at: number
-  wallet: `0x${string}` | null
   why: Summary['why']
 }
 
@@ -56,16 +54,8 @@ export type Fields = Partial<
 
 export const reserve = 50_000n
 
-export const headroom = 100_000n
-
-export const perCall = 20_000n
-
 export function reserveOf(row: Pick<Row, 'setup'>) {
   return Setup.reserve(setup(row))
-}
-
-export function callOf(row: Pick<Row, 'setup'>) {
-  return Setup.call(setup(row), perCall)
 }
 
 const totals = `select s.*,
@@ -108,7 +98,6 @@ export function summary(row: Row): Summary {
     steering: row.steering ?? 'open',
     title: row.title,
     updatedAt: row.updated_at,
-    wallet: row.wallet,
     why: row.status === 'paused' || row.status === 'funding' ? (row.why ?? null) : null,
   }
 }
@@ -181,22 +170,16 @@ export async function repo(env: Cloudflare.Env, id: string) {
 
 export async function insert(
   env: Cloudflare.Env,
-  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'title'> & Partial<Pick<Row, 'setup'>> & { sealed_wallet: string; wallet: string },
+  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'title'> & Partial<Pick<Row, 'setup'>>,
 ) {
   const now = Date.now()
   const row = await env.DB.prepare(
-    'insert into swarms (id, title, goal, problem, wallet, sealed_wallet, creator, created_at, updated_at, setup) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as raised, pool_spent + sponsor_spent + spent_before as spent, pool_left + sponsor_left as remaining, 0 as contributors',
+    'insert into swarms (id, title, goal, problem, creator, created_at, updated_at, setup) values (?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as raised, pool_spent + sponsor_spent + spent_before as spent, pool_left + sponsor_left as remaining, 0 as contributors',
   )
-    .bind(input.id, input.title, input.goal, input.problem, input.wallet, input.sealed_wallet, input.creator, now, now, input.setup ?? null)
+    .bind(input.id, input.title, input.goal, input.problem, input.creator, now, now, input.setup ?? null)
     .first<Row>().finally(() => wrote(input.id))
   if (row) known.add(row.id)
   return row
-}
-
-export async function provision(env: Cloudflare.Env, id: string, input: { sealed_wallet: string; wallet: string }) {
-  await env.DB.prepare('update swarms set wallet = ?, sealed_wallet = ? where id = ? and wallet is null')
-    .bind(input.wallet, input.sealed_wallet, id)
-    .run().finally(() => wrote(id))
 }
 
 export async function update(env: Cloudflare.Env, id: string, fields: Fields) {
@@ -228,21 +211,6 @@ export async function give(env: Cloudflare.Env, input: Omit<Gift, 'created_at'>)
 
 export async function gift(env: Cloudflare.Env, id: string) {
   return env.DB.prepare('select * from contributions where id = ?').bind(id.toLowerCase()).first<Gift>()
-}
-
-export async function channel(env: Cloudflare.Env, id: string) {
-  return env.DB.prepare('select * from contributions where channel = ?').bind(id.toLowerCase()).first<Gift>()
-}
-
-export async function channels(env: Cloudflare.Env, swarm: string) {
-  const { results } = await env.DB.prepare('select channel, amount from contributions where swarm = ? and channel is not null').bind(swarm).all<{ amount: string; channel: string }>()
-  return results
-}
-
-export async function delivered(env: Cloudflare.Env, channel: string, amount: bigint) {
-  await env.DB.prepare('update contributions set amount = ? where channel = ? and amount != ?')
-    .bind(String(amount), channel.toLowerCase(), String(amount))
-    .run()
 }
 
 export async function annotate(env: Cloudflare.Env, id: string, input: { note: string; note_id: string }) {

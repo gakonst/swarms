@@ -1,3 +1,4 @@
+import * as Credit from '../shared/Credit.ts'
 import type * as Setup from '../shared/Setup.ts'
 import { redact } from '../shared/Trail.ts'
 import * as Edge from './Edge.ts'
@@ -36,9 +37,9 @@ export type Minted = { command: string; short: string; tab?: string; token: stri
 
 export type Commit = { date?: string | null; message: string; parents?: string[]; sha: string }
 
-export type Sponsored = { available: string; channel: `0x${string}`; closing: boolean; deposit: string; endedAt: number | null; payer: `0x${string}`; settled: string; spent: string; tx?: string }
+export type Standing = { deposited: string; left: string; spent: string }
 
-export type Sponsorship = { escrow: `0x${string}`; least: string; operator: `0x${string}`; recipient: `0x${string}`; signer: `0x${string}` }
+export type Deposit = { amount: string; from: `0x${string}`; log: number; tag: `0x${string}`; token: 'mach' | 'ousd' | 'pathusd' | 'usdce' }
 
 export type Subagent = {
   agent_id: number
@@ -70,7 +71,7 @@ export function call(env: Cloudflare.Env, path: string, init: RequestInit = {}) 
 }
 
 export function app(swarm: string) {
-  return `swarm-${swarm}`
+  return Credit.app(swarm)
 }
 
 async function send<value>(env: Cloudflare.Env, path: string, init: Init = {}): Promise<Result<value>> {
@@ -137,21 +138,6 @@ export async function wallet(env: Cloudflare.Env) {
   return known
 }
 
-let sponsoring: { at: number; value: Sponsorship } | undefined
-
-export async function sponsorship(env: Cloudflare.Env) {
-  if (sponsoring && Date.now() - sponsoring.at < 600_000) return sponsoring.value
-  const value = await Promise.race([
-    Promise.all([
-      send<{ accessKey: `0x${string}` }>(env, '/api/keys/me'),
-      send<{ sponsors?: Omit<Sponsorship, 'signer'> }>(env, '/v1/capabilities'),
-    ]).then(([me, capabilities]) => (me.ok && capabilities.ok && capabilities.value.sponsors ? { ...capabilities.value.sponsors, signer: me.value.accessKey } : undefined)),
-    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 3000)),
-  ]).catch(() => undefined)
-  if (value) sponsoring = { at: Date.now(), value }
-  return value
-}
-
 let pricing: { at: number; value: Map<string, Setup.Price> } | undefined
 
 export async function prices(env: Cloudflare.Env) {
@@ -174,12 +160,12 @@ export async function prices(env: Cloudflare.Env) {
   return value ?? pricing?.value
 }
 
-export function sponsor(env: Cloudflare.Env, swarm: string, body: { descriptor: unknown; transaction?: string }) {
-  return send<Sponsored>(env, '/api/keys/sponsors', { app: app(swarm), body: { ...body, passThrough: false } })
+export function credit(env: Cloudflare.Env, swarm: string) {
+  return send<Standing>(env, '/api/keys/credit', { app: app(swarm) })
 }
 
-export function sponsors(env: Cloudflare.Env, swarm: string) {
-  return send<{ sponsors: Sponsored[] }>(env, '/api/keys/sponsors', { app: app(swarm) })
+export function credited(env: Cloudflare.Env, swarm: string, hash: string) {
+  return send<{ created: boolean; credit: Standing; deposits: Deposit[] }>(env, '/api/keys/credit', { app: app(swarm), body: { hash } })
 }
 
 export type Teammate = { budget: number | string | null; limit: number | string | null; member: `0x${string}`; role: 'admin' | 'member' }
@@ -204,13 +190,13 @@ export function allowance(env: Cloudflare.Env, team: string, memberBudget: numbe
   return send<unknown>(env, '/v1/teams/update', { body: { memberBudget, team } })
 }
 
-export function agent(env: Cloudflare.Env, swarm: string, input: { instructions: string; name: string; payer: { secret: string; url: string }; setup?: Setup.Setup | null }) {
+export function agent(env: Cloudflare.Env, swarm: string, input: { instructions: string; name: string; setup?: Setup.Setup | null }) {
   const setup = input.setup
   return send<{ id: string }>(env, '/v1/agents', {
     app: app(swarm),
     body: {
       name: input.name,
-      payer: input.payer,
+      payer: 'credit',
       instructions: input.instructions,
       ...(setup ? { harness: setup.harness, model: setup.model, ...(setup.subagents ? { subagents: setup.subagents } : {}) } : {}),
     },
@@ -221,8 +207,8 @@ export function instruct(env: Cloudflare.Env, swarm: string, agent: string, inst
   return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { instructions }, method: 'PATCH' })
 }
 
-export function repay(env: Cloudflare.Env, swarm: string, agent: string, payer: { secret: string; url: string }) {
-  return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { payer }, method: 'PATCH' })
+export function fund(env: Cloudflare.Env, swarm: string, agent: string) {
+  return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { payer: 'credit' }, method: 'PATCH' })
 }
 
 export function prompt(env: Cloudflare.Env, swarm: string, agent: string, input: { id?: string; prompt: string; steer: boolean }) {

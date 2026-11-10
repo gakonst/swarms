@@ -22,7 +22,7 @@ const tools = [
   ['swarm_artifacts', 'The dashboards, charts, tables and write-ups a swarm published, with where to load each.'],
   ['swarm_chat', "A swarm's room: its backers' messages, mentions and @swarm steers, and who backs it."],
   ['swarm_create', 'Start a swarm with a title and a goal. It waits until money comes in.'],
-  ['swarm_contribute', "Prepares money to send (a stablecoin transfer, or a MACH channel open; address, memo, call data and a link that sends it) or counts it by hash."],
+  ['swarm_contribute', "Prepares money to send (the gateway's address, the memo, call data and a link that sends it) or counts it by hash."],
   ['swarm_hand', 'Issues a hand to lend a machine: the nc hand command and a nanocode-ts snippet.'],
   ['swarm_wait', "Waits up to 55 s for the agent's next update and returns it."],
 ] as const
@@ -67,7 +67,7 @@ const routes = [
   ['GET', '/v1/me', 'Your account: address, username and the handle rooms show.', ''],
   ['POST', '/v1/me', 'Set your username, which posting, steering and side questions need.', '{ name }'],
   ['POST', '/v1/swarms/:id/hands', 'Issue a hand to lend a machine.', '{ label? }'],
-  ['POST', '/v1/swarms/:id/contributions', "Count a transfer of USDC.e, pathUSD or OUSD to the swarm's wallet.", '{ hash, note? }'],
+  ['POST', '/v1/swarms/:id/contributions', 'Count a transfer of MACH, OUSD, USDC.e or pathUSD sent to the gateway for the swarm.', '{ hash, note? }'],
 ] as const
 
 const codes = [
@@ -77,7 +77,7 @@ const codes = [
   ['404', 'not_found', 'No swarm or route has this id, or Tempo has no receipt for the transaction yet.'],
   ['409', 'conflict', 'The transaction is already counted.'],
   ['409', 'insufficient_balance', "A steer asks for more of its author's backing than is not yet behind a note."],
-  ['429', 'rate_limited', 'Too many side questions, or the gateway already paid the fee of as many MACH channel opens today as it pays for your wallet; nothing was sent.'],
+  ['429', 'rate_limited', 'Too many side questions or room messages in a short time.'],
   ['502', 'upstream_failed', 'The Tempo gateway failed.'],
   ['503', 'unavailable', 'The gateway cannot pay network fees right now; nothing was sent.'],
 ] as const
@@ -233,21 +233,15 @@ export function Docs(props: { config: Config | undefined }) {
         id="fund"
         intro={
           <>
-            <p>Money comes one way: you send it, and the swarm counts it. USDC.e, pathUSD and OUSD go to the swarm's own wallet with <code>transferWithMemo</code>. Swarms are never done, so the money stays the swarm's to spend.</p>
-            <p>MACH reaches only the gateway, so it goes into a payment channel the gateway spends for the swarm's agent. You open it in one transaction, and the gateway can pay its network fee; what the swarm never spends comes back to you when the channel closes.</p>
+            <p>Money comes one way: you send MACH, OUSD, USDC.e or pathUSD to the Tempo gateway with <code>transferWithMemo</code> and a memo that names the swarm, and the swarm counts it. The gateway holds it as the swarm's credit and spends it only on what the swarm's agent does. A swarm holds no wallet, and money sent is not returned.</p>
           </>
         }
         title="Fund"
       >
         <h3 className="docs-head">1. Send</h3>
         <p className="docs-text">
-          Send the token to the swarm's <code>wallet</code> with the memo <code>keccak256("swarm:&lt;swarm&gt;")</code>, or <code>keccak256("note:&lt;swarm&gt;:&lt;note&gt;")</code> to put the money behind a note. <code>swarm_contribute</code> without a hash answers the address, the memo and the call data.
+          Send the token to <code>config.credit.recipient</code> from <code>/v1/config</code>. The memo is 32 bytes: the first 16 of <code>keccak256("gateway:credit:4217:&lt;config.credit.owner&gt;:swarm-&lt;swarm&gt;")</code>, then the first 16 of <code>keccak256("swarm:&lt;swarm&gt;")</code>, or of <code>keccak256("note:&lt;swarm&gt;:&lt;note&gt;")</code> to put the money behind a note. <code>swarm_contribute</code> without a hash answers the address, the memo and the call data.
         </p>
-        <h3 className="docs-head">MACH</h3>
-        <p className="docs-text">
-          Open a channel on <code>config.channel.escrow</code> with <code>open(recipient, operator, MACH, amount, salt, signer)</code> from <code>/v1/config</code>'s <code>channel</code>, the salt being the same memo and the amount at least <code>channel.least</code>. Sign it for a fee payer (<code>feePayer: true</code>, an expiring nonce) and post it unsent as <code>transaction</code> within about ten seconds: the gateway sends it and pays the fee. A wallet that signs only transactions paying their own fee, as Tempo Wallet does for most apps, sends the open itself and posts its <code>hash</code>. <code>swarm_contribute</code> with <code>token: "mach"</code> prepares the call.
-        </p>
-        <Code>{`curl -s ${origin}/v1/swarms/<id>/contributions -H 'content-type: application/json' \\\n  -d '{"transaction":"0x76…","note":"Add HTTP/2"}'`}</Code>
         <h3 className="docs-head">2. Count</h3>
         <Code>{`curl -s ${origin}/v1/swarms/<id>/contributions -H 'content-type: application/json' \\\n  -d '{"hash":"0x…","note":"Add HTTP/2"}'`}</Code>
         <p className="docs-text">

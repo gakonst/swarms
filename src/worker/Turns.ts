@@ -14,8 +14,6 @@ import * as Store from './Store.ts'
 import * as Words from './Words.ts'
 import * as Relay from './Relay.ts'
 import * as Clock from './Clock.ts'
-import * as Paying from './Paying.ts'
-import * as Payer from './Payer.ts'
 import * as Money from './Money.ts'
 import * as Follow from './Follow.ts'
 import * as Repo from './Repo.ts'
@@ -31,13 +29,21 @@ export function repoed(repo: { name: string; state: 'none' | 'ready' }, left: bi
   return `Before anything else, create the swarm's git repository: git_create({ name: "${repo.name}", public: true }). Keep the swarm's work in it: main is the best version so far, every branch of work is a git branch of it, and a branch that beats main is merged into main.`
 }
 
-function brief(row: Store.Row, notes: Note[], repo: string) {
+function brief(row: Store.Row, notes: Note[], repo: string, room: string) {
   const setup = Store.setup(row)
-  return [row.title, row.goal, setup ? Setup.told(setup) : '', repo, ...notes.map(weighed)].filter(Boolean).join('\n\n')
+  return [row.title, row.goal, setup ? Setup.told(setup) : '', repo, room, ...notes.map(weighed)].filter(Boolean).join('\n\n')
 }
 
-function next(notes: Note[], repo: string) {
-  return ['Keep going. Never stop to wait for backers: pick the next most useful step toward the goal.', repo, ...notes.map(weighed)].filter(Boolean).join('\n\n')
+function next(notes: Note[], repo: string, room: string) {
+  return ['Keep going. Never stop to wait for backers: pick the next most useful step toward the goal.', repo, room, ...notes.map(weighed)].filter(Boolean).join('\n\n')
+}
+
+export function roomed(origin: string, swarm: string) {
+  return `Your room, where backers talk and answer your Wishlist, is ${new URL(`/v1/swarms/${swarm}/chat`, origin).href} (public, free to read).`
+}
+
+export function broke(message: string | null) {
+  return !!message && message.includes("This app's credit has $")
 }
 
 function grown(told: bigint | null | undefined, weight: bigint) {
@@ -66,36 +72,22 @@ export async function step(self: Swarm) {
   const row = id ? await self.found(id) : null
   if (!row) return null
 
-  initialize(self)
   const run = self.run()
   if (run.state === 'paused') {
     const settling = await settle(self, row, run)
-    const wake = run.pause.why === 'money' ? run.pause.wake : null
-    if (!Phase.due(run, Date.now())) return wake === null ? settling : settling === null ? wake : Math.min(wake, settling)
-    self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
+    if (self.run().state === 'paused') return settling
   }
   if (run.state === 'working') return Follow.follow(self, row, run)
   return advance(self, row)
 }
 
-export function initialize(self: Swarm) {
-  if (self.kv.get<string>('secret')) return
-  const run = self.run()
-  if (run.state === 'working') self.ctx.storage.sql.exec("UPDATE turns SET status = 'cancelled', ended_at = ? WHERE n = ? AND status = 'running'", Date.now(), run.n)
-  if (run.state === 'working' || run.state === 'starting') self.set({ since: null, state: 'waiting', until: Date.now() })
-  self.kv.delete('agent')
-  self.kv.put('secret', Words.hex(crypto.getRandomValues(new Uint8Array(32))))
-}
-
 export async function advance(self: Swarm, row: Store.Row) {
   const run = self.run()
   const worked = self.turned()
-  await Money.fund(self, row)
-  const money = await Money.refresh(self, row, { chain: true, hands: Follow.handsDue(self, Date.now()), sponsors: true })
+  const money = await Money.refresh(self, row, { credit: true, hands: Follow.handsDue(self, Date.now()) })
   if (run.state !== 'starting' && money.left < Store.reserveOf(money.row)) {
-    const wake = Paying.rested(self)
-    await pause(self, money.row, worked || money.row.contributors ? { left: String(money.left), needs: String(Store.reserveOf(money.row)), wake, why: 'money' } : { why: 'unfunded' })
-    return wake
+    await pause(self, money.row, worked || money.row.contributors ? { left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: null, why: 'money' } : { why: 'unfunded' })
+    return null
   }
   const repo = await Repo.located(self, row)
 
@@ -112,7 +104,10 @@ export async function advance(self: Swarm, row: Store.Row) {
   const told = self.told()
   const included = agent.briefed ? notes.filter((note) => grown(told.get(note.id), Memo.units(note.weight))) : notes
   const repoLine = repoed(repo, money.left)
-  const text = agent.briefed ? next(self.tell(included), repo.state === 'ready' ? '' : repoLine) : brief(money.row, self.tell(notes), repoLine)
+  const room = roomed(self.env.SWARMS_URL, row.id)
+  const text = agent.briefed
+    ? next(self.tell(included), repo.state === 'ready' ? '' : repoLine, Persona.frozen(self.kv, Store.setup(row)).includes(Persona.roomless) ? room : '')
+    : brief(money.row, self.tell(notes), repoLine, room)
   const id = `${agent.id}:${n}`
   const start: Phase.Run =
     run.state === 'starting' && run.id === id ? run : { id, n, since, state: 'starting', told: included.map((note) => [note.id, String(Memo.units(note.weight))]) }
@@ -183,29 +178,30 @@ export function abandon(self: Swarm, agent: string, detail: string) {
   self.log('error', "The agent's session stopped answering for 15 minutes, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.", `${agent}: ${detail}`)
 }
 
+export const credited = 'credit'
+
 export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail: string; error: string }> {
-  const payer = { secret: self.kv.get<string>('secret') ?? '', url: `${self.env.SWARMS_URL}/api/swarms/${row.id}/pay` }
   const known = self.agent()
   if (known) {
-    if (known.url === payer.url) return instructed(self, row, known)
-    const patched = await Gateway.repay(self.env, row.id, known.id, payer)
+    if (known.url === credited) return instructed(self, row, known)
+    const patched = await Gateway.fund(self.env, row.id, known.id)
     if (patched.ok) {
-      const moved = { ...known, url: payer.url }
+      const moved = { ...known, url: credited }
       self.kv.put('agent', moved)
       return instructed(self, row, moved)
     }
-    if (patched.status !== 404) return { detail: patched.detail, error: "The gateway did not move the agent's payer." }
+    if (patched.status !== 404) return { detail: patched.detail, error: "The gateway did not move the agent to the swarm's credit." }
     self.kv.delete('agent')
   }
 
   const setup = Store.setup(row)
   const instructions = Persona.frozen(self.kv, setup)
-  const created = await Gateway.agent(self.env, row.id, { instructions, name: row.title.slice(0, 60), payer, setup })
+  const created = await Gateway.agent(self.env, row.id, { instructions, name: row.title.slice(0, 60), setup })
   if (!created.ok) return { detail: created.detail, error: 'The gateway did not create the agent.' }
   Persona.keep(self.kv, instructions)
-  const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, instructed: true, unreachable: null, url: payer.url }
+  const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, instructed: true, unreachable: null, url: credited }
   self.kv.put('agent', agent)
-  self.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it pays for is paid from the contributions, one at a time.", created.value.id)
+  self.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it uses is paid from the swarm's credit there, which backers fill.", created.value.id)
   await Branching.release(self, row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
   return agent
 }
@@ -233,8 +229,7 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   const status = report.status === 'completed' ? 'completed' : report.status === 'cancelled' ? 'cancelled' : 'failed'
   Follow.flush(self)
   await new Promise((resolve) => setTimeout(resolve, 3_000))
-  await Promise.all(Paying.sources(self, row).map((source) => Paying.probe(self, row, source).catch(() => undefined)))
-  const money = await Money.refresh(self, row, { chain: true, hands: Follow.handsDue(self, Date.now()), sponsors: true })
+  const money = await Money.refresh(self, row, { credit: true, hands: Follow.handsDue(self, Date.now()) })
   const found = self.ctx.storage.sql
     .exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n)
     .toArray()[0]
@@ -278,17 +273,10 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
     .one()
   const kinds = new Set((['kv', 'bucket', 'git'] as const).filter((kind) => stored[kind] > 0 || !self.kv.get<number>('published')))
   if (kinds.size) await expose(self, row, kinds).catch((error: unknown) => console.error('Making the swarm data public failed', error))
-  const latest = self.run()
-  const wanted = BigInt(latest.state === 'working' ? (latest.wanted ?? '0') : '0')
-  if (status !== 'completed' && (money.left < Store.reserveOf(money.row) || wanted > money.biggest)) {
-    const wake = Paying.rested(self)
-    await pause(self, money.row, { left: String(money.left), needs: String(wanted > money.biggest ? wanted : Store.reserveOf(money.row)), wake, why: 'money' })
-    return wake
+  if (status !== 'completed' && (money.left < Store.reserveOf(money.row) || broke(message))) {
+    await pause(self, money.row, { left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: null, why: 'money' })
+    return null
   }
-  if (status === 'completed') {
-    self.kv.delete('squeezes')
-    self.kv.delete('squeezedTurns')
-  } else if ((self.kv.get<number>('squeezed') ?? 0) >= run.started) return squeeze(self, money.row, run)
   const failures = status === 'completed' ? 0 : failing(self, run.since)
   const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : Date.now() + backoff(failures)
   await self.move(money.row, { since: run.since, state: 'waiting', until })
@@ -319,43 +307,12 @@ async function quiet(self: Swarm, row: Store.Row) {
 }
 
 export function failing(self: Swarm, since: number) {
-  const squeezed = new Set(self.kv.get<number[]>('squeezedTurns') ?? [])
   let count = 0
-  for (const row of self.ctx.storage.sql.exec<{ n: number; status: string }>('SELECT n, status FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, maxFailures + squeezed.size).toArray()) {
+  for (const row of self.ctx.storage.sql.exec<{ status: string }>('SELECT status FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, maxFailures).toArray()) {
     if (row.status === 'completed') break
-    if (!squeezed.has(row.n)) count += 1
+    count += 1
   }
   return count
-}
-
-export function squeezing(count: number): { wait: number } | 'sweep' | 'broke' {
-  if (count >= 2 * maxFailures) return 'broke'
-  if (count === maxFailures) return 'sweep'
-  return { wait: count < maxFailures ? Clock.minuteMs * 2 ** (count - 1) : settleMs }
-}
-
-async function squeeze(self: Swarm, row: Store.Row, run: Turning) {
-  const count = (self.kv.get<number>('squeezes') ?? 0) + 1
-  self.kv.put('squeezes', count)
-  self.kv.put('squeezedTurns', [...(self.kv.get<number[]>('squeezedTurns') ?? []), run.n])
-  const step = squeezing(count)
-  if (step === 'broke') {
-    const wake = Paying.rested(self)
-    await pause(self, row, { left: '0', needs: String(Store.reserveOf(row)), wake, why: 'money' })
-    return wake
-  }
-  if (step === 'sweep') {
-    await sweep(self, row, ` to return its prepaid time: the gateway found no room on the swarm's contributions for the agent's next model call ${count} times in a row`)
-    const money = await Money.refresh(self, row)
-    if (money.left < Store.reserveOf(money.row)) {
-      const wake = Paying.rested(self)
-      await pause(self, money.row, { left: String(money.left), needs: String(Store.reserveOf(money.row)), wake, why: 'money' })
-      return wake
-    }
-  }
-  const until = Date.now() + (step === 'sweep' ? settleMs : step.wait)
-  await self.move(row, { since: run.since, state: 'waiting', until })
-  return until
 }
 
 export async function expose(self: Swarm, row: Store.Row, kinds: ReadonlySet<'bucket' | 'git' | 'kv'> = new Set(['bucket', 'git', 'kv'])) {
@@ -407,20 +364,12 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause) {
   if (alarm === null || alarm > Date.now() + settleMs) await self.ctx.storage.setAlarm(Date.now() + settleMs)
 }
 
-export async function settle(self: Swarm, row: Store.Row, run: { at: number }) {
-  const unsettled = Paying.sources(self, row).filter((source) => {
-    const channel = self.kv.get<Payer.Channel>(`channel:${source.id}`)
-    return channel?.confirmed && self.kv.get<string>('settled:' + source.id) !== channel.signed
-  })
-  if (!unsettled.length) return null
-  const asked = Math.max(run.at, ...unsettled.map((source) => self.kv.get<number>('paid:' + source.id) ?? 0)) + settleMs
-  if (Date.now() < asked) return asked
+export async function settle(self: Swarm, row: Store.Row, run: { at: number; pause: Phase.Pause }) {
+  if (run.pause.why === 'unfunded' || (self.kv.get<number>('settled') ?? 0) >= run.at) return null
+  if (Date.now() < run.at + settleMs) return run.at + settleMs
   if (!(await quiet(self, row))) return Date.now() + Clock.minuteMs
-  await Promise.all(unsettled.map(async (source) => {
-    await Paying.probe(self, row, source, true).catch(() => undefined)
-    const channel = self.kv.get<Payer.Channel>(`channel:${source.id}`)
-    if (channel) self.kv.put('settled:' + source.id, channel.signed)
-  }))
-  await Money.refresh(self, row, Money.everything)
+  const money = await Money.refresh(self, row)
+  self.kv.put('settled', Date.now())
+  if (money.left >= Store.reserveOf(money.row)) self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
   return null
 }

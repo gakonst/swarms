@@ -1,5 +1,5 @@
 import type { Address, Hex } from 'viem'
-import type { Account, Config, Currency, Token } from '../shared/Api.ts'
+import type { Account, Config, Currency } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { fixture } from './api.ts'
 import { boot, type Face, faceCookie, server } from './boot.ts'
@@ -285,7 +285,7 @@ export async function disconnect() {
   await (await wallet()).request({ method: 'wallet_disconnect' }).catch(() => {})
 }
 
-export async function send(config: Config, input: { amount: bigint; memo: Hex; to: Address; token: Token }) {
+export async function send(config: Config, input: { amount: bigint; memo: Hex; to: Address; token: Currency }) {
   if (fixture) {
     const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])
     if (fixtures.balances[input.token] < input.amount) throw Object.assign(new Error(`Your wallet holds less than this.`), { code: 'insufficient_balance' })
@@ -296,19 +296,7 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
   const token = config.tokens.find((item) => item.id === input.token)
   if (!token) throw new Error('That token is not offered.')
   const [{ encodeFunctionData }, { Abis }] = await chain()
-  return submit(config, [{ data: encodeFunctionData({ abi: Abis.tip20, args: [input.to, input.amount, input.memo], functionName: 'transferWithMemo' }), to: token.address }], token.address)
-}
-
-export async function open(config: Config, call: { data: Hex; to: Address }) {
-  if (fixture) {
-    const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])
-    const amount = BigInt('0x' + call.data.slice(202, 266))
-    if (fixtures.balances.mach < amount) throw Object.assign(new Error('Your wallet holds less than this.'), { code: 'insufficient_balance' })
-    const hash = `0x${Date.now().toString(16).padStart(64, '7')}` as Hex
-    fixtures.sent.set(hash, { amount, token: 'mach' })
-    return hash
-  }
-  return submit(config, [call])
+  return submit(config, [{ data: encodeFunctionData({ abi: Abis.tip20, args: [input.to, input.amount, input.memo], functionName: 'transferWithMemo' }), to: token.address }], input.token === 'mach' ? undefined : token.address)
 }
 
 async function submit(config: Config, calls: readonly { data: Hex; to: Address }[], feeToken?: Address) {
