@@ -35,6 +35,7 @@ function world(gateway: (path: string, body: unknown) => unknown = () => ({}), l
     direct: (...args: Parameters<InstanceType<typeof Swarm>['direct']>) => Swarm.prototype.direct.apply(self as never, args),
     subagents: async () => ({ ok: true, value: { agent: 'agt', list: listed } }),
     voice: said('voice'),
+    funded: said('funded'),
     wake: said('wake'),
   }
   const env: Cloudflare.Env = {
@@ -129,11 +130,11 @@ test('a transfer already counted is refused, and still wakes a swarm that missed
   assert.deepEqual([first.ok && first.value.created, calls.map(([name]) => name)], [true, ['contributed']])
 
   const repeated = await Operations.contribute(env, { hash, swarm: id })
-  assert.deepEqual([repeated.ok, repeated.ok ? null : repeated.status, calls.slice(1)], [false, 409, [['wake', 'money']]])
+  assert.deepEqual([repeated.ok, repeated.ok ? null : repeated.status, calls.slice(1)], [false, 409, [['funded', id]]])
 
   assert.equal(await Store.steer(env, { amount: 10_000_000n, contributor: rider, id: 's1', note: 'idea one', note_id: 'n1', swarm: id }), true)
   const noted = await Operations.contribute(env, { hash, note: 'idea two', swarm: id })
-  assert.deepEqual([noted.ok, noted.ok ? null : noted.detail, calls.slice(2)], [false, 'This transaction is already counted, and its money is already behind another idea or a branch.', [['wake', 'money']]])
+  assert.deepEqual([noted.ok, noted.ok ? null : noted.detail, calls.slice(2)], [false, 'This transaction is already counted, and its money is already behind another idea or a branch.', [['funded', id]]])
   assert.deepEqual(await member(), ['10.000000', '10.000000', '0.000000'])
 })
 
@@ -182,12 +183,12 @@ test('an approval posted again, which the gateway takes only once, is answered a
   assert.deepEqual(await post(), [true, null, '5.000000'])
   assert.deepEqual(told(), [['contributed', 'approved', null, '5.000000']])
   assert.deepEqual(await post(), [false, null, '5.000000'])
-  assert.deepEqual([told().slice(1), asked.includes('/api/keys/backings')], [[['wake', 'money']], false])
+  assert.deepEqual([told().slice(1), asked.includes('/api/keys/backings')], [[['funded', id]], false])
   assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
   assert.deepEqual(told().slice(2), [['contributed', 'noted', 'go faster', '5.000000']])
   assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
   assert.deepEqual(await post('something else'), [false, 'go faster', '5.000000'])
-  assert.deepEqual(told().slice(3), [['wake', 'money'], ['wake', 'money']])
+  assert.deepEqual(told().slice(3), [['funded', id], ['funded', id]])
 })
 
 test('an approval the gateway took but Swarms never counted is counted from the backings the gateway lists, and one it does not list is refused', async () => {
@@ -209,5 +210,5 @@ test('an approval the gateway took but Swarms never counted is counted from the 
   assert.deepEqual(told(), [['contributed', 'approved', 'go faster', '5.000000']])
   listed = listing([])
   assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
-  assert.deepEqual(told().slice(1), [['wake', 'money']])
+  assert.deepEqual(told().slice(1), [['funded', id]])
 })

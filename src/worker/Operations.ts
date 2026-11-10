@@ -1357,7 +1357,7 @@ export async function contribute(
   if (existing) {
     written = text && noteId && !existing.note ? await Store.annotate(env, row.id, request.hash, { note: text, note_id: noteId }) : null
     if (!written) {
-      await stub(env, row.id).wake('money')
+      await stub(env, row.id).funded(row.id)
       return Problem.fail(409, 'conflict', `This transaction is already counted${text && !existing.note ? ', and its money is already behind another idea or a branch' : ''}.`)
     }
   } else {
@@ -1440,7 +1440,7 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
     await stub(env, row.id).contributed({ amount: Memo.decimal(BigInt(written.amount)), contributor: wallet, hash: key, kind: given ? 'approved' : 'noted', note: text, noteId, swarm: row.id, token: 'mach' })
     if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
     if (!row.creator) retold(env, row)
-  } else await stub(env, row.id).wake('money')
+  } else await stub(env, row.id).funded(row.id)
 
   const [gift, updated] = await Promise.all([written ?? Store.gift(env, id), Store.find(env, row.id)])
   if (!gift) return Problem.fail(502, 'unavailable', 'The backing was not saved.')

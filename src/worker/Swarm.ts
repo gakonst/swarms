@@ -651,6 +651,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     const note = (await this.notes(row)).find((found) => found.id === noteId)
     if (!note) return undefined
+    const told = this.ctx.storage.sql.exec<{ weight: string }>('SELECT weight FROM steered WHERE note = ?', note.id).toArray()[0]
+    if (told && BigInt(told.weight) >= Memo.units(note.weight)) return note
     const sent = await Gateway.prompt(this.env, swarm, agent, {
       prompt: Turns.weighed(this.tell([note])[0] ?? note),
       steer: true,
