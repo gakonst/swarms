@@ -371,6 +371,7 @@ export async function settle(self: Swarm, row: Store.Row, run: { at: number; pau
   if (!(await quiet(self, row))) return Date.now() + Clock.minuteMs
   const money = await Money.refresh(self, row)
   self.kv.put('settled', Date.now())
-  if (money.left >= Store.reserveOf(money.row)) self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
+  const refused = run.pause.why === 'money' && run.pause.needs !== undefined && BigInt(run.pause.left) >= BigInt(run.pause.needs)
+  if (!refused && money.left >= Store.reserveOf(money.row)) self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
   return null
 }

@@ -76,6 +76,10 @@ test('a swarm paused for money reads its credit once its calls are over, and goe
   assert.equal(await Turns.settle(back.self, row, { at: now - 60_000, pause }), null)
   assert.equal((back.moved[0] as { state: string }).state, 'waiting')
 
+  const refused = swarm('9.76')
+  assert.equal(await Turns.settle(refused.self, row, { at: now - 60_000, pause: { left: '9760000', needs: '440960', wake: null, why: 'money' } }), null)
+  assert.equal(refused.moved.length, 0)
+
   const unfunded = swarm('5')
   assert.equal(await Turns.settle(unfunded.self, row, { at: now - 60_000, pause: { why: 'unfunded' } }), null)
   assert.equal(unfunded.requests.length, 0)
