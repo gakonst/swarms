@@ -1335,9 +1335,11 @@ export async function contribute(
   const noteId = text ? await Store.noteId(text) : null
   let written: Store.Gift | null
   if (existing) {
-    if (!text || existing.note || !noteId) return Problem.fail(409, 'conflict', 'This transaction is already counted.')
-    written = await Store.annotate(env, row.id, request.hash, { note: text, note_id: noteId })
-    if (!written) return Problem.fail(409, 'conflict', 'This transaction is already counted, and its money is already behind another idea or a branch.')
+    written = text && noteId && !existing.note ? await Store.annotate(env, row.id, request.hash, { note: text, note_id: noteId }) : null
+    if (!written) {
+      await stub(env, row.id).wake('money')
+      return Problem.fail(409, 'conflict', `This transaction is already counted${text && !existing.note ? ', and its money is already behind another idea or a branch' : ''}.`)
+    }
   } else {
     written = await Store.give(env, { amount: String(total), channel: null, contributor: first.from, id: request.hash as Hex, note: text, note_id: noteId, swarm: row.id, token: first.token })
   }

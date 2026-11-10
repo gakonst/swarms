@@ -4,6 +4,7 @@ import test from 'node:test'
 import type * as BranchingModule from '../src/worker/Branching.ts'
 import type * as OperationsModule from '../src/worker/Operations.ts'
 import type * as StoreModule from '../src/worker/Store.ts'
+import * as Credit from '../src/shared/Credit.ts'
 import { open } from './d1.ts'
 
 registerHooks({
@@ -119,4 +120,34 @@ test("a fund the branch could not be told about is undone and the budget set fro
   assert.deepEqual(budgets, [8, 6])
   assert.deepEqual(await member(), ['2.000000', '0.000000', '2.000000'])
   assert.equal((await Store.funds(env, id, 'agt')).shares.get(2)?.get(other), 1_000_000n)
+})
+
+test('a transfer already counted is refused, and still wakes a swarm that missed it; its note is refused once its money is behind something else', async () => {
+  const hash = '0x' + 'ab'.repeat(32)
+  const { calls, env, member } = world((path) => (path === '/api/keys/credit' ? { created: true, credit: {}, deposits: [{ amount: '10', from: rider, log: 0, tag: Credit.tag(id, 'idea two'), token: 'ousd' }] } : {}))
+  const first = await Operations.contribute(env, { hash, swarm: id })
+  assert.deepEqual([first.ok && first.value.created, calls.map(([name]) => name)], [true, ['contributed']])
+
+  const repeated = await Operations.contribute(env, { hash, swarm: id })
+  assert.deepEqual([repeated.ok, repeated.ok ? null : repeated.status, calls.slice(1)], [false, 409, [['wake', 'money']]])
+
+  assert.equal(await Store.steer(env, { amount: 10_000_000n, contributor: rider, id: 's1', note: 'idea one', note_id: 'n1', swarm: id }), true)
+  const noted = await Operations.contribute(env, { hash, note: 'idea two', swarm: id })
+  assert.deepEqual([noted.ok, noted.ok ? null : noted.detail, calls.slice(2)], [false, 'This transaction is already counted, and its money is already behind another idea or a branch.', [['wake', 'money']]])
+  assert.deepEqual(await member(), ['10.000000', '10.000000', '0.000000'])
+})
+
+test('a swarm told of money wakes before it logs and announces it, so a failed announcement leaves it awake', async () => {
+  const woken: string[] = []
+  const self = {
+    env: { DB: { prepare: () => ({ bind: () => ({ first: async () => Promise.reject(new Error('D1 is down')) }) }) } },
+    kv: { put: () => undefined },
+    log: () => undefined,
+    marked: 0,
+    wake: async (reason: string) => void woken.push(reason),
+  }
+  const input = { amount: '5', contributor: rider, hash: '0x' + 'ab'.repeat(32), note: null, noteId: null, swarm: id, token: 'ousd' } as const
+  await assert.rejects(Swarm.prototype.contributed.call(self as never, { ...input, kind: 'new' }), /D1 is down/)
+  await assert.rejects(Swarm.prototype.contributed.call(self as never, { ...input, kind: 'noted', note: 'idea', noteId: 'n1' }), /D1 is down/)
+  assert.deepEqual(woken, ['money', 'money'])
 })

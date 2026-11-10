@@ -237,12 +237,13 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async contributed(input: Contributed) {
     this.marked += 1
     this.kv.put('id', input.swarm)
+    await this.wake('money')
     if (input.kind === 'noted') {
-      this.log('funds', `${Words.short(input.contributor)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
+      this.log('funds', `${Words.short(input.contributor)} put their ${Words.trim(input.amount)} ${Chain.symbol(input.token)} behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
       Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed "${input.note ?? ''}" with $${Words.trim(input.amount)}.`)
       if (input.noteId) await this.steer(input.swarm, input.noteId)
       this.changed('detail', 'members')
-      return this.wake('note')
+      return
     }
     this.log(
       'funds',
@@ -255,7 +256,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (input.noteId) await this.steer(input.swarm, input.noteId)
     this.cue('credit')
     this.changed('detail', 'members')
-    await this.wake('money')
     if (this.listened()) {
       const row = await this.found(input.swarm)
       if (row) this.beacon(row)
