@@ -56,7 +56,7 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   const settled = backings?.ok ? await settle(self, row, backings.value.backings).catch((error: unknown) => (console.error('Settling backings failed', error), false)) : false
 
   const previous = self.kv.get<Hand[]>('hands') ?? []
-  const connected = hands ? (hands.ok ? hands.value.hands.filter((hand) => hand.connected) : []) : undefined
+  const connected = hands?.ok ? hands.value.hands.filter((hand) => hand.connected) : undefined
   if (connected) await joined(self, row, connected, new Set(previous.map((hand) => hand.name)))
 
   const listed = hands?.ok ? hands.value.hands : undefined
