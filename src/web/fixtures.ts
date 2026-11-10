@@ -501,11 +501,11 @@ export async function swarm(key: string) {
   return delay(detail(await find(key)))
 }
 
-export async function feed(key: string, after: number, filter: { before?: number; who?: string } = {}) {
+export async function feed(key: string, after: number, filter: { before?: number; limit?: number; who?: string } = {}) {
   const entries = (await find(key)).feed.filter(
     (entry) => entry.seq > after && (filter.before === undefined || entry.seq < filter.before) && (filter.who === undefined || (entry.who ?? 'agent') === filter.who),
   )
-  const page = filter.before === undefined ? entries.slice(0, 200) : entries.slice(-200)
+  const page = filter.before === undefined ? entries.slice(0, filter.limit ?? 200) : entries.slice(-(filter.limit ?? 200))
   return delay({ entries: page, next: page.at(-1)?.seq ?? after })
 }
 
@@ -707,6 +707,11 @@ const wishes = JSON.stringify([
 
 const surface = JSON.stringify({
   nodes: [
+    { id: 'status', kind: 'status', items: [
+      'Eight of twelve models are scored on all 350 tasks; the best solves 41%.',
+      'Now running the frontier models through the batch API, two helpers on it.',
+      'Next: the four 70B models, which need an H100 nobody has funded yet.',
+    ] },
     { id: 'needs', kind: 'asks', title: 'Needs you', items: [
       { text: 'Fund the 70B runs on an H100', amount: '$12', why: '4 of the 12 models are untested because they do not fit on the A10G machines.' },
       { text: 'Know the SWE-bench harness?', action: 'chat', label: 'Help in the chat', why: 'Two tasks time out the same way for every model.' },

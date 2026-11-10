@@ -43,7 +43,7 @@ export function roomed(origin: string, swarm: string) {
 }
 
 export function broke(message: string | null) {
-  return !!message && (message.includes("This app's credit has $") || message.includes("None of this app's backers can pay"))
+  return !!message && (message.includes("This app's credit has $") || message.includes("None of this app's backers can pay") || message.includes(' was not paid: '))
 }
 
 function grown(told: bigint | null | undefined, weight: bigint) {
@@ -223,6 +223,7 @@ export async function instructed(self: Swarm, row: Store.Row, agent: Lead): Prom
 
 export async function finish(self: Swarm, row: Store.Row, run: Turning, report: Gateway.Report) {
   Relay.ended(self)
+  self.kv.delete('unpaid')
   const n = run.n
   const error = typeof report.error === 'string' ? report.error : report.error?.message
   const message = report.ok?.message ?? error ?? null

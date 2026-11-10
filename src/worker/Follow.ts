@@ -76,6 +76,12 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
     }
   }
 
+  const short = ended ? undefined : starved(self)
+  if (short) {
+    await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
+    return Turns.finish(self, row, run, { error: short, request_id: run.turn, status: 'failed' })
+  }
+
   const now = Date.now()
   if (!ended) stalled(self, now)
   if (!window && !ended && now - self.checked < Clock.refreshMs) return now + Clock.followMs
@@ -246,6 +252,7 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
 
   const inner = outer.event
   advanced(self, inner?.type, at)
+  refused(self, inner?.type, inner?.payload ?? {})
   if (inner?.type === 'tool.call') for (const found of cues(inner.payload ?? {})) self.cue(found)
   for (const delta of streamed(null, inner?.type, inner?.payload ?? {})) Relay.relay(self, delta)
   record(self, null, inner?.type, inner?.payload ?? {}, event.seq, at)
@@ -257,6 +264,19 @@ const progress = new Set(['assistant.message', 'model.call.completed', 'run.comp
 export function advanced(self: Swarm, type: string | undefined, at: number) {
   if (type === undefined || !progress.has(type)) return
   if (at > (self.kv.get<number>('progressed') ?? 0)) self.kv.put('progressed', at)
+}
+
+const unpaidMost = 5
+
+export function refused(self: Swarm, type: string | undefined, payload: Record<string, unknown>) {
+  const error = payload['error']
+  if (type === 'model.call.failed' && typeof error === 'string' && Turns.broke(error)) self.kv.put('unpaid', { count: (self.kv.get<{ count: number }>('unpaid')?.count ?? 0) + 1, error: error.slice(0, 400) })
+  else if (type !== undefined && progress.has(type) && self.kv.get('unpaid') !== undefined) self.kv.delete('unpaid')
+}
+
+export function starved(self: Swarm) {
+  const held = self.kv.get<{ count: number; error: string }>('unpaid')
+  return held && held.count >= unpaidMost ? held.error : undefined
 }
 
 export function stalled(self: Swarm, now: number) {

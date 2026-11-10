@@ -28,7 +28,7 @@ if (typeof window !== 'undefined') {
     if (route === '/new') void import('./New.tsx').then((module) => preload('new', module.New))
     if (route === '/about') void import('./About.tsx').then((module) => preload('about', module.About))
     if (route === '/docs') void import('./Docs.tsx').then((module) => preload('docs', module.Docs))
-    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code)?\/?(?:[?#]|$)/.exec(path)?.[1]
+    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results)?\/?(?:[?#]|$)/.exec(path)?.[1]
     if (!id) return
     void warmSwarm()
     const swarm = decodeURIComponent(id)
@@ -134,9 +134,9 @@ function Header(props: { config: Config | undefined; path: string }) {
 export function App() {
   const path = usePath()
   const config = useConfig()
-  const matched = /^\/s\/([^/]+)(\/chat|\/code)?\/?$/.exec(path)
+  const matched = /^\/s\/([^/]+)(\/chat|\/code|\/results)?\/?$/.exec(path)
   const swarm = matched?.[1]
-  const view = matched?.[2] === '/chat' ? 'chat' : matched?.[2] === '/code' ? 'code' : 'results'
+  const view = matched?.[2] === '/chat' ? 'chat' : matched?.[2] === '/code' ? 'code' : matched?.[2] === '/results' ? 'results' : 'now'
 
   useEffect(() => {
     if (path === '/join') navigate(`/ideas${location.search}`, { replace: true })

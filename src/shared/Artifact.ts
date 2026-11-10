@@ -39,6 +39,20 @@ export function scriptedType(path: string) {
   return scripted[path.split('.').pop()?.toLowerCase() ?? '']
 }
 
+export function unwrapped(body: string, key: string) {
+  let text = body
+  for (let depth = 0; depth < 5 && text.startsWith('{') && text.slice(0, 600).includes('"key"'); depth++) {
+    try {
+      const fields = JSON.parse(text) as { key?: unknown; text?: unknown } | null
+      if (typeof fields !== 'object' || fields === null || fields.key !== key || typeof fields.text !== 'string') break
+      text = fields.text
+    } catch {
+      break
+    }
+  }
+  return text
+}
+
 export function path(value: unknown) {
   if (typeof value !== 'string' || value.length > 300) return undefined
   const parts = value.replace(/^\.\//, '').split('/')

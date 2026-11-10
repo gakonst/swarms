@@ -46,3 +46,17 @@ test('the form follows the entry extension', () => {
   assert.equal(Shelf.form('data.json'), 'json')
   assert.equal(Shelf.form('log.txt'), 'text')
 })
+
+test('a file an agent wrote back wrapped in its own bucket_get answer is served as the file', () => {
+  const key = 'artifacts/gf3-parity/index.html'
+  const page = '<!doctype html><title>x</title>'
+  const once = JSON.stringify({ contentType: 'text/html', etag: '"a"', key, public: true, size: 31, text: page })
+  const twice = JSON.stringify({ contentType: 'text/html', etag: '"b"', key, public: true, size: 99, text: once })
+  assert.equal(Shelf.unwrapped(page, key), page)
+  assert.equal(Shelf.unwrapped(once, key), page)
+  assert.equal(Shelf.unwrapped(twice, key), page)
+  assert.equal(Shelf.unwrapped(once, 'artifacts/other/index.html'), once)
+  const data = JSON.stringify({ key: 'value', text: 'a data file of its own' })
+  assert.equal(Shelf.unwrapped(data, 'artifacts/x/data.json'), data)
+  assert.equal(Shelf.unwrapped('{"key": broken', key), '{"key": broken')
+})

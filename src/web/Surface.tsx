@@ -168,14 +168,17 @@ function Body(props: { node: Kinds.Node; onChat: () => void; onSteer: (note: str
       )
     case 'text':
       return <Markdown text={node.text} />
+    case 'status':
+      return null
   }
 }
 
 export function Surface(props: { nodes: readonly Kinds.Node[]; onChat: () => void; onSteer: (note: string) => void }) {
-  if (!props.nodes.length) return null
+  const nodes = props.nodes.filter((node) => node.kind !== 'status')
+  if (!nodes.length) return null
   return (
     <div className="surface">
-      {props.nodes.map((node) => (
+      {nodes.map((node) => (
         <section className="surface-card" data-kind={node.kind} data-wide={node.wide || node.kind === 'asks' || node.kind === 'stats' || undefined} key={node.id}>
           {node.title && <h3>{node.title}</h3>}
           <Body node={node} onChat={props.onChat} onSteer={props.onSteer} />

@@ -1,4 +1,4 @@
-import type { Artifact } from './Api.ts'
+import type { Artifact, Branch } from './Api.ts'
 
 export const slug = 'surface'
 
@@ -25,6 +25,7 @@ export type Node = Base &
     | { high: number; kind: 'range'; low: number; mid: number; note: string | null; unit: string | null }
     | { kind: 'tiles'; items: Tile[] }
     | { kind: 'text'; text: string }
+    | { kind: 'status'; items: string[] }
   )
 
 export type Kind = Node['kind']
@@ -52,11 +53,11 @@ function list(value: unknown, limit: number) {
 
 function tone(value: unknown): Tone | null {
   const said = typeof value === 'string' ? value.trim().toLowerCase() : ''
-  if (/^(good|ok|done|pass|passing|kept|keep|supported|merged|high|tested|ported)$/.test(said)) return 'good'
+  if (/^(good|ok|done|pass|passing|kept|keep|supported|merged|high|tested|ported|proved|proven|verified|solved|complete|completed|shipped)$/.test(said)) return 'good'
   if (/^(bad|fail|failed|failing|crash|error|pruned|dropped|discard|discarded|refuted|low)$/.test(said)) return 'bad'
-  if (/^(warn|warning|testing|open|pending|medium|waiting|blocked|parked|porting)$/.test(said)) return 'warn'
-  if (/^(live|running|run|working|doing|active)$/.test(said)) return 'live'
-  if (/^(quiet|todo|untouched|idle|none)$/.test(said)) return 'quiet'
+  if (/^(warn|warning|testing|pending|medium|waiting|blocked|parked|porting)$/.test(said)) return 'warn'
+  if (/^(live|running|run|working|doing|active|in work|in progress|wip)$/.test(said)) return 'live'
+  if (/^(quiet|todo|untouched|idle|none|open)$/.test(said)) return 'quiet'
   return null
 }
 
@@ -157,7 +158,7 @@ function node(value: unknown, index: number): Node[] {
       return low !== null && high !== null && mid !== null && low <= mid && mid <= high ? [{ ...base, high, kind: 'range', low, mid, note: text(fields['note'], 120), unit: text(fields['unit'], 12) }] : []
     }
     case 'tiles': {
-      const read = items(48).flatMap((item): Tile[] => {
+      const read = items(120).flatMap((item): Tile[] => {
         const row = record(item)
         const label = row ? text(row['label'], 32) : text(item, 32)
         const state = text(row?.['state'] ?? row?.['status'], 16)
@@ -169,6 +170,15 @@ function node(value: unknown, index: number): Node[] {
     case 'note': {
       const said = typeof fields['text'] === 'string' ? fields['text'].trim().slice(0, 1200) : ''
       return said ? [{ ...base, kind: 'text', text: said }] : []
+    }
+    case 'status':
+    case 'now':
+    case 'latest': {
+      const read = items(3).flatMap((item) => {
+        const said = text(record(item)?.['text'] ?? item, 220)
+        return said ? [said] : []
+      })
+      return read.length ? [{ ...base, items: read, kind: 'status' }] : []
     }
     default:
       return []
@@ -189,6 +199,37 @@ export function read(value: unknown): Node[] {
     .filter((item) => !seen.has(item.id) && !!seen.add(item.id))
     .sort((a, b) => Number(b.kind === 'asks') - Number(a.kind === 'asks'))
     .slice(0, most)
+}
+
+export function status(nodes: readonly Node[]) {
+  return nodes.flatMap((item) => (item.kind === 'status' ? item.items : [])).slice(0, 3)
+}
+
+export function shown(nodes: readonly Node[]) {
+  return nodes.filter((item) => item.kind !== 'status')
+}
+
+function working(branch: Branch) {
+  return branch.state === 'pending' || branch.state === 'running'
+}
+
+export function crew(branches: readonly Branch[]): Node[] {
+  const top = branches.filter((branch) => branch.parent === null)
+  if (!top.length) return []
+  const rows = [...top]
+    .sort((a, b) => Number(working(b)) - Number(working(a)) || b.id - a.id)
+    .slice(0, 8)
+    .map((branch): Row => {
+      const state = working(branch) ? 'working' : branch.starved ? 'out of budget' : branch.state === 'completed' ? 'done' : branch.state === 'failed' ? 'failed' : 'stopped'
+      const about = (working(branch) ? branch.task : (branch.result ?? branch.task)).trim().split('\n')[0]?.replace(/[*_`]/g, '').replace(/\s+/g, ' ') ?? ''
+      return {
+        note: about.length > 160 ? about.slice(0, 159).trimEnd() + '…' : about || null,
+        state,
+        text: branch.who,
+        tone: state === 'working' ? 'live' : state === 'done' ? 'good' : state === 'failed' ? 'bad' : state === 'out of budget' ? 'warn' : 'quiet',
+      }
+    })
+  return [{ id: 'crew', items: rows, kind: 'list', numbered: false, title: 'Who is on what', wide: true }]
 }
 
 export function parse(source: string) {

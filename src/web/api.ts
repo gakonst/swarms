@@ -97,9 +97,10 @@ export function coded(id: string) {
   return snapshots.get(id)?.value ?? seeded<Snapshot>(`code:${id}`)
 }
 
-export function feed(id: string, after: number, filter: { before?: number; who?: string } = {}) {
+export function feed(id: string, after: number, filter: { before?: number; limit?: number; who?: string } = {}) {
   const query = new URLSearchParams({ after: String(after) })
   if (filter.before !== undefined) query.set('before', String(filter.before))
+  if (filter.limit !== undefined) query.set('limit', String(filter.limit))
   if (filter.who !== undefined) query.set('who', filter.who)
   return fixture ? staged((fixtures) => fixtures.feed(id, after, filter)) : request<{ entries: Entry[]; next: number }>(`${path(id)}/feed?${query}`)
 }

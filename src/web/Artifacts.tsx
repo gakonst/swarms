@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Artifact } from '../shared/Api.ts'
 import * as Surface from '../shared/Surface.ts'
 import * as Wishlist from '../shared/Wishlist.ts'
+import { seeded } from './boot.ts'
 import { message } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
 
@@ -38,9 +39,12 @@ function rows(text: string, separator: string) {
   return table
 }
 
-function useJson<value>(artifact: Artifact | undefined, parse: (text: string) => value, empty: value) {
+function useJson<value>(artifact: Artifact | undefined, parse: (text: string) => value, empty: value, seed?: string) {
   const url = artifact ? source(artifact) : undefined
-  const [read, setRead] = useState<value>(empty)
+  const [read, setRead] = useState<value>(() => {
+    const text = seed === undefined ? undefined : seeded<string>(seed)
+    return typeof text === 'string' ? parse(text) : empty
+  })
 
   useEffect(() => {
     if (!url) return
@@ -65,8 +69,8 @@ export function useWishes(list: readonly Artifact[] | undefined) {
   return Wishlist.open(useJson<readonly Wishlist.Wish[]>(list?.find(Wishlist.is), Wishlist.parse, none))
 }
 
-export function useSurface(list: readonly Artifact[] | undefined) {
-  return useJson<readonly Surface.Node[]>(list?.find(Surface.is), Surface.parse, none)
+export function useSurface(list: readonly Artifact[] | undefined, id: string) {
+  return useJson<readonly Surface.Node[]>(list?.find(Surface.is), Surface.parse, none, `surface:${id}`)
 }
 
 function Grid(props: { rows: string[][] }) {

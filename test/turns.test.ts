@@ -27,6 +27,7 @@ test("a turn the gateway refused because the swarm's credit ran out counts as ou
   assert.ok(!Turns.broke('vercel/openai/gpt-6-luna failed upstream at vercel with HTTP 402'))
   assert.ok(Turns.broke("None of this app's backers can pay right now"))
   assert.ok(!Turns.broke(null))
+  assert.ok(Turns.broke('Messages stream error api_error: Boundless was not paid: No method found for challenges: tempo.session'))
 })
 
 test('a swarm paused for money reads its credit once its calls are over, and goes on when enough came back', async () => {

@@ -5,6 +5,8 @@ import * as Timing from './Timing.ts'
 
 const fresh = 15_000
 
+const wrappedMost = 2_000_000
+
 const cdns = ['https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://cdnjs.cloudflare.com', 'https://esm.sh']
 
 const listed = new Map<string, { at: number; artifacts: Artifact[] }>()
@@ -54,7 +56,7 @@ export async function read(env: Cloudflare.Env, swarm: string, name: string, fil
   const key = [Shelf.prefix + name, ...file.split('/')].map(encodeURIComponent).join('/')
   const response = await Timing.span('gw.p.bucket', Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/bucket/${key}`))
   if (!response.ok) return undefined
-  return response.text()
+  return Shelf.unwrapped(await response.text(), Shelf.prefix + name + '/' + file)
 }
 
 export function policy(origin: string, gateway: string) {
@@ -105,10 +107,21 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
     if (upstream.headers.get(header)) answer.set(header, upstream.headers.get(header) ?? '')
   const typed = Shelf.scriptedType(file)
   if (typed && answer.get('content-type')?.startsWith('text/plain')) answer.set('content-type', typed)
-  if (upstream.status !== 200 || !answer.get('content-type')?.startsWith('text/html')) return new Response(upstream.status === 304 ? null : upstream.body, { headers: answer, status: upstream.status })
+  const html = !!answer.get('content-type')?.startsWith('text/html')
+  const readable = upstream.status === 200 && request.method !== 'HEAD' && /^(text\/|application\/json|image\/svg)/.test(answer.get('content-type') ?? '') && Number(upstream.headers.get('content-length') ?? 0) <= wrappedMost
+  if (!readable) {
+    if (upstream.status !== 200 || !html) return new Response(upstream.status === 304 ? null : upstream.body, { headers: answer, status: upstream.status })
+    answer.delete('content-length')
+    answer.delete('accept-ranges')
+    return themed(new Response(upstream.body, { headers: answer, status: 200 }))
+  }
+  const body = await upstream.text()
+  const inner = Shelf.unwrapped(body, Shelf.prefix + name + '/' + file)
+  if (inner !== body && answer.get('etag')) answer.set('etag', `W/"unwrapped-${(answer.get('etag') ?? '').replace(/[^A-Za-z0-9]/g, '')}"`)
   answer.delete('content-length')
   answer.delete('accept-ranges')
-  return themed(new Response(upstream.body, { headers: answer, status: 200 }))
+  const response = new Response(inner, { headers: answer, status: 200 })
+  return html ? themed(response) : response
 }
 
 const theme = '<link rel="stylesheet" href="/kit/swarm.css">'

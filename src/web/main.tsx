@@ -19,7 +19,7 @@ addEventListener('resize', fit)
 document.cookie = `swarms_tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}; path=/; max-age=31536000; samesite=lax`
 
 const path = location.pathname
-const route = /^\/s\/[^/]+(\/chat|\/code)?\/?$/.test(path)
+const route = /^\/s\/[^/]+(\/chat|\/code|\/results)?\/?$/.test(path)
   ? import('./Swarm.tsx').then((module) => preload('swarm', module.Swarm))
   : path === '/new'
       ? import('./New.tsx').then((module) => preload('new', module.New))

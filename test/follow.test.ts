@@ -68,3 +68,17 @@ test('a working agent with no model or tool call for twenty minutes is reported 
   Follow.stalled(object, Date.now())
   assert.equal(logged.length, 1)
 })
+
+test('five model calls in a row that nothing could pay for starve the turn, and one that went through clears the count', () => {
+  const kept = new Map<string, unknown>()
+  const object = { kv: { delete: (key: string) => kept.delete(key), get: (key: string) => kept.get(key), put: (key: string, value: unknown) => kept.set(key, value) } } as never
+  const failed = { error: 'Messages stream error api_error: Boundless was not paid: No method found for challenges: tempo.session. Available: tempo.session' }
+  for (let count = 0; count < 4; count++) Follow.refused(object, 'model.call.failed', failed)
+  Follow.refused(object, 'run.failed', { status: 'failed' })
+  Follow.refused(object, 'model.call.failed', { error: 'HTTP 529 overloaded' })
+  assert.equal(Follow.starved(object), undefined)
+  Follow.refused(object, 'model.call.completed', {})
+  assert.equal(kept.size, 0)
+  for (let count = 0; count < 5; count++) Follow.refused(object, 'model.call.failed', failed)
+  assert.match(Follow.starved(object) ?? '', /Boundless was not paid/)
+})

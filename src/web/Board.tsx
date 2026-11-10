@@ -10,6 +10,8 @@ const idea = (id: string, rest = '') => `/s/${id}?fixture${rest}`
 
 const chat = (id: string, rest = '') => `/s/${id}/chat?fixture${rest}`
 
+const made = (id: string, rest = '') => `/s/${id}/results?fixture${rest}`
+
 const flows: readonly Flow[] = [
   {
     frames: [
@@ -52,8 +54,12 @@ const flows: readonly Flow[] = [
       { name: 'Just started', url: idea('rust-book-el') },
       { name: 'New, nobody backed it', url: idea('speedrun-t4') },
       { name: 'Out of money', url: idea('dex-guide') },
-      { name: 'With results', url: idea('mev-map') },
-      { name: 'A result opened', url: idea('bench-coders', '&r=leaderboard') },
+      { name: 'Without a surface', url: idea('mev-map') },
+      { name: 'One agent\'s traces', steps: [{ click: '.traces-who button:nth-child(3)' }], url: idea('bench-coders') },
+      { name: 'A trace opened', steps: [{ click: '.trace-rows li:last-child button' }], url: idea('bench-coders') },
+      { name: 'Results', url: made('bench-coders') },
+      { name: 'Results, scrolled', note: 'scrolled', steps: [{ scroll: 'page' }], url: made('mev-map') },
+      { name: 'A result opened', url: made('bench-coders', '&r=leaderboard') },
       { name: 'Scrolled, the back bar', note: 'phone', steps: [{ scroll: 'page' }], url: idea('bench-coders') },
       { name: 'Loading', url: idea('bench-coders', '&scene=wait') },
       { name: 'Not found', url: '/s/nope?fixture' },
@@ -77,7 +83,7 @@ const flows: readonly Flow[] = [
     frames: [
       { name: 'Back it open', steps: [{ click: '.box .fuel-go' }], url: idea('bench-coders', '&scene=in') },
       { name: 'With a direction', url: idea('bench-coders', '&scene=in&fund&note=Try%20a%20second%20pass%20at%20temperature%200') },
-      { name: 'Backing a direction', steps: [{ click: '.asked button' }], url: idea('bench-coders', '&scene=in') },
+      { name: 'Backing a direction', steps: [{ click: '.asked button' }], url: made('bench-coders', '&scene=in') },
       { name: 'Approve in Tempo Wallet', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }], url: idea('dex-guide', '&scene=hang,in') },
       { name: 'Declined', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 1600 }], url: idea('dex-guide', '&scene=deny,in') },
       { name: 'Not enough money', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 2600 }], url: idea('dex-guide', '&scene=broke,in') },

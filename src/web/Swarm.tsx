@@ -10,6 +10,7 @@ import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
 import { useMedia, usePoll } from './hooks.ts'
 import { Lost } from './Lost.tsx'
+import { Now } from './Now.tsx'
 import { Results } from './Results.tsx'
 import { Room } from './Room.tsx'
 import { Back, back, href, Link, navigate, useCanBack, useQuery } from './router.tsx'
@@ -19,12 +20,13 @@ const detailMs = 10_000
 
 const shelfMs = 60_000
 
-export type View = 'chat' | 'code' | 'results'
+export type View = 'chat' | 'code' | 'now' | 'results'
 
 export function Swarm(props: { config: Config | undefined; id: string; view: View }) {
   const id = props.id
   const view = props.view
   const base = `/s/${encodeURIComponent(id)}`
+  const at = view === 'now' ? base : `${base}/${view}`
   const wired = Wire.useWire(id, 'room', (signal) => {
     if (signal.type === 'pulse') setDetail((data) => Wire.pulsed(data, signal))
     if (signal.type === 'artifacts') setShelf(() => ({ artifacts: signal.artifacts.map((artifact) => (artifact.url.startsWith('/') ? { ...artifact, url: location.origin + artifact.url } : artifact)) }))
@@ -34,6 +36,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
       reprogress()
     }
     if (Wire.stirred(signal, 'branches')) rebranch()
+    if (Wire.stirred(signal, 'feed')) setStir((count) => count + 1)
   })
   const [detail, reload, setDetail] = usePoll(() => Api.swarm(id, false), wired === 'down' ? detailMs : null, id)
   const [shelf, reshelve, setShelf] = usePoll(() => Api.artifacts(id), wired === 'down' ? shelfMs : null, `artifacts:${id}`)
@@ -41,7 +44,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   const [progress, reprogress] = usePoll(() => Api.progress(id), null, `progress:${id}`)
   const [tree, rebranch] = usePoll(() => Api.branches(id), wired === 'down' && detail.data?.status === 'running' ? 30_000 : null, `branches:${id}`)
   const wishes = useWishes(shelf.data?.artifacts)
-  const surface = useSurface(shelf.data?.artifacts)
+  const surface = useSurface(shelf.data?.artifacts, id)
   const opened = useQuery('r')
   const phone = useMedia('(max-width: 899px)')
   const small = useMedia('(max-width: 799px)')
@@ -52,6 +55,8 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   const [focus, setFocus] = useState(0)
   const [sheet, setSheet] = useState(false)
   const [coded, setCoded] = useState(view === 'code')
+  const [made, setMade] = useState(view === 'results')
+  const [stir, setStir] = useState(0)
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<RoomState>(`room:${id}`)?.members ?? [])
   const [unread, setUnread] = useState(0)
   const box = useRef<HTMLElement>(null)
@@ -77,11 +82,12 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
 
   useEffect(() => {
     if (view === 'code') setCoded(true)
+    if (view === 'results') setMade(true)
   }, [view])
 
   useEffect(() => {
     const element = box.current
-    if (!element || view !== 'results') return
+    if (!element || view !== 'now') return
     const watcher = new IntersectionObserver(([entry]) => setPast(!!entry && !entry.isIntersecting && entry.boundingClientRect.top < 0))
     watcher.observe(element)
     return () => watcher.disconnect()
@@ -92,7 +98,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   const steer = (text: string) => {
     if (text) setNote(text)
     setFocus(Date.now())
-    if (view !== 'results') return setSheet(true)
+    if (view !== 'now') return setSheet(true)
     setOpen(true)
     requestAnimationFrame(() => box.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
@@ -116,7 +122,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
     if (next === view) return
     if (next === 'chat' && small) return navigate(`${base}/chat`)
     const top = mark.current ? mark.current.getBoundingClientRect().top + scrollY - (document.querySelector('.game-header')?.getBoundingClientRect().height ?? 0) : 0
-    navigate(next === 'results' ? base : `${base}/${next}`, { keep: true, replace: true })
+    navigate(next === 'now' ? base : `${base}/${next}`, { keep: true, replace: true })
     if (scrollY > top) scrollTo(0, top)
   }
 
@@ -139,7 +145,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   const room = (
     <Room
       config={props.config}
-      onArtifact={(slug) => navigate(`${base}?r=${encodeURIComponent(slug)}`)}
+      onArtifact={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`)}
       onBack={steer}
       onMessages={heard}
       onResults={() => show('results')}
@@ -149,14 +155,15 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
     />
   )
   const tab = (to: View, label: string, extra?: ReactNode) => (
-    <a aria-current={view === to ? 'page' : undefined} className="idea-tab" href={href(to === 'results' ? base : `${base}/${to}`)} onClick={(event) => { event.preventDefault(); show(to) }}>{label}{extra}</a>
+    <a aria-current={view === to ? 'page' : undefined} className="idea-tab" href={href(to === 'now' ? base : `${base}/${to}`)} onClick={(event) => { event.preventDefault(); show(to) }}>{label}{extra}</a>
   )
   const tabs = (
     <nav aria-label="Idea" className="idea-tabs">
+      {tab('now', 'Now')}
       {tab('results', 'Results')}
       {tab('chat', 'Chat', unread > 0 && view !== 'chat' && <i className="idea-unread">{unread}</i>)}
       {tab('code', 'Code')}
-      <span className="idea-tabs-back" data-shown={view !== 'results'}>
+      <span className="idea-tabs-back" data-shown={view !== 'now'}>
         <span><b>{usdShort(swarm.raised)}</b> raised</span>
         <button className="btn btn-high" onClick={() => steer('')} type="button">Back it</button>
       </span>
@@ -195,23 +202,28 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
         </header>
         <div className="idea-mark" ref={mark} />
         {tabs}
-        <div className="idea-results" hidden={view !== 'results'}>
+        <div className="idea-now" hidden={view !== 'now'}>
           {boxed(true)}
           <div className="idea-main">
-            <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show('chat')} onOpen={(slug) => navigate(`${base}?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steer} surface={surface} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
+            <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'now'} />
           </div>
         </div>
+        {made && (
+          <div className="idea-made" hidden={view !== 'results'}>
+            <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show('chat')} onOpen={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steer} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
+          </div>
+        )}
         <div className="idea-chat" hidden={view !== 'chat'}>{room}</div>
         {coded && <div className="idea-code" hidden={view !== 'code'}><Code repo={swarm.code} swarm={swarm.id} /></div>}
       </div>
       {view !== 'chat' && (
-        <div className="idea-bar" data-shown={(view === 'code' || past) && phone}>
+        <div className="idea-bar" data-shown={(view !== 'now' || past) && phone}>
           <span><b>{usdShort(swarm.raised)}</b> raised</span>
           <button className="btn btn-high" onClick={() => steer('')} type="button">Back it</button>
         </div>
       )}
       {backing}
-      {viewing && <Viewer artifact={viewing} onClose={() => back(base)} />}
+      {viewing && <Viewer artifact={viewing} onClose={() => back(at)} />}
     </article>
   )
 }
