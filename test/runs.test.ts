@@ -164,3 +164,38 @@ test('readable shows a compute call output as its stdout and stderr, and any oth
   assert.equal(readable(JSON.stringify({ text: said({ exitCode: 0, stdout: 'TIME 1\n' }) })), 'TIME 1')
   assert.equal(readable('[{"text":"{\\"exitCode\\":0,\\"stdout\\":\\"cut…'), '[{"text":"{\\"exitCode\\":0,\\"stdout\\":\\"cut…')
 })
+
+test('a log and a job kept as finished are read again while their machine is running', async () => {
+  const { insert, kv, self } = storage()
+  const now = Date.now()
+  for (const item of [
+    entry(1, 'machine', 'Starting machine sandbox (python:3.12-slim)', '{"attach":"sandbox"}', null, now),
+    entry(2, 'output', 'compute_create output', created('sb-AAA111'), null, now),
+    entry(3, 'tool', 'Called compute_spawn', JSON.stringify({ command: ['sh', '-c', 'python train.py'], sandboxId: 'sb-AAA111' }), null, now),
+    entry(4, 'output', 'compute_spawn output', said({ logPath: '/tmp/gateway/a.log', pid: 7 }), null, now),
+    entry(5, 'machine', 'Starting machine gpu (pytorch)', '{"attach":"gpu"}', null, now),
+    entry(6, 'output', 'compute_create output', created('sb-BBB222'), null, now),
+    entry(7, 'machine', 'Shutting down a machine', '{"sandboxId":"sb-BBB222"}', null, now),
+  ])
+    insert(item as never)
+  const env = {
+    GATEWAY: {
+      fetch: async (request: Request) =>
+        new URL(request.url).pathname === '/v1/compute/output'
+          ? Response.json({ before: null, entries: [{ at: now, stream: 'stdout', text: 'epoch 1' }], sandboxId: 'sb-AAA111' })
+          : new Response(JSON.stringify({ data: 'step 1\n', offset: 7, type: 'log' }) + '\n'),
+    },
+    GATEWAY_URL: 'https://gateway.test',
+    SWARMS_GATEWAY_KEY: 'test',
+  }
+  Object.assign(self as object, { env })
+  const feed = (self as { ctx: { storage: { sql: { exec: (query: string) => { toArray: () => never[] } } } } }).ctx.storage.sql.exec('SELECT seq, at, kind, text, detail, who, event FROM feed ORDER BY seq').toArray()
+  const machine = Runs.counted(self, folded(feed, [])).find((found) => found.name === 'sandbox')
+  assert.equal(machine?.ended, null)
+  kv.set('log:sb-AAA111', { checked: 0, complete: true, newest: null, older: null })
+  kv.set('job:3', { checked: 0, done: true, exit: null, offset: 0 })
+  const logs = await Runs.logs(self, 'abc123abc123', machine, 'sandbox', { limit: 10 })
+  assert.deepEqual([logs.complete, logs.lines.map((line) => line.text)], [false, ['epoch 1']])
+  const job = await Runs.job(self, 'abc123abc123', machine, 'sandbox', 3)
+  assert.deepEqual([job?.done, job?.data], [false, 'step 1\n'])
+})

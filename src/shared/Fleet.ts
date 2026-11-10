@@ -208,8 +208,10 @@ export function folded(entries: readonly Entry[], hands: readonly Hand[]): Machi
     }
     if (entry.kind === 'machine' && entry.text === 'Shutting down a machine') {
       const id = sandbox(entry.detail)
-      const named = id ? sandboxes.get(id) : undefined
-      for (const machine of found.values()) if (machine.name === named || entry.detail?.includes(machine.name)) machine.ended = entry.at
+      const named = id ? (sandboxes.get(id) ?? id) : undefined
+      const machine = named ? found.get(named) : undefined
+      const latest = [...sandboxes].findLast(([, name]) => name === named)?.[0] ?? id
+      if (machine && latest === id) machine.ended = entry.at
       continue
     }
     if (entry.kind !== 'tool' || !/^(\$ |Called )/.test(entry.text)) continue
