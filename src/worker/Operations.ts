@@ -1018,10 +1018,12 @@ export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: 
   if (request.branch === request.to) return Problem.fail(400, 'invalid_request', 'Move money to another branch.')
   const allowed = await steerable(env, { address, swarm: request.swarm })
   if (!allowed.ok) return allowed
-  const { account, row } = allowed.value
+  const { account, row, seat } = allowed.value
 
   const found = await directed(env, row, reached(stub(env, row.id).subagents(row.id, true)))
   if (!found.ok) return found
+  if (!seat && !found.value.members.some((member) => member.address === allowed.value.address))
+    return Problem.fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you direct its money.')
   const agent = found.value.agent
   const source = found.value.list.find((branch) => branch.id === request.branch && branch.parent === null)
   const target = found.value.list.find((branch) => branch.id === request.to && branch.parent === null)
@@ -1032,8 +1034,8 @@ export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: 
   const amount = units(request.amount)
   if (source.budget !== null && (source.left === null || Memo.units(source.left) < amount))
     return Problem.fail(409, 'insufficient_balance', `${source.who} has ${dollars(source.left ?? '0')} of its budget left, less than ${dollars(Memo.decimal(amount))}: money a branch spent stays spent.`)
-  const ids = [identifier(), identifier()] as const
-  if (!(await Store.shift(env, { agent, amount, contributor: allowed.value.address, from: source.id, ids, swarm: row.id, team: row.steering === 'team', to: target.id })))
+  const ids = await Store.shift(env, { agent, amount, contributor: allowed.value.address, from: source.id, swarm: row.id, to: target.id })
+  if (!ids.length)
     return Problem.fail(409, 'insufficient_balance', `You put less than ${dollars(Memo.decimal(amount))} behind ${source.who}; you move only what you put behind a branch.`)
 
   if (target.budget !== null) await Store.base(env, row.id, agent, target.id, Memo.units(target.budget))

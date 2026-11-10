@@ -1,0 +1,69 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import * as Store from '../src/worker/Store.ts'
+import { open } from './d1.ts'
+
+type Opened = ReturnType<typeof open>
+
+const rider = '0x00000000000000000000000000000000000000a1'
+
+function swarm(db: Opened) {
+  db.sqlite.prepare("insert into swarms (id, title, goal, status, rounds, hidden, created_at, updated_at) values ('s', 'Swarm', 'The goal of the swarm', 'paused', 0, 0, 1, 1)").run()
+  return db
+}
+
+function give(db: Opened, amount: bigint, id = '0xfeed', channel: `0x${string}` | null = null) {
+  return Store.give(db.env, { amount: String(amount), channel, contributor: rider, id, note: null, note_id: null, swarm: 's', token: 'ousd' })
+}
+
+function fund(db: Opened, branch: number, amount: bigint, id: string) {
+  return Store.steer(db.env, { amount, branch: { agent: 'agt', id: branch }, contributor: rider, id, note: `branch ${branch}`, note_id: `branch:${branch}`, swarm: 's' })
+}
+
+function allot(db: Opened, branch: number, amount: bigint, id: string) {
+  return Store.allot(db.env, { amount, branch: { agent: 'agt', id: branch }, contributor: rider, id, limit: null, note: `branch ${branch}`, note_id: `branch:${branch}`, since: 0, swarm: 's' })
+}
+
+async function member(db: Opened) {
+  const found = (await Store.members(db.env, 's')).find((each) => each.address === rider)
+  return [found?.backed, found?.steered, found?.available]
+}
+
+function moved(db: Opened) {
+  return db.sqlite.prepare("select branch, budget, amount from steers where swarm = ? and id not in ('f1', 'a1') order by budget, branch").all('s').map((row) => [row['branch'], row['budget'], row['amount']])
+}
+
+test("moved money stays what it was: the team's goes back to the team budget and a rider's own to the rider, whoever steers now", async () => {
+  const team = swarm(open())
+  await give(team, 1_000_000n)
+  assert.equal(await allot(team, 1, 5_000_000n, 'a1'), true)
+  assert.equal((await Store.shift(team.env, { agent: 'agt', amount: 5_000_000n, contributor: rider, from: 1, swarm: 's', to: 2 })).length, 2)
+  assert.deepEqual(await Store.settle(team.env, { agent: 'agt', branch: 2, left: null, swarm: 's' }), [{ amount: 5_000_000n, budget: 1, contributor: rider }])
+  assert.deepEqual(await member(team), ['1.000000', '0.000000', '1.000000'])
+  assert.equal((await Store.allotted(team.env, 's', 0)).get(rider), 0n)
+  assert.equal(await Store.steer(team.env, { amount: 6_000_000n, contributor: rider, id: 'more', note: 'mine', note_id: 'n1', swarm: 's' }), false)
+
+  const own = swarm(open())
+  await give(own, 5_000_000n)
+  assert.equal(await fund(own, 1, 5_000_000n, 'f1'), true)
+  assert.equal((await Store.shift(own.env, { agent: 'agt', amount: 5_000_000n, contributor: rider, from: 1, swarm: 's', to: 2 })).length, 2)
+  await Store.settle(own.env, { agent: 'agt', branch: 2, left: null, swarm: 's' })
+  await Store.settle(own.env, { agent: 'agt', branch: 1, left: null, swarm: 's' })
+  assert.deepEqual(await member(own), ['5.000000', '0.000000', '5.000000'])
+  assert.equal((await Store.allotted(own.env, 's', 0)).get(rider), undefined)
+})
+
+test('a move takes a rider\'s own money first and the team\'s for the rest, and never more than they put behind the branch', async () => {
+  const db = swarm(open())
+  await give(db, 3_000_000n)
+  await fund(db, 1, 3_000_000n, 'f1')
+  await allot(db, 1, 4_000_000n, 'a1')
+  assert.deepEqual(await Store.shift(db.env, { agent: 'agt', amount: 7_000_001n, contributor: rider, from: 1, swarm: 's', to: 2 }), [])
+  assert.equal((await Store.shift(db.env, { agent: 'agt', amount: 5_000_000n, contributor: rider, from: 1, swarm: 's', to: 2 })).length, 4)
+  assert.deepEqual(moved(db), [[1, 0, '-3000000'], [2, 0, '3000000'], [1, 1, '-2000000'], [2, 1, '2000000']])
+  const money = await Store.funds(db.env, 's', 'agt')
+  assert.deepEqual([money.shares.get(1)?.get(rider), money.shares.get(2)?.get(rider)], [2_000_000n, 5_000_000n])
+
+  await Store.settle(db.env, { agent: 'agt', branch: 2, left: null, swarm: 's' })
+  assert.deepEqual(await Store.shift(db.env, { agent: 'agt', amount: 1_000_000n, contributor: rider, from: 1, swarm: 's', to: 2 }), [])
+})
