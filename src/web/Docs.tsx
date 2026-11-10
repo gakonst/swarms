@@ -1,6 +1,7 @@
-import { here } from './boot.ts'
+import { site } from './boot.ts'
 import { type ReactNode, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
+import * as Site from '../shared/Site.ts'
 import * as Connect from '../shared/Connect.ts'
 
 
@@ -123,7 +124,7 @@ function Section(props: { children: ReactNode; id: string; intro: ReactNode; tit
 }
 
 export function Docs(props: { config: Config | undefined }) {
-  const origin = here().origin
+  const origin = site()
   return (
     <div className="page docs">
       <section className="grid docs-top">
@@ -140,7 +141,7 @@ export function Docs(props: { config: Config | undefined }) {
             <a className="btn btn-medium" href="#rest">
               REST API
             </a>
-            <a className="btn btn-medium" href="/openapi.json" rel="noreferrer" target="_blank">
+            <a className="btn btn-medium" href={Site.at('/openapi.json')} rel="noreferrer" target="_blank">
               openapi.json
             </a>
           </p>
@@ -196,7 +197,7 @@ export function Docs(props: { config: Config | undefined }) {
         intro={
           <>
             <p>
-              JSON over HTTPS at <code>{origin}/v1</code>, open to any origin. Errors are problem JSON with a stable code. The whole contract is in <a href="/openapi.json">openapi.json</a>.
+              JSON over HTTPS at <code>{origin}/v1</code>, open to any origin. Errors are problem JSON with a stable code. The whole contract is in <a href={Site.at('/openapi.json')}>openapi.json</a>.
             </p>
             <p className="fine">Amounts are strings of USD with six decimals. Times are Unix milliseconds.</p>
           </>

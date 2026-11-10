@@ -1,6 +1,7 @@
 import { File } from '@pierre/diffs/react'
 import { useEffect, useMemo, useState } from 'react'
 import type { Code as Repo, Snapshot } from '../shared/Api.ts'
+import * as Site from '../shared/Site.ts'
 import * as Api from './api.ts'
 import { ago } from './format.ts'
 import { message, useMedia, useNow } from './hooks.ts'
@@ -23,7 +24,7 @@ function local(swarm: string) {
 
 async function fetched<value>(url: string): Promise<value> {
   if (Api.fixture) return import('./fixtures.ts').then((fixtures) => fixtures.git(url) as Promise<value>)
-  const response = await fetch(url)
+  const response = await fetch(Site.at(url))
   const data = (await response.json().catch(() => undefined)) as value | undefined
   if (!response.ok || !data) throw new Error(response.status === 404 ? 'Not found.' : "The code can't be read right now. Try again in a minute.")
   return data

@@ -5,6 +5,7 @@ import * as Answer from '../shared/Answer.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Setup from '../shared/Setup.ts'
+import * as Site from '../shared/Site.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Persona from './Persona.ts'
@@ -39,7 +40,7 @@ function next(notes: Note[], repo: string, room: string) {
 }
 
 export function roomed(origin: string, swarm: string) {
-  return `Your room, where backers talk and answer your Wishlist, is ${new URL(`/v1/swarms/${swarm}/chat`, origin).href} (public, free to read).`
+  return `Your room, where backers talk and answer your Wishlist, is ${origin.replace(/\/+$/, '')}/v1/swarms/${swarm}/chat (public, free to read).`
 }
 
 export function broke(message: string | null) {
@@ -104,7 +105,7 @@ export async function advance(self: Swarm, row: Store.Row) {
   const told = self.told()
   const included = agent.briefed ? notes.filter((note) => grown(told.get(note.id), Memo.units(note.weight))) : notes
   const repoLine = repoed(repo, money.left)
-  const room = roomed(self.env.SWARMS_URL, row.id)
+  const room = roomed(Site.home(self.env), row.id)
   const text = agent.briefed
     ? next(self.tell(included), repo.state === 'ready' ? '' : repoLine, Persona.frozen(self.kv, Store.setup(row)).includes(Persona.roomless) ? room : '')
     : brief(money.row, self.tell(notes), repoLine, room)

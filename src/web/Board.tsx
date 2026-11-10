@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import * as Site from '../shared/Site.ts'
 
 type Step = { click: string } | { scroll: string; to?: 'top' } | { type: [string, string] } | { wait: number }
 
@@ -212,7 +213,7 @@ function Shot(props: { frame: Frame; index: string; size: Size }) {
               if (ref.current && props.frame.steps) void play(ref.current, props.frame.steps)
             }}
             ref={ref}
-            src={props.frame.url}
+            src={Site.at(props.frame.url)}
             style={{ height: box.height, transform: `scale(${box.scale})`, width: box.width }}
             tabIndex={-1}
             title={props.frame.name}
@@ -221,7 +222,7 @@ function Shot(props: { frame: Frame; index: string; size: Size }) {
       </div>
       <figcaption>
         <span className="shot-index">{props.index}</span>
-        <a href={props.frame.url} rel="noreferrer" target="_blank">{props.frame.name} ↗</a>
+        <a href={Site.at(props.frame.url)} rel="noreferrer" target="_blank">{props.frame.name} ↗</a>
         {props.frame.note && <span className="shot-note">{props.frame.note}</span>}
         <button aria-label={`Replay ${props.frame.name}`} className="shot-replay" onClick={() => setKey(key + 1)} type="button">↻</button>
       </figcaption>

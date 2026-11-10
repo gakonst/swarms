@@ -10,6 +10,7 @@ import * as Page from './Page.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
 import * as Rest from './Rest.ts'
+import * as Site from '../shared/Site.ts'
 import * as Sessions from './Sessions.ts'
 import * as Telegram from './Telegram.ts'
 import * as Timing from './Timing.ts'
@@ -67,7 +68,7 @@ app.get('*', async (c, next) => {
   const url = new URL(c.req.url)
   const path = url.pathname
   const moved = Page.moved(url)
-  if (moved) return c.redirect(moved, 301)
+  if (moved) return c.redirect(Site.at(moved), 301)
   const accept = c.req.header('accept') ?? ''
   if (!Page.rendered(path) || (accept !== '' && !/text\/html|\*\/\*/.test(accept))) return next()
   return Page.page(c.req.raw, c.env)
@@ -76,12 +77,13 @@ app.get('*', async (c, next) => {
 function framed(env: Cloudflare.Env, id: string | undefined): Edge.Draw {
   return async (request) => {
     const url = new URL(request.url)
+    const site = Site.url(env, url)
     if (id === undefined) {
       const listed = await Operations.list(env, {}).catch(() => undefined)
-      return { response: XFrames.start(url.origin, listed?.ok ? listed.value.swarms : [], url, env.TELEGRAM_BOT), whole: Promise.resolve(!!listed?.ok) }
+      return { response: XFrames.start(site, listed?.ok ? listed.value.swarms : [], url, env.TELEGRAM_BOT), whole: Promise.resolve(!!listed?.ok) }
     }
     const result = await Operations.get(env, { swarm: id })
-    return { response: result.ok ? XFrames.swarm(url.origin, result.value, url, env.TELEGRAM_BOT) : result.status === 404 ? XFrames.lost(url.origin, url, env.TELEGRAM_BOT) : Problem.json(result), whole: Promise.resolve(result.ok) }
+    return { response: result.ok ? XFrames.swarm(site, result.value, url, env.TELEGRAM_BOT) : result.status === 404 ? XFrames.lost(site, url, env.TELEGRAM_BOT) : Problem.json(result), whole: Promise.resolve(result.ok) }
   }
 }
 
@@ -92,7 +94,7 @@ app.get('/x/card.svg', (c) => XFrames.card(c.req.query('title') ?? 'Fund a swarm
 app.get('/og/*', (c) => Og.serve(c.env, c.req.raw))
 
 app.get('/oembed', async (c) => {
-  const embedded = await Og.embed(c.env, c.req.query('url') ?? '', new URL(c.req.url).origin, c.req.query('maxwidth'), c.req.query('maxheight'))
+  const embedded = await Og.embed(c.env, c.req.query('url') ?? '', Site.url(c.env, c.req.url), new URL(c.req.url).origin, c.req.query('maxwidth'), c.req.query('maxheight'))
   const response = Problem.respond(embedded)
   response.headers.set('access-control-allow-origin', '*')
   if (embedded.ok) response.headers.set('cache-control', 'public, max-age=300')
@@ -107,7 +109,7 @@ app.get('/tg/s/:id', (c) => Edge.page(c.req.raw, '', framed(c.env, c.req.param('
 
 app.post('/telegram', (c) => Telegram.hook(c.env, c.req.raw))
 
-app.get('/a/:id/:slug', (c) => c.redirect(`${new URL(c.req.url).pathname}/`, 301))
+app.get('/a/:id/:slug', (c) => c.redirect(Site.at(`${new URL(c.req.url).pathname}/`), 301))
 
 app.on(['GET', 'HEAD'], '/a/:id/:slug/*', (c) => {
   const [, , id = '', slug = '', ...rest] = new URL(c.req.url).pathname.split('/')
@@ -193,7 +195,7 @@ app.post('/api/swarms/:id/backings/:request', async (c) =>
 app.get('/api/swarms/:id/progress', async (c) => Problem.respond(await Operations.progress(c.env, { swarm: c.req.param('id') })))
 
 app.get('/api/swarms/:id/artifacts', async (c) =>
-  Problem.respond(await Operations.artifacts(c.env, { swarm: c.req.param('id') }, new URL(c.req.url).origin)),
+  Problem.respond(await Operations.artifacts(c.env, { swarm: c.req.param('id') }, Site.url(c.env, c.req.url))),
 )
 
 app.get('/api/swarms/:id/chat', async (c) => {
@@ -263,11 +265,29 @@ app.all('/api/*', () => Problem.json({ code: 'not_found', detail: 'No such route
 
 app.route('/', Rest.app)
 
-app.get('*', (c) => {
+app.get('*', async (c) => {
+  const asset = await c.env.ASSETS.fetch(c.req.raw).catch(() => undefined)
+  if (asset && asset.status !== 404) return asset
   const accept = c.req.header('accept') ?? ''
   if (accept !== '' && !/text\/html|\*\/\*/.test(accept)) return c.notFound()
   return Page.lost(c.req.raw, c.env)
 })
 
-export default app
+function paged(path: string) {
+  return Page.rendered(path) || Page.moved(new URL(path, 'https://swarms')) !== undefined || /^\/(x|tg)(\/|$)/.test(path)
+}
+
+export default {
+  fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext) {
+    const url = new URL(request.url)
+    if (Site.under(url.pathname)) {
+      url.pathname = Site.strip(url.pathname)
+      return app.fetch(new Request(url, request), env, context)
+    }
+    const accept = request.headers.get('accept') ?? ''
+    if ((request.method === 'GET' || request.method === 'HEAD') && paged(url.pathname) && (accept === '' || /text\/html|\*\/\*/.test(accept)))
+      return new Response(null, { headers: { location: Site.base + (url.pathname === '/' ? '/' : url.pathname) + url.search }, status: 301 })
+    return app.fetch(request, env, context)
+  },
+} satisfies ExportedHandler<Cloudflare.Env>
 

@@ -1,4 +1,5 @@
 import { type MouseEvent, type ReactNode, useSyncExternalStore } from 'react'
+import * as Site from '../shared/Site.ts'
 import { fixture } from './api.ts'
 import { here } from './boot.ts'
 
@@ -8,7 +9,7 @@ function subscribe(listener: () => void) {
 }
 
 export function usePath() {
-  return useSyncExternalStore(subscribe, () => location.pathname, () => here().pathname)
+  return useSyncExternalStore(subscribe, () => Site.strip(location.pathname), () => here().pathname)
 }
 
 export function useQuery(name: string) {
@@ -16,13 +17,13 @@ export function useQuery(name: string) {
 }
 
 export function href(path: string) {
-  if (!fixture) return path
+  if (!fixture) return Site.at(path)
   const base = here()
   const url = new URL(path, base.origin)
   const scene = base.searchParams.get('scene')
   url.searchParams.set('fixture', '')
   if (scene) url.searchParams.set('scene', scene)
-  return `${url.pathname}${url.search}${url.hash}`
+  return Site.at(`${url.pathname}${url.search}${url.hash}`)
 }
 
 const warmers: ((path: string) => void)[] = []

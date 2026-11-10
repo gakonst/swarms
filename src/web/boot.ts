@@ -1,4 +1,5 @@
 import type { Boot } from '../shared/Boot.ts'
+import * as Site from '../shared/Site.ts'
 
 export type { Boot, Face } from '../shared/Boot.ts'
 
@@ -9,7 +10,14 @@ export function boot(): Boot | undefined {
 }
 
 export function here(): URL {
-  return server ? new URL(boot()?.url ?? 'http://localhost/') : new URL(location.href)
+  if (server) return new URL(boot()?.url ?? 'http://localhost/')
+  const url = new URL(location.href)
+  url.pathname = Site.strip(url.pathname)
+  return url
+}
+
+export function site() {
+  return boot()?.site ?? (server ? Site.base : location.origin + Site.base)
 }
 
 export function seeded<T>(key: string): T | undefined {

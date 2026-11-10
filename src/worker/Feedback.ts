@@ -1,5 +1,6 @@
 import { Handler } from 'nanocode-ts/feedback/server'
 import { z } from 'zod'
+import * as Site from '../shared/Site.ts'
 import * as Problem from './Problem.ts'
 import * as Store from './Store.ts'
 
@@ -9,7 +10,7 @@ let handler: Handler.Handler | undefined
 
 export function feedback(env: Cloudflare.Env) {
   handler ??= Handler.feedback({
-    accept: (context) => context.request.headers.get('origin') === new URL(context.request.url).origin,
+    accept: (context) => [new URL(context.request.url).origin, new URL(Site.url(env, context.request.url)).origin].includes(context.request.headers.get('origin') ?? ''),
     app: 'swarms-site',
     fetch: (request) => ('GATEWAY' in env && env.GATEWAY ? env.GATEWAY.fetch(request) : fetch(request)),
     gateway: env.GATEWAY_URL,
@@ -39,7 +40,7 @@ export async function file(env: Cloudflare.Env, input: unknown): Promise<Problem
       body: JSON.stringify({
         comments: [{ note: report.context ? `${report.message}\n\n${report.context}` : report.message, rect: { height: 0, width: 0, x: 0, y: 0 }, selector: 'api', tag: report.kind, text: '' }],
         title: `${report.kind} sent over the API${report.swarm ? ` about swarm ${report.swarm}` : ''}`,
-        url: report.swarm ? `${origin}/s/${report.swarm}` : origin + '/',
+        url: report.swarm ? `${Site.home(env)}/s/${report.swarm}` : Site.home(env) + '/',
         viewport: { height: 0, width: 0 },
       }),
       headers: { 'content-type': 'application/json', origin },

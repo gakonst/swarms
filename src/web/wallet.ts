@@ -1,5 +1,6 @@
 import type { Address, Hex } from 'viem'
 import type { Account, Config, Currency } from '../shared/Api.ts'
+import * as Site from '../shared/Site.ts'
 import * as Api from './api.ts'
 import { fixture } from './api.ts'
 import { boot, type Face, faceCookie, server } from './boot.ts'
@@ -216,7 +217,7 @@ export async function signIn(config: Config) {
   }
   const result = (await (await wallet()).request({
     method: 'wallet_connect',
-    params: [{ capabilities: { auth: { returnToken: true, url: config.auth } }, chainId: config.chainId }],
+    params: [{ capabilities: { auth: { returnToken: true, url: Site.at(config.auth) } }, chainId: config.chainId }],
   } as never)) as { accounts: readonly { address: Address; capabilities?: { auth?: { token?: string } } }[] }
   const account = result.accounts[0]
   const token = account?.capabilities?.auth?.token
@@ -273,7 +274,7 @@ export async function rename(name: string | null) {
 export function signOut() {
   const token = state.session?.token
   set({ account: undefined, session: undefined })
-  if (token && !fixture) void fetch('/v1/auth/logout', { headers: { authorization: `Bearer ${token}` }, method: 'POST' }).catch(() => {})
+  if (token && !fixture) void fetch(Site.at('/v1/auth/logout'), { headers: { authorization: `Bearer ${token}` }, method: 'POST' }).catch(() => {})
 }
 
 export async function disconnect() {

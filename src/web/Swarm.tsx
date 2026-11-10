@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { Config, Detail, Me, Member, Room as RoomState, Said } from '../shared/Api.ts'
+import * as Site from '../shared/Site.ts'
 import * as Status from '../shared/Status.ts'
 import * as Api from './api.ts'
 import { useSurface, useWishes, Viewer } from './Artifacts.tsx'
@@ -29,7 +30,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   const at = view === 'now' ? base : `${base}/${view}`
   const wired = Wire.useWire(id, 'room', (signal) => {
     if (signal.type === 'pulse') setDetail((data) => Wire.pulsed(data, signal))
-    if (signal.type === 'artifacts') setShelf(() => ({ artifacts: signal.artifacts.map((artifact) => (artifact.url.startsWith('/') ? { ...artifact, url: location.origin + artifact.url } : artifact)) }))
+    if (signal.type === 'artifacts') setShelf(() => ({ artifacts: signal.artifacts.map((artifact) => (artifact.url.startsWith('/') ? { ...artifact, url: location.origin + Site.at(artifact.url) } : artifact)) }))
     if (Wire.stirred(signal, 'detail')) reload()
     if (Wire.stirred(signal, 'artifacts')) {
       reshelve()

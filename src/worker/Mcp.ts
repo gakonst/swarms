@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import * as Site from '../shared/Site.ts'
 import * as Feedback from './Feedback.ts'
 import * as Machines from './Machines.ts'
 import * as Operations from './Operations.ts'
@@ -24,7 +25,7 @@ export async function handle(request: Request, env: Cloudflare.Env) {
   if (request.method !== 'POST')
     return Problem.json({ code: 'invalid_request', detail: 'Use POST for MCP over streamable HTTP.', status: 405 })
 
-  const server = create(env, Replica.read(env, request), new URL(request.url).origin)
+  const server = create(env, Replica.read(env, request), Site.url(env, request.url))
   const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true })
   await server.connect(transport)
   return transport.handleRequest(request)

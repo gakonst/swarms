@@ -29,13 +29,19 @@ const mini = {
 
 const sandbox = 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
 
-const icons = '<link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png">'
+function rooted(origin: string) {
+  return new URL(origin).pathname.replace(/\/+$/, '')
+}
+
+function icons(root: string) {
+  return `<link rel="icon" href="${root}/favicon.ico" sizes="32x32"><link rel="icon" href="${root}/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="${root}/apple-touch-icon.png">`
+}
 
 export function shell(request?: URL) {
   return request?.pathname === '/tg' || request?.pathname.startsWith('/tg/') ? '/tg' : '/x'
 }
 
-const host = `(()=>{const frame=document.getElementById('xframe-player');const own=location.origin;const allowed=value=>{try{const url=new URL(value);if(url.origin==='https://wallet.tempo.xyz'&&/^[a-z0-9-]{8,16}$/i.test(url.searchParams.get('user_code')||''))return 'wallet';if(url.origin===own&&(url.pathname.startsWith('/s/')||url.pathname.startsWith('/x/')))return 'page';if(url.origin==='https://x.com'&&url.pathname==='/intent/post')return 'page'}catch{}};addEventListener('message',event=>{const message=event.data;if(event.source!==frame.contentWindow||message?.type!=='swarms:open'||typeof message.url!=='string')return;const kind=allowed(message.url);if(!kind)return;let popup=null;try{popup=kind==='wallet'?window.open(message.url,'swarms-wallet','popup,width=460,height=760'):window.open(message.url,'_blank','noopener')}catch{}if(!popup&&kind==='wallet')location.href=message.url});const content=new URL(location.href);content.searchParams.set('xframes-content','');frame.src=content.href})();`
+const host = (root: string) => `(()=>{const frame=document.getElementById('xframe-player');const own=location.origin;const allowed=value=>{try{const url=new URL(value);if(url.origin==='https://wallet.tempo.xyz'&&/^[a-z0-9-]{8,16}$/i.test(url.searchParams.get('user_code')||''))return 'wallet';if(url.origin===own&&(url.pathname.startsWith('${root}/s/')||url.pathname.startsWith('${root}/x/')))return 'page';if(url.origin==='https://x.com'&&url.pathname==='/intent/post')return 'page'}catch{}};addEventListener('message',event=>{const message=event.data;if(event.source!==frame.contentWindow||message?.type!=='swarms:open'||typeof message.url!=='string')return;const kind=allowed(message.url);if(!kind)return;let popup=null;try{popup=kind==='wallet'?window.open(message.url,'swarms-wallet','popup,width=460,height=760'):window.open(message.url,'_blank','noopener')}catch{}if(!popup&&kind==='wallet')location.href=message.url});const content=new URL(location.href);content.searchParams.set('xframes-content','');frame.src=content.href})();`
 
 function attribute(value: string) {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -55,11 +61,12 @@ function backers(count: number) {
 }
 
 function document(origin: string, path: string, subject: Share.Subject, title: string, description: string, content: string, context: object, status = 200, request?: URL, bot?: string) {
+  const root = rooted(origin)
   const base = shell(request)
   const url = `${origin}${base}${path}`
   const telegram = base === '/tg'
   const hosted = request !== undefined && !telegram && !request.searchParams.has('xframes-content')
-  const tags = `<meta charset="utf-8">${icons}
+  const tags = `<meta charset="utf-8">${icons(root)}
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>${attribute(title)}</title>
 <meta name="description" content="${attribute(description)}">
@@ -74,7 +81,7 @@ ${tags}
 </head>
 <body>
 <iframe id="xframe-player" title="${attribute(title)}" sandbox="${sandbox}" allow="autoplay; fullscreen *; clipboard-write"></iframe>
-<script>${host}</script>
+<script>${host(root)}</script>
 </body>
 </html>`,
       { headers: player, status },
@@ -88,7 +95,7 @@ ${telegram ? '<script src="https://telegram.org/js/telegram-web-app.js?59"></scr
 </head>
 <body${telegram ? ' class="tg"' : ''}>
 <div class="app">${content}</div>
-<script>window.__SWARM_FRAME__=${script({ ...context, base, bot: telegram ? (bot ?? null) : null, hosted: !telegram && (request?.searchParams.has('xframes-content') ?? false), telegram, url })};</script>
+<script>window.__SWARM_FRAME__=${script({ ...context, base: root + base, bot: telegram ? (bot ?? null) : null, hosted: !telegram && (request?.searchParams.has('xframes-content') ?? false), telegram, url, root, site: origin })};</script>
 <script>${client}</script>
 </body>
 </html>`,
@@ -125,7 +132,7 @@ const wallet = `<section class="view center" data-view="approve" hidden>
 `
 
 export function start(origin: string, swarms: readonly Summary[] = [], request?: URL, bot?: string) {
-  const base = shell(request)
+  const base = rooted(origin) + shell(request)
   const title = 'Start a breakthrough, or be part of one'
   const description = 'Fund AI agents that research and build in the open. Start one, or join one already running.'
   const free = open(swarms)
@@ -220,7 +227,7 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
 }
 
 export function lost(origin: string, request?: URL, bot?: string) {
-  const base = shell(request)
+  const base = rooted(origin) + shell(request)
   const content = `<section class="view center" data-view="lost">
     <h2>This swarm drifted off.</h2>
     <div class="row"><a class="go" href="${base}?view=start">Start a swarm</a><a class="ghost" href="${base}?view=join">Join a swarm</a></div>
@@ -356,7 +363,7 @@ h2{margin:0;font-weight:400;font-size:28px;letter-spacing:-.02em;max-width:620px
 const client = `
 const frame=window.__SWARM_FRAME__;
 const fit=()=>{const app=document.querySelector('.app');const wide=innerWidth>innerHeight;const scale=Math.min(innerWidth/800,innerHeight/450);if(wide&&scale<1){app.style.width='800px';app.style.height='450px';app.style.zoom=String(scale)}else{app.style.width='';app.style.height='';app.style.zoom=''}};fit();addEventListener('resize',fit);
-if(frame.hosted)document.addEventListener('click',event=>{const link=event.target instanceof Element?event.target.closest('a[href]'):null;if(!link||event.defaultPrevented)return;const url=new URL(link.href,location.href);if(link.target==='_blank'){event.preventDefault();parent.postMessage({type:'swarms:open',url:url.href},new URL(frame.url).origin);return}if(url.origin===new URL(frame.url).origin&&url.pathname.startsWith('/x')){url.searchParams.set('xframes-content','');link.href=url.href}},true);
+if(frame.hosted)document.addEventListener('click',event=>{const link=event.target instanceof Element?event.target.closest('a[href]'):null;if(!link||event.defaultPrevented)return;const url=new URL(link.href,location.href);if(link.target==='_blank'){event.preventDefault();parent.postMessage({type:'swarms:open',url:url.href},new URL(frame.url).origin);return}if(url.origin===new URL(frame.url).origin&&url.pathname.startsWith(frame.root+'/x')){url.searchParams.set('xframes-content','');link.href=url.href}},true);
 const query=new URLSearchParams(location.search);
 const demo=query.get('scene');
 const views=[...document.querySelectorAll('[data-view]')];
@@ -385,14 +392,14 @@ async function send(path,options){
     if(path==='/v1/swarms')return{id:'demo',title:choice.title};
     return{};
   }
-  const response=await fetch(path,options);const data=await response.json().catch(()=>({}));
+  const response=await fetch(frame.root+path,options);const data=await response.json().catch(()=>({}));
   if(!response.ok){const error=new Error(data.detail||'That did not go through.');error.status=response.status;throw error}
   return data;
 }
 function finish(){
   show('done');
   document.getElementById('done-title').textContent="Finish on the swarm's page"+(currentSwarm&&currentSwarm.title?': '+currentSwarm.title:'.');
-  const origin=new URL(frame.url).origin,id=encodeURIComponent(currentSwarm.id),words=(note?'I put money behind "'+note+'" on ':'I funded ')+currentSwarm.title;
+  const origin=frame.site,id=encodeURIComponent(currentSwarm.id),words=(note?'I put money behind "'+note+'" on ':'I funded ')+currentSwarm.title;
   const watch=document.getElementById('watch');
   if(tg){watch.removeAttribute('target');watch.textContent='Watch it';watch.href=frame.base+'/s/'+id;tg.HapticFeedback.notificationOccurred('success')}else watch.href=origin+'/s/'+id;
   document.getElementById('share').href=frame.bot?'https://t.me/share/url?url='+encodeURIComponent('https://t.me/'+frame.bot+'?startapp='+id)+'&text='+encodeURIComponent(words):'https://x.com/intent/post?text='+encodeURIComponent(words+' '+origin+'/x/s/'+id);
@@ -402,7 +409,7 @@ async function fund(box){
   try{
     if(!currentSwarm){if(!choice)throw new Error('Pick an idea first.');currentSwarm=await send('/v1/swarms',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:choice.title,goal:choice.goal,problem:choice.id})})}
     const search=new URLSearchParams({fund:'',amount,...(note?{note}:{})});
-    const link=document.getElementById('approve');link.href=(tg?frame.base:new URL(frame.url).origin)+'/s/'+encodeURIComponent(currentSwarm.id)+'?'+search;
+    const link=document.getElementById('approve');link.href=(tg?frame.base:frame.site)+'/s/'+encodeURIComponent(currentSwarm.id)+'?'+search;
     document.getElementById('code').textContent='$'+amount;
     show('approve');
   }catch(error){say(box,error.message||'That did not go through.')}
@@ -460,8 +467,8 @@ if(frame.kind==='swarm'){
   };
   if(demo||query.has('demo')){samples();const goal=document.querySelector('[data-view=fund] .goal');if(goal&&!document.querySelector('[data-view=fund] .notes'))goal.insertAdjacentHTML('afterend','<ol class="list notes">'+[['Report cost per solved task, not per token','3.30'],['Include Qwen3-Coder even if slow','1.55'],['Publish the harness as a repo','0.90']].map(([text,amount])=>'<li class="row-item"><span>'+text+'</span><em>$'+amount+'</em></li>').join('')+'</ol>')}
   else{
-    fetch('/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/feed?before='+Number.MAX_SAFE_INTEGER+'&limit=40').then(response=>response.json()).then(page=>{const entries=page.entries||[];const shown=entries.slice(-30);if(shown.length)document.getElementById('empty-feed').remove();shown.forEach(entry);panes.transcript.scrollTop=panes.transcript.scrollHeight;follow(entries)}).catch(()=>follow([]));
-    fetch('/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/chat').then(response=>response.json()).then(room=>{const names=Object.fromEntries((room.members||[]).map(member=>[member.address,member.handle]));if((room.messages||[]).length)document.getElementById('empty-chat').remove();(room.messages||[]).slice(-40).forEach(message=>chat(message,names));if((room.members||[]).length)document.getElementById('watching').textContent=String(room.members.length)}).catch(()=>{});
+    fetch(frame.root+'/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/feed?before='+Number.MAX_SAFE_INTEGER+'&limit=40').then(response=>response.json()).then(page=>{const entries=page.entries||[];const shown=entries.slice(-30);if(shown.length)document.getElementById('empty-feed').remove();shown.forEach(entry);panes.transcript.scrollTop=panes.transcript.scrollHeight;follow(entries)}).catch(()=>follow([]));
+    fetch(frame.root+'/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/chat').then(response=>response.json()).then(room=>{const names=Object.fromEntries((room.members||[]).map(member=>[member.address,member.handle]));if((room.messages||[]).length)document.getElementById('empty-chat').remove();(room.messages||[]).slice(-40).forEach(message=>chat(message,names));if((room.members||[]).length)document.getElementById('watching').textContent=String(room.members.length)}).catch(()=>{});
   }
   function follow(known){
     if(demo||query.has('demo'))return;
@@ -475,7 +482,7 @@ if(frame.kind==='swarm'){
     const open=()=>{
       if(source||!wanted())return;
       const opened=Date.now();let fed=false;
-      const current=new EventSource('/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/live?after='+seen);
+      const current=new EventSource(frame.root+'/v1/swarms/'+encodeURIComponent(frame.swarm.id)+'/live?after='+seen);
       source=current;
       current.onmessage=message=>{const event=JSON.parse(message.data);
         if(event.type==='delta'&&event.channel==='text')write(event.who,event.delta,event.item,event.offset);

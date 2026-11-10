@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { Contributed } from '../shared/Api.ts'
+import * as Site from '../shared/Site.ts'
 import * as Feedback from './Feedback.ts'
 import * as Machines from './Machines.ts'
 import * as Operations from './Operations.ts'
@@ -31,7 +32,7 @@ app.use('/v1/*', cors({ exposeHeaders: [Replica.header] }))
 app.use('/openapi.json', cors())
 app.use('/mcp', cors({ exposeHeaders: ['mcp-protocol-version', 'mcp-session-id'] }))
 
-app.get('/openapi.json', async (c) => c.json((await import('./OpenApi.ts')).document(new URL(c.req.url).origin)))
+app.get('/openapi.json', async (c) => c.json((await import('./OpenApi.ts')).document(Site.url(c.env, c.req.url))))
 
 app.all('/mcp', async (c) => (await import('./Mcp.ts')).handle(c.req.raw, c.env))
 
@@ -127,7 +128,7 @@ app.get('/v1/swarms/:id/backers', async (c) => Problem.respond(await Operations.
 app.get('/v1/swarms/:id/progress', async (c) => Problem.respond(await Operations.progress(c.env, { swarm: c.req.param('id') })))
 
 app.get('/v1/swarms/:id/artifacts', async (c) =>
-  Problem.respond(await Operations.artifacts(c.env, { swarm: c.req.param('id') }, new URL(c.req.url).origin)),
+  Problem.respond(await Operations.artifacts(c.env, { swarm: c.req.param('id') }, Site.url(c.env, c.req.url))),
 )
 
 app.get('/v1/swarms/:id/chat', async (c) =>

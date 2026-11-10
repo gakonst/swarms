@@ -13,7 +13,7 @@
   "observability": { "enabled": true },
   "vars": {
     "GATEWAY_URL": "https://gateway.tempo-dev.workers.dev",
-    "SWARMS_URL": "https://swarms.tempo-dev.workers.dev",
+    "SWARMS_URL": "https://paradigm.xyz/swarms",
     "TELEGRAM_BOT": "TempoSwarmsBot",
     "TEMPO_RPC": "https://rpc.tempo.xyz"
   },

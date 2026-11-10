@@ -3,6 +3,7 @@ import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
 import type * as Setup from '../shared/Setup.ts'
 import type { Job, Listed, Logged, Machine, Shown } from '../shared/Fleet.ts'
+import * as Site from '../shared/Site.ts'
 import { seeded } from './boot.ts'
 import { visitor } from './stage.ts'
 
@@ -53,7 +54,7 @@ async function signed<T>(run: () => Promise<T>): Promise<T> {
 
 async function request<T>(path: string, body?: unknown, method?: 'DELETE'): Promise<T> {
   const headers: Record<string, string> = bearer ? { authorization: `Bearer ${bearer}` } : {}
-  const response = await fetch(path, method ? { headers, method } : body === undefined ? { headers } : { body: JSON.stringify(body), headers: { ...headers, 'content-type': 'application/json' }, method: 'POST' })
+  const response = await fetch(Site.at(path), method ? { headers, method } : body === undefined ? { headers } : { body: JSON.stringify(body), headers: { ...headers, 'content-type': 'application/json' }, method: 'POST' })
   const data: unknown = await response.json().catch(() => undefined)
   if (response.ok) return data as T
   throw new Failure((data ?? {}) as Partial<Problem>, response.status)
@@ -124,7 +125,7 @@ export function live(id: string, after: () => number, listener: (event: Live | {
   const open = () => {
     const opened = Date.now()
     let fed = false
-    source = new EventSource(`${path(id)}/live?after=${Math.max(after(), seen)}`)
+    source = new EventSource(Site.at(`${path(id)}/live?after=${Math.max(after(), seen)}`))
     source.onopen = () => listener({ type: 'open' })
     source.onmessage = (message) => {
       const event = JSON.parse(String(message.data)) as Live
@@ -284,7 +285,7 @@ function socket(url: string, listener: (event: { data: string } | { type: 'open'
     if (line?.readyState === WebSocket.OPEN) line.send(data)
   }
   const open = () => {
-    line = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${url}`)
+    line = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${Site.at(url)}`)
     line.onopen = () => {
       opened?.(send)
       listener({ type: 'open' })

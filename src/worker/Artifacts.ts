@@ -1,5 +1,6 @@
 import type { Artifact } from '../shared/Api.ts'
 import * as Shelf from '../shared/Artifact.ts'
+import * as Site from '../shared/Site.ts'
 import * as Gateway from './Gateway.ts'
 import * as Timing from './Timing.ts'
 
@@ -59,7 +60,8 @@ export async function read(env: Cloudflare.Env, swarm: string, name: string, fil
   return Shelf.unwrapped(await response.text(), Shelf.prefix + name + '/' + file)
 }
 
-export function policy(origin: string, gateway: string) {
+export function policy(origins: readonly string[], gateway: string) {
+  const origin = [...new Set(origins)].join(' ')
   const sources = [origin, gateway].join(' ')
   return [
     'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals',
@@ -78,7 +80,7 @@ export function policy(origin: string, gateway: string) {
 }
 
 export async function serve(env: Cloudflare.Env, request: Request, swarm: string, name: string, rest: string) {
-  const origin = new URL(request.url).origin
+  const origins = [new URL(Site.url(env, request.url)).origin, new URL(request.url).origin]
   const file = Shelf.path(rest || 'index.html')
   if (!Shelf.slug.test(name) || !file) return text(404, 'No such artifact file.')
   const owner = await Gateway.wallet(env)
@@ -98,7 +100,7 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
   const answer = new Headers({
     'access-control-allow-origin': '*',
     'cache-control': 'public, max-age=60',
-    'content-security-policy': policy(origin, new URL(env.GATEWAY_URL).origin),
+    'content-security-policy': policy(origins, new URL(env.GATEWAY_URL).origin),
     'cross-origin-resource-policy': 'cross-origin',
     'referrer-policy': 'no-referrer',
     'x-content-type-options': 'nosniff',
@@ -124,7 +126,7 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
   return html ? themed(response) : response
 }
 
-const theme = '<link rel="stylesheet" href="/kit/swarm.css">'
+const theme = `<link rel="stylesheet" href="${Site.base}/kit/swarm.css">`
 
 const kept = "<style>html,body{color-scheme:light;background:#ffffff!important;color:#000000!important}body{font-family:'Paradigm Serif',Georgia,'Times New Roman',serif!important}</style>"
 
@@ -144,6 +146,8 @@ function themed(response: Response) {
         else element.before(theme, { html: true })
       },
     })
+    .on('script[src^="/kit/"]', { element: (element) => void element.setAttribute('src', Site.base + (element.getAttribute('src') ?? '')) })
+    .on('link[href^="/kit/"]', { element: (element) => void element.setAttribute('href', Site.base + (element.getAttribute('href') ?? '')) })
     .transform(response)
 }
 

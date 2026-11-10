@@ -4,6 +4,7 @@ import { decimal } from '../shared/Memo.ts'
 import { short, usd } from './format.ts'
 import { message, remember, remembered, useConfig, useWallet } from './hooks.ts'
 import * as Api from './api.ts'
+import { here } from './boot.ts'
 import { Home, Join } from './Home.tsx'
 import { Link, navigate, usePath, warmer } from './router.tsx'
 import { Lost } from './Lost.tsx'
@@ -123,7 +124,7 @@ function Header(props: { config: Config | undefined; path: string }) {
       </p>
       <div className="header-end">
         <Link className={props.path === '/ideas' || props.path.startsWith('/s/') ? 'game-nav game-nav-on' : 'game-nav'} to="/ideas">Ideas</Link>
-        <Link className={props.path === '/new' && !location.search.includes('q=') ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start<span className="nav-long"> an idea</span></Link>
+        <Link className={props.path === '/new' && !here().searchParams.has('q') ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start<span className="nav-long"> an idea</span></Link>
         <Link className={props.path === '/about' ? 'game-nav game-nav-on nav-long' : 'game-nav nav-long'} to="/about">How it works</Link>
         <WalletButton config={props.config} />
       </div>

@@ -10,6 +10,7 @@ import encoder from './h264/encoder.wasm'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Share from './Share.ts'
+import * as Site from '../shared/Site.ts'
 
 type Name = 'card.png' | 'poster.png' | 'video.mp4'
 
@@ -80,15 +81,15 @@ export type Embed = {
   width?: number
 }
 
-export async function embed(env: Cloudflare.Env, given: string, origin: string, maxwidth?: string, maxheight?: string): Promise<Problem.Result<Embed>> {
+export async function embed(env: Cloudflare.Env, given: string, origin: string, self: string, maxwidth?: string, maxheight?: string): Promise<Problem.Result<Embed>> {
   let url: URL
   try {
     url = new URL(given)
   } catch {
     return Problem.fail(400, 'invalid_request', 'url must be a link to a Swarms page.')
   }
-  if (url.origin !== origin && url.origin !== new URL(env.SWARMS_URL).origin) return Problem.fail(404, 'not_found', 'url is not a Swarms page.')
-  const key = Share.page(new URL(`${url.pathname.replace(/^\/(x|tg)(?=\/|$)/, '') || '/'}${url.search}`, origin))
+  if (url.origin !== new URL(origin).origin && url.origin !== self && url.origin !== new URL(env.SWARMS_URL).origin) return Problem.fail(404, 'not_found', 'url is not a Swarms page.')
+  const key = Share.page(new URL(`${Site.strip(url.pathname).replace(/^\/(x|tg)(?=\/|$)/, '') || '/'}${url.search}`, self))
   const found = key && (await subject(env, key))
   if (!found) return Problem.fail(404, 'not_found', 'url is not a Swarms page or no longer exists.')
   const title = Share.title(found)

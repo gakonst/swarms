@@ -1,4 +1,5 @@
 import { createRoot, hydrateRoot } from 'react-dom/client'
+import * as Site from '../shared/Site.ts'
 import { App } from './App.tsx'
 import { preload } from './pages.tsx'
 import './style.css'
@@ -18,7 +19,7 @@ addEventListener('resize', fit)
 
 document.cookie = `swarms_tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}; path=/; max-age=31536000; samesite=lax`
 
-const path = location.pathname
+const path = Site.strip(location.pathname)
 const route = /^\/s\/[^/]+(\/chat|\/code|\/results)?\/?$/.test(path)
   ? import('./Swarm.tsx').then((module) => preload('swarm', module.Swarm))
   : path === '/new'

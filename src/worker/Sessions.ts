@@ -67,7 +67,7 @@ export function auth(env: Cloudflare.Env) {
   return Handler.auth({
     cookie: false,
     getClient: () => createClient({ chain: keyed, transport: http(env.TEMPO_RPC) }),
-    origin: env.SWARMS_URL,
+    origin: new URL(env.SWARMS_URL).origin,
     path,
     statement: 'Sign in to Swarms to chat in the rooms of the swarms you back.',
     store: store(env),

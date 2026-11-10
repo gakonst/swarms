@@ -20,6 +20,7 @@ export type Share = {
   description: string
   image: { alt: string; card: string; poster: string }
   labels: [string, string][]
+  oembed: string
   player: string | null
   title: string
   url: string
@@ -149,6 +150,7 @@ export function share(origin: string, subject: Subject, given: { description?: s
     description: given.description ?? describe(subject),
     image: { alt: alt(subject), card: asset(origin, subject, 'card.png'), poster: asset(origin, subject, 'poster.png') },
     labels: labels(subject),
+    oembed: `${origin}/oembed?url=${encodeURIComponent(`${origin}${path(subject)}`)}`,
     player: playing(origin, subject),
     title: given.title ?? title(subject),
     url: `${origin}${path(subject)}`,
@@ -192,10 +194,9 @@ function escape(value: string) {
 
 export function tags(share: Share) {
   const meta = (kind: 'name' | 'property', key: string, value: string | number) => `<meta ${kind}="${key}" content="${escape(String(value))}">`
-  const oembed = `${new URL(share.url).origin}/oembed?url=${encodeURIComponent(share.url)}`
   return [
     `<link rel="canonical" href="${escape(share.url)}">`,
-    `<link rel="alternate" type="application/json+oembed" href="${escape(oembed)}" title="${escape(share.title)}">`,
+    `<link rel="alternate" type="application/json+oembed" href="${escape(share.oembed)}" title="${escape(share.title)}">`,
     meta('property', 'og:site_name', 'Swarms'),
     meta('property', 'og:type', share.video ? 'video.other' : 'website'),
     meta('property', 'og:locale', 'en_US'),

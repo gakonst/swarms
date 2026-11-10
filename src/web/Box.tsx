@@ -2,6 +2,7 @@ import { forwardRef, useState } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import type { Config, Member, Summary } from '../shared/Api.ts'
 import * as Status from '../shared/Status.ts'
+import { site } from './boot.ts'
 import { Gauge, line } from './Card.tsx'
 import { Fuel, type Prefill, type Target } from './Contribute.tsx'
 import { Avatar } from './Room.tsx'
@@ -31,7 +32,7 @@ export const Box = forwardRef<HTMLElement, {
   const [copied, setCopied] = useState(false)
 
   const share = async () => {
-    const url = `${location.origin}/s/${swarm.id}`
+    const url = `${site()}/s/${swarm.id}`
     try {
       if (navigator.share && matchMedia('(pointer: coarse)').matches) await navigator.share({ title: swarm.title, url })
       else {
