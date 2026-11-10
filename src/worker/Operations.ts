@@ -1420,27 +1420,24 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
     id: request.request,
     ...(request.transaction ? { transaction: request.transaction } : { keyAuthorization: request.keyAuthorization }),
   })
-  if (!done.ok) {
+  if (!done.ok && done.status !== 404) {
     if (done.status === 429) return Problem.fail(429, 'rate_limited', 'Too many approvals at once. Try again in a minute.')
     if (done.status >= 400 && done.status < 500) return Problem.fail(400, 'invalid_request', `The gateway did not take the approval, so nothing was approved: ${done.detail}`)
     return Problem.fail(502, 'upstream_failed', `The gateway did not take the approval: ${done.detail}`)
   }
-  const backs = done.value.backs
-  if (!backs || backs.app !== Gateway.app(row.id) || backs.owner.toLowerCase() !== owner.toLowerCase())
-    return Problem.fail(400, 'invalid_request', 'That approval backs something other than this swarm.')
-  const limit = done.value.limits.find((each) => each.token.toLowerCase() === Chain.mach.address.toLowerCase())
-  if (!limit) return Problem.fail(502, 'upstream_failed', 'The approval carries no MACH limit.')
+  const installed = done.ok ? completed(done.value, row.id, owner) : await known(env, row.id, request, done.detail)
+  if (!installed.ok) return installed
 
-  const amount = BigInt(limit.limit)
+  const { amount, key, wallet } = installed.value
   const asked = request.note || null
-  const tagged = asked && backs.tag?.toLowerCase() === Credit.tag(row.id, asked).toLowerCase() ? asked : null
-  const text = tagged && (row.steering !== 'team' || steers?.value(done.value.wallet)) ? tagged : null
+  const tagged = asked && installed.value.tag?.toLowerCase() === Credit.tag(row.id, asked).toLowerCase() ? asked : null
+  const text = tagged && (row.steering !== 'team' || steers?.value(wallet)) ? tagged : null
   const noteId = text ? await Store.noteId(text) : null
-  const id = Credit.backing(done.value.accessKey)
-  const given = await Store.give(env, { amount: String(amount), channel: done.value.accessKey, contributor: done.value.wallet, id, note: text, note_id: noteId, swarm: row.id, token: 'mach' })
+  const id = Credit.backing(key)
+  const given = await Store.give(env, { amount: String(amount), channel: key, contributor: wallet, id, note: text, note_id: noteId, swarm: row.id, token: 'mach' })
   const written = given ?? (text && noteId ? await Store.annotate(env, row.id, id, { note: text, note_id: noteId }) : null)
   if (written) {
-    await stub(env, row.id).contributed({ amount: Memo.decimal(BigInt(written.amount)), contributor: done.value.wallet, hash: done.value.accessKey, kind: given ? 'approved' : 'noted', note: text, noteId, swarm: row.id, token: 'mach' })
+    await stub(env, row.id).contributed({ amount: Memo.decimal(BigInt(written.amount)), contributor: wallet, hash: key, kind: given ? 'approved' : 'noted', note: text, noteId, swarm: row.id, token: 'mach' })
     if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
     if (!row.creator) retold(env, row)
   } else await stub(env, row.id).wake('money')
@@ -1448,6 +1445,32 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
   const [gift, updated] = await Promise.all([written ?? Store.gift(env, id), Store.find(env, row.id)])
   if (!gift) return Problem.fail(502, 'unavailable', 'The backing was not saved.')
   return Problem.ok({ contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) }, created: given !== null })
+}
+
+type Installed = { amount: bigint; key: Address; tag: string | null; wallet: Address }
+
+function completed(approved: Gateway.Approved, swarm: string, owner: string): Problem.Result<Installed> {
+  const backs = approved.backs
+  if (!backs || backs.app !== Gateway.app(swarm) || backs.owner.toLowerCase() !== owner.toLowerCase())
+    return Problem.fail(400, 'invalid_request', 'That approval backs something other than this swarm.')
+  const limit = approved.limits.find((each) => each.token.toLowerCase() === Chain.mach.address.toLowerCase())
+  if (!limit) return Problem.fail(502, 'upstream_failed', 'The approval carries no MACH limit.')
+  return Problem.ok({ amount: BigInt(limit.limit), key: approved.accessKey, tag: backs.tag ?? null, wallet: approved.wallet })
+}
+
+async function known(env: Cloudflare.Env, swarm: string, request: { keyAuthorization?: unknown; note?: string | null | undefined }, detail: string): Promise<Problem.Result<Installed>> {
+  const refused = Problem.fail(400, 'invalid_request', `The gateway did not take the approval, so nothing was approved: ${detail}`)
+  const signed = request.keyAuthorization as { address?: unknown; keyId?: unknown } | null | undefined
+  const key = [signed?.address, signed?.keyId].find((value): value is Address => typeof value === 'string' && isAddress(value))
+  if (!key) return refused
+  const held = await Store.gift(env, Credit.backing(key))
+  const counted = held?.swarm === swarm ? Problem.ok({ amount: BigInt(held.amount), key, tag: null, wallet: held.contributor }) : undefined
+  if (counted && (held?.note || !request.note)) return counted
+  const listed = await Gateway.backings(env, swarm)
+  if (!listed.ok) return counted ?? Problem.fail(502, 'upstream_failed', `The gateway did not list the swarm's backings: ${listed.detail}`)
+  const found = listed.value.backings.find((each) => each.key.toLowerCase() === key.toLowerCase())
+  const amount = found ? Memo.units(found.ended ? found.spent : found.limit) : 0n
+  return found && amount > 0n ? Problem.ok({ amount, key: found.key, tag: found.tag, wallet: found.backer }) : (counted ?? refused)
 }
 
 function excerpt(entry: Entry, terms: readonly string[], size = 240) {
