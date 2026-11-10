@@ -105,8 +105,8 @@ export function world(route: Route) {
     calls,
     env,
     errors: () => store.storage.sql.exec("SELECT text FROM feed WHERE kind = 'error'").toArray().map((row) => String(row['text'])),
-    async give(amount: string, hash = '0x' + 'b'.repeat(64)) {
-      await Store.give(env, { amount, channel: null, contributor: rider, id: hash, note: null, note_id: null, swarm: id, token: 'pathusd' })
+    async give(amount: string, hash = '0x' + 'b'.repeat(64), note: string | null = null) {
+      await Store.give(env, { amount, channel: null, contributor: rider, id: hash, note, note_id: note && note.toLowerCase(), swarm: id, token: 'pathusd' })
     },
     pass(ms: number) {
       now += ms

@@ -114,10 +114,15 @@ export async function advance(self: Swarm, row: Store.Row) {
     ? next(self.tell(included), repo.state === 'ready' ? '' : repoLine, Persona.frozen(self.kv, Store.setup(row)).includes(Persona.roomless) ? room : '')
     : brief(money.row, self.tell(notes), repoLine, room)
   const id = `${agent.id}:${n}`
-  const start: Phase.Run =
-    run.state === 'starting' && run.id === id ? run : { balance: String(money.row.balance), id, n, since, state: 'starting', told: included.map((note) => [note.id, String(Memo.units(note.weight))]) }
+  const tried = Phase.sent(run)
+  const again = tried?.id === id ? tried : undefined
+  const start: Extract<Phase.Run, { state: 'starting' }> =
+    run.state === 'starting' && run.id === id
+      ? run
+      : { balance: String(money.row.balance), id, n, prompt: again?.prompt ?? text, since, state: 'starting', told: again?.told ?? included.map((note) => [note.id, String(Memo.units(note.weight))]) }
+  const prompt = start.prompt ?? text
   await self.move(money.row, start)
-  const sent = await Gateway.prompt(self.env, row.id, agent.id, { id: start.id, prompt: text, steer: false })
+  const sent = await Gateway.prompt(self.env, row.id, agent.id, { id: start.id, prompt, steer: false })
   if (!sent.ok && sent.status !== 409) {
     if (sent.status === 404) self.kv.delete('agent')
     if (sent.status >= 500 && unreachable(self, Date.now())) abandon(self, agent.id, sent.detail)
@@ -144,7 +149,7 @@ export async function advance(self: Swarm, row: Store.Row) {
   self.touch()
   await self.move(money.row, { balance: start.balance, from: self.last(), n, since: start.since ?? now, started: now, state: 'working', turn }, { rounds: n })
   Relay.begin(self)
-  self.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', text)
+  self.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', prompt)
   if (start.since === null) Chat.announce(self, `${worked ? 'Back at work' : 'Started working'}.`)
   return now + Clock.followMs
 }
@@ -153,7 +158,8 @@ export async function retry(self: Swarm, row: Store.Row, error: string, detail: 
   const run = self.run()
   const now = Date.now()
   failed(self, error, detail)
-  await self.move(row, { since: Phase.since(run), state: 'waiting', until: now + Clock.retryMs })
+  const sent = Phase.sent(run)
+  await self.move(row, { ...(sent ? { sent } : {}), since: Phase.since(run), state: 'waiting', until: now + Clock.retryMs })
   return now + Clock.retryMs
 }
 
@@ -169,7 +175,8 @@ export function threw(self: Swarm, error: unknown) {
   console.error('A step of the swarm threw', String(error))
   failed(self, 'The swarm hit an error and will retry.', String(error))
   const run = self.run()
-  if (run.state === 'starting') self.set({ since: run.since, state: 'waiting', until: now + Clock.retryMs })
+  const sent = Phase.sent(run)
+  if (run.state === 'starting') self.set({ ...(sent ? { sent } : {}), since: run.since, state: 'waiting', until: now + Clock.retryMs })
   return now + Clock.retryMs
 }
 

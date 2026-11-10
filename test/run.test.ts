@@ -28,6 +28,28 @@ test('a gateway call that throws is retried as an answer that failed: one error 
   assert.deepEqual(await w.status(), { status: 'funding', why: 'money' })
 })
 
+test('a prompt the gateway did not answer for is sent again word for word under its turn id, so a note that came meanwhile is not recorded as told', async (t) => {
+  const bodies: { id: string; prompt: string }[] = []
+  const w = world(async (request, url) => {
+    if (url.pathname !== '/v1/agents/agt_1/turns' || request.method !== 'POST') return undefined
+    bodies.push((await request.json()) as { id: string; prompt: string })
+    return bodies.length === 1 ? Response.json({ error: 'session operation failed' }, { status: 503 }) : undefined
+  })
+  t.after(w.restore)
+  await w.seed()
+  await w.swarm.wake('money')
+  await w.ring()
+  const waiting = w.swarm.run()
+  assert.equal(waiting.state === 'waiting' && waiting.sent?.prompt, bodies[0]?.prompt)
+  await w.give('2000000', '0x' + 'c'.repeat(64), 'Try the other approach')
+  w.pass(30_000)
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+  assert.deepEqual([bodies.length, bodies[1]?.id, bodies[1]?.prompt], [2, bodies[0]?.id, bodies[0]?.prompt])
+  assert.ok(!bodies[1]?.prompt.includes('Try the other approach'))
+  assert.deepEqual(w.sql.exec('SELECT note FROM steered').toArray(), [])
+})
+
 test('a step that keeps throwing logs one error row in ten minutes and never stays in starting, where the money check is skipped', async (t) => {
   let credit = '1'
   const w = world((_request, url) => (url.pathname === '/api/keys/credit' ? Response.json({ deposited: '1', left: credit, spent: '0' }) : undefined))

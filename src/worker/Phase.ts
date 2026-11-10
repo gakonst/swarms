@@ -10,10 +10,12 @@ export type Pause =
 
 export type Told = [note: string, weight: string]
 
+export type Sent = { id: string; prompt: string; told: Told[] }
+
 export type Run =
   | { state: 'new' }
-  | { from?: Pause | undefined; since: number | null; state: 'waiting'; until: number }
-  | { balance?: string | undefined; id: string; n: number; since: number | null; state: 'starting'; told: Told[] }
+  | { from?: Pause | undefined; sent?: Sent | undefined; since: number | null; state: 'waiting'; until: number }
+  | { balance?: string | undefined; id: string; n: number; prompt?: string | undefined; since: number | null; state: 'starting'; told: Told[] }
   | { balance?: string | undefined; from: number; n: number; since: number; started: number; state: 'working'; turn: string; wanted?: string | undefined }
   | { at: number; pause: Pause; settled?: number | undefined; state: 'paused' }
 
@@ -97,6 +99,11 @@ export function stale(why: Why | null | undefined) {
 
 export function paused(run: Run): Pause | undefined {
   return run.state === 'paused' ? run.pause : run.state === 'waiting' ? run.from : undefined
+}
+
+export function sent(run: Run): Sent | undefined {
+  if (run.state === 'waiting') return run.sent
+  return run.state === 'starting' && run.prompt !== undefined ? { id: run.id, prompt: run.prompt, told: run.told } : undefined
 }
 
 export function since(run: Run) {
