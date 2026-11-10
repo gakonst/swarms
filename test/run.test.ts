@@ -238,3 +238,47 @@ test('a paused swarm looks at its money again when a counted transfer is recorde
   await short.w.viewed()
   assert.deepEqual([short.w.swarm.run().state, short.reads(), short.w.alarm()], ['paused', 1, null])
 })
+
+test('money put in while a turn is failing for lack of it is used: the swarm tries again instead of pausing, and pauses only when a turn fails with nothing new put in', async (t) => {
+  let credit = '0.5'
+  let report: Record<string, unknown> = { request_id: 'agt_1:1', status: 'running' }
+  const w = world((_request, url) => {
+    if (url.pathname === '/api/keys/credit') return Response.json({ deposited: credit, left: credit, spent: '0' })
+    if (url.pathname === '/v1/agents/agt_1/turns/agt_1:1') return Response.json(report)
+    return undefined
+  })
+  t.after(w.restore)
+  const broke = { error: "None of this app's backers can pay right now", request_id: 'agt_1:1', status: 'failed' }
+  const fail = async () => {
+    report = broke
+    w.swarm.checked = 0
+    w.pass(11_000)
+    await w.ring()
+    report = { request_id: 'agt_1:1', status: 'running' }
+  }
+  await w.seed('500000')
+  await w.swarm.wake('money')
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+
+  credit = '5.5'
+  await w.give('5000000', '0x' + 'd'.repeat(64))
+  await fail()
+  assert.equal(w.swarm.run().state, 'waiting')
+  w.pass(15_000)
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+
+  await fail()
+  const paused = w.swarm.run()
+  assert.deepEqual(paused.state === 'paused' && paused.pause, { balance: '5500000', left: '5500000', needs: '50000', wake: null, why: 'money' })
+  w.pass(15_000)
+  await w.ring()
+  assert.deepEqual([w.swarm.run().state, w.alarm()], ['paused', null])
+
+  await w.give('1000000', '0x' + 'e'.repeat(64))
+  w.pass(600_000)
+  await w.viewed()
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+})

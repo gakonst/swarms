@@ -3,7 +3,7 @@ import * as Memo from '../shared/Memo.ts'
 
 export type Pause =
   | { why: 'unfunded' }
-  | { left: string; needs?: string | undefined; wake: number | null; why: 'money' }
+  | { balance?: string | undefined; left: string; needs?: string | undefined; wake: number | null; why: 'money' }
   | { wanted: string; why: 'costly' }
   | { failures: number; why: 'rest' }
   | { why: 'idle' }
@@ -13,8 +13,8 @@ export type Told = [note: string, weight: string]
 export type Run =
   | { state: 'new' }
   | { from?: Pause | undefined; since: number | null; state: 'waiting'; until: number }
-  | { id: string; n: number; since: number | null; state: 'starting'; told: Told[] }
-  | { from: number; n: number; since: number; started: number; state: 'working'; turn: string; wanted?: string | undefined }
+  | { balance?: string | undefined; id: string; n: number; since: number | null; state: 'starting'; told: Told[] }
+  | { balance?: string | undefined; from: number; n: number; since: number; started: number; state: 'working'; turn: string; wanted?: string | undefined }
   | { at: number; pause: Pause; settled?: number | undefined; state: 'paused' }
 
 export type Paused = Extract<Run, { state: 'paused' }>
@@ -47,6 +47,12 @@ export const rereadMs = 10 * 60_000
 
 export function unread(run: Paused, now: number) {
   return run.settled === undefined || now - run.settled >= rereadMs
+}
+
+export function resumes(pause: Pause, money: { balance: bigint; left: bigint; reserve: bigint }) {
+  if (money.left < money.reserve) return false
+  if (pause.why !== 'money' || pause.needs === undefined || BigInt(pause.left) < BigInt(pause.needs)) return true
+  return pause.balance !== undefined && money.balance > BigInt(pause.balance)
 }
 
 export function due(run: Run, now: number) {
