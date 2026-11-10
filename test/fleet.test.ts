@@ -134,3 +134,20 @@ test('shutting down a sandbox ends only the machine it names, and only while tha
   ], [])
   assert.deepEqual(Object.fromEntries(machines.map((machine) => [machine.name, machine.ended])), { d: null, gpu: 7000, sandbox: null })
 })
+
+test('a machine that left and joined again is running since it came back, whichever line said it joined', () => {
+  const machines = folded([
+    entry(1, 'machine', "A contributor's machine joined the swarm as hand mbp-abc123 (laptop)."),
+    entry(2, 'machine', 'Machine box-1 joined the swarm.'),
+    entry(3, 'machine', 'Machine mbp-abc123 left.'),
+    entry(4, 'machine', 'Machine box-1 left.'),
+    entry(5, 'machine', 'Machine gone-1 joined the swarm.'),
+    entry(6, 'machine', "A contributor's machine joined the swarm as hand mbp-abc123 (laptop)."),
+    entry(7, 'machine', 'Machine box-1 joined the swarm.'),
+    entry(8, 'machine', 'Machine gone-1 left.'),
+  ], [{ connected: true, name: 'mbp-abc123' }, { connected: true, name: 'box-1' }])
+  assert.deepEqual(
+    machines.map((machine) => [machine.name, machine.kind, machine.label, machine.connected, machine.started, machine.ended]),
+    [['box-1', 'hand', null, true, 7000, null], ['mbp-abc123', 'hand', 'laptop', true, 6000, null], ['gone-1', 'hand', null, false, 5000, 8000]],
+  )
+})
