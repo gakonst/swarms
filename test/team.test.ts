@@ -34,6 +34,7 @@ function world(swarm: { creator?: string | null; steering?: 'open' | 'team' } = 
   const calls: string[] = []
   const down = new Set<string>()
   const told: Roster[] = []
+  let made = 0
   const gateway = async (request: Request) => {
     const path = new URL(request.url).pathname
     calls.push(path)
@@ -41,7 +42,7 @@ function world(swarm: { creator?: string | null; steering?: 'open' | 'team' } = 
     if (path === '/api/keys/me') return Response.json({ wallet: operator })
     const body = (await request.json()) as { budget?: number | null; member?: string; memberBudget?: number | null; role?: Mate['role']; team?: string }
     if (path === '/v1/teams/create') {
-      const address = '0x' + String(teams.size + 1).padStart(40, '0')
+      const address = '0x' + String(++made).padStart(40, '0')
       teams.set(address, { budget: null, members: new Map([[operator, { limit: null, role: 'admin' }]]) })
       return Response.json({ address })
     }
@@ -56,6 +57,7 @@ function world(swarm: { creator?: string | null; steering?: 'open' | 'team' } = 
       return Response.json({})
     }
     if (path === '/v1/teams/remove') return Response.json({ removed: team.members.delete(member) })
+    if (path === '/v1/teams/delete') return Response.json({ deleted: teams.delete(String(body.team).toLowerCase()) })
     if (path === '/v1/teams/update') {
       team.budget = body.memberBudget ?? null
       return Response.json({})
@@ -140,4 +142,29 @@ test('with no admin on the gateway team and nobody who started the swarm, its bi
 
   await value(Operations.seat(env, { member: bob, swarm: 's' }, cyd))
   assert.deepEqual(seated(team).sort(), ['bob:member', 'cyd:admin'])
+})
+
+test('two first seats at once land on one gateway team, and the team made by the one that lost is deleted', async () => {
+  const { calls, env, seated, teams } = world()
+  const [first, second] = await Promise.all([Operations.seat(env, { member: bob, swarm: 's' }, ada), Operations.seat(env, { member: cyd, swarm: 's' }, ada)])
+  assert.ok(first.ok && second.ok)
+  assert.equal(calls.filter((path) => path === '/v1/teams/create').length, 2)
+
+  const team = (await Store.find(env, 's'))?.team as string
+  assert.deepEqual([...teams.keys()], [team])
+  assert.deepEqual(seated(team).sort(), ['ada:admin', 'bob:member', 'cyd:member'])
+})
+
+test("a team whose admin the gateway did not add is kept, and the next try adds them to it", async () => {
+  const { calls, down, env, seated } = world()
+  down.add('/v1/teams/add')
+  assert.equal(await refused(Operations.seat(env, { member: bob, swarm: 's' }, ada)), 502)
+  const team = (await Store.find(env, 's'))?.team as string
+  assert.ok(team)
+
+  down.clear()
+  const roster = await value(Operations.seat(env, { member: bob, swarm: 's' }, ada))
+  assert.equal(roster.team, team)
+  assert.equal(calls.filter((path) => path === '/v1/teams/create').length, 1)
+  assert.deepEqual(seated(team).sort(), ['ada:admin', 'bob:member'])
 })

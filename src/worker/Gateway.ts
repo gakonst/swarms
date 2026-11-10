@@ -210,6 +210,10 @@ export function team(env: Cloudflare.Env, name: string) {
   return send<{ address: `0x${string}` }>(env, '/v1/teams/create', { body: { name } })
 }
 
+export function disband(env: Cloudflare.Env, team: string) {
+  return send<unknown>(env, '/v1/teams/delete', { body: { team } })
+}
+
 export function teammates(env: Cloudflare.Env, team: string) {
   return send<{ memberBudget: number | string | null; members: Teammate[] }>(env, '/v1/teams/members', { body: { team } })
 }

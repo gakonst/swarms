@@ -92,18 +92,22 @@ async function led(env: Cloudflare.Env, team: string, admin: Address): Promise<P
   return Problem.fail(502, 'upstream_failed', `The gateway did not add the swarm's admin to its team: ${added.detail}`)
 }
 
-export async function ensure(env: Cloudflare.Env, row: Store.Row, admin: Address): Promise<Problem.Result<Store.Row>> {
-  if (row.team) {
-    const seated = await led(env, row.team, admin)
-    return seated.ok ? Problem.ok(row) : seated
-  }
+async function founded(env: Cloudflare.Env, row: Store.Row): Promise<Problem.Result<Address>> {
   const made = await Gateway.team(env, (row.title.trim() || 'Swarm ' + row.id).slice(0, 64))
   if (!made.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not create the swarm's team: ${made.detail}`)
-  const added = await Gateway.enlist(env, made.value.address, { member: admin, role: 'admin' })
-  if (!added.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not add the swarm's admin to its team: ${added.detail}`)
-  await Store.update(env, row.id, { team: made.value.address.toLowerCase() as Address })
+  const mine = made.value.address.toLowerCase() as Address
+  const held = await Store.teamed(env, row.id, mine)
+  if (held !== mine) await Gateway.disband(env, mine).catch(() => undefined)
+  return held ? Problem.ok(held) : Problem.fail(404, 'not_found', 'No swarm has this id.')
+}
+
+export async function ensure(env: Cloudflare.Env, row: Store.Row, admin: Address): Promise<Problem.Result<Store.Row>> {
+  const team = row.team ? Problem.ok(row.team) : await founded(env, row)
+  if (!team.ok) return team
+  const seated = await led(env, team.value, admin)
+  if (!seated.ok) return seated
   forget(row.id)
-  return Problem.ok({ ...row, team: made.value.address.toLowerCase() as Address })
+  return Problem.ok({ ...row, team: team.value })
 }
 
 function biggest(members: readonly Member[]) {
