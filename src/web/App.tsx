@@ -1,15 +1,15 @@
-import { lazy, type MouseEvent, Suspense, useEffect, useRef, useState } from 'react'
+import { Component, lazy, type MouseEvent, type ReactNode, Suspense, useEffect, useRef, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import * as Site from '../shared/Site.ts'
-import { short, usd } from './format.ts'
+import { signed, usd } from './format.ts'
 import { message, remember, remembered, useConfig, useWallet } from './hooks.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { Home, Join } from './Home.tsx'
 import { Link, navigate, usePath, warmer } from './router.tsx'
 import { Lost } from './Lost.tsx'
-import { page, preload } from './pages.tsx'
+import { page, preload } from './pages.ts'
 import * as Wallet from './wallet.ts'
 
 const New = page('new', () => import('./New.tsx').then((module) => module.New))
@@ -78,12 +78,12 @@ function WalletButton(props: { config: Config | undefined }) {
       <div className="wallet-menu" data-open={open} ref={menu}>
         {wallet.pending ? (
           <span aria-busy="true" className="btn btn-medium wallet" onClick={() => setOpen(!open)}>
-            <span>{wallet.account ? '@' + wallet.account.handle : short(wallet.address)}</span>
+            <span>{signed(wallet.account, wallet.address)}</span>
             {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
           </span>
         ) : (
           <a className="btn btn-medium wallet" href={props.config ? `${props.config.explorer}/address/${wallet.address}` : undefined} onClick={tap} rel="noreferrer" target="_blank" title={wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : 'Your Tempo Wallet'}>
-            <span>{wallet.account?.name ? `@${wallet.account.name}` : short(wallet.address)}</span>
+            <span>{signed(wallet.account, wallet.address)}</span>
             {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
           </a>
         )}
@@ -139,6 +139,28 @@ function Header(props: { config: Config | undefined; path: string }) {
   )
 }
 
+class Caught extends Component<{ children: ReactNode; path: string }, { failed: boolean }> {
+  override state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  override componentDidUpdate(previous: { path: string }) {
+    if (this.state.failed && previous.path !== this.props.path) this.setState({ failed: false })
+  }
+
+  override render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <Lost title="This page did not load.">
+        <button className="lost-row" onClick={() => location.reload()} type="button">Try again <span aria-hidden="true">↻</span></button>
+        <Link className="lost-row" to="/ideas">All swarms <span aria-hidden="true">→</span></Link>
+      </Lost>
+    )
+  }
+}
+
 export function App() {
   const path = usePath()
   const config = useConfig()
@@ -176,6 +198,7 @@ export function App() {
     <div className="app" data-chat={view === 'chat' || undefined}>
       <Header config={config} path={path} />
       <main>
+        <Caught path={path}>
         <Suspense fallback={<section aria-busy="true" className="page lost" />}>
         {path === '/' ? (
           <Home />
@@ -196,6 +219,7 @@ export function App() {
           </Lost>
         )}
         </Suspense>
+        </Caught>
       </main>
     </div>
   )

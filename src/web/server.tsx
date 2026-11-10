@@ -3,7 +3,7 @@ import { About } from './About.tsx'
 import { App } from './App.tsx'
 import { Docs } from './Docs.tsx'
 import { New } from './New.tsx'
-import { preload } from './pages.tsx'
+import { preload } from './pages.ts'
 import { Swarm } from './Swarm.tsx'
 
 preload('about', About)

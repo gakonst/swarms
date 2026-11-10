@@ -287,6 +287,10 @@ export async function disconnect() {
 }
 
 export async function authorize(config: Config, authorizeAccessKey: unknown) {
+  if (fixture) {
+    await asked()
+    return { address: await connect(config), keyAuthorization: 'fixture' }
+  }
   const result = (await (await wallet()).request({ method: 'wallet_connect', params: [{ capabilities: { authorizeAccessKey }, chainId: config.chainId }] } as never)) as {
     accounts: readonly { address: Address; capabilities?: { keyAuthorization?: unknown } }[]
   }

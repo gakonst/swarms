@@ -46,7 +46,7 @@ function dispatch(wire: Wire, signal: Signal) {
 }
 
 function stir(wire: Wire, stirred: readonly Part[], cause: Cause) {
-  if (document.visibilityState === 'hidden') {
+  if (document.visibilityState === 'hidden' || !wire.listeners.size) {
     for (const part of stirred) if (wire.held.get(part) !== 'welcome') wire.held.set(part, cause)
     return
   }
@@ -73,6 +73,7 @@ function heard(wire: Wire, event: Chatter | { type: 'open' | 'closed' }) {
     return
   }
   if (event.type === 'pulse' || event.type === 'changed') wire.applied = event.version
+  if (!wire.listeners.size && (event.type === 'pulse' || event.type === 'said' || event.type === 'artifacts' || event.type === 'roster')) return stir(wire, parts, 'welcome')
   dispatch(wire, event)
   if (event.type === 'changed') stir(wire, event.parts, 'changed')
 }
@@ -80,7 +81,7 @@ function heard(wire: Wire, event: Chatter | { type: 'open' | 'closed' }) {
 function released() {
   if (document.visibilityState === 'hidden') return
   for (const wire of wires.values()) {
-    if (!wire.held.size) continue
+    if (!wire.held.size || !wire.listeners.size) continue
     const held = [...wire.held]
     wire.held.clear()
     for (const cause of ['welcome', 'changed'] as const) {
@@ -113,6 +114,7 @@ export function join(id: string, mode: Mode, listener: (signal: Signal) => void)
   clearTimeout(wire.linger)
   wire.users += 1
   wire.listeners.add(listener)
+  if (wire.held.size) setTimeout(released, 0)
   return () => {
     wire.listeners.delete(listener)
     wire.users -= 1
@@ -154,7 +156,7 @@ export function useWire(id: string, mode: Mode, listener?: (signal: Signal) => v
   return useSyncExternalStore(watch, () => state(id, mode), () => 'opening' as const)
 }
 
-type Hall = { close: () => void; linger: ReturnType<typeof setTimeout> | undefined; listeners: Set<(event: Lobby) => void>; state: State; users: number }
+type Hall = { close: () => void; linger: ReturnType<typeof setTimeout> | undefined; listeners: Set<(event: Lobby) => void>; missed: boolean; state: State; users: number }
 
 let hall: Hall | undefined
 
@@ -165,10 +167,13 @@ function opened() {
         made.state = event.type === 'welcome' ? 'live' : 'down'
         notify()
       }
-      if (event.type === 'welcome' || event.type === 'swarm') for (const listener of [...made.listeners]) listener(event)
+      if (event.type !== 'welcome' && event.type !== 'swarm') return
+      if (!made.listeners.size) made.missed = true
+      for (const listener of [...made.listeners]) listener(event)
     }),
     linger: undefined,
     listeners: new Set(),
+    missed: false,
     state: 'opening',
     users: 0,
   }
@@ -185,6 +190,12 @@ export function enter(listener: (event: Lobby) => void) {
   clearTimeout(current.linger)
   current.users += 1
   current.listeners.add(listener)
+  if (current.missed)
+    setTimeout(() => {
+      if (!current.missed || !current.listeners.size) return
+      current.missed = false
+      for (const each of [...current.listeners]) each({ type: 'welcome' })
+    }, 0)
   return () => {
     current.listeners.delete(listener)
     current.users -= 1

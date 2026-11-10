@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import type { Config, Steering } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
@@ -9,6 +9,8 @@ import { Box } from './Box.tsx'
 import { Card, fromProblem, pill } from './Card.tsx'
 import type { Target } from './Contribute.tsx'
 import { usd } from './format.ts'
+import { launcher } from './launch.ts'
+import * as Pay from './pay.ts'
 import { brief, open, problems } from './research.ts'
 import { Back, navigate, useCanBack } from './router.tsx'
 import { Steered } from './Steering.tsx'
@@ -37,7 +39,7 @@ function starter() {
   return asked === null ? undefined : problems.find((problem) => problem.id === asked)
 }
 
-function Runs(props: { config: Config | undefined; onPick: (template: Offered) => void; template: Offered }) {
+function Runs(props: { config: Config | undefined; disabled: boolean; onPick: (template: Offered) => void; template: Offered }) {
   const prices = new Map((props.config?.models ?? []).map((model) => [model.id, model]))
   return (
     <div aria-label="Runs on" className="runs" role="radiogroup">
@@ -48,7 +50,7 @@ function Runs(props: { config: Config | undefined; onPick: (template: Offered) =
         const priced = typeof resolved === 'string' || !prices.size ? undefined : Setup.priced(resolved, prices)
         return (
           <label data-on={props.template === name} key={name}>
-            <input checked={props.template === name} name="runs" onChange={() => props.onPick(name)} type="radio" value={name} />
+            <input checked={props.template === name} disabled={props.disabled} name="runs" onChange={() => props.onPick(name)} type="radio" value={name} />
             <i aria-hidden="true" />
             <span><b>{preset.label}</b> <span>{Setup.name(preset.model)}</span></span>
             <small>{priced && typeof priced !== 'string' ? `${usd(decimal(BigInt(priced.step)))} a step` : ''}</small>
@@ -65,16 +67,14 @@ function Runs(props: { config: Config | undefined; onPick: (template: Offered) =
   )
 }
 
-function useLaunch(title: string, goal: string, problem: string | undefined, template: Offered, steering: Steering) {
-  const created = useRef<Target | undefined>(undefined)
-  const target = async (step: (step: 'create') => void) => {
-    if (created.current) return created.current
-    step('create')
-    const swarm = await Api.create({ steering, template, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}) })
-    created.current = { id: swarm.id }
-    return created.current
+function useLaunch(slot: string, title: string, goal: string, problem: string | undefined, template: Offered, steering: Steering) {
+  const [launch] = useState(() => launcher((input: Parameters<typeof Api.create>[0]) => Api.create(input).then((swarm): Target => ({ id: swarm.id }))))
+  const input = { steering, template, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}) }
+  return {
+    busy: Pay.useFlow(slot).at === 'busy',
+    locked: !(input.title.length >= 1 && input.title.length <= 80 && input.goal.length >= 10 && input.goal.length <= 12_000),
+    target: (step: (step: 'create') => void) => launch(input, step),
   }
-  return { locked: !(title.trim().length >= 1 && title.trim().length <= 80 && goal.trim().length >= 10 && goal.trim().length <= 12_000), reset: () => (created.current = undefined), target }
 }
 
 function landed(swarm: Target) {
@@ -91,16 +91,8 @@ function Seed(props: { config: Config | undefined; problem: Problem }) {
   const [note, setNote] = useState('')
   const [template, setTemplate] = useState(asked)
   const [steering, setSteering] = useState<Steering>('team')
-  const launch = useLaunch(problem.title, problem.goal, problem.id, template, steering)
-  const pick = (next: Offered) => {
-    setTemplate(next)
-    launch.reset()
-  }
-  const steer = (next: Steering) => {
-    setSteering(next)
-    launch.reset()
-  }
   const id = `idea:${problem.id}`
+  const launch = useLaunch(id, problem.title, problem.goal, problem.id, template, steering)
   const backed = useCanBack()
 
   return (
@@ -116,16 +108,17 @@ function Seed(props: { config: Config | undefined; problem: Problem }) {
           </header>
           <Box
             config={props.config}
-            extra={<><Runs config={props.config} onPick={pick} template={template} /><Steered onPick={steer} steering={steering} /></>}
+            extra={<><Runs config={props.config} disabled={launch.busy} onPick={setTemplate} template={template} /><Steered disabled={launch.busy} onPick={setSteering} steering={steering} /></>}
             first
             focus={0}
             least={least(props.config, template)}
             locked={launch.locked}
             members={[]}
             note={note}
-            onDone={landed}
+            onDone={() => undefined}
             onNote={setNote}
             onOpen={() => undefined}
+            onSent={landed}
             open
             prefill={prefill}
             shared={false}
@@ -146,15 +139,7 @@ function Own(props: { config: Config | undefined }) {
   const drafted = brief(question)
   const [template, setTemplate] = useState(asked)
   const [steering, setSteering] = useState<Steering>('team')
-  const launch = useLaunch(drafted.title, drafted.goal, undefined, template, steering)
-  const pick = (next: Offered) => {
-    setTemplate(next)
-    launch.reset()
-  }
-  const steer = (next: Steering) => {
-    setSteering(next)
-    launch.reset()
-  }
+  const launch = useLaunch('own', drafted.title, drafted.goal, undefined, template, steering)
   const free = (list.data ? open(list.data.swarms) : problems).slice(0, 3)
 
   return (
@@ -162,22 +147,23 @@ function Own(props: { config: Config | undefined }) {
       <h1>What breakthrough are you after?</h1>
       <label className="own-ask">
         <span className="sr-only">Your problem</span>
-        <textarea autoFocus id="question" maxLength={10_000} onChange={(event) => { setQuestion(event.target.value); launch.reset() }} placeholder="e.g. Find the cheapest way to make clean drinking water at home" rows={3} value={question} />
+        <textarea autoFocus disabled={launch.busy} id="question" maxLength={10_000} onChange={(event) => setQuestion(event.target.value)} placeholder="e.g. Find the cheapest way to make clean drinking water at home" rows={3} value={question} />
       </label>
       <div className="own-box">
         <Box
             config={props.config}
-            extra={<><Runs config={props.config} onPick={pick} template={template} /><Steered onPick={steer} steering={steering} /></>}
+            extra={<><Runs config={props.config} disabled={launch.busy} onPick={setTemplate} template={template} /><Steered disabled={launch.busy} onPick={setSteering} steering={steering} /></>}
             first
             focus={0}
             least={least(props.config, template)}
             locked={launch.locked}
             members={[]}
             note={note}
-            onDone={landed}
+            onDone={() => undefined}
             onNote={setNote}
             bare
             onOpen={() => undefined}
+            onSent={landed}
             open
             prefill={prefill}
             shared={false}

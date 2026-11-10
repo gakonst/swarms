@@ -5,6 +5,7 @@ import * as Status from '../shared/Status.ts'
 import { site } from './boot.ts'
 import { Gauge, line } from './Card.tsx'
 import { Fuel, type Prefill, type Target } from './Contribute.tsx'
+import * as Pay from './pay.ts'
 import { Avatar } from './Room.tsx'
 
 export const Box = forwardRef<HTMLElement, {
@@ -19,6 +20,7 @@ export const Box = forwardRef<HTMLElement, {
   onDone: (target: Target) => void
   onNote: (note: string) => void
   onOpen: () => void
+  onSent?: (target: Target) => void
   open: boolean
   bare?: boolean
   prefill: Prefill
@@ -34,6 +36,7 @@ export const Box = forwardRef<HTMLElement, {
   const left = Number(swarm.remaining)
   const backers = props.members.filter((member) => Number(member.backed) > 0)
   const [copied, setCopied] = useState(false)
+  const flow = Pay.useFlow(swarm.id)
 
   const share = async () => {
     const url = `${site()}/s/${swarm.id}`
@@ -63,8 +66,8 @@ export const Box = forwardRef<HTMLElement, {
         </p>
       )}
       {!props.bare && <p className="box-state" data-mood={stood.mood}>{balance > 0 || swarm.contributors > 0 ? line(stood.word) : 'Be the first to ride it.'}</p>}
-      {props.open ? (
-        <Fuel config={props.config} extra={props.extra} first={props.first} focus={props.focus} least={props.least} locked={props.locked} note={props.note} onDone={props.onDone} onNote={props.onNote} prefill={props.prefill} sign={props.sign} steers={props.steers} target={props.target} />
+      {props.open || flow.at !== 'idle' ? (
+        <Fuel config={props.config} extra={props.extra} first={props.first} focus={props.focus} least={props.least} locked={props.locked} note={props.note} onDone={props.onDone} onNote={props.onNote} onSent={props.onSent} prefill={props.prefill} sign={props.sign} slot={swarm.id} steers={props.steers} target={props.target} />
       ) : (
         <button className="btn btn-high fuel-go" onClick={props.onOpen} type="button">Ride it</button>
       )}
