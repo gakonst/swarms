@@ -235,10 +235,8 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   const found = self.ctx.storage.sql
     .exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n)
     .toArray()[0]
-  if (self.branched > (self.kv.get<number>('settledAt') ?? 0) || self.born > run.started) {
-    self.kv.put('settledAt', Date.now())
+  if (Math.max(self.branched, self.born) > (self.kv.get<number>('settledAt') ?? 0))
     await Branching.settled(self, money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
-  }
   const repo = await Repo.located(self, money.row)
   const commits = repo.state === 'ready' && Follow.cued(self, 'git', run.started) ? await Repo.pushed(self, row.id, repo.name, found?.base ?? null) : []
   if (commits[0]) Repo.saw(self, commits[0].sha)

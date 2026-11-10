@@ -40,12 +40,13 @@ export function rebudget(self: Swarm, swarm: string, agent: string, branch: numb
 export async function settled(self: Swarm, row: Store.Row) {
   const agent = self.agent()?.id
   if (!agent) return
+  const at = Date.now()
   const listed = await Gateway.subagents(self.env, row.id, agent)
   if (!listed.ok) return
   const closed = listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed')
-  if (!closed.length) return
-  const { settled } = await Store.funds(self.env, row.id, agent)
+  const settled = closed.length ? (await Store.funds(self.env, row.id, agent)).settled : new Set<number>()
   for (const branch of closed.filter((found) => !settled.has(found.agent_id))) await Store.settle(self.env, { agent, branch: branch.agent_id, left: unspent(branch), swarm: row.id })
+  self.kv.put('settledAt', at)
 }
 
 export async function release(self: Swarm, swarm: string, current: string) {

@@ -845,6 +845,20 @@ function ended(branch: Branch) {
   return branch.state === 'closed' || branch.state === 'closing'
 }
 
+async function swept(env: Cloudflare.Env, swarm: string, found: Directed) {
+  const agent = found.agent
+  if (!agent) return
+  for (const branch of found.list.filter((each) => each.parent === null && each.state === 'closed' && !found.money.settled.has(each.id))) {
+    const returned = await Store.settle(env, { agent, branch: branch.id, left: branch.left === null ? null : Memo.units(branch.left), swarm })
+    await refunded(env, swarm, branch, returned)
+  }
+}
+
+async function refunded(env: Cloudflare.Env, swarm: string, branch: Branch, returned: readonly { amount: bigint }[]) {
+  const back = returned.reduce((sum, item) => sum + item.amount, 0n)
+  if (back > 0n) await reached(stub(env, swarm).voice(swarm, `${dollars(Memo.decimal(back))} that ${branch.who} had not spent went back to its backers, to put behind something else.`))
+}
+
 async function steerable(env: Cloudflare.Env, input: { address: Address | undefined; swarm: string }) {
   if (!input.address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo Wallet to direct a swarm's money.")
   const [row, account] = await Promise.all([Store.find(env, input.swarm), Store.account(env, input.address)])
@@ -910,6 +924,7 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
 
   const found = await directed(env, row, reached(stub(env, row.id).subagents(row.id, true)))
   if (!found.ok) return found
+  await swept(env, row.id, found.value)
   const agent = found.value.agent
   if (!agent) return Problem.fail(409, 'conflict', 'The swarm has no agent yet: it starts once money arrives.')
   const target = found.value.list.find((branch) => branch.id === request.branch)
@@ -984,6 +999,7 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
 
   const found = await directed(env, row, reached(stub(env, row.id).subagents(row.id, true)))
   if (!found.ok) return found
+  await swept(env, row.id, found.value)
   const agent = found.value.agent
   const target = found.value.list.find((branch) => branch.id === request.branch && branch.parent === null)
   if (!agent || !target) return Problem.fail(404, 'not_found', `This swarm has no branch ${request.branch}.`)
@@ -1004,9 +1020,7 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
   const closed = halted.value.find((agent) => agent.agent_id === target.id)
   const after = closed?.budget_usd === undefined ? undefined : Memo.units(closed.budget_usd.toFixed(6)) - Memo.units((closed.spent_usd ?? 0).toFixed(6))
   const left = target.budget === null ? null : after !== undefined ? (after > 0n ? after : 0n) : target.left === null ? 0n : Memo.units(target.left)
-  const returned = await Store.settle(env, { agent, branch: target.id, left, swarm: row.id })
-  const back = returned.reduce((sum, item) => sum + item.amount, 0n)
-  if (back > 0n) await reached(stub(env, row.id).voice(row.id, `${dollars(Memo.decimal(back))} that ${target.who} had not spent went back to its backers, to put behind something else.`))
+  await refunded(env, row.id, target, await Store.settle(env, { agent, branch: target.id, left, swarm: row.id }))
   const [branch] = await fresh(env, row, [target.id], [{ ...target, state: 'closed' }])
   return Problem.ok(branch as Branch)
 }
@@ -1022,6 +1036,7 @@ export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: 
 
   const found = await directed(env, row, reached(stub(env, row.id).subagents(row.id, true)))
   if (!found.ok) return found
+  await swept(env, row.id, found.value)
   if (!seat && !found.value.members.some((member) => member.address === allowed.value.address))
     return Problem.fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you direct its money.')
   const agent = found.value.agent
