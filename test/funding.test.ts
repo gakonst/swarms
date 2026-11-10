@@ -14,6 +14,7 @@ registerHooks({
 const Operations: typeof OperationsModule = await import('../src/worker/Operations.ts')
 const Branching: typeof BranchingModule = await import('../src/worker/Branching.ts')
 const Store: typeof StoreModule = await import('../src/worker/Store.ts')
+const { Swarm } = await import('../src/worker/Swarm.ts')
 
 const id = 'abc123abc123'
 const rider = '0x00000000000000000000000000000000000000a1'
@@ -27,8 +28,15 @@ function world(gateway: (path: string, body: unknown) => unknown = () => ({}), l
   db.sqlite.prepare("insert into names (address, name, updated_at) values (?, 'ada', 1)").run(rider)
   const calls: [string, ...unknown[]][] = []
   const said = (name: string) => async (...args: unknown[]) => (calls.push([name, ...args]), { ok: true, value: null })
-  const object = { contributed: said('contributed'), direct: said('direct'), subagents: async () => ({ ok: true, value: { agent: 'agt', list: listed } }), voice: said('voice'), wake: said('wake') }
-  const env = {
+  const self = { agent: () => ({ id: 'agt' }), budgeting: Promise.resolve(), changed: () => undefined, get env() { return env }, log: () => undefined, touch: () => undefined }
+  const object = {
+    contributed: said('contributed'),
+    direct: (...args: Parameters<InstanceType<typeof Swarm>['direct']>) => Swarm.prototype.direct.apply(self as never, args),
+    subagents: async () => ({ ok: true, value: { agent: 'agt', list: listed } }),
+    voice: said('voice'),
+    wake: said('wake'),
+  }
+  const env: Cloudflare.Env = {
     ...db.env,
     GATEWAY: {
       fetch: async (request: Request) => {
@@ -88,4 +96,27 @@ test('money behind a branch the lead closed goes back to its riders before a mov
   assert.deepEqual([stopped.ok, stopped.ok ? null : stopped.status], [false, 409])
   assert.equal(calls.length, 1)
   assert.deepEqual(await member(), ['3.000000', '0.000000', '3.000000'])
+})
+
+test("a fund the branch could not be told about is undone and the budget set from what is still behind the branch, another rider's fund included", async () => {
+  const other = '0x00000000000000000000000000000000000000b2'
+  const budgets: unknown[] = []
+  const { env, member } = world(
+    (path, body) => {
+      if (path.endsWith('/messages')) return new Response('down', { status: 503 })
+      if (path.endsWith('/budget')) budgets.push((body as { budget_usd: number }).budget_usd)
+      return { agent: { ...running, agent_id: 2 } }
+    },
+    [closed, { ...running, budget_usd: 5 }],
+  )
+  await Store.give(env, { amount: '2000000', channel: null, contributor: rider, id: '0xfeed', note: null, note_id: null, swarm: id, token: 'ousd' })
+  await Store.give(env, { amount: '1000000', channel: null, contributor: other, id: '0xbeef', note: null, note_id: null, swarm: id, token: 'ousd' })
+  await Store.base(env, id, 'agt', 2, 5_000_000n)
+  assert.equal(await Store.steer(env, { amount: 1_000_000n, branch: { agent: 'agt', id: 2 }, contributor: other, id: 'f2', note: 'branch 2', note_id: 'branch:2', swarm: id }), true)
+
+  const refused = await Operations.fund(env, { amount: '2', branch: 2, message: 'Write the proof first', swarm: id }, rider)
+  assert.deepEqual([refused.ok, refused.ok ? null : refused.status], [false, 502])
+  assert.deepEqual(budgets, [8, 6])
+  assert.deepEqual(await member(), ['2.000000', '0.000000', '2.000000'])
+  assert.equal((await Store.funds(env, id, 'agt')).shares.get(2)?.get(other), 1_000_000n)
 })

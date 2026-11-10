@@ -743,7 +743,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async direct(
     swarm: string,
-    input: { agent: string; branch: number; previous: number | null; said: string | null; steer?: { note: string; text: string; who: string }; usd: number | null; wake: string | null },
+    input: { agent: string; branch: number; said: string | null; steer?: { note: string; text: string; who: string }; usd: number | null; wake: string | null },
   ): Promise<Gateway.Result<Gateway.Subagent | null>> {
     const agent = this.agent()?.id
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
@@ -753,10 +753,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     if (input.steer) {
       const told = await Gateway.tell(this.env, swarm, agent, input.branch, input.steer.text, 'urgent')
-      if (!told.ok) {
-        if (set) await Gateway.budget(this.env, swarm, agent, input.branch, input.previous)
-        return told
-      }
+      if (!told.ok) return told
       this.log('steer', input.steer.note, input.steer.text, { who: input.steer.who })
     } else if (input.wake) await Gateway.tell(this.env, swarm, agent, input.branch, input.wake)
     if (input.said) {

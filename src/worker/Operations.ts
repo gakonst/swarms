@@ -963,7 +963,6 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
     stub(env, row.id).direct(row.id, {
       agent,
       branch: target.id,
-      previous: target.budget === null ? null : Number(target.budget),
       said: message
         ? `${who} steered ${target.who} (branch ${target.id}) with ${dollars(Memo.decimal(amount))}. ${standing} ${Mention.quoted(note, 140)}`
         : `${who} put ${dollars(Memo.decimal(amount))} behind ${target.who} (branch ${target.id}). ${standing}`,
@@ -982,6 +981,7 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
   )
   if (!set.ok) {
     await Store.unsteer(env, [identity])
+    if (total !== null) await reached(stub(env, row.id).direct(row.id, { agent, branch: target.id, said: null, usd: Number(target.budget), wake: null }))
     return Problem.fail(502, 'upstream_failed', `The gateway did not take it, so nothing was put behind the branch: ${set.detail}`)
   }
   const [branch] = await fresh(env, row, [target.id], [target])
@@ -1059,7 +1059,7 @@ export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: 
   const lowered =
     source.budget === null
       ? undefined
-      : await reached(stub(env, row.id).direct(row.id, { agent, branch: source.id, previous: Number(source.budget), said: null, usd: Number(backed(money, source.id)) / 1_000_000, wake: null }))
+      : await reached(stub(env, row.id).direct(row.id, { agent, branch: source.id, said: null, usd: Number(backed(money, source.id)) / 1_000_000, wake: null }))
   const raised =
     lowered && !lowered.ok
       ? lowered
@@ -1067,7 +1067,6 @@ export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: 
           stub(env, row.id).direct(row.id, {
             agent,
             branch: target.id,
-            previous: target.budget === null ? null : Number(target.budget),
             said,
             usd: target.budget === null ? null : Number(backed(money, target.id)) / 1_000_000,
             wake: target.starved && target.budget !== null ? `Backers raised your budget to ${dollars(Memo.decimal(backed(money, target.id)))}. Carry on with your task.` : null,
@@ -1075,7 +1074,7 @@ export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: 
         )
   if (!raised.ok) {
     await Store.unsteer(env, ids)
-    if (lowered?.ok) await reached(stub(env, row.id).direct(row.id, { agent, branch: source.id, previous: null, said: null, usd: Number(source.budget), wake: null }))
+    if (lowered?.ok) await reached(stub(env, row.id).direct(row.id, { agent, branch: source.id, said: null, usd: Number(source.budget), wake: null }))
     return Problem.fail(502, 'upstream_failed', `The gateway did not move the budget, so nothing moved: ${raised.detail}`)
   }
   return Problem.ok(await fresh(env, row, [source.id, target.id], [source, target]))
