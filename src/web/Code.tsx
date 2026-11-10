@@ -145,6 +145,7 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
   const entries = value ? listing(value.files, at) : []
   const crumbs = at ? at.split('/') : []
   const shownReadme = at ? (value ? readme(value.files, at) : undefined) : value?.readme?.path
+  const within = open !== undefined && open.split('/').slice(0, -1).join('/') === at
 
   return (
     <div className="repo">
@@ -174,23 +175,18 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
               <code>{head.sha.slice(0, 7)}</code>
               {head.date && <span>{ago(Date.parse(head.date), now)}</span>}
             </div>
-            {(at || open) && (
-              <nav aria-label="Path" className="repo-crumbs">
-                <button onClick={() => { setAt(''); setOpen(undefined) }} type="button">{repo.name}</button>
-                {crumbs.map((crumb, index) => (
-                  <span key={index}>
-                    <i aria-hidden="true">/</i>
-                    <button onClick={() => { setAt(crumbs.slice(0, index + 1).join('/')); setOpen(undefined) }} type="button">{crumb}</button>
-                  </span>
-                ))}
-                {open && <span><i aria-hidden="true">/</i><b>{open.split('/').at(-1)}</b></span>}
-              </nav>
-            )}
-            {open ? (
-              <div className="repo-file">
-                <Viewer path={open} preset={value.readme?.path === open ? value.readme.text : undefined} sha={head.sha} swarm={swarm} />
-              </div>
-            ) : (
+            <nav aria-label="Path" className="repo-crumbs">
+              <button onClick={() => { setAt(''); setOpen(undefined) }} type="button">{repo.name}</button>
+              {crumbs.map((crumb, index) => (
+                <span key={index}>
+                  <i aria-hidden="true">/</i>
+                  <button onClick={() => { setAt(crumbs.slice(0, index + 1).join('/')); setOpen(undefined) }} type="button">{crumb}</button>
+                </span>
+              ))}
+              {open && within && <span><i aria-hidden="true">/</i><b>{open.split('/').at(-1)}</b></span>}
+              {open && <button className="repo-shut" onClick={() => setOpen(undefined)} type="button">← Files</button>}
+            </nav>
+            <div className="repo-browse" data-open={open !== undefined || undefined}>
               <ul className="repo-list">
                 {at && (
                   <li>
@@ -199,21 +195,29 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
                 )}
                 {entries.map((entry) => (
                   <li key={entry.path}>
-                    <button onClick={() => (entry.kind === 'dir' ? setAt(entry.path) : setOpen(entry.path))} type="button">
+                    <button aria-current={entry.path === open || undefined} onClick={() => (entry.kind === 'dir' ? setAt(entry.path) : setOpen(entry.path))} type="button">
                       <span aria-hidden="true" className="repo-icon" data-kind={entry.kind}>{entry.kind === 'dir' ? '▸' : '·'}</span>
                       <span>{entry.name}{entry.kind === 'dir' ? '/' : ''}</span>
                     </button>
                   </li>
                 ))}
               </ul>
-            )}
+              <div className="repo-view">
+                {open ? (
+                  <div className="repo-file">
+                    <Viewer path={open} preset={value.readme?.path === open ? value.readme.text : undefined} sha={head.sha} swarm={swarm} />
+                  </div>
+                ) : shownReadme ? (
+                  <section className="repo-readme" aria-label={shownReadme}>
+                    <header>{shownReadme.split('/').at(-1)}</header>
+                    {value.readme?.path === shownReadme ? <Markdown text={value.readme.text} /> : <Readme path={shownReadme} sha={head.sha} swarm={swarm} />}
+                  </section>
+                ) : (
+                  <p className="repo-quiet">Pick a file to read it.</p>
+                )}
+              </div>
+            </div>
           </div>
-          {!open && shownReadme && (
-            <section className="repo-readme" aria-label={shownReadme}>
-              <header>{shownReadme.split('/').at(-1)}</header>
-              {value.readme?.path === shownReadme ? <Markdown text={value.readme.text} /> : <Readme path={shownReadme} sha={head.sha} swarm={swarm} />}
-            </section>
-          )}
         </>
       )}
     </div>

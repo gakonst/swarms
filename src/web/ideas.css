@@ -518,7 +518,7 @@ ol.surface-list li > span::before { counter-increment:item; content:counter(item
 .traces-who button[data-quiet] { color:#8b9a80; }
 .traces-who button:hover { border-color:#1a3d2c; }
 .traces-who button[aria-pressed='true'] { border-color:#1a3d2c; background:#1a3d2c; color:var(--white); }
-.traces-box { min-height:140px; max-height:420px; padding:8px 0; overflow-y:auto; overscroll-behavior:contain; border:1px solid #e3e9dd; border-radius:16px; background:#fafbf8; }
+.traces-box { height:420px; padding:8px 0; overflow-y:auto; overscroll-behavior:contain; border:1px solid #e3e9dd; border-radius:16px; background:#fafbf8; }
 .traces-note { display:block; width:100%; padding:28px 16px; border:0; background:none; font:15px var(--serif); color:var(--grey-600); text-align:center; }
 button.traces-note { cursor:pointer; }
 .traces-earlier { display:block; min-height:32px; margin:0 auto 4px; padding:0 14px; border:0; background:none; font:11.5px var(--mono); color:#5c7350; cursor:pointer; }
@@ -556,7 +556,7 @@ button.traces-note { cursor:pointer; }
 @media (max-width:899px) {
   .now { gap:18px; padding-top:14px; }
   .now-status li { font-size:17px; }
-  .traces-box { max-height:360px; }
+  .traces-box { height:360px; }
   .traces-who { flex-basis:100%; margin:0 calc(var(--margin) * -1); padding:0 var(--margin); }
   .trace-rows li > button { grid-template-columns:36px minmax(0,max-content) 10px minmax(0,1fr) auto; gap:6px; padding:3px 10px; }
   .trace-rows b { max-width:84px; }
@@ -584,4 +584,28 @@ button.traces-note { cursor:pointer; }
   .idea-now .box { order:2; margin-top:0; }
   .idea-now .now-swarm { order:3; }
   .idea-now .traces { order:4; }
+}
+
+.idea-now,.idea-made,.idea-code { min-height:calc(100vh - var(--header-height) - 47px); }
+.idea-chat { height:max(460px,calc(100vh - var(--header-height) - 47px)); }
+.repo { --repo-height:clamp(420px,calc(100vh - var(--header-height) - 250px),760px); }
+.repo-ghost { height:calc(var(--repo-height) + 92px); }
+.repo-crumbs { min-height:47px; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; white-space:nowrap; }
+.repo-crumbs::-webkit-scrollbar { display:none; }
+.repo-shut { display:none; margin-left:auto; }
+.repo-browse { display:grid; grid-template-columns:280px minmax(0,1fr); height:var(--repo-height); }
+.repo-browse .repo-list { overflow-y:auto; overscroll-behavior:contain; border-right:1px solid #e3e9dd; background:#fbfcf9; }
+.repo-browse .repo-list button[aria-current] { background:#eef3e8; }
+.repo-browse .repo-list button span:last-child { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.repo-view { min-width:0; overflow:auto; overscroll-behavior:contain; }
+.repo-view .repo-file { max-height:none; overflow:visible; }
+.repo-view .repo-readme { overflow:visible; border:0; border-radius:0; }
+@media (max-width:899px) {
+  .idea-now,.idea-made,.idea-code { min-height:calc(100vh - 47px); }
+  .repo { --repo-height:70vh; }
+  .repo-browse { display:block; overflow-y:auto; overscroll-behavior:contain; }
+  .repo-browse .repo-list { overflow:visible; border-right:0; border-bottom:1px solid #e3e9dd; }
+  .repo-browse[data-open] .repo-list { display:none; }
+  .repo-view { overflow:visible; }
+  .repo-shut { display:block; }
 }

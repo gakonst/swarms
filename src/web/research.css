@@ -1,7 +1,7 @@
 .game-header { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:14px var(--margin); min-height:68px; }
 .game-header .brand { margin:0; font-size:26px; min-width:0; }
 .game-header .header-end { align-items:center; gap:20px; flex-shrink:0; }
-.game-nav { font:12px var(--mono); text-decoration:none; padding:9px 0; }
+.game-nav { font:12px var(--mono); text-decoration:none; padding:9px 0; border-bottom:1px solid transparent; }
 .game-nav-on { border-bottom:1px solid var(--black); }
 .quest-onboarding { max-width:1000px; padding-top:max(36px,9vh); padding-bottom:48px; }
 .quest-steps { display:flex; max-width:540px; margin:0 auto 42px; gap:16px; }

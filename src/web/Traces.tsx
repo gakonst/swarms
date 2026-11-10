@@ -15,16 +15,19 @@ function named(who: string | null) {
   return who ?? 'lead'
 }
 
-function Trail(props: { following: boolean; id: string; stir: number; who: string | undefined }) {
+type Kept = { earlier: boolean; entries: readonly Entry[]; tip: number }
+
+function Trail(props: { following: boolean; id: string; kept: Map<string, Kept>; stir: number; who: string | undefined }) {
   const { id, who } = props
-  const [entries, setEntries] = useState<readonly Entry[]>()
-  const [earlier, setEarlier] = useState(false)
+  const held = props.kept.get(who ?? '')
+  const [entries, setEntries] = useState<readonly Entry[] | undefined>(held?.entries)
+  const [earlier, setEarlier] = useState(held?.earlier ?? false)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState<number>()
   const [tries, setTries] = useState(0)
   const now = useNow(60_000)
-  const tip = useRef(0)
+  const tip = useRef(held?.tip ?? 0)
   const box = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
   const anchor = useRef<number | undefined>(undefined)
@@ -45,19 +48,24 @@ function Trail(props: { following: boolean; id: string; stir: number; who: strin
   useEffect(() => {
     let alive = true
     setFailed(false)
-    Promise.all([Api.feed(id, 0, { before: far, limit: first, ...(who === undefined ? {} : { who }) }), who === undefined ? undefined : Api.feed(id, 0, { before: far, limit: 1 })]).then(
-      ([page, newest]) => {
-        if (!alive) return
-        tip.current = Math.max(tip.current, page.next, newest?.next ?? 0)
-        setEarlier(page.entries.length >= first)
-        merge(page.entries)
-      },
-      () => alive && setFailed(true),
-    )
+    const known = props.kept.get(who ?? '')
+    const read = known
+      ? Api.feed(id, known.tip, who === undefined ? {} : { who }).then((page) => merge(page.entries))
+      : Promise.all([Api.feed(id, 0, { before: far, limit: first, ...(who === undefined ? {} : { who }) }), who === undefined ? undefined : Api.feed(id, 0, { before: far, limit: 1 })]).then(([page, newest]) => {
+          if (!alive) return
+          tip.current = Math.max(tip.current, page.next, newest?.next ?? 0)
+          setEarlier(page.entries.length >= first)
+          merge(page.entries)
+        })
+    read.catch(() => alive && !known && setFailed(true))
     return () => {
       alive = false
     }
   }, [id, who, tries])
+
+  useEffect(() => {
+    if (entries) props.kept.set(who ?? '', { earlier, entries, tip: tip.current })
+  }, [entries, earlier])
 
   const loaded = entries !== undefined
   useEffect(() => {
@@ -153,6 +161,7 @@ function Trail(props: { following: boolean; id: string; stir: number; who: strin
 
 export function Traces(props: { branches: readonly Branch[] | undefined; id: string; running: boolean; stalled: boolean; stir: number; visible: boolean }) {
   const [who, setWho] = useState<string>()
+  const kept = useRef(new Map<string, Kept>()).current
   const shown = useVisible()
   const crew = (props.branches ?? []).filter((branch) => branch.parent === null)
   const chip = (to: string | undefined, label: string, quiet = false) => (
@@ -171,7 +180,7 @@ export function Traces(props: { branches: readonly Branch[] | undefined; id: str
           </nav>
         )}
       </header>
-      <Trail following={props.running && props.visible && shown} id={props.id} key={who ?? ''} stir={props.stir} who={who} />
+      <Trail following={props.running && props.visible && shown} id={props.id} kept={kept} key={who ?? ''} stir={props.stir} who={who} />
     </section>
   )
 }
