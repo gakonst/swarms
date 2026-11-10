@@ -2,7 +2,7 @@ import { Component, lazy, type MouseEvent, type ReactNode, Suspense, useEffect, 
 import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import * as Site from '../shared/Site.ts'
-import { short, usd } from './format.ts'
+import { signed, usd } from './format.ts'
 import { message, remember, remembered, useConfig, useWallet } from './hooks.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
@@ -78,12 +78,12 @@ function WalletButton(props: { config: Config | undefined }) {
       <div className="wallet-menu" data-open={open} ref={menu}>
         {wallet.pending ? (
           <span aria-busy="true" className="btn btn-medium wallet" onClick={() => setOpen(!open)}>
-            <span>{wallet.account ? '@' + wallet.account.handle : short(wallet.address)}</span>
+            <span>{signed(wallet.account, wallet.address)}</span>
             {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
           </span>
         ) : (
           <a className="btn btn-medium wallet" href={props.config ? `${props.config.explorer}/address/${wallet.address}` : undefined} onClick={tap} rel="noreferrer" target="_blank" title={wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : 'Your Tempo Wallet'}>
-            <span>{wallet.account?.name ? `@${wallet.account.name}` : short(wallet.address)}</span>
+            <span>{signed(wallet.account, wallet.address)}</span>
             {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
           </a>
         )}

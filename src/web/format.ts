@@ -36,6 +36,10 @@ export function short(value: string) {
   return `${value.slice(0, 6)}…${value.slice(-4)}`
 }
 
+export function signed(account: { name: string | null } | undefined, address: string) {
+  return account?.name ? `@${account.name}` : short(address)
+}
+
 export function ago(at: number, now = Date.now()) {
   const seconds = Math.max(0, Math.round((now - at) / 1000))
   if (seconds < 10) return 'just now'
