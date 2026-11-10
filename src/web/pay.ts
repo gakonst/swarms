@@ -19,8 +19,8 @@ export const idle: Step = { at: 'idle' }
 const next: Record<Step['at'], readonly Step['at'][]> = {
   busy: ['busy', 'done', 'failed', 'idle'],
   done: ['busy', 'idle'],
-  failed: ['busy', 'idle'],
-  idle: ['busy'],
+  failed: ['busy', 'failed', 'idle'],
+  idle: ['busy', 'failed'],
 }
 
 export function can(from: Flow, to: Step) {

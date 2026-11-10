@@ -118,6 +118,10 @@ test('a payment in flight outlives the box that started it, and a settled one is
   Pay.watch('s1', () => {})()
   assert.deepEqual(Pay.flow('s1'), { at: 'idle' })
   assert.throws(() => Pay.move('s1', { amount: '1', at: 'done', kept: false }), /cannot go from idle to done/)
+  Pay.move('s1', { at: 'failed', error: 'Your wallet holds less than this.' })
+  Pay.move('s1', { at: 'failed', error: 'Your wallet holds less than this.' })
+  assert.deepEqual(Pay.flow('s1'), { at: 'failed', error: 'Your wallet holds less than this.' })
+  Pay.move('s1', Pay.idle)
 })
 
 test('an approval the server did not answer for is kept and the same one is posted again, never a second one', async () => {
