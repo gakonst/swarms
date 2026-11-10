@@ -1,7 +1,7 @@
 import type { Lent, Terms } from '../shared/Api.ts'
 import type { Listed } from './Gateway.ts'
 
-export type Row = { contributor: string | null; created_at: number; label: string; name: string; seen_at: number | null; swarm: string }
+export type Row = { contributor: string | null; created_at: number; label: string; name: string; returned_at: number | null; seen_at: number | null; swarm: string }
 
 export const limit = 32
 
@@ -44,6 +44,17 @@ export async function list(env: Cloudflare.Env, swarm: string) {
 
 export async function forget(env: Cloudflare.Env, swarm: string, name: string) {
   await env.DB.prepare('delete from hands where swarm = ? and name = ?').bind(swarm, name).run()
+}
+
+export async function free(env: Cloudflare.Env, swarm: string, name: string) {
+  await env.DB.batch([
+    env.DB.prepare('delete from hands where swarm = ? and name = ? and seen_at is null').bind(swarm, name),
+    env.DB.prepare('update hands set returned_at = ? where swarm = ? and name = ?').bind(Date.now(), swarm, name),
+  ])
+}
+
+export function held(rows: readonly Row[]) {
+  return rows.filter((row) => row.returned_at === null)
 }
 
 export function used(hand: Listed | undefined) {
