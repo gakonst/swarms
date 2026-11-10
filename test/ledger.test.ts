@@ -108,3 +108,50 @@ test('a backing lowered to what it paid takes back what was steered with the res
   assert.deepEqual(await Store.lower(db.env, 's', 'backing:0xkey', '2000000'), [])
   assert.equal(db.sqlite.prepare('select count(*) as n from steers').get()?.['n'], 7)
 })
+
+test('a branch is settled and its unspent money returned in one write, so a failed settle is settled by the next', async () => {
+  const db = swarm(open())
+  await give(db, 5_000_000n)
+  assert.equal(await fund(db, 3, 5_000_000n, 'f1'), true)
+  const batch = db.env.DB.batch.bind(db.env.DB)
+  let failing = true
+  ;(db.env.DB as { batch: unknown }).batch = async (statements: D1PreparedStatement[]) => {
+    const refunds = statements.some((each) => /insert into steers/.test((each as unknown as { query: string }).query))
+    if (!failing || !refunds) return batch(statements)
+    failing = false
+    return batch([...statements, db.env.DB.prepare('select * from nothing')])
+  }
+  await assert.rejects(Store.settle(db.env, { agent: 'agt', branch: 3, left: null, swarm: 's' }))
+  assert.deepEqual(await member(db), ['5.000000', '5.000000', '0.000000'])
+  assert.deepEqual([...(await Store.funds(db.env, 's', 'agt')).settled], [])
+
+  assert.deepEqual(await Store.settle(db.env, { agent: 'agt', branch: 3, left: null, swarm: 's' }), [{ amount: 5_000_000n, budget: 0, contributor: rider }])
+  assert.deepEqual(await member(db), ['5.000000', '0.000000', '5.000000'])
+  assert.deepEqual([...(await Store.funds(db.env, 's', 'agt')).settled], [3])
+  assert.deepEqual(await Store.settle(db.env, { agent: 'agt', branch: 3, left: null, swarm: 's' }), [])
+  assert.equal(await fund(db, 3, 1_000_000n, 'f2'), false)
+  assert.deepEqual(await member(db), ['5.000000', '0.000000', '5.000000'])
+})
+
+test('what a branch did not spend goes back in proportion to what each put behind it, the team\'s to the 30 days it came from', async () => {
+  const db = swarm(open())
+  const other = '0x00000000000000000000000000000000000000b2'
+  await give(db, 3_000_000n)
+  await Store.give(db.env, { amount: '1000000', channel: null, contributor: other, id: '0xbb', note: null, note_id: null, swarm: 's', token: 'ousd' })
+  await fund(db, 1, 3_000_000n, 'f1')
+  await Store.steer(db.env, { amount: 1_000_000n, branch: { agent: 'agt', id: 1 }, contributor: other, id: 'f2', note: 'branch 1', note_id: 'branch:1', swarm: 's' })
+  await allot(db, 1, 4_000_000n, 'a1')
+  db.sqlite.prepare("update steers set created_at = 7 where id = 'a1'").run()
+  const back = await Store.settle(db.env, { agent: 'agt', branch: 1, left: 4_000_001n, swarm: 's' })
+  assert.deepEqual(back.sort((a, b) => Number(b.amount - a.amount)), [
+    { amount: 2_000_000n, budget: 1, contributor: rider },
+    { amount: 1_500_000n, budget: 0, contributor: rider },
+    { amount: 500_000n, budget: 0, contributor: other },
+  ])
+  assert.equal(db.sqlite.prepare("select created_at from steers where budget = 1 and amount = '-2000000'").get()?.['created_at'], 7)
+  assert.equal((await Store.allotted(db.env, 's', 0)).get(rider), 2_000_000n)
+
+  const empty = await Store.settle(db.env, { agent: 'agt', branch: 2, left: 0n, swarm: 's' })
+  assert.deepEqual([empty, [...(await Store.funds(db.env, 's', 'agt')).settled].sort()], [[], [1, 2]])
+  assert.deepEqual(await Store.replaced(db.env, 's', 'next'), [])
+})
