@@ -241,9 +241,14 @@ export async function gift(env: Cloudflare.Env, id: string) {
   return env.DB.prepare('select * from contributions where id = ?').bind(id.toLowerCase()).first<Gift>()
 }
 
-export async function annotate(env: Cloudflare.Env, id: string, input: { note: string; note_id: string }) {
-  return env.DB.prepare('update contributions set note = ?, note_id = ? where id = ? and note is null returning *')
-    .bind(input.note, input.note_id, id.toLowerCase())
+export async function annotate(env: Cloudflare.Env, swarm: string, id: string, input: { note: string; note_id: string }) {
+  return env.DB.prepare(
+    `update contributions set note = ?3, note_id = ?4 where id = ?2 and swarm = ?1 and note is null and (
+      select coalesce(sum(b.amount), 0) - coalesce(sum(case when b.note_id is not null then b.amount else 0 end), 0) - ${steered}
+      from (${backing}) b where b.contributor = (select contributor from contributions where id = ?2)
+    ) >= cast(amount as integer) returning *`,
+  )
+    .bind(swarm, id.toLowerCase(), input.note, input.note_id)
     .first<Gift>()
 }
 

@@ -67,3 +67,19 @@ test('a move takes a rider\'s own money first and the team\'s for the rest, and 
   await Store.settle(db.env, { agent: 'agt', branch: 2, left: null, swarm: 's' })
   assert.deepEqual(await Store.shift(db.env, { agent: 'agt', amount: 1_000_000n, contributor: rider, from: 1, swarm: 's', to: 2 }), [])
 })
+
+test('a note goes on money already counted only while that money is behind nothing else', async () => {
+  const db = swarm(open())
+  await give(db, 10_000_000n, '0xaa')
+  await give(db, 4_000_000n, '0xbb')
+  assert.equal(await Store.steer(db.env, { amount: 10_000_000n, contributor: rider, id: 's1', note: 'idea one', note_id: 'n1', swarm: 's' }), true)
+  assert.equal(await Store.annotate(db.env, 's', '0xaa', { note: 'idea two', note_id: 'n2' }), null)
+  assert.equal((await Store.annotate(db.env, 's', '0xbb', { note: 'idea two', note_id: 'n2' }))?.note, 'idea two')
+  assert.match(db.plan(db.log.findLast((entry) => /update contributions set note/.test(entry.query)) as never).join('\n'), /contributions_backing \(swarm=\? AND contributor=\?\)/)
+  assert.equal(await Store.annotate(db.env, 'other', '0xaa', { note: 'idea two', note_id: 'n2' }), null)
+
+  const row = await Store.find(db.env, 's')
+  const notes = await Store.notes(db.env, 's', BigInt(row?.balance ?? 0), new Set())
+  assert.deepEqual(notes.map((note) => [note.id, note.weight, note.share]), [['n1', '10.000000', 0.7142], ['n2', '4.000000', 0.2857]])
+  assert.deepEqual(await member(db), ['14.000000', '14.000000', '0.000000'])
+})

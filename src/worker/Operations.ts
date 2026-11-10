@@ -1322,7 +1322,8 @@ export async function contribute(
   let written: Store.Gift | null
   if (existing) {
     if (!text || existing.note || !noteId) return Problem.fail(409, 'conflict', 'This transaction is already counted.')
-    written = await Store.annotate(env, request.hash, { note: text, note_id: noteId })
+    written = await Store.annotate(env, row.id, request.hash, { note: text, note_id: noteId })
+    if (!written) return Problem.fail(409, 'conflict', 'This transaction is already counted, and its money is already behind another idea or a branch.')
   } else {
     written = await Store.give(env, { amount: String(total), channel: null, contributor: first.from, id: request.hash as Hex, note: text, note_id: noteId, swarm: row.id, token: first.token })
   }
@@ -1399,7 +1400,7 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
   const id = Credit.backing(done.value.accessKey)
   const written =
     (await Store.give(env, { amount: String(amount), channel: done.value.accessKey, contributor: done.value.wallet, id, note: text, note_id: noteId, swarm: row.id, token: 'mach' })) ??
-    (text && noteId ? await Store.annotate(env, id, { note: text, note_id: noteId }) : null)
+    (text && noteId ? await Store.annotate(env, row.id, id, { note: text, note_id: noteId }) : null)
   await stub(env, row.id).contributed({ amount: Memo.decimal(amount), contributor: done.value.wallet, hash: done.value.accessKey, kind: 'approved', note: text, noteId, swarm: row.id, token: 'mach' })
   if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
 
