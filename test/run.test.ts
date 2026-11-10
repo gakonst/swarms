@@ -108,3 +108,41 @@ test('a swarm with money whose agent the gateway fails to create is retrying, no
   assert.equal(w.swarm.view({ feed: 0 }).reason, null)
   assert.deepEqual(w.errors(), ['The gateway did not create the agent.'])
 })
+
+test('a status write that failed is written again on the next step, so the list never keeps saying running for a paused swarm', async (t) => {
+  let credit = '1'
+  let report = { request_id: 'agt_1:1', status: 'running' } as Record<string, unknown>
+  const w = world((_request, url) => {
+    if (url.pathname === '/api/keys/credit') return Response.json({ deposited: '1', left: credit, spent: '0' })
+    if (url.pathname === '/v1/agents/agt_1/turns/agt_1:1') return Response.json(report)
+    return undefined
+  })
+  t.after(w.restore)
+  await w.seed()
+  await w.swarm.wake('money')
+  await w.swarm.alarm()
+  assert.deepEqual(await w.status(), { status: 'running', why: null })
+
+  const prepare = w.env.DB.prepare
+  let failures = 1
+  w.env.DB.prepare = (query: string) => {
+    if (failures && query.startsWith('update swarms set status')) {
+      failures -= 1
+      throw new Error('D1_ERROR: Network connection lost.')
+    }
+    return prepare(query)
+  }
+  credit = '0.01'
+  report = { ok: { message: 'done a step' }, request_id: 'agt_1:1', status: 'completed' }
+  w.swarm.checked = 0
+  await w.swarm.alarm()
+  w.pass(30_000)
+  await w.swarm.alarm()
+  assert.equal(w.swarm.run().state, 'paused')
+  assert.equal(failures, 0)
+  assert.deepEqual(await w.status(), { status: 'running', why: null })
+
+  w.pass(30_000)
+  await w.swarm.alarm()
+  assert.deepEqual(await w.status(), { status: 'paused', why: 'money' })
+})

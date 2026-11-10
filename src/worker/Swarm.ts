@@ -291,6 +291,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async move(row: Store.Row, run: Phase.Run, fields: Store.Fields = {}) {
     this.set(run)
     for (const waiter of [...this.waiters]) waiter()
+    await this.project(row, fields)
+    this.beacon(row)
+  }
+
+  async project(row: Store.Row, fields: Store.Fields = {}) {
+    const run = this.run()
     const projected = Phase.project(run, run.state === 'starting' || run.state === 'working' ? run.n : this.turned())
     const changed = projected.status !== row.status || projected.why !== (row.why ?? null)
     if (changed || Object.keys(fields).length) {
@@ -298,7 +304,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       row.status = projected.status
       row.why = projected.why
     }
-    this.beacon(row)
+    return changed
   }
 
   async waited(since: number, ms: number): Promise<{ update: Update | null; working: Working | null }> {

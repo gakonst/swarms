@@ -73,6 +73,7 @@ export async function step(self: Swarm) {
   const row = id ? await self.found(id) : null
   if (!row) return null
 
+  if (await self.project(row)) self.beacon(row)
   const run = self.run()
   if (run.state === 'paused') {
     const settling = await settle(self, row, run)
