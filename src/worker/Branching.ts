@@ -40,27 +40,21 @@ export function rebudget(self: Swarm, swarm: string, agent: string, branch: numb
 export async function settled(self: Swarm, row: Store.Row) {
   const agent = self.agent()?.id
   if (!agent) return
+  const at = Date.now()
   const listed = await Gateway.subagents(self.env, row.id, agent)
   if (!listed.ok) return
   const closed = listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed')
-  if (!closed.length) return
-  const { settled } = await Store.funds(self.env, row.id, agent)
-  const claimed = await Store.claim(self.env, row.id, agent, closed.filter((branch) => !settled.has(branch.agent_id)).map((branch) => branch.agent_id))
-  for (const branch of closed.filter((found) => claimed.has(found.agent_id))) {
-    const returned = await Store.settle(self.env, { agent, branch: branch.agent_id, claimed: true, left: unspent(branch), swarm: row.id })
-    const back = returned.reduce((sum, item) => sum + item.amount, 0n)
-  }
+  const settled = closed.length ? (await Store.funds(self.env, row.id, agent)).settled : new Set<number>()
+  for (const branch of closed.filter((found) => !settled.has(found.agent_id))) await Store.settle(self.env, { agent, branch: branch.agent_id, left: unspent(branch), swarm: row.id })
+  self.kv.put('settledAt', at)
 }
 
 export async function release(self: Swarm, swarm: string, current: string) {
   for (const old of await Store.replaced(self.env, swarm, current)) {
     const listed = old.agent ? await Gateway.subagents(self.env, swarm, old.agent).catch(() => undefined) : undefined
-    let back = 0n
-    const claimed = await Store.claim(self.env, swarm, old.agent, old.branches)
-    for (const branch of old.branches.filter((id) => claimed.has(id))) {
+    for (const branch of old.branches) {
       const found = listed?.ok ? listed.value.find((agent) => agent.agent_id === branch) : undefined
-      const returned = await Store.settle(self.env, { agent: old.agent, branch, claimed: true, left: found ? unspent(found) : null, swarm })
-      back += returned.reduce((sum, item) => sum + item.amount, 0n)
+      await Store.settle(self.env, { agent: old.agent, branch, left: found ? unspent(found) : null, swarm })
     }
   }
 }

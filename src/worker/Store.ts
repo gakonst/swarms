@@ -240,19 +240,44 @@ export async function backings(env: Cloudflare.Env, swarm: string) {
 }
 
 export async function lower(env: Cloudflare.Env, swarm: string, id: string, amount: string) {
-  await env.DB.prepare('update contributions set amount = ? where id = ? and swarm = ?')
-    .bind(amount, id.toLowerCase(), swarm)
-    .run()
-    .finally(() => wrote(swarm))
+  const [, taken] = await env.DB.batch<{ agent: string | null; branch: number | null }>([
+    env.DB.prepare('update contributions set amount = ? where id = ? and swarm = ?').bind(amount, id.toLowerCase(), swarm),
+    env.DB.prepare(
+      `with over as (
+        select owner.contributor,
+          coalesce((select sum(cast(amount as integer)) from steers where swarm = ?1 and contributor = owner.contributor and budget = 0), 0)
+          - coalesce((select sum(cast(amount as integer)) from contributions where swarm = ?1 and contributor = owner.contributor and note_id is null), 0) as excess
+        from contributions owner where owner.id = ?2 and owner.swarm = ?1
+      ), held as (
+        select min(s.note) as note, s.note_id, s.branch, s.agent, sum(cast(s.amount as integer)) as net, max(s.created_at) as at
+        from steers s, over where s.swarm = ?1 and s.contributor = over.contributor and s.budget = 0 and (s.branch is null or not exists (
+          select 1 from branches b where b.swarm = s.swarm and b.agent = s.agent and b.branch = s.branch and b.settled_at is not null
+        ))
+        group by s.note_id, s.branch, s.agent having net > 0
+      ), ranked as (
+        select held.*, coalesce(sum(net) over (order by at desc, note_id rows between unbounded preceding and 1 preceding), 0) as before from held
+      )
+      insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
+      select lower(hex(randomblob(6))), ?1, over.contributor, ranked.note, ranked.note_id, -min(ranked.net, over.excess - ranked.before), ?3, 0, ranked.branch, ranked.agent
+      from ranked, over where over.excess > ranked.before
+      returning agent, branch`,
+    ).bind(swarm, id.toLowerCase(), Date.now()),
+  ]).finally(() => wrote(swarm))
+  return (taken?.results ?? []).flatMap((row) => (row.branch === null ? [] : [{ agent: row.agent ?? '', branch: row.branch }]))
 }
 
 export async function gift(env: Cloudflare.Env, id: string) {
   return env.DB.prepare('select * from contributions where id = ?').bind(id.toLowerCase()).first<Gift>()
 }
 
-export async function annotate(env: Cloudflare.Env, id: string, input: { note: string; note_id: string }) {
-  return env.DB.prepare('update contributions set note = ?, note_id = ? where id = ? and note is null returning *')
-    .bind(input.note, input.note_id, id.toLowerCase())
+export async function annotate(env: Cloudflare.Env, swarm: string, id: string, input: { note: string; note_id: string }) {
+  return env.DB.prepare(
+    `update contributions set note = ?3, note_id = ?4 where id = ?2 and swarm = ?1 and note is null and (
+      select coalesce(sum(b.amount), 0) - coalesce(sum(case when b.note_id is not null then b.amount else 0 end), 0) - ${steered}
+      from (${backing}) b where b.contributor = (select contributor from contributions where id = ?2)
+    ) >= cast(amount as integer) returning *`,
+  )
+    .bind(swarm, id.toLowerCase(), input.note, input.note_id)
     .first<Gift>()
 }
 
@@ -300,7 +325,7 @@ function weighing(env: Cloudflare.Env, swarm: string) {
       select note_id, note, cast(amount as integer) as weight, contributor from contributions where swarm = ?1 and note_id is not null
       union all
       select note_id, note, cast(amount as integer) as weight, contributor from steers where swarm = ?1 and branch is null
-    ) group by note_id order by weight desc limit 50`,
+    ) group by note_id having sum(weight) > 0 order by weight desc limit 50`,
   ).bind(swarm)
 }
 
@@ -521,9 +546,12 @@ export async function base(env: Cloudflare.Env, swarm: string, agent: string, br
 
 export async function replaced(env: Cloudflare.Env, swarm: string, current: string) {
   const { results } = await env.DB.prepare(
-    'select agent, branch from branches where swarm = ? and agent != ? and settled_at is null union select agent, branch from steers where swarm = ? and agent != ? and branch is not null',
+    `select agent, branch from branches where swarm = ?1 and agent != ?2 and settled_at is null union
+    select agent, branch from steers s where swarm = ?1 and agent != ?2 and branch is not null and not exists (
+      select 1 from branches b where b.swarm = s.swarm and b.agent = s.agent and b.branch = s.branch and b.settled_at is not null
+    )`,
   )
-    .bind(swarm, current, swarm, current)
+    .bind(swarm, current)
     .all<{ agent: string; branch: number }>()
   const agents = new Map<string, number[]>()
   for (const row of results) agents.set(row.agent, [...new Set([...(agents.get(row.agent) ?? []), row.branch])])
@@ -531,30 +559,42 @@ export async function replaced(env: Cloudflare.Env, swarm: string, current: stri
 }
 
 export async function unsteer(env: Cloudflare.Env, ids: readonly string[]) {
-  await env.DB.batch(ids.map((id) => env.DB.prepare('delete from steers where id = ?').bind(id)))
+  if (!ids.length) return
+  const placed = ids.map((_, index) => '?' + (index + 1)).join(', ')
+  await env.DB.prepare(
+    `delete from steers where id in (${placed}) and not exists (
+      select 1 from steers s join branches b on b.swarm = s.swarm and b.agent = s.agent and b.branch = s.branch where s.id in (${placed}) and b.settled_at is not null
+    )`,
+  )
+    .bind(...ids)
+    .run()
 }
 
-export async function shift(
-  env: Cloudflare.Env,
-  input: { agent: string; amount: bigint; contributor: string; from: number; ids: readonly [string, string]; swarm: string; team: boolean; to: number },
-) {
-  const contributor = input.contributor.toLowerCase()
-  const now = Date.now()
-  const [taken] = await env.DB.batch([
-    env.DB.prepare(
-      `insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
-      select ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11 where (
-        select coalesce(sum(cast(amount as integer)), 0) from steers where swarm = ?2 and agent = ?11 and contributor = ?3 and branch = ?9
-      ) >= cast(?10 as integer) and not exists (
-        select 1 from branches where swarm = ?2 and agent = ?11 and branch in (?9, ?12) and settled_at is not null
-      )`,
-    ).bind(input.ids[0], input.swarm, contributor, `branch ${input.from}`, `branch:${input.from}`, String(-input.amount), now, input.team ? 1 : 0, input.from, String(input.amount), input.agent, input.to),
-    env.DB.prepare(
-      `insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
-      select ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11 where exists (select 1 from steers where id = ?10)`,
-    ).bind(input.ids[1], input.swarm, contributor, `branch ${input.to}`, `branch:${input.to}`, String(input.amount), now, input.team ? 1 : 0, input.to, input.ids[0], input.agent),
-  ]).finally(() => wrote(input.swarm))
-  return (taken?.meta.changes ?? 0) > 0
+export async function shift(env: Cloudflare.Env, input: { agent: string; amount: bigint; contributor: string; from: number; swarm: string; to: number }) {
+  const { results } = await env.DB.prepare(
+    `with held as (
+      select coalesce(sum(case when budget = 0 then cast(amount as integer) end), 0) as own, coalesce(sum(cast(amount as integer)), 0) as total,
+        min(case when budget = 1 and amount > 0 then created_at end) as since
+      from steers where swarm = ?1 and agent = ?2 and contributor = ?3 and branch = ?4
+    ), parts as (
+      select 0 as budget, min(max(own, 0), cast(?6 as integer)) as part, ?7 as at from held
+      union all
+      select 1, cast(?6 as integer) - min(max(own, 0), cast(?6 as integer)), coalesce(since, ?7) from held
+    ), legs as (
+      select cast(?4 as integer) as branch, -1 as sign union all select cast(?5 as integer), 1
+    )
+    insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
+    select lower(hex(randomblob(6))), ?1, ?3, 'branch ' || legs.branch, 'branch:' || legs.branch, legs.sign * parts.part, parts.at, parts.budget, legs.branch, ?2
+    from parts, legs, held
+    where parts.part > 0 and held.total >= cast(?6 as integer) and not exists (
+      select 1 from branches where swarm = ?1 and agent = ?2 and branch in (?4, ?5) and settled_at is not null
+    )
+    returning id`,
+  )
+    .bind(input.swarm, input.agent, input.contributor.toLowerCase(), input.from, input.to, String(input.amount), Date.now())
+    .all<{ id: string }>()
+    .finally(() => wrote(input.swarm))
+  return results.map((row) => row.id)
 }
 
 export async function allotted(env: Cloudflare.Env, swarm: string, since: number) {
@@ -572,7 +612,7 @@ export async function note(env: Cloudflare.Env, swarm: string, id: string, balan
       select note_id, note, cast(amount as integer) as weight, contributor from contributions where swarm = ?1 and note_id = ?2
       union all
       select note_id, note, cast(amount as integer) as weight, contributor from steers where swarm = ?1 and branch is null and note_id = ?2
-    ) group by note_id`,
+    ) group by note_id having sum(weight) > 0`,
   )
     .bind(swarm, id)
     .first<Weighed>()
@@ -585,56 +625,32 @@ export async function noteId(note: string) {
   return Array.from(new Uint8Array(digest).slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export async function claim(env: Cloudflare.Env, swarm: string, agent: string, branches: readonly number[]) {
-  if (!branches.length) return new Set<number>()
+export async function settle(env: Cloudflare.Env, input: { agent: string; branch: number; left: bigint | null; swarm: string }) {
   const now = Date.now()
-  const claimed = await env.DB.batch(
-    branches.map((branch) =>
-      env.DB.prepare(
-        'insert into branches (swarm, agent, branch, base, created_at, settled_at) values (?, ?, ?, ?, ?, ?) on conflict (swarm, agent, branch) do update set settled_at = excluded.settled_at where branches.settled_at is null',
-      ).bind(swarm, agent, branch, '0', now, now),
-    ),
-  ).finally(() => wrote(swarm))
-  return new Set(branches.filter((_, index) => (claimed[index]?.meta.changes ?? 0) > 0))
-}
-
-export async function settle(env: Cloudflare.Env, input: { agent: string; branch: number; claimed?: boolean; left: bigint | null; swarm: string }) {
-  const now = Date.now()
-  if (!input.claimed && !(await claim(env, input.swarm, input.agent, [input.branch])).has(input.branch)) return []
-
-  const { results } = await env.DB.prepare(
-    'select contributor, budget, sum(cast(amount as integer)) as amount, min(case when amount > 0 then created_at end) as since from steers where swarm = ? and agent = ? and branch = ? group by contributor, budget',
-  )
-    .bind(input.swarm, input.agent, input.branch)
-    .all<{ amount: number; budget: number; contributor: string; since: number | null }>()
-  const nets = new Map<string, bigint>()
-  for (const row of results) nets.set(row.contributor, (nets.get(row.contributor) ?? 0n) + BigInt(row.amount))
-  const total = [...nets.values()].reduce((sum, net) => sum + (net > 0n ? net : 0n), 0n)
-  const back = input.left === null || input.left > total ? total : input.left
-  if (back <= 0n || total === 0n) return []
-
-  const returned = results.flatMap((row) => {
-    const net = nets.get(row.contributor) ?? 0n
-    if (net <= 0n || row.amount <= 0) return []
-    const positive = results.filter((other) => other.contributor === row.contributor && other.amount > 0).reduce((sum, other) => sum + BigInt(other.amount), 0n)
-    const amount = (back * net * BigInt(row.amount)) / (total * positive)
-    return amount > 0n ? [{ amount, budget: row.budget, contributor: row.contributor, since: row.since ?? now }] : []
-  })
-  await env.DB.batch(
-    returned.map((row) =>
-      env.DB.prepare('insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(
-        crypto.randomUUID().replace(/-/g, '').slice(0, 12),
-        input.swarm,
-        row.contributor,
-        `branch ${input.branch}`,
-        `branch:${input.branch}`,
-        String(-row.amount),
-        row.budget ? row.since : now,
-        row.budget,
-        input.branch,
-        input.agent,
-      ),
-    ),
-  ).finally(() => wrote(input.swarm))
-  return returned.map((row) => ({ amount: row.amount, budget: row.budget, contributor: row.contributor }))
+  const [returned] = await env.DB.batch<{ amount: string; budget: number; contributor: string }>([
+    env.DB.prepare(
+      `with held as (
+        select contributor, budget, sum(cast(amount as integer)) as amount, min(case when amount > 0 then created_at end) as since
+        from steers where swarm = ?1 and agent = ?2 and branch = ?3 group by contributor, budget
+      ), nets as (
+        select contributor, sum(amount) as net, sum(max(amount, 0)) as positive from held group by contributor
+      ), sums as (
+        select coalesce(sum(max(net, 0)), 0) as total from nets
+      ), shares as (
+        select held.contributor, held.budget, held.since,
+          cast(min(sums.total, coalesce(cast(?4 as integer), sums.total)) * nets.net / sums.total as integer) * held.amount / nets.positive as amount
+        from held join nets on nets.contributor = held.contributor join sums
+        where nets.net > 0 and held.amount > 0 and sums.total > 0
+      )
+      insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
+      select lower(hex(randomblob(6))), ?1, contributor, 'branch ' || cast(?3 as integer), 'branch:' || cast(?3 as integer), -amount, case when budget = 1 then coalesce(since, ?5) else ?5 end, budget, ?3, ?2
+      from shares
+      where amount > 0 and not exists (select 1 from branches where swarm = ?1 and agent = ?2 and branch = ?3 and settled_at is not null)
+      returning contributor, budget, amount`,
+    ).bind(input.swarm, input.agent, input.branch, input.left === null ? null : String(input.left), now),
+    env.DB.prepare(
+      'insert into branches (swarm, agent, branch, base, created_at, settled_at) values (?, ?, ?, ?, ?, ?) on conflict (swarm, agent, branch) do update set settled_at = excluded.settled_at where branches.settled_at is null',
+    ).bind(input.swarm, input.agent, input.branch, '0', now, now),
+  ]).finally(() => wrote(input.swarm))
+  return (returned?.results ?? []).map((row) => ({ amount: -BigInt(row.amount), budget: row.budget, contributor: row.contributor }))
 }

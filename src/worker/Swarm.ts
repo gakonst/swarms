@@ -237,12 +237,13 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async contributed(input: Contributed) {
     this.marked += 1
     this.kv.put('id', input.swarm)
+    await this.wake('money')
     if (input.kind === 'noted') {
-      this.log('funds', `${Words.short(input.contributor)} put the ${Words.trim(input.amount)} ${Chain.symbol(input.token)} they sent behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
+      this.log('funds', `${Words.short(input.contributor)} put their ${Words.trim(input.amount)} ${Chain.symbol(input.token)} behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
       Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed "${input.note ?? ''}" with $${Words.trim(input.amount)}.`)
       if (input.noteId) await this.steer(input.swarm, input.noteId)
       this.changed('detail', 'members')
-      return this.wake('note')
+      return
     }
     this.log(
       'funds',
@@ -255,7 +256,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (input.noteId) await this.steer(input.swarm, input.noteId)
     this.cue('credit')
     this.changed('detail', 'members')
-    await this.wake('money')
     if (this.listened()) {
       const row = await this.found(input.swarm)
       if (row) this.beacon(row)
@@ -743,7 +743,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async direct(
     swarm: string,
-    input: { agent: string; branch: number; previous: number | null; said: string | null; steer?: { note: string; text: string; who: string }; usd: number | null; wake: string | null },
+    input: { agent: string; branch: number; said: string | null; steer?: { note: string; text: string; who: string }; usd: number | null; wake: string | null },
   ): Promise<Gateway.Result<Gateway.Subagent | null>> {
     const agent = this.agent()?.id
     if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
@@ -753,10 +753,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
     if (input.steer) {
       const told = await Gateway.tell(this.env, swarm, agent, input.branch, input.steer.text, 'urgent')
-      if (!told.ok) {
-        if (set) await Gateway.budget(this.env, swarm, agent, input.branch, input.previous)
-        return told
-      }
+      if (!told.ok) return told
       this.log('steer', input.steer.note, input.steer.text, { who: input.steer.who })
     } else if (input.wake) await Gateway.tell(this.env, swarm, agent, input.branch, input.wake)
     if (input.said) {

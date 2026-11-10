@@ -486,7 +486,7 @@ export function document(origin: string) {
       '/v1/swarms/{id}/backings/{request}': {
         post: {
           description:
-            "Counts an approved backing: the wallet's key authorization for the prepared key, or a transaction signed by one of the wallet's admin keys for a fee payer that carries it. The contribution counts at the approved limit; when the key ends it is lowered to what the key paid. A note counts only when it is the note the backing was prepared with.",
+            "Counts an approved backing: the wallet's key authorization for the prepared key, or a transaction signed by one of the wallet's admin keys for a fee payer that carries it. The contribution counts at the approved limit; when the key ends it is lowered to what the key paid. A note counts only when it is the note the backing was prepared with. 201 when counted, 200 when it already was: a backing counts and is announced once.",
           operationId: 'countBacking',
           parameters: [swarm, { in: 'path', name: 'request', required: true, schema: { pattern: '^[0-9a-f]{32}$', type: 'string' } }],
           requestBody: {
@@ -494,6 +494,7 @@ export function document(origin: string) {
             required: true,
           },
           responses: {
+            ...ok(ref('Contributed'), 'The backing was already counted.'),
             ...ok(ref('Contributed'), 'The backing was counted.', '201'),
             ...failures(400, 404, 429, 502),
           },
@@ -503,7 +504,7 @@ export function document(origin: string) {
       '/v1/swarms/{id}/contributions': {
         post: {
           description:
-            'Counts money sent to the swarm: the hash of a transferWithMemo of MACH, OUSD, USDC.e or pathUSD to the gateway (config.credit.recipient) whose memo is the first 16 bytes of keccak256("gateway:credit:4217:<config.credit.owner>:swarm-<id>") followed by the first 16 bytes of keccak256("swarm:<id>"), or of keccak256("note:<id>:<note>") to put it behind a note. The gateway credits it to the swarm once, and every token counts at $1. A note counts only when the memo commits to it; a counted transfer without a note can get one later. 201 when counted, 200 when a note was added, 404 while Tempo has no receipt yet, 409 when it was already counted.',
+            'Counts money sent to the swarm: the hash of a transferWithMemo of MACH, OUSD, USDC.e or pathUSD to the gateway (config.credit.recipient) whose memo is the first 16 bytes of keccak256("gateway:credit:4217:<config.credit.owner>:swarm-<id>") followed by the first 16 bytes of keccak256("swarm:<id>"), or of keccak256("note:<id>:<note>") to put it behind a note. The gateway credits it to the swarm once, and every token counts at $1. A note counts only when the memo commits to it; a counted transfer without a note can get one later, while its money is behind nothing else. 201 when counted, 200 when a note was added, 404 while Tempo has no receipt yet, 409 when it was already counted.',
           operationId: 'contribute',
           parameters: [swarm],
           requestBody: {
