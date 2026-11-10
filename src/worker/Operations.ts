@@ -41,6 +41,7 @@ import * as Btw from '../shared/Btw.ts'
 import * as Setup from '../shared/Setup.ts'
 import * as Connect from '../shared/Connect.ts'
 import * as Credit from '../shared/Credit.ts'
+import * as Door from '../shared/Door.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Artifacts from './Artifacts.ts'
@@ -696,7 +697,6 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   const row = found.row
   let members = found.members
   let author = members.find((member) => member.address === address)
-  const policed = row.steering === 'team'
   const steers = await Team.steerer(env, row, address, members)
   if (!steers.ok) return steers
   const seat = steers.value
@@ -704,11 +704,12 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
     members = await Store.members(env, row.id)
     author = members.find((member) => member.address === address)
   }
-  if (!author && !seat)
+  const door = Door.of(row.steering, { rider: !!author, seat: !!seat })
+  if (!door.posts)
     return Problem.fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
 
   const steering = Mention.steers(request.text)
-  if (steering && policed && !seat)
+  if (steering && !door.steers)
     return Problem.fail(403, 'not_member', "Only this swarm's team steers it. Its admins add who may: ask one of them in the room.")
   if (!steering && request.steer !== undefined) return Problem.fail(400, 'invalid_request', 'steer goes with a message that mentions @swarm.')
   if (request.btw && (!steering || Mention.idea(request.text) !== Btw.note(request.btw, request.artifact)))

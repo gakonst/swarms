@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState, useSyncExternalStore } from 'react'
 import type { Detail, Me, Roster, Seat, Steering as Policy } from '../shared/Api.ts'
+import * as Door from '../shared/Door.ts'
 import * as Mention from '../shared/Mention.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
@@ -109,10 +110,11 @@ export function gate(wallet: State, steering: Policy, roster: Roster | undefined
   if (wallet.account && !wallet.account.name) return 'unnamed'
   const team = steering === 'team'
   const seat = seated(roster, wallet.session.address)
-  if (team && seat) return { at: 'open', from: 'team', left: seat.left }
+  const door = Door.of(steering, { rider: !!room?.me?.member, seat: !!seat })
+  if (seat && door.steers === 'team') return { at: 'open', from: 'team', left: seat.left }
   if (room) {
     if (!room.me) return 'checking'
-    return room.me.member || seat ? { at: 'open', from: team ? null : 'backing', left: team ? null : room.me.available } : { at: 'not-member', team }
+    return door.posts ? { at: 'open', from: door.steers, left: door.steers ? room.me.available : null } : { at: 'not-member', team }
   }
   if (!team) return { at: 'open', from: 'backing', left: null }
   return roster ? { at: 'not-member', team } : 'checking'
