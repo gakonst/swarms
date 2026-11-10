@@ -154,11 +154,11 @@ export function create(input: { goal: string; problem?: string; steering?: Steer
 }
 
 export function back(id: string, input: { amount: string; note?: string }) {
-  return request<Approval>(`${path(id)}/backings`, input)
+  return fixture ? staged((fixtures) => fixtures.back(id, input)) : request<Approval>(`${path(id)}/backings`, input)
 }
 
 export function approved(id: string, approval: string, input: { keyAuthorization: unknown; note?: string }) {
-  return request<Contributed>(`${path(id)}/backings/${approval}`, input)
+  return fixture ? staged((fixtures) => fixtures.contribute(id, { hash: approval, ...(input.note ? { note: input.note } : {}) })) : request<Contributed>(`${path(id)}/backings/${approval}`, input)
 }
 
 export function contribute(id: string, input: { hash: string; note?: string }) {

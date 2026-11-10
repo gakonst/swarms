@@ -62,27 +62,24 @@ const working = {
 } as const satisfies Record<Pay.Working, string>
 
 export function approves(amount: bigint, token: Currency) {
-  return token === 'mach' && amount >= approvable && !Api.fixture
+  return token === 'mach' && amount >= approvable
 }
 
-async function approve(config: Config, target: Target, amount: bigint, note: string) {
-  const approved = await Api.back(target.id, { amount: decimal(amount), ...(note ? { note } : {}) })
-    .then(async (prepared) => ({ id: prepared.id, keyAuthorization: (await Wallet.authorize(config, prepared.authorizeAccessKey)).keyAuthorization }))
+function approve(config: Config, target: Target, amount: bigint, note: string): Promise<Pay.Owed | undefined> {
+  return Api.back(target.id, { amount: decimal(amount), ...(note ? { note } : {}) })
+    .then(async (prepared) => ({ amount: decimal(amount), id: prepared.id, keyAuthorization: (await Wallet.authorize(config, prepared.authorizeAccessKey)).keyAuthorization, note, swarm: target.id, way: 'approved' as const }))
     .catch((error: unknown) => {
       if (Wallet.declined(error)) throw error
       console.warn('The approval could not be asked for, so the money is sent instead', error)
       return undefined
     })
-  if (!approved) return undefined
-  const counted = await Api.approved(target.id, approved.id, { keyAuthorization: approved.keyAuthorization, ...(note ? { note } : {}) })
-  return counted.contribution.hash ?? approved.id
 }
 
 async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency): Promise<Pay.Owed> {
   if (!config.credit) throw new Error('Riding is not available right now. Try again in a moment.')
   const { memo } = await import('../shared/Credit.ts')
   const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, note), to: config.credit.recipient, token })
-  return { amount: decimal(amount), hash, note, swarm: target.id }
+  return { amount: decimal(amount), hash, note, swarm: target.id, way: 'sent' }
 }
 
 function dollars(amount: string) {
@@ -154,12 +151,7 @@ export function Fuel(props: {
       if (held !== undefined && held < units(amount)) throw Object.assign(new Error('Your wallet holds less than this.'), { code: 'insufficient_balance' })
       const target = await props.target((next) => step(next))
       step('send')
-      const approved = approves(units(amount), using) ? await approve(config, target, units(amount), text) : undefined
-      if (!approved) return await record(await transfer(config, target, units(amount), text, using))
-      Pay.move(props.slot, { amount: decimal(units(amount)), at: 'done', kept: true })
-      props.onNote('')
-      props.onSent?.(target)
-      props.onDone(target)
+      await record((approves(units(amount), using) ? await approve(config, target, units(amount), text) : undefined) ?? (await transfer(config, target, units(amount), text, using)))
     } catch (error) {
       Pay.move(props.slot, { at: 'failed', error: message(error) })
     }
@@ -185,8 +177,8 @@ export function Fuel(props: {
         {low && flow.at !== 'failed' && <Alert title="Not enough in your wallet." tone="warn">Add money in Tempo Wallet first.</Alert>}
         {flow.at === 'done' && <Alert action={{ label: 'Add more', onClick: () => Pay.move(props.slot, Pay.idle) }} title={`You're riding. ${dollars(flow.amount)} is in.`} tone="good">{flow.kept ? 'Thank you! It stays in your wallet until the AI spends it.' : 'Thank you!'}</Alert>}
         {flow.at === 'unrecorded' && (
-          <Alert action={{ label: 'Try again', onClick: () => void record(flow.owed) }} title="Sent, but not counted yet." tone="warn">
-            Nothing is paid twice.
+          <Alert action={{ label: 'Try again', onClick: () => void record(flow.owed) }} title={flow.owed.way === 'approved' ? 'Approved, but not counted yet.' : 'Sent, but not counted yet.'} tone="warn">
+            {flow.owed.way === 'approved' ? 'Nothing is approved twice.' : 'Nothing is paid twice.'}
           </Alert>
         )}
         {flow.at === 'failed' && !flow.hash && (

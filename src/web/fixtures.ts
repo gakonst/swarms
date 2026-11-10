@@ -1,6 +1,6 @@
 import * as Answer from '../shared/Answer.ts'
 import * as Shelf from '../shared/Artifact.ts'
-import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, Note, Part, Posted, Pulse, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Approval, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, Note, Part, Posted, Pulse, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -626,6 +626,13 @@ function begin(swarm: Live) {
 }
 
 export const sent = new Map<string, { amount: bigint; token: Currency }>()
+
+export async function back(key: string, input: { amount: string; note?: string }): Promise<Approval> {
+  const swarm = await find(key)
+  const approval = `0x${Date.now().toString(16).padStart(64, 'a')}`
+  sent.set(approval, { amount: units(input.amount), token: 'mach' })
+  return delay({ amount: input.amount, authorizeAccessKey: {}, expiresAt: Date.now() + 600_000, id: approval, note: input.note ?? null, swarm: swarm.id }, 300)
+}
 
 const dropped = new Set<string>()
 
