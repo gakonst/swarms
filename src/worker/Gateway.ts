@@ -185,27 +185,8 @@ export type Backing = {
   token: string | null
 }
 
-export type Approved = {
-  accessKey: `0x${string}`
-  backs?: { app: string; owner: string; tag?: string }
-  expiresAt: number
-  limits: { limit: string; token: string }[]
-  wallet: `0x${string}`
-}
-
 export function backings(env: Cloudflare.Env, swarm: string) {
   return send<{ backings: Backing[]; left: string; spent: string }>(env, '/api/keys/backings', { app: app(swarm) })
-}
-
-export function backing(env: Cloudflare.Env, swarm: string, input: { days: number; deposit: number; limit: number; owner: string; tag: string; topUp: number }) {
-  return send<{ authorizeAccessKey: { expiry: number } & Record<string, unknown>; id: string }>(env, '/api/keys/request', {
-    body: { backs: { app: app(swarm), owner: input.owner, tag: input.tag }, days: input.days, deposit: input.deposit, limit: input.limit, token: 'mach', topUp: input.topUp },
-    open: true,
-  })
-}
-
-export function backed(env: Cloudflare.Env, input: { id: string; keyAuthorization?: unknown; transaction?: string }) {
-  return send<Approved>(env, '/api/keys/complete', { body: input, open: true })
 }
 
 export type Teammate = { budget: number | string | null; limit: number | string | null; member: `0x${string}`; role: 'admin' | 'member' }
