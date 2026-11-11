@@ -277,7 +277,7 @@ export function advanced(self: Swarm, type: string | undefined, at: number) {
   if (at > (self.kv.get<number>('progressed') ?? 0)) self.kv.put('progressed', at)
 }
 
-const unpaidMost = 5
+const unpaidMost = 8
 
 export function refused(self: Swarm, type: string | undefined, payload: Record<string, unknown>) {
   const error = payload['error']
