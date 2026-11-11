@@ -51,7 +51,7 @@ export function word(swarm: Stood): Word {
   return standing(swarm).word
 }
 
-const tests = /operator test|headless check|channel check|audit fixes check|second audit check|template check|settle check|start exactly two subagents|stop stays stopped|steer and stop check|branch budget check|channel open check/i
+const tests = /operator test|fund flow check|model guard check|headless check|channel check|audit fixes check|second audit check|template check|settle check|start exactly two subagents|stop stays stopped|steer and stop check|branch budget check|channel open check/i
 
 export function test(swarm: Pick<Summary, 'title'>) {
   return tests.test(swarm.title)
