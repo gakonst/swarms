@@ -361,6 +361,7 @@ test('a swarm the gateway refused to pay for while it lists money tries again by
   await fail()
   const second = w.swarm.run()
   assert.equal(second.state === 'paused' && second.pause.why === 'money' && second.pause.wake, Date.now() + 20 * 60_000)
+  assert.deepEqual(w.sql.exec('SELECT text FROM chat ORDER BY id').toArray().map((row) => row['text']), ['Started working.', 'Its last step could not be paid for, though it has money. It tries again by itself.'])
 
   down = true
   w.pass(20 * 60_000)

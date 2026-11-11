@@ -415,7 +415,7 @@ function steady<T>(value: T, ms = 160) {
 const reasons = {
   idle: 'Resting: the agent found nothing worth spending on, so the swarm stopped asking it and spends nothing. $0.052 is kept for later; a note or new money wakes it.',
   costly: "Waiting for money: the agent's next model call holds $0.2147, more than the $0.2083 any one contribution can pay at once. A contribution that can cover it starts it again.",
-  money: 'Waiting for money: $0.0038 is payable now, less than one model call holds. New money keeps it going.',
+  money: 'Out of money. Ride it to keep it going.',
   rest: 'The agent hit 3 errors in a row, so the swarm stopped to rest. New money restarts it.',
 } as const
 
@@ -427,6 +427,7 @@ function why(swarm: Live): Why | null {
 
 function reason(swarm: Live) {
   const picked = why(swarm)
+  if (picked === 'money' && scene.has('refused')) return 'Its last step could not be paid for, though it has money. It tries again by itself.'
   return picked && picked !== 'unfunded' ? reasons[picked] : null
 }
 

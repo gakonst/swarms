@@ -57,6 +57,7 @@ const flows: readonly Flow[] = [
       { name: 'Just started', url: idea('rust-book-el') },
       { name: 'No riders yet', url: idea('speedrun-t4') },
       { name: 'Out of money', url: idea('dex-guide') },
+      { name: 'A payment was refused', url: idea('dex-guide', '&scene=refused') },
       { name: 'Without a surface', url: idea('mev-map') },
       { name: 'One agent\'s traces', steps: [{ click: '.traces-who button:nth-child(3)' }], url: idea('bench-coders') },
       { name: 'A trace opened', steps: [{ click: '.trace-rows li:last-child button' }], url: idea('bench-coders') },

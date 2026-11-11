@@ -27,7 +27,7 @@ export const Box = forwardRef<HTMLElement, {
   shared?: boolean
   sign?: boolean
   steers?: boolean
-  swarm: Pick<Summary, 'balance' | 'contributors' | 'id' | 'remaining' | 'status' | 'title' | 'why'>
+  swarm: Pick<Summary, 'balance' | 'contributors' | 'id' | 'remaining' | 'status' | 'title' | 'why'> & { reason?: string | null | undefined }
   target: (step: (step: 'create') => void) => Promise<Target>
 }>(function Box(props, ref) {
   const swarm = props.swarm
@@ -65,7 +65,7 @@ export const Box = forwardRef<HTMLElement, {
           <span>{Answer.cash(left)} left</span>
         </p>
       )}
-      {!props.bare && <p className="box-state" data-mood={stood.mood}>{balance > 0 || swarm.contributors > 0 ? line(stood.word) : 'Be the first to ride it.'}</p>}
+      {!props.bare && <p className="box-state" data-mood={stood.mood}>{balance > 0 || swarm.contributors > 0 ? (stood.word === 'Needs money' && swarm.reason) || line(stood.word) : 'Be the first to ride it.'}</p>}
       {props.open || flow.at !== 'idle' ? (
         <Fuel config={props.config} extra={props.extra} first={props.first} focus={props.focus} least={props.least} locked={props.locked} note={props.note} onDone={props.onDone} onNote={props.onNote} onSent={props.onSent} prefill={props.prefill} sign={props.sign} slot={swarm.id} steers={props.steers} target={props.target} />
       ) : (

@@ -15,8 +15,8 @@ export type Sent = { id: string; prompt: string; told: Told[] }
 export type Run =
   | { state: 'new' }
   | { from?: Pause | undefined; sent?: Sent | undefined; since: number | null; state: 'waiting'; until: number }
-  | { balance?: string | undefined; id: string; n: number; prompt?: string | undefined; since: number | null; state: 'starting'; told: Told[] }
-  | { balance?: string | undefined; from: number; n: number; since: number; started: number; state: 'working'; turn: string; wanted?: string | undefined }
+  | { again?: boolean | undefined; balance?: string | undefined; id: string; n: number; prompt?: string | undefined; since: number | null; state: 'starting'; told: Told[] }
+  | { again?: boolean | undefined; balance?: string | undefined; from: number; n: number; since: number; started: number; state: 'working'; turn: string; wanted?: string | undefined }
   | { at: number; pause: Pause; settled?: number | undefined; state: 'paused' }
 
 export type Paused = Extract<Run, { state: 'paused' }>
@@ -47,7 +47,7 @@ export function wakes(pause: Pause, reason: Reason) {
 
 export const rereadMs = 10 * 60_000
 
-export const maxPatienceMs = 6 * 60 * 60_000
+export const maxPatienceMs = 60 * 60_000
 
 export function unread(run: Paused, now: number) {
   return run.settled === undefined || now - run.settled >= rereadMs || (due(run, now) && run.settled < woken(run))
@@ -69,7 +69,7 @@ export function due(run: Run, now: number) {
 
 function woken(run: Run) {
   if (run.state !== 'paused' || run.pause.why !== 'money') return Infinity
-  if (run.pause.wake !== null) return run.pause.wake
+  if (run.pause.wake !== null) return Math.min(run.pause.wake, run.at + maxPatienceMs)
   return refused(run.pause) ? run.at + rereadMs : Infinity
 }
 
@@ -91,6 +91,7 @@ export function project(run: Run, n: number): { status: Status; why: Why | null 
 
 export function reason(pause: Pause) {
   if (pause.why === 'unfunded') return 'Nobody is riding it yet.'
+  if (refused(pause)) return 'Its last step could not be paid for, though it has money. It tries again by itself.'
   return 'Out of money. Ride it to keep it going.'
 }
 
@@ -109,6 +110,11 @@ export function paused(run: Run): Pause | undefined {
 export function sent(run: Run): Sent | undefined {
   if (run.state === 'waiting') return run.sent
   return run.state === 'starting' && run.prompt !== undefined ? { id: run.id, prompt: run.prompt, told: run.told } : undefined
+}
+
+export function again(run: Run) {
+  if (run.state === 'starting' || run.state === 'working') return run.again === true
+  return run.state === 'waiting' && run.from !== undefined && refused(run.from)
 }
 
 export function since(run: Run) {

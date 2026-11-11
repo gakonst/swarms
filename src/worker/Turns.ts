@@ -119,7 +119,7 @@ export async function advance(self: Swarm, row: Store.Row) {
   const start: Extract<Phase.Run, { state: 'starting' }> =
     run.state === 'starting' && run.id === id
       ? run
-      : { balance: String(money.row.balance), id, n, prompt: again?.prompt ?? text, since, state: 'starting', told: again?.told ?? included.map((note) => [note.id, String(Memo.units(note.weight))]) }
+      : { ...(Phase.again(run) ? { again: true } : {}), balance: String(money.row.balance), id, n, prompt: again?.prompt ?? text, since, state: 'starting', told: again?.told ?? included.map((note) => [note.id, String(Memo.units(note.weight))]) }
   const prompt = start.prompt ?? text
   await self.move(money.row, start)
   const sent = await Gateway.prompt(self.env, row.id, agent.id, { id: start.id, prompt, steer: false })
@@ -147,10 +147,10 @@ export async function advance(self: Swarm, row: Store.Row) {
   }
   for (const note of notes.filter((found) => told.get(found.id) === null)) self.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
   self.touch()
-  await self.move(money.row, { balance: start.balance, from: self.last(), n, since: start.since ?? now, started: now, state: 'working', turn }, { rounds: n })
+  await self.move(money.row, { ...(start.again ? { again: true } : {}), balance: start.balance, from: self.last(), n, since: start.since ?? now, started: now, state: 'working', turn }, { rounds: n })
   Relay.begin(self)
   self.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', prompt)
-  if (start.since === null) Chat.announce(self, `${worked ? 'Back at work' : 'Started working'}.`)
+  if (start.since === null && !start.again) Chat.announce(self, `${worked ? 'Back at work' : 'Started working'}.`)
   return now + Clock.followMs
 }
 
@@ -385,7 +385,7 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause) {
   const text = Phase.reason(pause)
   if (Phase.since(run) !== null) {
     if (pause.why === 'rest' || pause.why === 'idle') await sweep(self, row)
-    if (self.turned()) Chat.announce(self, text)
+    if (self.turned() && !(Phase.again(run) && Phase.refused(pause))) Chat.announce(self, text)
   }
   const shown = Phase.paused(run)
   const at = Date.now()
