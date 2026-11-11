@@ -38,11 +38,19 @@ async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {
       continue
     }
     const held = BigInt(gift.amount)
-    const counted = each.ended || held < spent ? spent : held
+    const reach = spent + Memo.units(each.left)
+    const worth = each.ended ? spent : reach
+    const counted = held > worth ? worth : held < spent ? spent : held
     if (held === counted) continue
     const taken = await Store.lower(self.env, row.id, id, String(counted))
     if (counted < held) {
-      self.log('funds', `${Words.short(each.backer)}'s backing ended after paying $${Words.trim(Memo.decimal(counted))}; the rest never left their wallet`, each.key)
+      self.log(
+        'funds',
+        each.ended
+          ? `${Words.short(each.backer)}'s backing ended after paying $${Words.trim(Memo.decimal(counted))}; the rest never left their wallet`
+          : `${Words.short(each.backer)}'s approval of $${Words.trim(Memo.decimal(held))} can pay $${Words.trim(Memo.decimal(counted))} in all; the rest is out of the swarm's reach and stays theirs`,
+        each.key,
+      )
       await lowered(self, row.id, taken).catch((error: unknown) => console.error('Lowering branch budgets failed', error))
     }
     changed = true
