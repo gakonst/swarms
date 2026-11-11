@@ -44,6 +44,8 @@ function world(swarm: { creator?: string | null; steering?: 'open' | 'team' } = 
     calls.push(path)
     if (down.has(path)) return Response.json({ detail: 'down' }, { status: 503 })
     if (path === '/api/keys/me') return Response.json({ wallet: operator })
+    if (path === '/api/keys/backings')
+      return Response.json({ backings: [...approvals.values()].map((each) => ({ backer: (each as { wallet: string }).wallet, ended: false, key: (each as { accessKey: string }).accessKey, left: '5', limit: '5', spent: '0', tag: null })), left: '5', spent: '0' })
     const body = (await request.json()) as { budget?: number | null; hash?: string; id?: string; member?: string; memberBudget?: number | null; role?: Mate['role']; team?: string }
     if (path === '/api/keys/credit') return Response.json({ created: true, credit: { deposited: '0', left: '0', spent: '0' }, deposits: deposits.get(String(body.hash)) ?? [] })
     if (path === '/api/keys/complete') return Response.json(approvals.get(String(body.id)))

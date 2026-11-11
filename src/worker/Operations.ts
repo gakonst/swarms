@@ -1434,7 +1434,9 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
   const text = tagged && (row.steering !== 'team' || steers?.value(wallet)) ? tagged : null
   const noteId = text ? await Store.noteId(text) : null
   const id = Credit.backing(key)
-  const given = await Store.give(env, { amount: String(amount), channel: key, contributor: wallet, id, note: text, note_id: noteId, swarm: row.id, token: 'mach' })
+  const payable = (await Store.gift(env, id)) ? Problem.ok(amount) : await affordable(env, row.id, key, amount)
+  if (!payable.ok) return payable
+  const given = await Store.give(env, { amount: String(payable.value), channel: key, contributor: wallet, id, note: text, note_id: noteId, swarm: row.id, token: 'mach' })
   const written = given ?? (text && noteId ? await Store.annotate(env, row.id, id, { note: text, note_id: noteId }) : null)
   if (written) {
     await stub(env, row.id).contributed({ amount: Memo.decimal(BigInt(written.amount)), contributor: wallet, hash: key, kind: given ? 'approved' : 'noted', note: text, noteId, swarm: row.id, token: 'mach' })
@@ -1448,6 +1450,15 @@ export async function approved(env: Cloudflare.Env, input: Input<'approved'>): P
 }
 
 type Installed = { amount: bigint; key: Address; tag: string | null; wallet: Address }
+
+async function affordable(env: Cloudflare.Env, swarm: string, key: Address, limit: bigint): Promise<Problem.Result<bigint>> {
+  const listed = await Gateway.backings(env, swarm)
+  const found = listed.ok ? listed.value.backings.find((each) => each.key.toLowerCase() === key.toLowerCase()) : undefined
+  if (!found) return Problem.fail(502, 'upstream_failed', `The gateway did not say what the approval can pay, so it is not counted yet${listed.ok ? '.' : ': ' + listed.detail}`)
+  const can = Memo.units(found.spent) + Memo.units(found.left)
+  if (can === 0n) return Problem.fail(409, 'insufficient_balance', 'The wallet that approved this holds no MACH for it to pay with, so nothing is counted.')
+  return Problem.ok(can < limit ? can : limit)
+}
 
 function completed(approved: Gateway.Approved, swarm: string, owner: string): Problem.Result<Installed> {
   const backs = approved.backs

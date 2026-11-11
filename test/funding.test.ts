@@ -183,7 +183,7 @@ test('an approval posted again, which the gateway takes only once, is answered a
   assert.deepEqual(await post(), [true, null, '5.000000'])
   assert.deepEqual(told(), [['contributed', 'approved', null, '5.000000']])
   assert.deepEqual(await post(), [false, null, '5.000000'])
-  assert.deepEqual([told().slice(1), asked.includes('/api/keys/backings')], [[['funded', id]], false])
+  assert.deepEqual([told().slice(1), asked.filter((path) => path === '/api/keys/backings').length], [[['funded', id]], 1])
   assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
   assert.deepEqual(told().slice(2), [['contributed', 'noted', 'go faster', '5.000000']])
   assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
@@ -211,4 +211,21 @@ test('an approval the gateway took but Swarms never counted is counted from the 
   listed = listing([])
   assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
   assert.deepEqual(told().slice(1), [['funded', id]])
+})
+
+test('an approval counts at what its wallet can pay: nothing for an empty wallet, less than the limit for one that holds less, and not yet when the gateway does not list it', async () => {
+  const approval = { accessKey: key, backs: { app: Credit.app(id), owner }, expiresAt: 0, limits: [{ limit: '5000000', token: '0x20c000000000000000000000f37de3740ADec032' }], wallet: rider }
+  const counted = (db: ReturnType<typeof world>['db']) => db.sqlite.prepare('select amount from contributions').all().map((row) => row['amount'])
+  for (const [listed, expected, rows] of [
+    [listing([{ ...backing, left: '0' }]), 409, []],
+    [listing([]), 502, []],
+    [new Response('down', { status: 503 }), 502, []],
+    [listing([{ ...backing, left: '2' }]), [true, null, '2.000000'], ['2000000']],
+    [listing([{ ...backing, left: '1.5', spent: '0.5' }]), [true, null, '2.000000'], ['2000000']],
+    [listing([{ ...backing, left: '9' }]), [true, null, '5.000000'], ['5000000']],
+  ] as const) {
+    const { calls, db, env } = world((path) => (path === '/api/keys/complete' ? approval : path === '/api/keys/backings' ? listed : {}))
+    assert.deepEqual(await approving(env, calls).post(), expected)
+    assert.deepEqual(counted(db), rows)
+  }
 })
