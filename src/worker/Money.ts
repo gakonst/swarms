@@ -27,18 +27,22 @@ async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {
   for (const each of listed) {
     const id = Credit.backing(each.key)
     const gift = known.get(id)
-    const counted = Memo.units(each.ended ? each.spent : each.limit)
+    const spent = Memo.units(each.spent)
     if (!gift) {
-      if (counted === 0n) continue
-      const adopted = await Store.give(self.env, { amount: String(counted), channel: each.key, contributor: each.backer, id, note: null, note_id: null, swarm: row.id, token: 'mach' })
-      if (adopted) self.log('funds', `${Words.short(each.backer)} backs the swarm with up to $${Words.trim(Memo.decimal(counted))}`, each.key)
+      if (spent === 0n) continue
+      const adopted = await Store.give(self.env, { amount: String(spent), channel: each.key, contributor: each.backer, id, note: null, note_id: null, swarm: row.id, token: 'mach' })
+      if (adopted) self.log('funds', `A key ${Words.short(each.backer)} approved at the gateway paid $${Words.trim(Memo.decimal(spent))} for the swarm`, each.key)
       changed = changed || adopted !== null
       continue
     }
-    if (!each.ended || BigInt(gift.amount) === counted) continue
+    const held = BigInt(gift.amount)
+    const counted = each.ended || held < spent ? spent : held
+    if (held === counted) continue
     const taken = await Store.lower(self.env, row.id, id, String(counted))
-    self.log('funds', `${Words.short(each.backer)}'s backing ended after paying $${Words.trim(Memo.decimal(counted))}; the rest never left their wallet`, each.key)
-    await lowered(self, row.id, taken).catch((error: unknown) => console.error('Lowering branch budgets failed', error))
+    if (counted < held) {
+      self.log('funds', `${Words.short(each.backer)}'s backing ended after paying $${Words.trim(Memo.decimal(counted))}; the rest never left their wallet`, each.key)
+      await lowered(self, row.id, taken).catch((error: unknown) => console.error('Lowering branch budgets failed', error))
+    }
     changed = true
   }
   return changed

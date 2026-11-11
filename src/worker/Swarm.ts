@@ -36,7 +36,7 @@ export type Contributed = {
   noteId: string | null
   swarm: string
   token: Currency
-  kind?: 'new' | 'noted' | 'approved' | undefined
+  kind?: 'new' | 'noted' | undefined
 }
 
 export type View = {
@@ -248,9 +248,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
     this.log(
       'funds',
-      input.kind === 'approved'
-        ? `${Words.short(input.contributor)} approved up to ${Words.trim(input.amount)} ${Chain.symbol(input.token)} for the swarm to spend${input.note ? ', with a note' : ''}`
-        : `${Words.short(input.contributor)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
+      `${Words.short(input.contributor)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
       [input.note, input.hash].filter(Boolean).join('\n'),
     )
     Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed it with $${Words.trim(input.amount)}${input.note ? `: "${input.note}"` : ''}.`)

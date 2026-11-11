@@ -104,7 +104,6 @@ const flows: readonly Flow[] = [
       { name: 'Declined', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 1600 }], url: idea('dex-guide', '&scene=deny,in') },
       { name: 'Not enough money', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 2600 }], url: idea('dex-guide', '&scene=broke,in') },
       { name: 'Sent, not counted yet', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 2600 }], url: idea('dex-guide', '&scene=uncounted,in') },
-      { name: 'Approved, not counted yet', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 2600 }], url: idea('dex-guide', '&scene=uncounted,in&token=mach&amount=1') },
       { name: 'Riding', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 3000 }], url: idea('bench-coders', '&scene=in') },
     ],
     id: 'back',

@@ -220,7 +220,7 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
   Persona.keep(self.kv, instructions)
   const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, instructed: true, unreachable: null, url: credited }
   self.kv.put('agent', agent)
-  self.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it uses is paid by the swarm's backers: from the keys they approved, as it spends, and from the money they sent.", created.value.id)
+  self.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it uses is paid from the money the swarm's riders sent, which the gateway holds as its credit.", created.value.id)
   await Branching.release(self, row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
   return agent
 }

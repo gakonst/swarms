@@ -84,12 +84,6 @@ app.post('/v1/swarms/:id/contributions', async (c) =>
   contributed(await Operations.contribute(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') })),
 )
 
-app.post('/v1/swarms/:id/backings', async (c) => Problem.respond(await Operations.back(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') })))
-
-app.post('/v1/swarms/:id/backings/:request', async (c) =>
-  contributed(await Operations.approved(c.env, { ...(await body(c.req.raw)), request: c.req.param('request'), swarm: c.req.param('id') })),
-)
-
 app.get('/v1/swarms/:id/hands', async (c) => Problem.respond(await Operations.hands(c.env, { swarm: c.req.param('id') })))
 
 app.post('/v1/swarms/:id/hands', async (c) =>

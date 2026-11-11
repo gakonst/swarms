@@ -21,8 +21,6 @@ const preferred: readonly Currency[] = ['mach', 'ousd', 'usdce', 'pathusd']
 
 const smallest = '0.01'
 
-const approvable = 1_000_000n
-
 export type Target = { id: string }
 
 export type Prefill = { amount: string; note: string; token: Currency | undefined }
@@ -61,25 +59,11 @@ const working = {
   send: 'Approve in Tempo Wallet…',
 } as const satisfies Record<Pay.Working, string>
 
-export function approves(amount: bigint, token: Currency) {
-  return token === 'mach' && amount >= approvable
-}
-
-function approve(config: Config, target: Target, amount: bigint, note: string): Promise<Pay.Owed | undefined> {
-  return Api.back(target.id, { amount: decimal(amount), ...(note ? { note } : {}) })
-    .then(async (prepared) => ({ amount: decimal(amount), id: prepared.id, keyAuthorization: (await Wallet.authorize(config, prepared.authorizeAccessKey)).keyAuthorization, note, swarm: target.id, way: 'approved' as const }))
-    .catch((error: unknown) => {
-      if (Wallet.declined(error)) throw error
-      console.warn('The approval could not be asked for, so the money is sent instead', error)
-      return undefined
-    })
-}
-
 async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency): Promise<Pay.Owed> {
   if (!config.credit) throw new Error('Riding is not available right now. Try again in a moment.')
   const { memo } = await import('../shared/Credit.ts')
   const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, note), to: config.credit.recipient, token })
-  return { amount: decimal(amount), hash, note, swarm: target.id, way: 'sent' }
+  return { amount: decimal(amount), hash, note, swarm: target.id }
 }
 
 function dollars(amount: string) {
@@ -151,7 +135,7 @@ export function Fuel(props: {
       if (held !== undefined && held < units(amount)) throw Object.assign(new Error('Your wallet holds less than this.'), { code: 'insufficient_balance' })
       const target = await props.target((next) => step(next))
       step('send')
-      await record((approves(units(amount), using) ? await approve(config, target, units(amount), text) : undefined) ?? (await transfer(config, target, units(amount), text, using)))
+      await record(await transfer(config, target, units(amount), text, using))
     } catch (error) {
       Pay.move(props.slot, { at: 'failed', error: message(error) })
     }
@@ -175,10 +159,10 @@ export function Fuel(props: {
       </button>
       <div className="fuel-told" ref={told}>
         {low && flow.at !== 'failed' && <Alert title="Not enough in your wallet." tone="warn">Add money in Tempo Wallet first.</Alert>}
-        {flow.at === 'done' && <Alert action={{ label: 'Add more', onClick: () => Pay.move(props.slot, Pay.idle) }} title={`You're riding. ${dollars(flow.amount)} is in.`} tone="good">{flow.kept ? 'Thank you! It stays in your wallet until the AI spends it.' : 'Thank you!'}</Alert>}
+        {flow.at === 'done' && <Alert action={{ label: 'Add more', onClick: () => Pay.move(props.slot, Pay.idle) }} title={`You're riding. ${dollars(flow.amount)} is in.`} tone="good">Thank you!</Alert>}
         {flow.at === 'unrecorded' && (
-          <Alert action={{ label: 'Try again', onClick: () => void record(flow.owed) }} title={flow.owed.way === 'approved' ? 'Approved, but not counted yet.' : 'Sent, but not counted yet.'} tone="warn">
-            {flow.owed.way === 'approved' ? 'Nothing is approved twice.' : 'Nothing is paid twice.'}
+          <Alert action={{ label: 'Try again', onClick: () => void record(flow.owed) }} title="Sent, but not counted yet." tone="warn">
+            Nothing is paid twice.
           </Alert>
         )}
         {flow.at === 'failed' && !flow.hash && (

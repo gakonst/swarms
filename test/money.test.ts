@@ -73,12 +73,12 @@ function swarm(gifts: { amount: string; channel: string; id: string }[], behind:
 
 const row = { balance: 0, id: 'abc123abc123', machines: 0, pool_left: 0, pool_spent: 0, sponsor_left: 0, sponsor_spent: 0, spent: 0 } as never
 
-test("a swarm's money is its credit and what its backers' keys can still pay, and a backing the gateway lists is counted once", async () => {
+test("a swarm's money is its credit and what its backers' keys can still pay, and a key Swarms never counted is counted only at what it paid", async () => {
   const fresh = swarm([{ amount: '5000000', channel: ended, id: 'backing:' + ended }])
   const money = await Money.refresh(fresh.self, row, { credit: true, hands: false })
   assert.equal(money.left, 4_400_000n)
   const given = fresh.writes.filter((write) => write.sql.startsWith('insert or ignore into contributions'))
-  assert.deepEqual(given.map((write) => [write.args[0], write.args[3], write.args[5]]), [['backing:' + live, backer, '5000000']])
+  assert.deepEqual(given.map((write) => [write.args[0], write.args[3], write.args[5]]), [['backing:' + live, backer, '1000000']])
   const pooled = fresh.writes.find((write) => write.sql.startsWith('update swarms set'))
   assert.ok(pooled?.sql.includes('sponsor_left = ?') && pooled.args.includes(4_000_000) && pooled.args.includes(2_200_000))
 })
@@ -102,6 +102,14 @@ test('a backing that ended is lowered to what it paid, since the rest never left
   ])
   await Money.refresh(settled.self, row, { credit: true, hands: false })
   assert.equal(settled.writes.filter((write) => write.sql.startsWith('update contributions')).length, 0)
+
+  const paying = swarm([
+    { amount: '400000', channel: live, id: 'backing:' + live },
+    { amount: '1200000', channel: ended, id: 'backing:' + ended },
+  ])
+  await Money.refresh(paying.self, row, { credit: true, hands: false })
+  assert.deepEqual(paying.writes.filter((write) => write.sql.startsWith('update contributions set amount')).map((write) => write.args), [['1000000', 'backing:' + live, 'abc123abc123']])
+  assert.ok(!paying.logged.some((text) => /ended after paying/.test(text)))
 })
 
 test('a branch whose money came from a backing that ended gets the budget still behind it, and a branch of an old agent or with no budget is left alone', async () => {
