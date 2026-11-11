@@ -2,13 +2,15 @@ import { useCallback, useSyncExternalStore } from 'react'
 import * as Api from './api.ts'
 import { message } from './hooks.ts'
 
-export type Owed = { amount: string; hash: string; note: string; swarm: string }
+export type Owed =
+  | { amount: string; hash: string; note: string; swarm: string; way: 'sent' }
+  | { amount: string; id: string; keyAuthorization: unknown; note: string; swarm: string; way: 'approved' }
 
 export type Counted = { at: 'counted' } | { at: 'later' } | { at: 'refused'; reason: string }
 
 export type Working = 'connect' | 'create' | 'record' | 'send'
 
-export type Step = { at: 'idle' } | { at: 'busy'; step: Working } | { amount: string; at: 'done' } | { at: 'failed'; error: string; hash?: string }
+export type Step = { at: 'idle' } | { at: 'busy'; step: Working } | { amount: string; at: 'done'; kept: boolean } | { at: 'failed'; error: string; hash?: string }
 
 export type Flow = Step | { at: 'unrecorded'; owed: Owed }
 
@@ -50,7 +52,7 @@ function owing(): readonly Owed[] {
     const raw = localStorage.getItem(kept)
     if (raw !== saved.raw) {
       const all: unknown = raw ? JSON.parse(raw) : []
-      saved = { all: Array.isArray(all) ? (all as Owed[]).filter((each) => typeof each?.hash === 'string') : [], raw }
+      saved = { all: Array.isArray(all) ? (all as Owed[]) : [], raw }
     }
   } catch {}
   return saved.all
@@ -69,8 +71,12 @@ function keep(all: readonly Owed[]) {
   notify()
 }
 
+function named(owed: Owed) {
+  return owed.way === 'sent' ? owed.hash : owed.id
+}
+
 function without(owed: Owed) {
-  return owing().filter((each) => each.hash !== owed.hash)
+  return owing().filter((each) => named(each) !== named(owed))
 }
 
 export function flow(slot: string): Flow {
@@ -105,24 +111,25 @@ export function useFlow(slot: string) {
   return useSyncExternalStore(useCallback((listener: () => void) => watch(slot, listener), [slot]), () => flow(slot), () => idle)
 }
 
-function refuses(error: unknown) {
+function refuses(error: unknown, way: Owed['way']) {
   const status = typeof error === 'object' && error !== null && 'status' in error ? Number(error.status) : 0
-  return status >= 400 && status < 500 && status !== 404 && status !== 408 && status !== 429
+  return status >= 400 && status < 500 && status !== 408 && status !== 429 && !(status === 404 && way === 'sent')
 }
 
 async function count(owed: Owed): Promise<Counted> {
   const note = owed.note ? { note: owed.note } : {}
   for (let attempt = 0; ; attempt++) {
     try {
-      await Api.contribute(owed.swarm, { hash: owed.hash, ...note })
+      if (owed.way === 'sent') await Api.contribute(owed.swarm, { hash: owed.hash, ...note })
+      else await Api.approved(owed.swarm, owed.id, { keyAuthorization: owed.keyAuthorization, ...note })
       return { at: 'counted' }
     } catch (error) {
       if (code(error) === 'conflict') return { at: 'counted' }
-      if (attempt < 3 && code(error) === 'not_found') {
+      if (owed.way === 'sent' && attempt < 3 && code(error) === 'not_found') {
         await new Promise((resolve) => setTimeout(resolve, 1500))
         continue
       }
-      return refuses(error) ? { at: 'refused', reason: message(error) } : { at: 'later' }
+      return refuses(error, owed.way) ? { at: 'refused', reason: message(error) } : { at: 'later' }
     }
   }
 }
@@ -133,6 +140,6 @@ export async function record(owed: Owed, from = owed.swarm) {
   move(owed.swarm, { at: 'busy', step: 'record' })
   const counted = await count(owed)
   if (counted.at !== 'later') keep(without(owed))
-  move(owed.swarm, counted.at === 'counted' ? { amount: owed.amount, at: 'done' } : counted.at === 'refused' ? { at: 'failed', error: counted.reason, hash: owed.hash } : idle)
+  move(owed.swarm, counted.at === 'counted' ? { amount: owed.amount, at: 'done', kept: owed.way === 'approved' } : counted.at === 'refused' ? { at: 'failed', error: counted.reason, ...(owed.way === 'sent' ? { hash: owed.hash } : {}) } : idle)
   return counted
 }

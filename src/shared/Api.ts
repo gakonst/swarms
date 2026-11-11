@@ -212,6 +212,7 @@ export type Waited = {
 
 export type Contributed = { contribution: Contribution; swarm: Summary }
 
+export type Approval = { amount: string; authorizeAccessKey: unknown; expiresAt: number; id: string; note: string | null; swarm: string }
 
 export type Problem = { code: string; detail: string; status: number }
 

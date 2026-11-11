@@ -213,7 +213,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
     {
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true, readOnlyHint: false },
       description:
-        "Send money to a swarm from the user's own wallet: MACH, OUSD, USDC.e or pathUSD, each counted at $1. Without hash it prepares the transfer: the gateway's address (to), the token's address, the memo that names the swarm and commits to the note, with amount the transferWithMemo call to send, and a link to the swarm's page with it filled in, where Tempo Wallet sends it and the page counts it. Show the link to the user, or send the call from a wallet the user controls. With hash it counts a transfer already sent; each transaction counts once. A note counts only when the memo commits to it.",
+        "Send money to a swarm from the user's own wallet: MACH, OUSD, USDC.e or pathUSD, each counted at $1. Without hash it prepares the transfer: the gateway's address (to), the token's address, the memo that names the swarm and commits to the note, with amount the transferWithMemo call to send, and a link to the swarm's page with it filled in, where Tempo Wallet backs it and the page counts it: MACH of 1 or more is approved there as a spending limit that stays in the wallet until the swarm spends it, and anything else is sent. Show the link to the user, or send the call from a wallet the user controls. With hash it counts a transfer already sent; each transaction counts once. A note counts only when the memo commits to it.",
       inputSchema: Operations.schema.transfer.shape,
     },
     async (input) => {

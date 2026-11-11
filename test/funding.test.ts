@@ -152,3 +152,63 @@ test('a swarm told of money wakes before it logs and announces it, so a failed a
   await assert.rejects(Swarm.prototype.contributed.call(self as never, { ...input, kind: 'noted', note: 'idea', noteId: 'n1' }), /D1 is down/)
   assert.deepEqual(woken, ['money', 'money'])
 })
+
+const key = '0x00000000000000000000000000000000000000cc'
+const used = () => Response.json({ detail: 'The key request expired or was used. Start again.' }, { status: 404 })
+const listing = (backings: unknown[]) => ({ backings, left: '5', spent: '0' })
+const backing = { backer: rider, createdAt: 1, ended: false, expiresAt: null, key, left: '5', limit: '5', spent: '0', tag: Credit.tag(id, 'go faster'), token: 'mach' }
+
+function approving(env: Cloudflare.Env, calls: [string, ...unknown[]][]) {
+  const post = async (note?: string, keyAuthorization: unknown = { keyId: key }) => {
+    const result = await Operations.approved(env, { keyAuthorization, request: 'ab'.repeat(16), swarm: id, ...(note ? { note } : {}) })
+    return result.ok ? [result.value.created, result.value.contributed.contribution.note, result.value.contributed.swarm.balance] : result.status
+  }
+  const told = () => calls.map(([name, input]) => (name === 'contributed' ? [name, (input as { kind: string }).kind, (input as { note: string | null }).note, (input as { amount: string }).amount] : [name, input]))
+  return { post, told }
+}
+
+test('an approval posted again, which the gateway takes only once, is answered as counted and announces nothing, and its note is added once', async () => {
+  const asked: string[] = []
+  let completed = false
+  const { calls, env } = world((path) => {
+    asked.push(path)
+    if (path === '/api/keys/backings') return listing([backing])
+    if (path !== '/api/keys/complete') return {}
+    if (completed) return used()
+    completed = true
+    return { accessKey: key, backs: { app: Credit.app(id), owner, tag: Credit.tag(id, 'go faster') }, expiresAt: 0, limits: [{ limit: '5000000', token: '0x20c000000000000000000000f37de3740ADec032' }], wallet: rider }
+  })
+  const { post, told } = approving(env, calls)
+
+  assert.deepEqual(await post(), [true, null, '5.000000'])
+  assert.deepEqual(told(), [['contributed', 'approved', null, '5.000000']])
+  assert.deepEqual(await post(), [false, null, '5.000000'])
+  assert.deepEqual([told().slice(1), asked.includes('/api/keys/backings')], [[['funded', id]], false])
+  assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
+  assert.deepEqual(told().slice(2), [['contributed', 'noted', 'go faster', '5.000000']])
+  assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
+  assert.deepEqual(await post('something else'), [false, 'go faster', '5.000000'])
+  assert.deepEqual(told().slice(3), [['funded', id], ['funded', id]])
+})
+
+test('an approval the gateway took but Swarms never counted is counted from the backings the gateway lists, and one it does not list is refused', async () => {
+  let listed: unknown = listing([backing])
+  const { calls, env } = world((path) => (path === '/api/keys/complete' ? used() : path === '/api/keys/backings' ? listed : {}))
+  const { post, told } = approving(env, calls)
+
+  assert.equal(await post(undefined, { signature: '0x' }), 400)
+  listed = new Response('down', { status: 503 })
+  assert.equal(await post('go faster'), 502)
+  listed = listing([])
+  assert.equal(await post('go faster'), 400)
+  listed = listing([{ ...backing, ended: true, limit: '5', spent: '0' }])
+  assert.equal(await post('go faster'), 400)
+  assert.deepEqual(told(), [])
+
+  listed = listing([backing])
+  assert.deepEqual(await post('go faster', { address: key }), [true, 'go faster', '5.000000'])
+  assert.deepEqual(told(), [['contributed', 'approved', 'go faster', '5.000000']])
+  listed = listing([])
+  assert.deepEqual(await post('go faster'), [false, 'go faster', '5.000000'])
+  assert.deepEqual(told().slice(1), [['funded', id]])
+})

@@ -15,6 +15,8 @@ type Plan = { credit: boolean; hands: boolean }
 
 export const everything: Plan = { credit: true, hands: true }
 
+const unbackedMs = 10 * 60_000
+
 function earned(hand: Gateway.Listed) {
   const charges = hand['charges'] as { usd?: unknown } | null | undefined
   return typeof charges?.usd === 'number' && charges.usd > 0 ? Memo.units(charges.usd.toFixed(6)) : 0n
@@ -58,7 +60,8 @@ async function lowered(self: Swarm, swarm: string, taken: { agent: string; branc
 }
 
 export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everything): Promise<Money> {
-  const backable = plan.credit && !self.kv.get<boolean>('unbacked')
+  const unbacked = self.kv.get<number>('unbacked')
+  const backable = plan.credit && !(typeof unbacked === 'number' && Date.now() - unbacked < unbackedMs)
   const [hands, credit, backings] = await Promise.all([
     plan.hands ? Gateway.hands(self.env, row.id) : undefined,
     plan.credit ? Gateway.credit(self.env, row.id) : undefined,
@@ -72,7 +75,7 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   const known = !plan.credit || (!!credit?.ok && (!backable || !!backings?.ok))
   const settling = backings?.ok ? await settle(self, row, backings.value.backings).catch((error: unknown) => (console.error('Settling backings failed', error), undefined)) : undefined
   const settled = settling === true
-  if (backings?.ok && settling !== undefined && backings.value.backings.every((each) => each.ended)) self.kv.put('unbacked', true)
+  if (backings?.ok && settling !== undefined && backings.value.backings.every((each) => each.ended)) self.kv.put('unbacked', Date.now())
 
   const previous = self.kv.get<Hand[]>('hands') ?? []
   const connected = hands?.ok ? hands.value.hands.filter((hand) => hand.connected) : undefined

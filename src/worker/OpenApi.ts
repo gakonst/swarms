@@ -236,7 +236,7 @@ const schemas = {
   Status: { enum: [...Operations.statuses], type: 'string' },
   Summary: object({
     answer: nullable(ref('Answer')),
-    balance: { ...mach, description: "Everything riders put in, which the gateway holds as the swarm's credit: each transfer at its amount. A spending approval from before 2026-11-11, when transfers became the only way in, counts at its limit, or at what it paid once it ended." },
+    balance: { ...mach, description: 'Everything backers put in, which the gateway can pull to pay for the swarm: each transfer at its amount and each approved backing at its limit, or at what it paid once it ended.' },
     contributors: integer,
     cover: nullable(object({ form: { enum: ['image', 'page'], type: 'string' }, url: { description: 'A path on this site: an image, or an HTML artifact to show in a sandboxed frame, with cover=1 in its query.', type: 'string' } }, "The swarm's preview, which it chooses by marking one artifact's manifest with cover: true. null: none yet.")),
     createdAt: time,
@@ -464,6 +464,41 @@ export function document(origin: string) {
             ...failures(404),
           },
           summary: 'Live stream',
+        },
+      },
+      '/v1/swarms/{id}/backings': {
+        post: {
+          description:
+            "Prepares a backing in MACH: a spending key of the gateway's for the wallet to approve, limited to amount, that may only open and fund payment channels. Nothing moves when it is approved; the swarm's agent is paid from the wallet as it works, model calls from the wallet to the model's provider and everything else over the key's channel with the gateway. Answers id and authorizeAccessKey, which Tempo Wallet approves with wallet_connect and capabilities.authorizeAccessKey. The approval is posted to /v1/swarms/{id}/backings/{request} within 30 minutes.",
+          operationId: 'prepareBacking',
+          parameters: [swarm],
+          requestBody: {
+            content: { 'application/json': { schema: input(Operations.schema.backing.omit({ swarm: true })) } },
+            required: true,
+          },
+          responses: {
+            ...ok(object({ amount: string, authorizeAccessKey: { type: 'object' }, expiresAt: integer, id: string, note: nullable(string), swarm: string }), 'The key to approve.'),
+            ...failures(400, 404, 429, 502),
+          },
+          summary: 'Prepare a backing',
+        },
+      },
+      '/v1/swarms/{id}/backings/{request}': {
+        post: {
+          description:
+            "Counts an approved backing: the wallet's key authorization for the prepared key, or a transaction signed by one of the wallet's admin keys for a fee payer that carries it. The contribution counts at the approved limit; when the key ends it is lowered to what the key paid. A note counts only when it is the note the backing was prepared with. 201 when counted, 200 when it already was: a backing counts and is announced once, and the same approval may be posted again until it is answered.",
+          operationId: 'countBacking',
+          parameters: [swarm, { in: 'path', name: 'request', required: true, schema: { pattern: '^[0-9a-f]{32}$', type: 'string' } }],
+          requestBody: {
+            content: { 'application/json': { schema: input(Operations.schema.approved.omit({ request: true, swarm: true })) } },
+            required: true,
+          },
+          responses: {
+            ...ok(ref('Contributed'), 'The backing was already counted.'),
+            ...ok(ref('Contributed'), 'The backing was counted.', '201'),
+            ...failures(400, 404, 429, 502),
+          },
+          summary: 'Count an approved backing',
         },
       },
       '/v1/swarms/{id}/contributions': {

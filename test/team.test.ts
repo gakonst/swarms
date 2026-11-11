@@ -37,6 +37,7 @@ function world(swarm: { creator?: string | null; steering?: 'open' | 'team' } = 
   const down = new Set<string>()
   const told: Roster[] = []
   const deposits = new Map<string, unknown[]>()
+  const approvals = new Map<string, unknown>()
   let made = 0
   const gateway = async (request: Request) => {
     const path = new URL(request.url).pathname
@@ -45,6 +46,7 @@ function world(swarm: { creator?: string | null; steering?: 'open' | 'team' } = 
     if (path === '/api/keys/me') return Response.json({ wallet: operator })
     const body = (await request.json()) as { budget?: number | null; hash?: string; id?: string; member?: string; memberBudget?: number | null; role?: Mate['role']; team?: string }
     if (path === '/api/keys/credit') return Response.json({ created: true, credit: { deposited: '0', left: '0', spent: '0' }, deposits: deposits.get(String(body.hash)) ?? [] })
+    if (path === '/api/keys/complete') return Response.json(approvals.get(String(body.id)))
     if (path === '/v1/teams/create') {
       const address = '0x' + String(++made).padStart(40, '0')
       teams.set(address, { budget: null, members: new Map([[operator, { limit: null, role: 'admin' }]]) })
@@ -91,7 +93,7 @@ function world(swarm: { creator?: string | null; steering?: 'open' | 'team' } = 
     while (waited.length) await Promise.all(waited.splice(0))
     return told
   }
-  return { calls, db, deposits, down, env, name, seated, settled, teams, told }
+  return { approvals, calls, db, deposits, down, env, name, seated, settled, teams, told }
 }
 
 async function value<T>(result: Promise<{ ok: true; value: T } | { detail: string; ok: false; status: number }>) {
@@ -223,11 +225,14 @@ test("a team whose admin the gateway did not add is kept, and the next try adds 
 })
 
 test("while the gateway cannot list a swarm's team, its seats are told to try again rather than that they are not on it, and their notes wait with their money", async () => {
-  const { db, deposits, down, env, name } = world()
+  const { approvals, calls, db, deposits, down, env, name } = world()
   name(bob, 'bob')
   await value(Operations.seat(env, { member: bob, swarm: 's' }, ada))
   const hash = '0x' + '11'.repeat(32)
+  const request = '22'.repeat(16)
+  const key = '0x' + '33'.repeat(20)
   deposits.set(hash, [{ amount: '2', from: bob, log: 0, tag: Credit.tag('s', 'try lattices'), token: 'ousd' }])
+  approvals.set(request, { accessKey: key, backs: { app: Credit.app('s'), owner: operator, tag: Credit.tag('s', 'try isogenies') }, expiresAt: 0, limits: [{ limit: '5000000', token: Chain.mach.address }], wallet: bob })
   const counted = () => db.sqlite.prepare('select id, note from contributions order by created_at, id').all().map((row) => ({ ...row }))
 
   down.add('/v1/teams/members')
@@ -236,11 +241,14 @@ test("while the gateway cannot list a swarm's team, its seats are told to try ag
   assert.equal(await refused(Operations.fund(env, { amount: '1', branch: 1, swarm: 's' }, bob)), 502)
   assert.equal(await refused(Operations.steer(env, { steering: 'open', swarm: 's' }, ada)), 502)
   assert.equal(await refused(Operations.contribute(env, { hash, note: 'try lattices', swarm: 's' })), 502)
+  assert.equal(await refused(Operations.approved(env, { keyAuthorization: {}, note: 'try isogenies', request, swarm: 's' })), 502)
+  assert.ok(!calls.includes('/api/keys/complete'))
   assert.deepEqual(counted(), [])
 
   down.clear()
   assert.equal((await value(Operations.contribute(env, { hash, note: 'try lattices', swarm: 's' }))).contributed.contribution.note, 'try lattices')
-  assert.deepEqual(counted().map((row) => row.note), ['try lattices'])
+  assert.equal((await value(Operations.approved(env, { keyAuthorization: {}, note: 'try isogenies', request, swarm: 's' }))).contributed.contribution.note, 'try isogenies')
+  assert.deepEqual(counted().map((row) => row.note).sort(), ['try isogenies', 'try lattices'])
 })
 
 test("a seat's steer tells the room the roster, with what is left of their budget", async () => {

@@ -36,7 +36,7 @@ export type Contributed = {
   noteId: string | null
   swarm: string
   token: Currency
-  kind?: 'new' | 'noted' | undefined
+  kind?: 'new' | 'noted' | 'approved' | undefined
 }
 
 export type View = {
@@ -238,6 +238,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async contributed(input: Contributed) {
     this.marked += 1
     this.kv.put('id', input.swarm)
+    if (input.kind === 'approved') this.kv.delete('unbacked')
     await this.wake('money')
     if (input.kind === 'noted') {
       this.log('funds', `${Words.short(input.contributor)} put their ${Words.trim(input.amount)} ${Chain.symbol(input.token)} behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
@@ -248,7 +249,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
     this.log(
       'funds',
-      `${Words.short(input.contributor)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
+      input.kind === 'approved'
+        ? `${Words.short(input.contributor)} approved up to ${Words.trim(input.amount)} ${Chain.symbol(input.token)} for the swarm to spend${input.note ? ', with a note' : ''}`
+        : `${Words.short(input.contributor)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
       [input.note, input.hash].filter(Boolean).join('\n'),
     )
     Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed it with $${Words.trim(input.amount)}${input.note ? `: "${input.note}"` : ''}.`)

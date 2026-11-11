@@ -3,6 +3,8 @@ import * as Transfer from './Transfer.ts'
 
 export const chainId = 4217
 
+export const days = 30
+
 export function backing(key: string) {
   return 'backing:' + key.toLowerCase()
 }

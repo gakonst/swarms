@@ -14,7 +14,9 @@ function loaded(): Promise<typeof PayModule> {
 
 const Pay = await loaded()
 
-const sent: PayModule.Owed = { amount: '5.000000', hash: '0xabc', note: '', swarm: 's1' }
+const sent: PayModule.Owed = { amount: '5.000000', hash: '0xabc', note: '', swarm: 's1', way: 'sent' }
+
+const approved: PayModule.Owed = { amount: '2.000000', id: 'backing_1', keyAuthorization: { signature: '0xfeed' }, note: 'try rust', swarm: 's3', way: 'approved' }
 
 function answering(...answers: (Response | Error | Promise<Response>)[]) {
   const asked: { body: unknown; url: string }[] = []
@@ -53,7 +55,7 @@ test('a transfer the server could not count yet stays owed, and one already coun
   }
   answering(problem(409, 'conflict', 'This transaction is already counted.'))
   assert.deepEqual(await Pay.record(sent), { at: 'counted' })
-  assert.deepEqual(Pay.flow('s1'), { amount: '5.000000', at: 'done' })
+  assert.deepEqual(Pay.flow('s1'), { amount: '5.000000', at: 'done', kept: false })
   const asked = answering(counted)
   assert.deepEqual(await Pay.record({ ...sent, note: 'try rust' }), { at: 'counted' })
   assert.deepEqual(asked[0]?.body, { hash: '0xabc', note: 'try rust' })
@@ -80,7 +82,7 @@ test('a sent transfer is kept before it is counted, survives a reload, and locks
   const asked = answering(counted)
   assert.deepEqual(await reloaded.record(sent), { at: 'counted' })
   assert.deepEqual(asked.map((each) => each.body), [{ hash: '0xabc' }])
-  assert.deepEqual(reloaded.flow('s1'), { amount: '5.000000', at: 'done' })
+  assert.deepEqual(reloaded.flow('s1'), { amount: '5.000000', at: 'done', kept: false })
   assert.deepEqual(owed(), [])
   assert.deepEqual(Pay.flow('s1'), { at: 'idle' })
 })
@@ -115,18 +117,35 @@ test('a payment in flight outlives the box that started it, and a settled one is
   assert.deepEqual(Pay.flow('s1'), { at: 'failed', error: 'You declined the request in Tempo Wallet.' })
   Pay.watch('s1', () => {})()
   assert.deepEqual(Pay.flow('s1'), { at: 'idle' })
-  assert.throws(() => Pay.move('s1', { amount: '1', at: 'done' }), /cannot go from idle to done/)
+  assert.throws(() => Pay.move('s1', { amount: '1', at: 'done', kept: false }), /cannot go from idle to done/)
   Pay.move('s1', { at: 'failed', error: 'Your wallet holds less than this.' })
   Pay.move('s1', { at: 'failed', error: 'Your wallet holds less than this.' })
   assert.deepEqual(Pay.flow('s1'), { at: 'failed', error: 'Your wallet holds less than this.' })
   Pay.move('s1', Pay.idle)
 })
 
-test('an approval an older page left owed is dropped: approvals are gone, and only a sent transfer is owed', async () => {
-  stored.set('swarms.owed', JSON.stringify([{ amount: '2.000000', id: 'backing_1', keyAuthorization: {}, note: '', swarm: 's9', way: 'approved' }, { ...sent, swarm: 's9' }]))
+test('an approval the server did not answer for is kept and the same one is posted again, never a second one', async () => {
   const Pay = await loaded()
-  assert.deepEqual(Pay.flow('s9'), { at: 'unrecorded', owed: { ...sent, swarm: 's9' } })
-  answering(counted)
-  assert.deepEqual(await Pay.record({ ...sent, swarm: 's9' }), { at: 'counted' })
+  const lost = answering(problem(502, 'unavailable', 'The backing was not saved.'))
+  assert.deepEqual(await Pay.record(approved), { at: 'later' })
+  assert.deepEqual(Pay.flow('s3'), { at: 'unrecorded', owed: approved })
+  assert.deepEqual(owed(), [approved])
+  assert.ok(!Pay.can(Pay.flow('s3'), { at: 'busy', step: 'send' }))
+
+  const reloaded = await loaded()
+  const asked = answering(counted)
+  assert.deepEqual(await reloaded.record(approved), { at: 'counted' })
+  assert.deepEqual([...lost, ...asked], [1, 2].map(() => ({ body: { keyAuthorization: { signature: '0xfeed' }, note: 'try rust' }, url: '/swarms/api/swarms/s3/backings/backing_1' })))
+  assert.deepEqual(reloaded.flow('s3'), { amount: '2.000000', at: 'done', kept: true })
   assert.deepEqual(owed(), [])
+})
+
+test('an approval the server refuses approved nothing and is dropped', async () => {
+  const Pay = await loaded()
+  answering(problem(400, 'invalid_request', 'The gateway did not take the approval, so nothing was approved: expired'))
+  assert.deepEqual(await Pay.record(approved), { at: 'refused', reason: 'The gateway did not take the approval, so nothing was approved: expired' })
+  assert.deepEqual(Pay.flow('s3'), { at: 'failed', error: 'The gateway did not take the approval, so nothing was approved: expired' })
+  assert.deepEqual(owed(), [])
+  answering(problem(409, 'conflict', 'This approval is already counted.'))
+  assert.deepEqual(await Pay.record(approved), { at: 'counted' })
 })

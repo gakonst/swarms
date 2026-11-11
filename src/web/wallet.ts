@@ -286,6 +286,22 @@ export async function disconnect() {
   await (await wallet()).request({ method: 'wallet_disconnect' }).catch(() => {})
 }
 
+export async function authorize(config: Config, authorizeAccessKey: unknown) {
+  if (fixture) {
+    await asked()
+    return { address: await connect(config), keyAuthorization: 'fixture' }
+  }
+  const result = (await (await wallet()).request({ method: 'wallet_connect', params: [{ capabilities: { authorizeAccessKey }, chainId: config.chainId }] } as never)) as {
+    accounts: readonly { address: Address; capabilities?: { keyAuthorization?: unknown } }[]
+  }
+  const account = result.accounts[0]
+  const keyAuthorization = account?.capabilities?.keyAuthorization
+  if (!account || !keyAuthorization) throw new Error('Tempo Wallet returned no approval.')
+  if (!state.address) set({ address: account.address })
+  void refresh(config).catch(() => {})
+  return { address: account.address, keyAuthorization }
+}
+
 export async function send(config: Config, input: { amount: bigint; memo: Hex; to: Address; token: Currency }) {
   if (fixture) {
     const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])

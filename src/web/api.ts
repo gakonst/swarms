@@ -1,4 +1,4 @@
-import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, Posted, Problem, Room, Roster, Snapshot, Steering, Summary, Update } from '../shared/Api.ts'
+import type { Account, Approval, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, Posted, Problem, Room, Roster, Snapshot, Steering, Summary, Update } from '../shared/Api.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
 import type * as Setup from '../shared/Setup.ts'
@@ -151,6 +151,14 @@ export function live(id: string, after: () => number, listener: (event: Live | {
 
 export function create(input: { goal: string; problem?: string; steering?: Steering; title: string } & Partial<Setup.Choice>) {
   return signed(() => (fixture ? staged((fixtures) => fixtures.create(input, who())) : request<Summary>('/api/swarms', input)))
+}
+
+export function back(id: string, input: { amount: string; note?: string }) {
+  return fixture ? staged((fixtures) => fixtures.back(id, input)) : request<Approval>(`${path(id)}/backings`, input)
+}
+
+export function approved(id: string, approval: string, input: { keyAuthorization: unknown; note?: string }) {
+  return fixture ? staged((fixtures) => fixtures.contribute(id, { hash: approval, ...(input.note ? { note: input.note } : {}) })) : request<Contributed>(`${path(id)}/backings/${approval}`, input)
 }
 
 export function contribute(id: string, input: { hash: string; note?: string }) {
