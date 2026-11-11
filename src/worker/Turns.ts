@@ -99,7 +99,7 @@ export async function remodel(self: Swarm, row: Store.Row): Promise<Store.Row | 
   self.remember(moved)
   self.kv.delete('agent')
   self.kv.delete('instructions')
-  self.log('status', `Moved the swarm from ${Setup.name(setup.model)} to ${Setup.name(priced.model)}, which the gateway charges for by what each call uses. It starts a new agent, which keeps the repository, the results and the notes.`, `${setup.model} -> ${priced.model}`)
+  self.log('status', `Moved the swarm off Boundless: it runs on ${Setup.name(priced.model)} now, which the gateway charges for by what each call uses. It starts a new agent, which keeps the repository, the results and the notes.`, `${setup.model} -> ${priced.model}`)
   self.changed('detail')
   return moved
 }

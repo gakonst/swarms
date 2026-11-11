@@ -16,7 +16,7 @@ export type Setup = { harness: Harness; model: string; subagents: Offer | null; 
 
 export type Choice = { harness?: Harness | undefined; model?: string | undefined; subagents?: Offer | null | undefined; template: Template }
 
-export const fable = 'vercel/anthropic/claude-fable-5.1'
+export const fable = 'vercel/anthropic/claude-fable-5.2'
 
 export const opus = 'vercel/anthropic/claude-opus-5.5'
 
@@ -77,17 +77,17 @@ export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hi
   },
   fable: {
     harness: 'claude',
-    hint: 'Claude Code on Fable 5.1 leads. Subagents use Fable 5.1, Opus 5.5, Kimi K3.1 Pro or GLM-5.3, on Claude Code or Codex.',
-    label: 'Fable 5.1',
+    hint: 'Claude Code on Fable 5.2 leads. Subagents use Fable 5.2, Opus 5.5, Kimi K3.1 Pro or GLM-5.3, on Claude Code or Codex.',
+    label: 'Fable 5.2',
     model: fable,
     subagents: { harnesses: ['claude', 'codex'], models: [fable, opus, kimi, glm] },
   },
   'frontier-anthropic': {
     harness: 'claude',
-    hint: 'Claude Code on Opus 5.5, for the lead and every subagent.',
+    hint: 'Claude Code on Fable 5.2, for the lead and every subagent.',
     label: 'Anthropic',
-    model: opus,
-    subagents: { harnesses: ['claude'], models: [opus] },
+    model: fable,
+    subagents: { harnesses: ['claude'], models: [fable] },
   },
   'frontier-openai': {
     harness: 'codex',

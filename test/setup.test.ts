@@ -22,11 +22,11 @@ function priced(choice: Setup.Choice) {
   return setup as Setup.Setup
 }
 
-test('the default is Anthropic, Claude Code on Opus 5.5 for the lead and every subagent', () => {
+test('the default is Anthropic, Claude Code on Fable 5.2 for the lead and every subagent', () => {
   assert.equal(Setup.fallback, 'frontier-anthropic')
   const setup = priced({ template: Setup.fallback })
-  assert.deepEqual({ harness: setup.harness, model: setup.model, subagents: setup.subagents }, { harness: 'claude', model: Setup.opus, subagents: { harnesses: ['claude'], models: [Setup.opus] } })
-  assert.equal(setup.step, '37600')
+  assert.deepEqual({ harness: setup.harness, model: setup.model, subagents: setup.subagents }, { harness: 'claude', model: Setup.fable, subagents: { harnesses: ['claude'], models: [Setup.fable] } })
+  assert.equal(setup.step, '65600')
 })
 
 test('the cheap template leads with Codex on DeepSeek Flash, and subagents use DeepSeek Flash or GLM Flash', () => {
@@ -45,17 +45,17 @@ test('frontier mix leads with Claude Code on Opus and offers Opus, Kimi K3.1 Pro
   assert.deepEqual(setup.steps, { [Setup.glm]: '12480', [Setup.kimi]: '21500', [Setup.opus]: '37600' })
 })
 
-test('the Fable template leads with Claude Code on Fable 5.1 and offers Fable, Opus, Kimi K3.1 Pro and GLM-5.3', () => {
+test('the Fable template leads with Claude Code on Fable 5.2, through Vercel, and offers Fable, Opus, Kimi K3.1 Pro and GLM-5.3', () => {
   const setup = priced({ template: 'fable' })
-  assert.deepEqual({ harness: setup.harness, model: setup.model }, { harness: 'claude', model: 'vercel/anthropic/claude-fable-5.1' })
+  assert.deepEqual({ harness: setup.harness, model: setup.model }, { harness: 'claude', model: 'vercel/anthropic/claude-fable-5.2' })
   assert.deepEqual(setup.subagents, { harnesses: ['claude', 'codex'], models: [Setup.fable, Setup.opus, Setup.kimi, Setup.glm] })
   assert.equal(setup.step, '65600')
   assert.equal(setup.most, '440960')
 })
 
-test('OpenAI leads on Sol, Anthropic is Opus 5.5 only, and free for all offers any subagent model', () => {
+test('OpenAI leads on Sol, Anthropic is Fable 5.2 only, and free for all offers any subagent model', () => {
   assert.equal(priced({ template: 'frontier-openai' }).model, Setup.sol)
-  assert.deepEqual(priced({ template: 'frontier-anthropic' }).subagents, { harnesses: ['claude'], models: [Setup.opus] })
+  assert.deepEqual(priced({ template: 'frontier-anthropic' }).subagents, { harnesses: ['claude'], models: [Setup.fable] })
   const free = priced({ template: 'free' })
   assert.equal(free.subagents, null)
   assert.equal(free.most, String(Setup.least))

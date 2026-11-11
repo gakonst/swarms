@@ -512,7 +512,7 @@ test('a swarm that ran on a Boundless model is moved off it, whatever the gatewa
   const made: { model?: string }[] = []
   const w = world(async (request, url) => {
     if (url.pathname === '/v1/models')
-      return Response.json({ data: ['vercel/anthropic/claude-fable-5.1', 'vercel/anthropic/claude-opus-5.5', 'boundless/anthropic/claude-fable-5.2'].map((model) => ({ capabilities: { tools: true }, id: model, kind: 'generate', metered: true, pricing: { cached: 0.2, input: 4, output: 20 } })) })
+      return Response.json({ data: ['vercel/anthropic/claude-fable-5.2', 'vercel/anthropic/claude-opus-5.5', 'boundless/anthropic/claude-fable-5.2'].map((model) => ({ capabilities: { tools: true }, id: model, kind: 'generate', metered: true, pricing: { cached: 0.2, input: 4, output: 20 } })) })
     if (url.pathname === '/v1/agents' && request.method === 'POST') {
       made.push((await request.clone().json()) as { model?: string })
       return Response.json({ id: 'agt_1' })
@@ -529,8 +529,8 @@ test('a swarm that ran on a Boundless model is moved off it, whatever the gatewa
   await w.ring()
   const row = (await w.env.DB.prepare('select setup from swarms where id = ?').bind(id).first()) as { setup: string }
   const setup = JSON.parse(row.setup) as { model: string; subagents: { models: string[] }; template: string }
-  assert.deepEqual([setup.model, setup.subagents.models, setup.template], ['vercel/anthropic/claude-fable-5.1', ['vercel/anthropic/claude-fable-5.1'], 'fable'])
-  assert.deepEqual([w.swarm.run().state, w.swarm.agent()?.id, made.map((agent) => agent.model)], ['working', 'agt_1', ['vercel/anthropic/claude-fable-5.1']])
+  assert.deepEqual([setup.model, setup.subagents.models, setup.template], ['vercel/anthropic/claude-fable-5.2', ['vercel/anthropic/claude-fable-5.2'], 'fable'])
+  assert.deepEqual([w.swarm.run().state, w.swarm.agent()?.id, made.map((agent) => agent.model)], ['working', 'agt_1', ['vercel/anthropic/claude-fable-5.2']])
   assert.ok(!String(w.swarm.kv.get('instructions')).includes('boundless/'))
-  assert.ok(w.sql.exec("SELECT text FROM feed WHERE kind = 'status'").toArray().some((entry) => /Moved the swarm from Claude Fable 5\.2 to Claude Fable 5\.1/.test(String(entry['text']))))
+  assert.ok(w.sql.exec("SELECT text FROM feed WHERE kind = 'status'").toArray().some((entry) => /Moved the swarm off Boundless: it runs on Claude Fable 5\.2 now/.test(String(entry['text']))))
 })
