@@ -437,3 +437,31 @@ test('the public API names only the statuses a run can have, and done is not one
   const projected = new Set(runs.flatMap((run) => [0, 3].map((n) => Phase.project(run as never, n).status)))
   assert.deepEqual([...projected].sort(), [...Operations.statuses].sort())
 })
+
+test('the branches a swarm last listed are answered when the gateway is slow or failing to list them, instead of making the reader wait or fail', async (t) => {
+  let answer: () => Response | Promise<Response> = () => Response.json({ agents: [] })
+  const w = world((_request, url) => (url.pathname === '/v1/agents/agt_1/subagents' ? answer() : undefined))
+  t.after(w.restore)
+  await w.seed()
+  w.swarm.kv.put('agent', { briefed: true, cursor: 0, id: 'agt_1', unreachable: null })
+  const old = [{ id: 1, role: 'explorer', status: { state: 'running' } }]
+  w.swarm.kv.put('subagents', { agent: 'agt_1', at: Date.now() - 3_600_000, list: old })
+
+  let release = () => {}
+  answer = () => new Promise<Response>((resolve) => (release = () => resolve(Response.json({ agents: [] }))))
+  const started = performance.now()
+  const slow = await w.swarm.subagents(id)
+  assert.ok(slow.ok && slow.value.list.length === 1 && performance.now() - started < 5_000)
+  release()
+
+  answer = () => Response.json({ error: 'down' }, { status: 503 })
+  w.swarm.kv.put('subagents', { agent: 'agt_1', at: Date.now() - 3_600_000, list: old })
+  w.swarm.listing = undefined
+  const failing = await w.swarm.subagents(id)
+  assert.ok(failing.ok && failing.value.list.length === 1)
+
+  answer = () => Response.json({ agents: [] })
+  w.swarm.listing = undefined
+  const fresh = await w.swarm.subagents(id)
+  assert.ok(fresh.ok && fresh.value.list.length === 0)
+})

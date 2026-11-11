@@ -15,6 +15,8 @@ export const keptMs = 10 * 60_000
 
 export const listingMs = 2_000
 
+export const patienceMs = 1_500
+
 export async function list(self: Swarm, swarm: string, agent: string): Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> {
   const value = Gateway.subagents(self.env, swarm, agent).then((listed): Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }> => (listed.ok ? { ok: true, value: { agent, list: listed.value } } : listed))
   const flight = { agent, at: Date.now(), pending: true, value }

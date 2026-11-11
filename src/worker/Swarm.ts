@@ -747,11 +747,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const known = this.listing?.agent === agent ? this.listing : undefined
     if (known && !known.pending && Date.now() - known.at < Branching.listingMs) return known.value
     const kept = this.kv.get<{ agent: string; at: number; list: Gateway.Subagent[] }>('subagents')
-    if (kept?.agent === agent && Date.now() - kept.at < Branching.keptMs) {
-      if (!known?.pending) this.ctx.waitUntil(Branching.list(this, swarm, agent).catch(() => undefined))
-      return { ok: true, value: { agent, list: kept.list } }
-    }
-    return known?.pending ? known.value : Branching.list(this, swarm, agent)
+    const flight = known?.pending ? known.value : Branching.list(this, swarm, agent)
+    if (kept?.agent !== agent) return flight
+    const held = { ok: true as const, value: { agent, list: kept.list } }
+    this.ctx.waitUntil(flight.catch(() => undefined))
+    if (Date.now() - kept.at < Branching.keptMs) return held
+    return Promise.race([flight.then((listed) => (listed.ok ? listed : held), () => held), new Promise<typeof held>((resolve) => setTimeout(() => resolve(held), Branching.patienceMs))])
   }
 
   async direct(
