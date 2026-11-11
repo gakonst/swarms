@@ -1,6 +1,7 @@
 import * as Credit from '../shared/Credit.ts'
 import type * as Setup from '../shared/Setup.ts'
 import { redact } from '../shared/Trail.ts'
+import * as Clock from './Clock.ts'
 import * as Edge from './Edge.ts'
 import * as Timing from './Timing.ts'
 
@@ -85,6 +86,7 @@ async function send<value>(env: Cloudflare.Env, path: string, init: Init = {}): 
       body: init.body === undefined ? null : JSON.stringify(init.body),
       headers,
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
+      signal: AbortSignal.timeout(Clock.gatewayMs),
     }).then(async (response) => [response, await response.text()] as const),
   ).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
   if ('ok' in answered) return answered

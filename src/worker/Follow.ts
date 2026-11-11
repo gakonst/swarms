@@ -117,6 +117,11 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
     Turns.abandon(self, agent.id, detail)
     return Turns.finish(self, row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
   }
+  const idle = Date.now() - Math.max(self.kv.get<number>('progressed') ?? 0, run.started)
+  if (!failing && idle >= Clock.stuckMs) {
+    await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
+    return Turns.finish(self, row, run, { error: `The agent made no model call or tool call for ${Math.round(idle / 60_000)} minutes, so the swarm stopped the turn to start another.`, request_id: run.turn, status: 'failed' })
+  }
   return window ? Date.now() : now + Clock.followMs
 }
 
@@ -296,7 +301,7 @@ export function stalled(self: Swarm, now: number) {
   if (self.kv.get<number>('stallNoted') === working.progressed) return
   self.kv.put('stallNoted', working.progressed)
   const minutes = Math.round((now - working.progressed) / 60_000)
-  self.log('error', `The agent has made no model call or tool call for ${minutes} minutes. Its session may be restarting without getting anywhere; the swarm keeps waiting for it.`, null)
+  self.log('error', `The agent has made no model call or tool call for ${minutes} minutes. Its session may be restarting without getting anywhere; after ${Math.round(Clock.stuckMs / 60_000)} minutes of it the swarm stops the turn and starts another.`, null)
 }
 
 export function record(self: Swarm, who: string | null, type: string | undefined, payload: Record<string, unknown>, event: number, at: number) {

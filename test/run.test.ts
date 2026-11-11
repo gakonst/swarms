@@ -471,3 +471,25 @@ test('the branches a swarm last listed are answered when the gateway is slow or 
   const fresh = await w.swarm.subagents(id)
   assert.ok(fresh.ok && fresh.value.list.length === 0)
 })
+
+test('a turn in which the agent does nothing for thirty minutes is stopped, and the swarm starts another', async (t) => {
+  const w = world(() => undefined)
+  t.after(w.restore)
+  await w.seed()
+  await w.swarm.wake('money')
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+  w.swarm.checked = 0
+  w.pass(29 * 60_000)
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+  w.swarm.checked = 0
+  w.pass(61_000)
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'waiting')
+  assert.ok(w.calls.includes('POST /v1/agents/agt_1/turns/agt_1:1/cancel'))
+  assert.ok(w.errors().some((text) => /made no model call or tool call for 30 minutes/.test(text) || /stopped with an error/.test(text)))
+  w.pass(15_000)
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+})
