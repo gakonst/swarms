@@ -23,7 +23,6 @@ const models: Setup.Price[] = [
   { cached: 0.14, id: '@cf/zai-org/glm-5.3', input: 1.12, output: 3.52 },
   { cached: 0.024, id: '@cf/zai-org/glm-5.3-flash', input: 0.12, output: 0.4 },
   { cached: 0.0048, id: '@cf/deepseek-ai/deepseek-v4.1-flash-1017', input: 0.24, output: 0.96 },
-  { cached: 0.2, id: 'boundless/anthropic/claude-fable-5.2', input: 8, output: 40 },
   { cached: 0.25, id: 'vercel/anthropic/claude-fable-5.1', input: 10, output: 50 },
   { cached: 0.01, id: 'vercel/anthropic/claude-haiku-5.5', input: 0.1, output: 0.5 },
   { cached: 0.2, id: 'vercel/anthropic/claude-opus-5.5', input: 4, output: 20 },

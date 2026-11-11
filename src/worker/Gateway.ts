@@ -148,13 +148,13 @@ export async function prices(env: Cloudflare.Env) {
   if (pricing && Date.now() - pricing.at < 600_000) return pricing.value
   const value = await Promise.race([
     call(env, '/v1/models')
-      .then((response) => (response.ok ? (response.json() as Promise<{ data?: { capabilities?: { tools?: boolean }; id: string; kind?: string; metered?: boolean; pricing?: { cached?: number; input?: number; output?: number } }[] }>) : undefined))
+      .then((response) => (response.ok ? (response.json() as Promise<{ data?: { capabilities?: { tools?: boolean }; id: string; kind?: string; pricing?: { cached?: number; input?: number; output?: number } }[] }>) : undefined))
       .then((listed) => {
         const found = new Map<string, Setup.Price>()
         for (const model of listed?.data ?? []) {
           const price = model.pricing
           if (model.kind !== 'generate' || model.capabilities?.tools === false || price?.input === undefined || price.output === undefined) continue
-          if (model.metered === false || (model.metered === undefined && Setup.direct(model.id))) continue
+          if (Setup.direct(model.id)) continue
           found.set(model.id, { cached: price.cached ?? price.input, id: model.id, input: price.input, output: price.output })
         }
         return found.size ? found : undefined

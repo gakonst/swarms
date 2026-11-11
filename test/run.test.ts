@@ -508,11 +508,11 @@ test('a pause whose wake was set hours ahead is looked at again when it is viewe
   assert.equal(w.swarm.run().state, 'working')
 })
 
-test('a swarm that ran on a model each rider pays its provider for is moved to the one the gateway meters and starts a new agent', async (t) => {
+test('a swarm that ran on a Boundless model is moved off it, whatever the gateway says of that model, and starts a new agent', async (t) => {
   const made: { model?: string }[] = []
   const w = world(async (request, url) => {
     if (url.pathname === '/v1/models')
-      return Response.json({ data: ['vercel/anthropic/claude-fable-5.1', 'vercel/anthropic/claude-opus-5.5', 'boundless/anthropic/claude-fable-5.2'].map((model) => ({ capabilities: { tools: true }, id: model, kind: 'generate', pricing: { cached: 0.2, input: 4, output: 20 } })) })
+      return Response.json({ data: ['vercel/anthropic/claude-fable-5.1', 'vercel/anthropic/claude-opus-5.5', 'boundless/anthropic/claude-fable-5.2'].map((model) => ({ capabilities: { tools: true }, id: model, kind: 'generate', metered: true, pricing: { cached: 0.2, input: 4, output: 20 } })) })
     if (url.pathname === '/v1/agents' && request.method === 'POST') {
       made.push((await request.clone().json()) as { model?: string })
       return Response.json({ id: 'agt_1' })
@@ -533,22 +533,4 @@ test('a swarm that ran on a model each rider pays its provider for is moved to t
   assert.deepEqual([w.swarm.run().state, w.swarm.agent()?.id, made.map((agent) => agent.model)], ['working', 'agt_1', ['vercel/anthropic/claude-fable-5.1']])
   assert.ok(!String(w.swarm.kv.get('instructions')).includes('boundless/'))
   assert.ok(w.sql.exec("SELECT text FROM feed WHERE kind = 'status'").toArray().some((entry) => /Moved the swarm from Claude Fable 5\.2 to Claude Fable 5\.1/.test(String(entry['text']))))
-})
-
-test('a swarm on a Boundless model stays on it while the gateway says it meters that model', async (t) => {
-  const w = world((_request, url) =>
-    url.pathname === '/v1/models'
-      ? Response.json({ data: [{ capabilities: { tools: true }, id: 'boundless/anthropic/claude-fable-5.2', kind: 'generate', metered: true, pricing: { cached: 0.2, input: 8, output: 40 } }] })
-      : undefined,
-  )
-  t.after(w.restore)
-  await w.seed('5000000')
-  const setup = { harness: 'claude', model: 'boundless/anthropic/claude-fable-5.2', most: '440960', step: '65600', steps: {}, subagents: null, template: 'fable' }
-  await w.env.DB.prepare('update swarms set setup = ? where id = ?').bind(JSON.stringify(setup), id).run()
-  w.swarm.kv.put('agent', { briefed: true, cursor: 7, id: 'agt_1', instructed: true, unreachable: null, url: 'backers' })
-  w.pass(11 * 60_000)
-  await w.swarm.wake('money')
-  await w.ring()
-  const row = (await w.env.DB.prepare('select setup from swarms where id = ?').bind(id).first()) as { setup: string }
-  assert.deepEqual([JSON.parse(row.setup).model, w.swarm.agent()?.id, w.swarm.run().state], ['boundless/anthropic/claude-fable-5.2', 'agt_1', 'working'])
 })

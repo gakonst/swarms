@@ -45,27 +45,12 @@ test('frontier mix leads with Claude Code on Opus and offers Opus, Kimi K3.1 Pro
   assert.deepEqual(setup.steps, { [Setup.glm]: '12480', [Setup.kimi]: '21500', [Setup.opus]: '37600' })
 })
 
-test('the Fable template leads with Claude Code on Fable 5.2 and offers Fable, Opus, Kimi K3.1 Pro and GLM-5.3', () => {
+test('the Fable template leads with Claude Code on Fable 5.1 and offers Fable, Opus, Kimi K3.1 Pro and GLM-5.3', () => {
   const setup = priced({ template: 'fable' })
-  assert.deepEqual({ harness: setup.harness, model: setup.model }, { harness: 'claude', model: 'boundless/anthropic/claude-fable-5.2' })
+  assert.deepEqual({ harness: setup.harness, model: setup.model }, { harness: 'claude', model: 'vercel/anthropic/claude-fable-5.1' })
   assert.deepEqual(setup.subagents, { harnesses: ['claude', 'codex'], models: [Setup.fable, Setup.opus, Setup.kimi, Setup.glm] })
   assert.equal(setup.step, '65600')
   assert.equal(setup.most, '440960')
-})
-
-test('only the Fable template names a Boundless model, a setup is refused a model the gateway does not meter, and a swarm on one is moved while it is not metered', () => {
-  for (const [name, preset] of Object.entries(Setup.presets)) for (const model of [preset.model, ...(preset.subagents?.models ?? [])]) assert.ok(!Setup.direct(model) || (name === 'fable' && model === Setup.fable), model)
-  assert.ok(Setup.direct(Setup.fable) && !Setup.direct(Setup.opus))
-  const unmetered = new Map([...prices].filter(([id]) => !Setup.direct(id)))
-  unmetered.set(Setup.fable51, { cached: 0.25, id: Setup.fable51, input: 10, output: 50 })
-  const custom = Setup.resolve({ harness: 'claude', model: Setup.fable, template: 'custom' })
-  assert.match(String(Setup.priced(custom as Exclude<typeof custom, string>, unmetered)), /not metered by the gateway right now/)
-  assert.equal(typeof Setup.priced(custom as Exclude<typeof custom, string>, prices), 'object')
-  const fable = Setup.resolve({ template: 'fable' }) as Exclude<ReturnType<typeof Setup.resolve>, string>
-  assert.equal(Setup.moved(fable, prices), undefined)
-  assert.deepEqual(Setup.moved(fable, unmetered), { harness: 'claude', model: Setup.fable51, subagents: { harnesses: ['claude', 'codex'], models: [Setup.fable51, Setup.opus, Setup.kimi, Setup.glm] }, template: 'fable' })
-  assert.equal(Setup.moved({ harness: 'claude', model: Setup.opus, subagents: null, template: 'custom' }, unmetered), undefined)
-  assert.equal(Setup.moved({ harness: 'codex', model: 'boundless/deepseek/deepseek-v4.1-flash-1017', subagents: { harnesses: ['codex'], models: ['boundless/unknown/model', Setup.opus] }, template: 'cheap' }, unmetered)?.model, Setup.flash)
 })
 
 test('OpenAI leads on Sol, Anthropic is Opus 5.5 only, and free for all offers any subagent model', () => {
@@ -96,4 +81,19 @@ test('the brief tells the agent its models, their costs and the budget floor', (
   assert.match(told, /Claude Code with vercel\/anthropic\/claude-opus-5\.5/)
   assert.match(told, /vercel\/moonshotai\/kimi-k3\.1-pro \(about \$0\.021 a call\)/)
   assert.match(told, /at least 20 of its model's calls/)
+})
+
+test('no template names a Boundless model, a custom setup that does is refused, and a swarm that ran on one is moved off it', () => {
+  for (const preset of Object.values(Setup.presets)) for (const model of [preset.model, ...(preset.subagents?.models ?? [])]) assert.ok(!Setup.direct(model), model)
+  assert.ok(Setup.direct('boundless/anthropic/claude-fable-5.2') && !Setup.direct(Setup.fable) && !Setup.direct(Setup.opus))
+  const custom = Setup.resolve({ harness: 'claude', model: 'boundless/anthropic/claude-fable-5.2', template: 'custom' })
+  assert.match(String(Setup.priced(custom as Exclude<typeof custom, string>, prices)), /do not run on Boundless/)
+  const lent = Setup.resolve({ harness: 'claude', model: Setup.opus, subagents: { harnesses: ['claude'], models: ['boundless/z-ai/glm-5.3'] }, template: 'custom' })
+  assert.match(String(Setup.priced(lent as Exclude<typeof lent, string>, prices)), /boundless\/z-ai\/glm-5\.3 is not offered/)
+  assert.equal(Setup.moved({ harness: 'claude', model: Setup.opus, subagents: null, template: 'custom' }, prices), undefined)
+  assert.deepEqual(
+    Setup.moved({ harness: 'claude', model: 'boundless/anthropic/claude-fable-5.2', subagents: { harnesses: ['claude', 'codex'], models: ['boundless/anthropic/claude-fable-5.2', 'boundless/anthropic/claude-opus-5.5', 'boundless/moonshotai/kimi-k3.1-pro', 'boundless/z-ai/glm-5.3', Setup.opus, 'boundless/unknown/model'] }, template: 'fable' }, prices),
+    { harness: 'claude', model: Setup.fable, subagents: { harnesses: ['claude', 'codex'], models: [Setup.fable, Setup.opus, Setup.kimi, Setup.glm] }, template: 'fable' },
+  )
+  assert.equal(Setup.moved({ harness: 'codex', model: 'boundless/deepseek/deepseek-v4.1-flash-1017', subagents: null, template: 'cheap' }, prices)?.model, Setup.flash)
 })

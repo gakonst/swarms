@@ -16,9 +16,7 @@ export type Setup = { harness: Harness; model: string; subagents: Offer | null; 
 
 export type Choice = { harness?: Harness | undefined; model?: string | undefined; subagents?: Offer | null | undefined; template: Template }
 
-export const fable = 'boundless/anthropic/claude-fable-5.2'
-
-export const fable51 = 'vercel/anthropic/claude-fable-5.1'
+export const fable = 'vercel/anthropic/claude-fable-5.1'
 
 export const opus = 'vercel/anthropic/claude-opus-5.5'
 
@@ -35,7 +33,7 @@ export const glm = '@cf/zai-org/glm-5.3'
 export const kimi = 'vercel/moonshotai/kimi-k3.1-pro'
 
 const moves: Record<string, string> = {
-  'boundless/anthropic/claude-fable-5.2': fable51,
+  'boundless/anthropic/claude-fable-5.2': fable,
   'boundless/anthropic/claude-opus-5.5': opus,
   'boundless/deepseek/deepseek-v4.1-flash-1017': flash,
   'boundless/moonshotai/kimi-k3.1-pro': kimi,
@@ -79,8 +77,8 @@ export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hi
   },
   fable: {
     harness: 'claude',
-    hint: 'Claude Code on Fable 5.2 leads. Subagents use Fable 5.2, Opus 5.5, Kimi K3.1 Pro or GLM-5.3, on Claude Code or Codex.',
-    label: 'Fable 5.2',
+    hint: 'Claude Code on Fable 5.1 leads. Subagents use Fable 5.1, Opus 5.5, Kimi K3.1 Pro or GLM-5.3, on Claude Code or Codex.',
+    label: 'Fable 5.1',
     model: fable,
     subagents: { harnesses: ['claude', 'codex'], models: [fable, opus, kimi, glm] },
   },
@@ -152,7 +150,7 @@ export function units(usd: number) {
 
 export function priced(setup: Omit<Setup, keyof Costs>, prices: ReadonlyMap<string, Price>): Setup | string {
   const missing = [setup.model, ...(setup.subagents?.models ?? [])].find((model) => !prices.has(model))
-  if (missing && direct(missing)) return `${missing} is not metered by the gateway right now: each rider would pay its provider apart, call by call, which strands their money. Pick a model from GET /v1/config.`
+  if (missing && direct(missing)) return `${missing} is not offered: swarms do not run on Boundless until it charges a call as it streams instead of holding its worst case. Pick a model from GET /v1/config.`
   if (missing) return `${missing} is not a gateway model that calls tools.`
   const lead = prices.get(setup.model)
   if (!lead) return `${setup.model} is not a gateway model that calls tools.`
