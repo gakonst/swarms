@@ -50,6 +50,22 @@ test('a prompt the gateway did not answer for is sent again word for word under 
   assert.deepEqual(w.sql.exec('SELECT note FROM steered').toArray(), [])
 })
 
+test('a swarm no approval pays for stops asking the gateway for its backings after the first listing', async (t) => {
+  const w = world(() => undefined)
+  t.after(w.restore)
+  await w.seed()
+  await w.swarm.wake('money')
+  await w.ring()
+  for (let alarm = 0; alarm < 4; alarm++) {
+    w.swarm.checked = 0
+    w.pass(61_000)
+    await w.ring()
+  }
+  const asked = (path: string) => w.calls.filter((call) => call === 'GET ' + path).length
+  assert.ok(asked('/api/keys/credit') >= 2)
+  assert.equal(asked('/api/keys/backings'), 1)
+})
+
 test('a step that keeps throwing logs one error row in ten minutes and never stays in starting, where the money check is skipped', async (t) => {
   let credit = '1'
   const w = world((_request, url) => (url.pathname === '/api/keys/credit' ? Response.json({ deposited: '1', left: credit, spent: '0' }) : undefined))

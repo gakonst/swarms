@@ -81,8 +81,11 @@ test('a swarm paused for money reads its credit once its calls are over, and goe
 
   for (const balance of [undefined, '10000000']) {
     const refused = swarm('9.76', { balance, left: '9760000', needs: '440960', wake: null, why: 'money' })
-    assert.equal(await refused.settle(), null)
+    assert.equal(await refused.settle(), now - 60_000 + 600_000)
     assert.equal(refused.run().state, 'paused')
+    const old = swarm('9.76', { balance, left: '9760000', needs: '440960', wake: null, why: 'money' }, now - 600_000)
+    assert.equal(await old.settle(), null)
+    assert.equal(old.run().state, 'waiting')
   }
 
   const ridden = swarm('9.76', { balance: '9000000', left: '9760000', needs: '440960', wake: null, why: 'money' })

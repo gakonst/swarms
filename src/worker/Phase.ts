@@ -53,19 +53,24 @@ export function unread(run: Paused, now: number) {
   return run.settled === undefined || now - run.settled >= rereadMs || (due(run, now) && run.settled < woken(run))
 }
 
-export function resumes(pause: Pause, money: { balance: bigint; left: bigint; now?: number | undefined; reserve: bigint }) {
+export function refused(pause: Pause) {
+  return pause.why === 'money' && pause.needs !== undefined && BigInt(pause.left) >= BigInt(pause.needs)
+}
+
+export function resumes(pause: Pause, money: { balance: bigint; due?: boolean | undefined; left: bigint; reserve: bigint }) {
   if (money.left < money.reserve) return false
-  if (pause.why !== 'money' || pause.needs === undefined || BigInt(pause.left) < BigInt(pause.needs)) return true
-  if (pause.wake !== null && money.now !== undefined && pause.wake <= money.now) return true
-  return pause.balance !== undefined && money.balance > BigInt(pause.balance)
+  if (!refused(pause) || money.due) return true
+  return pause.why === 'money' && pause.balance !== undefined && money.balance > BigInt(pause.balance)
 }
 
 export function due(run: Run, now: number) {
-  return run.state === 'paused' && run.pause.why === 'money' && run.pause.wake !== null && run.pause.wake <= now
+  return woken(run) <= now
 }
 
 function woken(run: Run) {
-  return run.state === 'paused' && run.pause.why === 'money' && run.pause.wake !== null ? run.pause.wake : Infinity
+  if (run.state !== 'paused' || run.pause.why !== 'money') return Infinity
+  if (run.pause.wake !== null) return run.pause.wake
+  return refused(run.pause) ? run.at + rereadMs : Infinity
 }
 
 export function waking(run: Run, now: number) {

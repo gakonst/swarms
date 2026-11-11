@@ -58,18 +58,21 @@ async function lowered(self: Swarm, swarm: string, taken: { agent: string; branc
 }
 
 export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everything): Promise<Money> {
+  const backable = plan.credit && !self.kv.get<boolean>('unbacked')
   const [hands, credit, backings] = await Promise.all([
     plan.hands ? Gateway.hands(self.env, row.id) : undefined,
     plan.credit ? Gateway.credit(self.env, row.id) : undefined,
-    plan.credit ? Gateway.backings(self.env, row.id) : undefined,
+    backable ? Gateway.backings(self.env, row.id) : undefined,
   ])
   const credited = credit?.ok ? Memo.units(credit.value.left) : BigInt(row.pool_left)
   const spent = credit?.ok ? Memo.units(credit.value.spent) : BigInt(row.pool_spent)
   const backed = backings?.ok ? Memo.units(backings.value.left) : BigInt(row.sponsor_left)
   const used = backings?.ok ? Memo.units(backings.value.spent) : BigInt(row.sponsor_spent)
   const left = credited + backed
-  const known = !plan.credit || (!!credit?.ok && !!backings?.ok)
-  const settled = backings?.ok ? await settle(self, row, backings.value.backings).catch((error: unknown) => (console.error('Settling backings failed', error), false)) : false
+  const known = !plan.credit || (!!credit?.ok && (!backable || !!backings?.ok))
+  const settling = backings?.ok ? await settle(self, row, backings.value.backings).catch((error: unknown) => (console.error('Settling backings failed', error), undefined)) : undefined
+  const settled = settling === true
+  if (backings?.ok && settling !== undefined && backings.value.backings.every((each) => each.ended)) self.kv.put('unbacked', true)
 
   const previous = self.kv.get<Hand[]>('hands') ?? []
   const connected = hands?.ok ? hands.value.hands.filter((hand) => hand.connected) : undefined

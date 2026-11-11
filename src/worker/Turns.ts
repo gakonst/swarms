@@ -404,7 +404,10 @@ export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
   const paused = self.run()
   if (paused.state !== 'paused' || paused.at !== run.at) return null
   if (!money.known) return Date.now() + Clock.minuteMs
-  if (Phase.resumes(run.pause, { balance: BigInt(money.row.balance), left: money.left, now: Date.now(), reserve: Store.reserveOf(money.row) })) self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
-  else self.set({ ...paused, settled: Date.now() })
+  if (Phase.resumes(run.pause, { balance: BigInt(money.row.balance), due: Phase.due(run, Date.now()), left: money.left, reserve: Store.reserveOf(money.row) })) {
+    self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
+    return null
+  }
+  self.set({ ...paused, settled: Date.now() })
   return Phase.waking(run, Date.now())
 }
