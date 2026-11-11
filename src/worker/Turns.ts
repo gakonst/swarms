@@ -85,7 +85,27 @@ export async function step(self: Swarm) {
   return advance(self, row)
 }
 
-export async function advance(self: Swarm, row: Store.Row) {
+export async function remodel(self: Swarm, row: Store.Row): Promise<Store.Row | { detail: string; error: string }> {
+  const setup = Store.setup(row)
+  const next = setup && Setup.moved(setup)
+  if (!next) return row
+  const prices = await Gateway.prices(self.env)
+  const priced = prices ? Setup.priced(next, prices) : 'The gateway did not list its models.'
+  if (typeof priced === 'string') return { detail: priced, error: 'The swarm could not be moved to models the gateway meters.' }
+  await Store.update(self.env, row.id, { setup: JSON.stringify(priced) })
+  const moved = { ...row, setup: JSON.stringify(priced) }
+  self.remember(moved)
+  self.kv.delete('agent')
+  self.kv.delete('instructions')
+  self.log('status', `Moved the swarm from ${Setup.name(setup.model)} to ${Setup.name(priced.model)}, which the gateway charges for by what each call uses. It starts a new agent, which keeps the repository, the results and the notes.`, `${setup.model} -> ${priced.model}`)
+  self.changed('detail')
+  return moved
+}
+
+export async function advance(self: Swarm, found: Store.Row) {
+  const remodeled = await remodel(self, found)
+  if ('error' in remodeled) return retry(self, found, remodeled.error, remodeled.detail)
+  const row = remodeled
   const run = self.run()
   const worked = self.turned()
   const money = await Money.refresh(self, row, { credit: true, hands: Follow.handsDue(self, Date.now()) })

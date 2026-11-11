@@ -50,7 +50,7 @@ export type Gift = {
 }
 
 export type Fields = Partial<
-  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'sponsor_left' | 'sponsor_spent' | 'status' | 'steering' | 'why'>
+  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'setup' | 'sponsor_left' | 'sponsor_spent' | 'status' | 'steering' | 'why'>
 >
 
 export const reserve = 50_000n

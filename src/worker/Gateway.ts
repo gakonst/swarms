@@ -1,5 +1,5 @@
 import * as Credit from '../shared/Credit.ts'
-import type * as Setup from '../shared/Setup.ts'
+import * as Setup from '../shared/Setup.ts'
 import { redact } from '../shared/Trail.ts'
 import * as Clock from './Clock.ts'
 import * as Edge from './Edge.ts'
@@ -153,7 +153,7 @@ export async function prices(env: Cloudflare.Env) {
         const found = new Map<string, Setup.Price>()
         for (const model of listed?.data ?? []) {
           const price = model.pricing
-          if (model.kind !== 'generate' || model.capabilities?.tools === false || price?.input === undefined || price.output === undefined) continue
+          if (model.kind !== 'generate' || model.capabilities?.tools === false || price?.input === undefined || price.output === undefined || Setup.direct(model.id)) continue
           found.set(model.id, { cached: price.cached ?? price.input, id: model.id, input: price.input, output: price.output })
         }
         return found.size ? found : undefined

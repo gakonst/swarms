@@ -22,11 +22,11 @@ function priced(choice: Setup.Choice) {
   return setup as Setup.Setup
 }
 
-test('the default is Anthropic, Claude Code on Fable 5.2 for the lead and every subagent', () => {
+test('the default is Anthropic, Claude Code on Opus 5.5 for the lead and every subagent', () => {
   assert.equal(Setup.fallback, 'frontier-anthropic')
   const setup = priced({ template: Setup.fallback })
-  assert.deepEqual({ harness: setup.harness, model: setup.model, subagents: setup.subagents }, { harness: 'claude', model: Setup.fable, subagents: { harnesses: ['claude'], models: [Setup.fable] } })
-  assert.equal(setup.step, '65600')
+  assert.deepEqual({ harness: setup.harness, model: setup.model, subagents: setup.subagents }, { harness: 'claude', model: Setup.opus, subagents: { harnesses: ['claude'], models: [Setup.opus] } })
+  assert.equal(setup.step, '37600')
 })
 
 test('the cheap template leads with Codex on DeepSeek Flash, and subagents use DeepSeek Flash or GLM Flash', () => {
@@ -45,21 +45,30 @@ test('frontier mix leads with Claude Code on Opus and offers Opus, Kimi K3.1 Pro
   assert.deepEqual(setup.steps, { [Setup.glm]: '12480', [Setup.kimi]: '21500', [Setup.opus]: '37600' })
 })
 
-test('the Fable template leads with Claude Code on Fable 5.2 and offers Fable, Opus, Kimi K3.1 Pro and GLM-5.3', () => {
+test('the Fable template leads with Claude Code on Fable 5.1 and offers Fable, Opus, Kimi K3.1 Pro and GLM-5.3', () => {
   const setup = priced({ template: 'fable' })
-  assert.deepEqual({ harness: setup.harness, model: setup.model }, { harness: 'claude', model: 'boundless/anthropic/claude-fable-5.2' })
+  assert.deepEqual({ harness: setup.harness, model: setup.model }, { harness: 'claude', model: 'vercel/anthropic/claude-fable-5.1' })
   assert.deepEqual(setup.subagents, { harnesses: ['claude', 'codex'], models: [Setup.fable, Setup.opus, Setup.kimi, Setup.glm] })
   assert.equal(setup.step, '65600')
   assert.equal(setup.most, '440960')
 })
 
-test('every template but OpenAI names its models by their Boundless ids, which no other provider answers for', () => {
-  for (const model of [Setup.fable, Setup.opus, Setup.flash, Setup.glmFlash, Setup.glm, Setup.kimi]) assert.match(model, /^boundless\//)
+test('no template names a model each rider pays its provider for, a custom setup that does is refused, and a swarm that ran on one is moved to the model the gateway meters', () => {
+  for (const preset of Object.values(Setup.presets)) for (const model of [preset.model, ...(preset.subagents?.models ?? [])]) assert.ok(!Setup.direct(model), model)
+  assert.ok(Setup.direct('boundless/anthropic/claude-fable-5.2') && !Setup.direct(Setup.opus))
+  assert.match(String(Setup.resolve({ harness: 'claude', model: 'boundless/anthropic/claude-fable-5.2', template: 'custom' })), /strands their money/)
+  assert.match(String(Setup.resolve({ harness: 'claude', model: Setup.opus, subagents: { harnesses: ['claude'], models: ['boundless/z-ai/glm-5.3'] }, template: 'custom' })), /boundless\/z-ai\/glm-5\.3/)
+  assert.equal(Setup.moved({ harness: 'claude', model: Setup.opus, subagents: null, template: 'custom' }), undefined)
+  assert.deepEqual(
+    Setup.moved({ harness: 'claude', model: 'boundless/anthropic/claude-fable-5.2', subagents: { harnesses: ['claude', 'codex'], models: ['boundless/anthropic/claude-fable-5.2', 'boundless/anthropic/claude-opus-5.5', 'boundless/moonshotai/kimi-k3.1-pro', 'boundless/z-ai/glm-5.3', Setup.opus, 'boundless/unknown/model'] }, template: 'fable' }),
+    { harness: 'claude', model: Setup.fable, subagents: { harnesses: ['claude', 'codex'], models: [Setup.fable, Setup.opus, Setup.kimi, Setup.glm] }, template: 'fable' },
+  )
+  assert.equal(Setup.moved({ harness: 'codex', model: 'boundless/deepseek/deepseek-v4.1-flash-1017', subagents: null, template: 'cheap' })?.model, Setup.flash)
 })
 
-test('OpenAI leads on Sol, Anthropic is Fable 5.2 only, and free for all offers any subagent model', () => {
+test('OpenAI leads on Sol, Anthropic is Opus 5.5 only, and free for all offers any subagent model', () => {
   assert.equal(priced({ template: 'frontier-openai' }).model, Setup.sol)
-  assert.deepEqual(priced({ template: 'frontier-anthropic' }).subagents, { harnesses: ['claude'], models: [Setup.fable] })
+  assert.deepEqual(priced({ template: 'frontier-anthropic' }).subagents, { harnesses: ['claude'], models: [Setup.opus] })
   const free = priced({ template: 'free' })
   assert.equal(free.subagents, null)
   assert.equal(free.most, String(Setup.least))
@@ -82,7 +91,7 @@ test("a swarm's reserve and call come from its lead model, and older swarms keep
 
 test('the brief tells the agent its models, their costs and the budget floor', () => {
   const told = Setup.told(priced({ template: 'frontier-mix' }))
-  assert.match(told, /Claude Code with boundless\/anthropic\/claude-opus-5\.5/)
-  assert.match(told, /boundless\/moonshotai\/kimi-k3\.1-pro \(about \$0\.021 a call\)/)
+  assert.match(told, /Claude Code with vercel\/anthropic\/claude-opus-5\.5/)
+  assert.match(told, /vercel\/moonshotai\/kimi-k3\.1-pro \(about \$0\.021 a call\)/)
   assert.match(told, /at least 20 of its model's calls/)
 })

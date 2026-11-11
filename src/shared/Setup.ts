@@ -16,21 +16,46 @@ export type Setup = { harness: Harness; model: string; subagents: Offer | null; 
 
 export type Choice = { harness?: Harness | undefined; model?: string | undefined; subagents?: Offer | null | undefined; template: Template }
 
-export const fable = 'boundless/anthropic/claude-fable-5.2'
+export const fable = 'vercel/anthropic/claude-fable-5.1'
 
-export const opus = 'boundless/anthropic/claude-opus-5.5'
+export const opus = 'vercel/anthropic/claude-opus-5.5'
 
 export const sol = 'vercel/openai/gpt-6.1-sol'
 
 export const astra = 'vercel/openai/gpt-6-astra'
 
-export const flash = 'boundless/deepseek/deepseek-v4.1-flash-1017'
+export const flash = '@cf/deepseek-ai/deepseek-v4.1-flash-1017'
 
-export const glmFlash = 'boundless/z-ai/glm-5.3-flash'
+export const glmFlash = '@cf/zai-org/glm-5.3-flash'
 
-export const glm = 'boundless/z-ai/glm-5.3'
+export const glm = '@cf/zai-org/glm-5.3'
 
-export const kimi = 'boundless/moonshotai/kimi-k3.1-pro'
+export const kimi = 'vercel/moonshotai/kimi-k3.1-pro'
+
+const moves: Record<string, string> = {
+  'boundless/anthropic/claude-fable-5.2': fable,
+  'boundless/anthropic/claude-opus-5.5': opus,
+  'boundless/deepseek/deepseek-v4.1-flash-1017': flash,
+  'boundless/moonshotai/kimi-k3.1-pro': kimi,
+  'boundless/z-ai/glm-5.3': glm,
+  'boundless/z-ai/glm-5.3-flash': glmFlash,
+}
+
+export function direct(model: string) {
+  return model.startsWith('boundless/')
+}
+
+export function moved(setup: Omit<Setup, keyof Costs>): Omit<Setup, keyof Costs> | undefined {
+  const models = [setup.model, ...(setup.subagents?.models ?? [])]
+  if (!models.some(direct)) return undefined
+  const to = (model: string) => (direct(model) ? (moves[model] ?? opus) : model)
+  return {
+    harness: setup.harness,
+    model: to(setup.model),
+    subagents: setup.subagents && { harnesses: setup.subagents.harnesses, models: [...new Set(setup.subagents.models.map(to))] },
+    template: setup.template,
+  }
+}
 
 export const fallback = 'frontier-anthropic' satisfies Template
 
@@ -51,17 +76,17 @@ export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hi
   },
   fable: {
     harness: 'claude',
-    hint: 'Claude Code on Fable 5.2 leads. Subagents use Fable 5.2, Opus 5.5, Kimi K3.1 Pro or GLM-5.3, on Claude Code or Codex.',
-    label: 'Fable 5.2',
+    hint: 'Claude Code on Fable 5.1 leads. Subagents use Fable 5.1, Opus 5.5, Kimi K3.1 Pro or GLM-5.3, on Claude Code or Codex.',
+    label: 'Fable 5.1',
     model: fable,
     subagents: { harnesses: ['claude', 'codex'], models: [fable, opus, kimi, glm] },
   },
   'frontier-anthropic': {
     harness: 'claude',
-    hint: 'Claude Code on Fable 5.2, for the lead and every subagent.',
+    hint: 'Claude Code on Opus 5.5, for the lead and every subagent.',
     label: 'Anthropic',
-    model: fable,
-    subagents: { harnesses: ['claude'], models: [fable] },
+    model: opus,
+    subagents: { harnesses: ['claude'], models: [opus] },
   },
   'frontier-openai': {
     harness: 'codex',
@@ -107,6 +132,8 @@ export function resolve(choice: Choice): Omit<Setup, keyof Costs> | string {
     return { harness: preset.harness, model: preset.model, subagents: preset.subagents, template: choice.template }
   }
   if (!choice.harness || !choice.model) return 'A custom setup names the lead harness and model.'
+  const paid = [choice.model, ...(choice.subagents?.models ?? [])].find(direct)
+  if (paid) return `${paid} is paid for by each rider apart, call by call, which strands their money; pick a model the gateway meters, from GET /v1/config.`
   return { harness: choice.harness, model: choice.model, subagents: choice.subagents ?? null, template: 'custom' }
 }
 
