@@ -156,7 +156,7 @@ export const schema = {
       .enum(Setup.templates)
       .default(Setup.fallback)
       .describe(
-        'Which models the swarm runs on. frontier-anthropic (the default): Claude Code on Claude Opus 5.5, for the lead and every subagent. frontier-mix: Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, Kimi K3.1 Pro or GLM-5.3 on Claude Code or Codex. fable: Claude Code on Fable 5.1 leads, and subagents use Fable 5.1, Opus 5.5, Kimi K3.1 Pro or GLM-5.3. cheap: Codex on DeepSeek V4.1 Flash leads, and subagents use DeepSeek V4.1 Flash or GLM-5.3 Flash on Codex or Claude Code. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra. Every template runs on models the gateway charges for by what each call uses; a model that each rider pays its provider for directly (the boundless/ ids) is refused. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
+        'Which models the swarm runs on. frontier-anthropic (the default): Claude Code on Claude Opus 5.5, for the lead and every subagent. frontier-mix: Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, Kimi K3.1 Pro or GLM-5.3 on Claude Code or Codex. fable: Claude Code on Fable 5.2 leads, and subagents use Fable 5.2, Opus 5.5, Kimi K3.1 Pro or GLM-5.3 (Fable 5.1 in its place while the gateway does not meter 5.2). cheap: Codex on DeepSeek V4.1 Flash leads, and subagents use DeepSeek V4.1 Flash or GLM-5.3 Flash on Codex or Claude Code. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra. Every template runs on models the gateway charges for by what each call uses; a model that each rider would pay its provider for directly (a boundless/ id while the gateway does not meter it) is refused. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
       ),
     harness: z.enum(Setup.harnesses).optional().describe('custom only: the lead agent\'s harness, claude (Claude Code) or codex.'),
     model: z.string().min(1).max(200).optional().describe('custom only: the lead agent\'s gateway model id, such as vercel/anthropic/claude-opus-5.5.'),
@@ -398,7 +398,7 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
     return Problem.fail(400, 'invalid_request', 'harness, model and subagents go with template custom.')
   const prices = await Gateway.prices(env)
   if (!prices) return Problem.fail(503, 'unavailable', "The gateway's model prices could not be read, so the swarm's costs are unknown. Try again shortly.")
-  const setup = Setup.priced(chosen, prices)
+  const setup = Setup.priced(parsed.value.template === 'custom' ? chosen : (Setup.moved(chosen, prices) ?? chosen), prices)
   if (typeof setup === 'string') return Problem.fail(400, 'invalid_request', `${setup} GET /v1/config lists them.`)
   const policy = parsed.value.steering ?? (creator ? 'team' : 'open')
   if (policy === 'team' && !creator) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to steer the swarm you start, or send steering open to let every backer steer it.')

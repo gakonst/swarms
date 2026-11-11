@@ -87,10 +87,12 @@ export async function step(self: Swarm) {
 
 export async function remodel(self: Swarm, row: Store.Row): Promise<Store.Row | { detail: string; error: string }> {
   const setup = Store.setup(row)
-  const next = setup && Setup.moved(setup)
-  if (!next) return row
+  if (!setup || ![setup.model, ...(setup.subagents?.models ?? [])].some(Setup.direct)) return row
   const prices = await Gateway.prices(self.env)
-  const priced = prices ? Setup.priced(next, prices) : 'The gateway did not list its models.'
+  if (!prices) return row
+  const next = Setup.moved(setup, prices)
+  if (!next) return row
+  const priced = Setup.priced(next, prices)
   if (typeof priced === 'string') return { detail: priced, error: 'The swarm could not be moved to models the gateway meters.' }
   await Store.update(self.env, row.id, { setup: JSON.stringify(priced) })
   const moved = { ...row, setup: JSON.stringify(priced) }
