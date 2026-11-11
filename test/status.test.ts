@@ -21,3 +21,10 @@ test('a swarm only stops for money: out of money needs money, anything else with
   assert.equal(Status.word(swarm), 'Starting')
   assert.deepEqual(Status.standing({ ...swarm, remaining: '0.010000' }), { action: 'Ride it to keep it going', mood: 'money', word: 'Needs money' })
 })
+
+test('a swarm paused for money while it holds a step of it is one whose payments are refused', () => {
+  assert.ok(Status.refused({ ...swarm, status: 'paused', why: 'money' }))
+  assert.ok(!Status.refused({ ...swarm, remaining: '0.010000', status: 'paused', why: 'money' }))
+  assert.ok(!Status.refused({ ...swarm, status: 'running', why: null }))
+  assert.ok(!Status.refused({ ...swarm, balance: '0.000000', remaining: '0.000000', status: 'funding', why: 'unfunded' }))
+})

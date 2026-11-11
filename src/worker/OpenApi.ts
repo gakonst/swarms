@@ -484,6 +484,14 @@ export function document(origin: string) {
           summary: 'Count money sent',
         },
       },
+      '/v1/health': {
+        get: {
+          description: 'Whether every swarm with money is able to spend it: refused lists the swarms that are paused though they hold at least one step of money, which means their payments are being refused. ok is false while there is one.',
+          operationId: 'health',
+          responses: { ...ok({ type: 'object' }, 'The health of the swarms.') },
+          summary: 'Health',
+        },
+      },
       '/v1/problems': {
         get: { description: 'The curated idea bank: every problem with its brief, whether it is open, and the swarm working on it if any.', operationId: 'listProblems', responses: { ...ok({ type: 'object' }, 'The problems.') }, summary: 'Idea bank' },
       },

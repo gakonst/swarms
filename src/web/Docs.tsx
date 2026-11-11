@@ -42,6 +42,7 @@ const routes = [
   ['GET', '/v1/swarms/:id/search', 'Search one swarm, its feed included.', '?q=<words>'],
   ['GET', '/v1/swarms/:id/hands', 'Hands issued for contributor machines, and which are connected.', ''],
   ['GET', '/v1/problems', 'The idea bank and which problems are open.', ''],
+  ['GET', '/v1/health', 'Whether every swarm with money can spend it: the swarms that are paused though they hold a step of money.', ''],
   ['GET', '/v1/swarms/:id/machines', 'Sandboxes, browsers and lent hands over the swarm\'s life, with settings, sandbox ids and how many commands ran on each.', ''],
   ['GET', '/v1/swarms/:id/machines/:machine/commands', 'Every command of one machine without outputs: time, who, exit code, duration.', '?order=newest|oldest&cursor=<next>&limit=<n>'],
   ['GET', '/v1/swarms/:id/machines/:machine/commands/:seq', "One command with its whole output, from the gateway's copy when the agent's session has it.", ''],

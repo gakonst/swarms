@@ -36,6 +36,10 @@ export function fueled(swarm: Pick<Summary, 'remaining'> & { setup?: Summary['se
   return Number(swarm.remaining) >= (swarm.setup ? Number(swarm.setup.most) / 1_000_000 : fuel)
 }
 
+export function refused(swarm: Stood) {
+  return swarm.status === 'paused' && swarm.why === 'money' && fueled(swarm)
+}
+
 export function standing(swarm: Stood): Standing {
   if (swarm.status === 'running') return { action: null, mood: 'live', word: 'Running' }
   if (swarm.status === 'funding' && Number(swarm.balance) <= 0) return { action: 'Ride it to start it', mood: 'new', word: 'Not started' }

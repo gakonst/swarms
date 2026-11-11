@@ -12,7 +12,7 @@ const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|tg|tg\/s\/[^/]+|s\/[^/]+|s
 
 export function readable(method: string, path: string) {
   if (method !== 'GET' && method !== 'HEAD') return false
-  return swarm.test(path) || pages.test(path) || /^\/(api|v1)\/me$/.test(path) || /^\/v1\/(search|problems)$/.test(path)
+  return swarm.test(path) || pages.test(path) || /^\/(api|v1)\/me$/.test(path) || /^\/v1\/(search|problems|health)$/.test(path)
 }
 
 export function writes(method: string, path: string) {

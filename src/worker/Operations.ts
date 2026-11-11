@@ -38,6 +38,7 @@ import type {
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Setup from '../shared/Setup.ts'
+import * as Standing from '../shared/Status.ts'
 import * as Connect from '../shared/Connect.ts'
 import * as Credit from '../shared/Credit.ts'
 import * as Door from '../shared/Door.ts'
@@ -1363,6 +1364,13 @@ function excerpt(entry: Entry, terms: readonly string[], size = 240) {
   const pattern = new RegExp([...terms].sort((a, b) => b.length - a.length).join('|'), 'giu')
   const marked = text.slice(start, start + size).replace(pattern, (found) => `«${found}»`)
   return `${start > 0 ? '…' : ''}${marked}${start + size < text.length ? '…' : ''}`
+}
+
+export async function health(env: Cloudflare.Env): Promise<Problem.Result<{ ok: boolean; refused: { id: string; remaining: string; title: string }[]; running: number; swarms: number }>> {
+  const listed = await list(env, {})
+  if (!listed.ok) return listed
+  const refused = listed.value.swarms.filter((swarm) => Standing.refused(swarm)).map((swarm) => ({ id: swarm.id, remaining: swarm.remaining, title: swarm.title }))
+  return Problem.ok({ ok: refused.length === 0, refused, running: listed.value.swarms.filter((swarm) => swarm.status === 'running').length, swarms: listed.value.swarms.length })
 }
 
 export async function problems(env: Cloudflare.Env): Promise<Problem.Result<{ problems: (Brief.Problem & { open: boolean; swarm: string | null })[] }>> {

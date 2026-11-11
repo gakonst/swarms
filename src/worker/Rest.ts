@@ -95,6 +95,8 @@ app.post('/v1/swarms/:id/hands', async (c) =>
 
 app.get('/v1/problems', async (c) => Problem.respond(await Operations.problems(c.env)))
 
+app.get('/v1/health', async (c) => Problem.respond(await Operations.health(c.env)))
+
 app.get('/v1/swarms/:id/machines', async (c) => Problem.respond(await Operations.machines(c.env, { swarm: c.req.param('id') })))
 
 app.get('/v1/swarms/:id/machines/export', async (c) => stream(await Machines.exported(c.env, { swarm: c.req.param('id') })))
