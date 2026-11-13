@@ -630,3 +630,13 @@ Georgios: "do a few back and forths, optimize, then go and implement the most se
 - An update row's gist (`Answer.gist`) skips raw JSON lines (gateway errors such as `{"code":"over_limit",…}`) and fenced code, and shows inline LaTeX (`\le`, `\frac{a}{b}`, `\sqrt{x}`, Greek letters) as symbols. Opened update bodies still show LaTeX as written; rendering it needs KaTeX.
 - Checked with `pnpm check`, `pnpm build` and 215 tests.
 
+
+## The 2026-11-10 audit, rechecked (2026-11-12)
+
+- Each of the audit's 42 findings (40 distinct) was checked again at 71a4dc2. 36 were already fixed by the 2026-11-10 round and have regression tests. Approvals are gone, so the double-approval bug (#31) can no longer happen. Three are fixed now:
+  - A team seat with no limit could put the swarm's money behind ideas and branches without end ($100 per message, repeated). `Store.allot` now holds a seat's 30-day allotments to `coalesce(limit, balance)` in the same insert ... select. `Team.roster` derives `seat.left` from the same bound, so `Seat.left` is never null in the API. The bound is balance rather than remaining, because the window counts allotments whose money was already spent.
+  - `Operations.stop` read a failed team listing as "not an admin" (403). It now answers 502 through `Team.unlisted`, like every other guard.
+  - New tests cover four lent-machine fixes that had none (a failed hands listing, a returned hand's lender, eviction without a listing, a lender seen on join), plus a paused swarm lowering a backing that ended while it was paused.
+- Not fixed: a transfer the gateway credited but D1 never stored (#18). The gateway's credit route reports only totals, with no deposits by hash, so Swarms can't find the missing transfer. Recording the same hash again stays safe, and the page keeps unrecorded hashes (`swarms.owed`).
+- The five fixer worktrees of the audit session (`swarms-fix-*`) and their branches no longer existed on gak-9.
+
