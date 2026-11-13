@@ -127,10 +127,6 @@ app.all(Feedback.path, (c) => Feedback.feedback(c.env).fetch(c.req.raw))
 
 app.all(`${Feedback.path}/*`, (c) => Feedback.feedback(c.env).fetch(c.req.raw))
 
-app.all(Sessions.path, (c) => Sessions.auth(c.env).fetch(c.req.raw))
-
-app.all(`${Sessions.path}/*`, (c) => Sessions.auth(c.env).fetch(c.req.raw))
-
 app.get('/api/config', async (c) => c.json(await Operations.config(c.env)))
 
 app.get('/api/me', async (c) => Problem.respond(await Operations.account(c.env, await Sessions.who(c.env, c.req.raw))))

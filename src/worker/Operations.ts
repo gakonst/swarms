@@ -401,7 +401,7 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   const setup = Setup.priced(parsed.value.template === 'custom' ? chosen : (Setup.moved(chosen, prices) ?? chosen), prices)
   if (typeof setup === 'string') return Problem.fail(400, 'invalid_request', `${setup} GET /v1/config lists them.`)
   const policy = parsed.value.steering ?? (creator ? 'team' : 'open')
-  if (policy === 'team' && !creator) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to steer the swarm you start, or send steering open to let every backer steer it.')
+  if (policy === 'team' && !creator) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to steer the swarm you start, or send steering open to let every backer steer it.')
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
   const row = await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup), steering: policy })
   if (!row) return Problem.fail(502, 'unavailable', 'The swarm was not saved.')
@@ -648,14 +648,14 @@ export async function listened(env: Cloudflare.Env, input: Input<'room'>, addres
 }
 
 export async function account(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<Account>> {
-  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to read your account.')
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to read your account.')
   return Problem.ok(await Store.account(env, address))
 }
 
 export async function rename(env: Cloudflare.Env, input: Input<'rename'>, address?: Address): Promise<Problem.Result<Account>> {
   const parsed = parse(schema.rename, input)
   if (!parsed.ok) return parsed
-  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to set your username.')
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to set your username.')
 
   const name = parsed.value.name?.replace(/^@/, '').toLowerCase() || null
   const wrong = name ? Mention.invalid(name) : undefined
@@ -668,7 +668,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   const parsed = parse(schema.say, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
-  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to post in a room.')
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to post in a room.')
   const [found, account] = await Promise.all([Store.rostered(env, request.swarm), Store.account(env, address)])
   if (!found) return missing()
   if (!account.name) return unnamed()
@@ -842,7 +842,7 @@ async function refunded(env: Cloudflare.Env, swarm: string, branch: Branch, retu
 }
 
 async function steerable(env: Cloudflare.Env, input: { address: Address | undefined; swarm: string }) {
-  if (!input.address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo Wallet to direct a swarm's money.")
+  if (!input.address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo ID to direct a swarm's money.")
   const [row, account] = await Promise.all([Store.find(env, input.swarm), Store.account(env, input.address)])
   if (!row) return missing()
   if (!account.name) return unnamed()
@@ -976,7 +976,7 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
   const parsed = parse(schema.stop, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
-  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to stop a branch.')
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to stop a branch.')
   const [row, account] = await Promise.all([Store.find(env, request.swarm), Store.account(env, address)])
   if (!row) return missing()
   if (!account.name) return unnamed()
@@ -1070,7 +1070,7 @@ export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Ad
   const parsed = parse(schema.btw, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
-  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to ask the swarm side questions.')
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to ask the swarm side questions.')
   const [found, account] = await Promise.all([Store.rostered(env, request.swarm), Store.account(env, address)])
   if (!found) return missing()
   if (!account.name) return unnamed()
@@ -1107,7 +1107,7 @@ export async function team(env: Cloudflare.Env, input: Input<'swarm'>): Promise<
 }
 
 async function governed(env: Cloudflare.Env, swarm: string, address: Address | undefined): Promise<Problem.Result<Store.Row>> {
-  if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo Wallet to manage who steers a swarm.")
+  if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo ID to manage who steers a swarm.")
   const row = await Store.find(env, swarm)
   if (!row) return missing()
   const admin = await Team.admin(env, row, address).then(Problem.ok, Team.unlisted)
@@ -1174,7 +1174,7 @@ export async function unseat(env: Cloudflare.Env, input: Input<'unseat'>, addres
   const parsed = parse(schema.unseat, input)
   if (!parsed.ok) return parsed
   const request = parsed.value
-  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo Wallet to leave or manage a swarm\'s team.')
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to leave or manage a swarm\'s team.')
   const row = await Store.find(env, request.swarm)
   if (!row) return missing()
   if (!row.team)

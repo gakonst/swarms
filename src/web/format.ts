@@ -36,8 +36,8 @@ export function short(value: string) {
   return `${value.slice(0, 6)}…${value.slice(-4)}`
 }
 
-export function signed(account: { name: string | null } | undefined, address: string) {
-  return account?.name ? `@${account.name}` : short(address)
+export function signed(account: { name: string | null } | undefined, address: string, email?: string) {
+  return account?.name ? `@${account.name}` : (email ?? short(address))
 }
 
 export function ago(at: number, now = Date.now()) {

@@ -1,7 +1,10 @@
-import { Handler, Kv } from 'accounts/server'
+import { Accounts, Store } from 'accounts'
+import { backend, siwe, viem } from 'accounts/plugins'
 import type { Address } from 'viem'
-import { createClient, http } from 'viem'
-import { tempo } from 'viem/tempo/chains'
+import { http } from 'viem'
+import { z } from 'zod'
+import * as Chain from './Chain.ts'
+import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
 
 export const path = '/v1/auth'
@@ -10,8 +13,8 @@ export const days = 30
 
 type Stored = { expires_at: number | null; value: string }
 
-function live<value>(row: Stored | null): value | undefined {
-  return row && (row.expires_at === null || row.expires_at > Date.now()) ? (JSON.parse(row.value) as value) : undefined
+function live(row: Stored | null): unknown {
+  return row && (row.expires_at === null || row.expires_at > Date.now()) ? JSON.parse(row.value) : undefined
 }
 
 const held = new Map<string, { at: number; row: Stored }>()
@@ -29,59 +32,102 @@ function hold(key: string, row: Stored | null) {
   return row
 }
 
-export function store(env: Cloudflare.Env) {
-  const db = Replica.primary(env).DB
+function store(db: D1Database) {
   const read = (from: D1Database | D1DatabaseSession, key: string) => from.prepare('select value, expires_at from sessions where key = ?').bind(key).first<Stored>()
-  return Kv.from({
-    delete: async (key: string) => {
+  return Store.from({
+    getItem: async (key) => {
+      const kept = held.get(key)
+      if (kept && Date.now() - kept.at < heldMs) return live(kept.row)
+      return live(hold(key, (await read(db.withSession('first-unconstrained'), key)) ?? (await read(db, key))))
+    },
+    removeItem: async (key) => {
       held.delete(key)
       await db.prepare('delete from sessions where key = ?').bind(key).run()
     },
-    get: async <value>(key: string) => {
-      const kept = held.get(key)
-      if (kept && Date.now() - kept.at < heldMs) return live<value>(kept.row)
-      return live<value>(hold(key, (await read(db.withSession('first-unconstrained'), key)) ?? (await read(db, key))))
-    },
-    set: async (key: string, value: unknown, options?: { ttl?: number | undefined }) => {
+    setItem: async (key, value, options) => {
       held.delete(key)
       const now = Date.now()
       await db.batch([
         db.prepare('delete from sessions where expires_at < ?').bind(now),
-        db.prepare('insert or replace into sessions (key, value, expires_at) values (?, ?, ?)').bind(
-          key,
-          JSON.stringify(value),
-          options?.ttl ? now + options.ttl * 1000 : null,
-        ),
+        db.prepare('insert or replace into sessions (key, value, expires_at) values (?, ?, ?)').bind(key, JSON.stringify(value), options?.expiresAt ?? null),
       ])
     },
-    take: async <value>(key: string) => {
+    takeItem: async (key) => {
       held.delete(key)
-      return live<value>(await db.prepare('delete from sessions where key = ? returning value, expires_at').bind(key).first<Stored>())
+      return live(await db.prepare('delete from sessions where key = ? returning value, expires_at').bind(key).first<Stored>())
     },
   })
 }
 
-const keyed = { ...tempo, verifyHash: (client: Parameters<typeof tempo.verifyHash>[0], parameters: Parameters<typeof tempo.verifyHash>[1]) => tempo.verifyHash(client, { ...parameters, mode: 'allowAccessKey' }) }
-
-export function auth(env: Cloudflare.Env) {
-  return Handler.auth({
-    cookie: false,
-    getClient: () => createClient({ chain: keyed, transport: http(env.TEMPO_RPC) }),
-    origin: new URL(env.SWARMS_URL).origin,
-    path,
-    statement: 'Sign in to Swarms to chat in the rooms of the swarms you back.',
-    store: store(env),
-    transport: http(env.TEMPO_RPC),
-    ttl: { session: days * 86_400 },
+function create(env: Cloudflare.Env) {
+  const origin = new URL(env.SWARMS_URL).origin
+  return Accounts.create({
+    chain: Chain.chain.id,
+    clientId: origin,
+    plugins: [
+      backend({ store: store(Replica.primary(env).DB) }),
+      siwe({ lifetime: days * 86_400_000, origin, statement: 'Sign in to Swarms to chat in the rooms of the swarms you back.' }),
+      viem({ transport: http(env.TEMPO_RPC) }),
+    ],
   })
 }
 
-export async function who(env: Cloudflare.Env, request: Request): Promise<Address | undefined> {
-  if (!request.headers.get('authorization')) return undefined
-  const session = await auth(env).getSession(request)
-  return session ? (session.address.toLowerCase() as Address) : undefined
+let instance: ReturnType<typeof create> | undefined
+
+function accounts(env: Cloudflare.Env) {
+  instance ??= create(env)
+  return instance
 }
 
-export function holder(env: Cloudflare.Env, token: string) {
-  return who(env, new Request(env.SWARMS_URL, { headers: { authorization: `Bearer ${token}` } }))
+const verifying = z.object({
+  address: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+  id: z.string().min(1).max(128),
+  message: z.string().min(1).max(4096),
+  signature: z.string().regex(/^0x[0-9a-fA-F]+$/),
+})
+
+function refused(error: unknown): Problem.Result<never> {
+  if (error instanceof Error && error.name === 'Plugins.siwe.InvalidError') return Problem.fail(401, 'unauthorized', error.message)
+  return Problem.fail(502, 'upstream_failed', `Tempo did not answer while checking the signature: ${error instanceof Error ? error.message : String(error)}`)
+}
+
+export async function challenge(env: Cloudflare.Env, request: Request): Promise<Problem.Result<{ id: string; message: string }>> {
+  try {
+    return Problem.ok(await accounts(env).siwe.start({ request: request.headers.has('origin') ? request : new Request(env.SWARMS_URL) }))
+  } catch (error) {
+    return refused(error)
+  }
+}
+
+export async function verify(env: Cloudflare.Env, input: Record<string, unknown>): Promise<Problem.Result<{ token: string }>> {
+  const parsed = verifying.safeParse(input)
+  if (!parsed.success) return Problem.invalid(parsed.error)
+
+  try {
+    const session = await accounts(env).siwe.complete({ ...parsed.data, address: parsed.data.address as Address, signature: parsed.data.signature as `0x${string}` })
+    return Problem.ok({ token: session.id })
+  } catch (error) {
+    return refused(error)
+  }
+}
+
+function bearer(request: Request) {
+  return /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') ?? '')?.[1]
+}
+
+export async function logout(env: Cloudflare.Env, request: Request): Promise<Problem.Result<{ ended: boolean }>> {
+  const token = bearer(request)
+  if (!token) return Problem.ok({ ended: false })
+  await accounts(env).backend.end({ id: token }).catch(() => {})
+  return Problem.ok({ ended: true })
+}
+
+export async function holder(env: Cloudflare.Env, token: string): Promise<Address | undefined> {
+  const session = await accounts(env).backend.get({ id: token })
+  return session?.method === 'siwe' ? (session.address.toLowerCase() as Address) : undefined
+}
+
+export async function who(env: Cloudflare.Env, request: Request) {
+  const token = bearer(request)
+  return token ? holder(env, token) : undefined
 }
