@@ -33,7 +33,7 @@ export type Summary = {
 
 export type Steering = 'open' | 'team'
 
-export type Seat = { address: `0x${string}`; handle: string; left: string | null; limit: string | null; role: 'admin' | 'member'; spent: string }
+export type Seat = { address: `0x${string}`; handle: string; left: string; limit: string | null; role: 'admin' | 'member'; spent: string }
 
 export type Roster = { admins: `0x${string}`[]; memberBudget: string | null; seats: Seat[]; steering: Steering; team: `0x${string}` | null }
 

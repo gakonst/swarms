@@ -1050,7 +1050,7 @@ export async function say(key: string, input: { artifact?: boolean; steer?: stri
     const note = Mention.idea(text)
     if (note.length < 3 || note.length > maxNote) throw fail(400, 'invalid_request', 'Say what the swarm should do after @swarm, in at most 280 characters.')
     if (!input.steer) throw fail(400, 'invalid_request', '@swarm steers the swarm with money: say how much of your backing goes behind it.')
-    if (seated ? seated.left !== null && units(input.steer) > units(seated.left) : units(input.steer) > units(self.available)) throw fail(409, 'insufficient_balance', `You have ${usd(self.available)} of backing not yet behind a note. Put new money behind this idea instead.`)
+    if (seated ? units(input.steer) > units(seated.left) : units(input.steer) > units(self.available)) throw fail(409, 'insufficient_balance', `You have ${usd(self.available)} of backing not yet behind a note. Put new money behind this idea instead.`)
     swarm.steers.push({ amount: decimal(units(input.steer)), contributor: who, note })
     swarm.steered.add(note)
     settle(swarm)
@@ -1207,7 +1207,7 @@ function rostered(swarm: Live): Roster {
   const found = rosters.get(swarm.id)
   if (found) return { ...found, steering: swarm.steering }
   const owner = swarm.owner.toLowerCase() as `0x${string}`
-  const seats = swarm.steering === 'team' ? [{ address: owner, handle: called(owner), left: null, limit: null, role: 'admin' as const, spent: '0.000000' }] : []
+  const seats = swarm.steering === 'team' ? [{ address: owner, handle: called(owner), left: swarm.balance, limit: null, role: 'admin' as const, spent: '0.000000' }] : []
   return { admins: [owner], memberBudget: null, seats, steering: swarm.steering, team: null }
 }
 
@@ -1248,7 +1248,7 @@ export async function seat(key: string, input: { budget?: number | null; member:
   if (!address) throw fail(404, 'not_found', `No one is called @${asked}.`)
   const current = rostered(swarm)
   const limit = input.budget === undefined || input.budget === null ? current.memberBudget : decimal(units(String(input.budget)))
-  const seats = [...current.seats.filter((found) => found.address !== address), { address, handle: called(address), left: limit, limit, role: input.role, spent: '0.000000' }]
+  const seats = [...current.seats.filter((found) => found.address !== address), { address, handle: called(address), left: limit ?? swarm.balance, limit, role: input.role, spent: '0.000000' }]
   return regrouped(swarm, { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats, team: current.team ?? team0 })
 }
 

@@ -20,8 +20,8 @@ function fund(db: Opened, branch: number, amount: bigint, id: string) {
   return Store.steer(db.env, { amount, branch: { agent: 'agt', id: branch }, contributor: rider, id, note: `branch ${branch}`, note_id: `branch:${branch}`, swarm: 's' })
 }
 
-function allot(db: Opened, branch: number, amount: bigint, id: string) {
-  return Store.allot(db.env, { amount, branch: { agent: 'agt', id: branch }, contributor: rider, id, limit: null, note: `branch ${branch}`, note_id: `branch:${branch}`, since: 0, swarm: 's' })
+function allot(db: Opened, branch: number, amount: bigint, id: string, limit: bigint | null = 100_000_000n) {
+  return Store.allot(db.env, { amount, branch: { agent: 'agt', id: branch }, contributor: rider, id, limit, note: `branch ${branch}`, note_id: `branch:${branch}`, since: 0, swarm: 's' })
 }
 
 async function member(db: Opened) {
@@ -178,4 +178,16 @@ test('money a refused fund or move put behind a branch is taken back only while 
   await Store.unsteer(shifted.env, legs)
   assert.deepEqual(await member(shifted), ['5.000000', '3.000000', '2.000000'])
   assert.equal((await Store.funds(shifted.env, 's', 'agt')).shares.get(1)?.get(rider), 3_000_000n)
+})
+
+test('a seat with no limit puts at most the swarm\'s balance behind ideas and branches in 30 days, and a seat with a limit what the limit allows', async () => {
+  const db = swarm(open())
+  await give(db, 3_000_000n)
+  const steer = (amount: bigint, id: string, limit: bigint | null = null) => Store.allot(db.env, { amount, contributor: rider, id, limit, note: 'idea', note_id: 'n1', since: 0, swarm: 's' })
+  assert.equal(await steer(1_000_000_000_000n, 'big'), false)
+  assert.equal(await allot(db, 1, 1_000_000_000_000n, 'a1', null), false)
+  assert.equal(await steer(2_000_000n, 't1'), true)
+  assert.equal(await allot(db, 1, 1_000_001n, 'a1', null), false)
+  assert.equal(await allot(db, 1, 1_000_000n, 'a1', null), true)
+  assert.equal(await steer(5_000_000n, 't2', 10_000_000n), true)
 })

@@ -707,7 +707,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
         400,
         'invalid_request',
         seat
-          ? `@swarm steers the swarm with its money: send steer, how much of your team budget (${seat.left === null ? 'no limit' : dollars(seat.left) + ' left'}) goes behind this idea.`
+          ? `@swarm steers the swarm with its money: send steer, how much of your team budget (${dollars(seat.left)} left) goes behind this idea.`
           : `@swarm steers the swarm with money: send steer, how much of your ${dollars(author?.available ?? '0')} not yet behind a note goes behind this idea.`,
       )
     const amount = units(request.steer)
@@ -720,7 +720,7 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
         409,
         'insufficient_balance',
         seat
-          ? `Your team budget has ${dollars(seat.left ?? '0')} left in these 30 days, less than ${dollars(Memo.decimal(amount))}.`
+          ? `Your team budget has ${dollars(seat.left)} left in these 30 days, less than ${dollars(Memo.decimal(amount))}.`
           : `You have ${dollars(author?.available ?? '0')} of backing not yet behind a note, less than ${dollars(Memo.decimal(amount))}. Put new money behind this idea instead.`,
       )
     if (seat) retold(env, row)
@@ -931,7 +931,7 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
       409,
       'insufficient_balance',
       seat
-        ? `Your team budget has ${dollars(seat.left ?? '0')} left in these 30 days, less than ${dollars(Memo.decimal(amount))}, or ${target.who} was just stopped.`
+        ? `Your team budget has ${dollars(seat.left)} left in these 30 days, less than ${dollars(Memo.decimal(amount))}, or ${target.who} was just stopped.`
         : `You have ${dollars(author?.available ?? '0')} of backing not yet behind a note or branch, less than ${dollars(Memo.decimal(amount))}, or ${target.who} was just stopped. Put new money behind this branch instead.`,
     )
   if (seat) retold(env, row)

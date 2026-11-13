@@ -275,3 +275,15 @@ test("a swarm's team is named with only what the gateway takes in a team name, w
   assert.equal(Team.named({ id: 'abc123abc123', title: 'Solve P = NP.' }), 'Solve P NP.')
   assert.equal(Team.named({ id: 'abc123abc123', title: '???' }), 'Swarm abc123abc123')
 })
+
+test('an admin with no limit is told the swarm\'s balance is what they have left, and cannot put more of it behind an idea', async () => {
+  const { db, env, name } = world()
+  Team.forget('s')
+  name(ada, 'ada')
+  db.sqlite.prepare("insert into contributions (id, swarm, contributor, token, amount, created_at) values ('0xfeed', 's', ?, 'ousd', '3000000', 1)").run(cyd)
+  assert.deepEqual((await value(Operations.team(env, { swarm: 's' }))).seats.map((seat) => [seat.address, seat.limit, seat.left]), [[ada, null, '3.000000']])
+  const refused = await Operations.say(env, { steer: '100', swarm: 's', text: '@swarm try lattices' }, ada)
+  assert.deepEqual([refused.ok, refused.ok ? null : refused.detail], [false, 'Your team budget has $3 left in these 30 days, less than $100.'])
+  await value(Operations.say(env, { steer: '2', swarm: 's', text: '@swarm try lattices' }, ada))
+  assert.deepEqual([...(await Store.allotted(env, 's', 0))], [[ada, 2_000_000n]])
+})

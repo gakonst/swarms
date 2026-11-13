@@ -483,9 +483,9 @@ export async function allot(
 ) {
   const result = await env.DB.prepare(
     `insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
-    select ?3, ?1, ?2, ?4, ?5, ?6, ?7, 1, ?8, ?9 where (?10 is null or (
+    select ?3, ?1, ?2, ?4, ?5, ?6, ?7, 1, ?8, ?9 where (
       select coalesce(sum(cast(amount as integer)), 0) from steers where swarm = ?1 and contributor = ?2 and budget = 1 and created_at > ?11
-    ) + cast(?6 as integer) <= cast(?10 as integer)) and (?8 is null or ${open})`,
+    ) + cast(?6 as integer) <= coalesce(cast(?10 as integer), (select coalesce(sum(cast(amount as integer)), 0) from contributions where swarm = ?1)) and (?8 is null or ${open})`,
   )
     .bind(
       input.swarm,

@@ -49,10 +49,11 @@ export async function roster(env: Cloudflare.Env, row: Store.Row, loaded?: reado
   const seats = sat
     .map((chair): Seat => {
       const spent = used.get(chair.address) ?? 0n
+      const most = chair.limit ?? BigInt(row.balance)
       return {
         address: chair.address,
         handle: names.get(chair.address) ?? Mention.short(chair.address),
-        left: chair.limit === null ? null : Memo.decimal(chair.limit > spent ? chair.limit - spent : 0n),
+        left: Memo.decimal(most > spent ? most - spent : 0n),
         limit: chair.limit === null ? null : Memo.decimal(chair.limit),
         role: chair.address === lead ? 'admin' : chair.role,
         spent: Memo.decimal(spent),

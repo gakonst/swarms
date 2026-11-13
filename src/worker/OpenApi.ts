@@ -287,7 +287,7 @@ const schemas = {
   ),
   Posted: object({ me: ref('Me'), message: ref('Said') }),
   Exchange: object({ answer: string, question: string }),
-  Seat: object({ address: string, handle: string, left: nullable(string), limit: nullable(string), role: string, spent: string }),
+  Seat: object({ address: string, handle: string, left: string, limit: nullable(string), role: string, spent: string }),
   Roster: object({ admins: { items: string, type: 'array' }, memberBudget: nullable(string), seats: { items: ref('Seat'), type: 'array' }, steering: string, team: nullable(string) }),
   Funder: object({ address: string, amount: string, handle: string }),
   Branch: object(
