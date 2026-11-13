@@ -62,6 +62,10 @@ const unreachableMs = 15 * 60_000
 
 const maxFailures = 3
 
+const counted = 12
+
+const resetsToRenew = 2
+
 const quickMs = 60_000
 
 const settleMs = 15_000
@@ -320,7 +324,8 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
     return null
   }
   const failures = status === 'completed' ? 0 : failing(self, run.since)
-  const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : Date.now() + backoff(failures)
+  const renewed = status !== 'completed' && resets(self) >= resetsToRenew && renew(self, message)
+  const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : renewed ? Date.now() : Date.now() + backoff(failures)
   await self.move(money.row, { since: run.since, state: 'waiting', until })
   return until
 }
@@ -358,9 +363,32 @@ function refusals(self: Swarm) {
   return count
 }
 
+export function reset(message: string | null) {
+  return !!message && /session was reset/i.test(message)
+}
+
+export function resets(self: Swarm) {
+  const since = self.kv.get<number>('renewedAt') ?? 0
+  let count = 0
+  for (const row of self.ctx.storage.sql.exec<{ message: string | null; status: string }>('SELECT status, message FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, resetsToRenew).toArray()) {
+    if (row.status === 'completed' || !reset(row.message)) break
+    count += 1
+  }
+  return count
+}
+
+function renew(self: Swarm, message: string | null) {
+  const agent = self.agent()
+  if (!agent) return false
+  self.kv.delete('agent')
+  self.kv.put('renewedAt', Date.now())
+  self.log('error', `The agent's session was reset and could not recover ${resetsToRenew} turns in a row, so the swarm starts a new agent with its goal, notes and updates; the repository stays, the old conversation does not.`, `${agent.id}: ${message === null ? '' : redact(message)}`)
+  return true
+}
+
 export function failing(self: Swarm, since: number) {
   let count = 0
-  for (const row of self.ctx.storage.sql.exec<{ status: string }>('SELECT status FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, maxFailures).toArray()) {
+  for (const row of self.ctx.storage.sql.exec<{ status: string }>('SELECT status FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, counted).toArray()) {
     if (row.status === 'completed') break
     count += 1
   }

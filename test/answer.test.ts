@@ -43,3 +43,9 @@ test('a list keeps only the lines up to an answer gist, and the gist stays the s
   assert.equal(Answer.gist(text), 'The fastest parser was simdjson at 4.1 GiB/s.')
   assert.equal(Answer.lead('short\n---'), '')
 })
+
+test('an update row skips raw JSON and code, and shows inline LaTeX as symbols', () => {
+  const text = '{"code":"over_limit","message":"The key is over its limit"}\n```\nconst bound = solve(instance, 1000)\n```\nThe bound is $n \\le \\frac{k}{2}$ for every instance, for $5 of $10.'
+  assert.equal(Answer.gist(text), 'The bound is n ≤ k/2 for every instance, for $5 of $10.')
+  assert.equal(Answer.symbols('\\sqrt{n} \\cdot 2 \\ne \\infty'), '√(n) · 2 ≠ ∞')
+})

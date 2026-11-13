@@ -165,3 +165,9 @@ test('a film is a fast-start MP4 whose samples and key frames match its H.264 st
   assert.equal(mp4[avcc.at + 8], 1)
   assert.equal(mp4[avcc.at + 9], 66)
 })
+
+test('the field counts the money swarms have left to spend, not everything riders ever sent', () => {
+  const base = { ...swarm, status: 'running', why: null }
+  const field = Share.field([{ ...base, balance: '200.000000', id: 'a', remaining: '1.500000' }, { ...base, balance: '88.000000', id: 'b', remaining: '-0.200000' }] as never)
+  assert.equal(field.balance, 1.5)
+})

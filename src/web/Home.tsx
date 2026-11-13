@@ -106,7 +106,7 @@ export function Home() {
     return joins.concat(seeds)
   }, [ranked.map((item) => [item.id, item.status, item.why, item.balance, item.contributors, item.updatedAt, item.answer?.text.length].join()).join('|'), free.map((item) => item.id).join(), now])
   const working = open.filter((swarm) => swarm.status === 'running').length
-  const balance = open.reduce((sum, swarm) => sum + Number(swarm.balance), 0)
+  const balance = open.reduce((sum, swarm) => sum + Math.max(0, Number(swarm.remaining)), 0)
   const shown = ideas.filter((idea) => (view === 'live' ? fits.running(idea) : view === 'new' ? fits.waiting(idea) : true)).slice(0, 12)
   const path = (id: string) => (id.startsWith('idea:') ? `/new?q=${id.slice(5)}` : `/s/${id}`)
   const tabs = [['popular', 'Popular'], ['live', 'Working now'], ['new', 'No riders yet']] as const

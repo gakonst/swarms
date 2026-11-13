@@ -99,8 +99,41 @@ function telling(line: string) {
   return line.length > 20 && !/^[-: ]+$/.test(line)
 }
 
+const signs: Record<string, string> = { alpha: 'α', approx: '≈', beta: 'β', cdot: '·', delta: 'δ', epsilon: 'ε', equiv: '≡', ge: '≥', geq: '≥', gamma: 'γ', in: '∈', infty: '∞', lambda: 'λ', le: '≤', leq: '≤', ldots: '…', cdots: '⋯', mu: 'μ', ne: '≠', neq: '≠', pi: 'π', pm: '±', rightarrow: '→', sigma: 'σ', sum: 'Σ', theta: 'θ', times: '×', to: '→', mid: '|', log: 'log', ln: 'ln' }
+
+export function symbols(text: string) {
+  return text
+    .replace(/\$\$?([^$\n]*\\[a-zA-Z][^$\n]*?)\$?\$/g, '$1')
+    .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '$1/$2')
+    .replace(/\\sqrt\{([^{}]*)\}/g, '√($1)')
+    .replace(/\\(?:mathrm|mathbf|mathit|text|operatorname)\{([^{}]*)\}/g, '$1')
+    .replace(/\\([a-zA-Z]+)(?![a-zA-Z])/g, (found, name: string) => signs[name] ?? found)
+    .replace(/\\[,;! ]/g, ' ')
+}
+
+function raw(line: string) {
+  const trimmed = line.trim()
+  if (!/^[[{]/.test(trimmed)) return false
+  try {
+    JSON.parse(trimmed)
+    return true
+  } catch {
+    return /^\{\s*"[\w-]+"\s*:/.test(trimmed)
+  }
+}
+
 export function gist(text: string) {
-  return text.split('\n').map(plain).find(telling) ?? ''
+  let fenced = false
+  for (const line of text.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced
+      continue
+    }
+    if (fenced || raw(line)) continue
+    const said = symbols(plain(line))
+    if (telling(said)) return said
+  }
+  return ''
 }
 
 function bare(text: string) {

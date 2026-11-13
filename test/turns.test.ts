@@ -20,7 +20,30 @@ test('failed turns count back to the last completed one', () => {
   const self = (rows: { status: string }[]) => ({ ctx: { storage: { sql: { exec: (_query: string, _since: number, limit: number) => ({ toArray: () => rows.slice(0, limit) }) } } } }) as never
   assert.equal(Turns.failing(self(statuses), 0), 2)
   assert.equal(Turns.failing(self(statuses.slice(2)), 0), 0)
-  assert.equal(Turns.failing(self([{ status: 'failed' }, { status: 'failed' }, { status: 'failed' }, { status: 'failed' }]), 0), 3)
+  assert.equal(Turns.failing(self([{ status: 'failed' }, { status: 'failed' }, { status: 'failed' }, { status: 'failed' }]), 0), 4)
+})
+
+test('a run of failed turns counts far enough for the backoff to reach half an hour', () => {
+  const rows = Array.from({ length: 20 }, () => ({ status: 'failed' }))
+  const self = { ctx: { storage: { sql: { exec: (_query: string, _since: number, limit: number) => ({ toArray: () => rows.slice(0, limit) }) } } } } as never
+  assert.equal(Turns.backoff(Turns.failing(self, 0)), 1_800_000)
+})
+
+test('two turns in a row ending in a session reset replace the agent once, and the new agent is not replaced for the old one', () => {
+  const said = 'The session was reset after its host crashed four times in a row while running a code cell.'
+  assert.ok(Turns.reset(said))
+  assert.ok(!Turns.reset('vercel failed upstream'))
+  assert.ok(!Turns.reset(null))
+  const kv = new Map<string, unknown>()
+  const turns = [{ message: said, started_at: 20, status: 'failed' }, { message: said, started_at: 10, status: 'failed' }, { message: null, started_at: 5, status: 'completed' }]
+  const self = {
+    ctx: { storage: { sql: { exec: (_query: string, since: number, limit: number) => ({ toArray: () => turns.filter((turn) => turn.started_at >= since).slice(0, limit) }) } } },
+    kv: { get: (key: string) => kv.get(key) },
+  } as never
+  assert.equal(Turns.resets(self), 2)
+  assert.equal(Turns.resets({ ...(self as object), ctx: { storage: { sql: { exec: (_q: string, _s: number, limit: number) => ({ toArray: () => [turns[0], turns[2]].slice(0, limit) }) } } } } as never), 1)
+  kv.set('renewedAt', 15)
+  assert.equal(Turns.resets(self), 1)
 })
 
 test("a turn the gateway refused because the swarm's credit ran out counts as out of money", () => {

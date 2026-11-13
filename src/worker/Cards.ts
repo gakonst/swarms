@@ -235,7 +235,7 @@ export function home(fonts: Fonts, field: Field, width: number, height: number):
   const subFirst = heroFirst + size * 0.94 + 30 * k + subSize
   const liveY = subFirst + (sub.length - 1) * subSize * 1.36 + 50 * k
   const count = field.open + field.ideas.length
-  const facts = [field.working ? `${field.working} working now` : '', `${count} idea${count === 1 ? '' : 's'}`, field.balance > 0 ? `${Answer.cash(field.balance)} balance` : ''].filter(Boolean).join(' · ')
+  const facts = [field.working ? `${field.working} working now` : '', `${count} idea${count === 1 ? '' : 's'}`, field.balance > 0 ? `${Answer.cash(field.balance)} to spend` : ''].filter(Boolean).join(' · ')
   const dot = field.working ? { color: dots.live, radius: 5.5 * k, x: margin + 5.5 * k, y: liveY - 6.5 * k } : null
   const avoid = [
     { h: 40 * k, w: 160 * k, x: margin, y: top - 32 * k },

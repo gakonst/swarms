@@ -43,7 +43,7 @@ export function field(given: readonly Summary[], now = Date.now()): Cards.Field 
   const swarms = given.filter((swarm) => !Status.test(swarm))
   const live = Status.ranked(swarms, now)
   return {
-    balance: live.reduce((sum, swarm) => sum + Number(swarm.balance), 0),
+    balance: live.reduce((sum, swarm) => sum + Math.max(0, Number(swarm.remaining)), 0),
     ideas: open(swarms).map((problem) => ({ id: problem.id, title: problem.title })),
     open: live.length,
     swarms: live.slice(0, 12).map((swarm) => ({ ...Cards.item(swarm), left: 0, pitch: '' })),
