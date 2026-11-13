@@ -17,7 +17,7 @@ registerHooks({
       ? { shortCircuit: true, url: 'data:text/javascript,export const waitUntil = (task) => globalThis.__teamWaited.push(task); export class DurableObject {}' }
       : next(specifier, context),
 })
-Object.assign(globalThis, { __teamWaited: waited })
+Object.assign(globalThis, { __teamWaited: waited, caches: { default: { match: async () => undefined, put: async () => undefined } } })
 
 const Operations: typeof OperationsModule = await import('../src/worker/Operations.ts')
 const Store: typeof StoreModule = await import('../src/worker/Store.ts')
@@ -243,6 +243,29 @@ test("while the gateway cannot list a swarm's team, its seats are told to try ag
   down.clear()
   assert.equal((await value(Operations.contribute(env, { hash, note: 'try lattices', swarm: 's' }))).contributed.contribution.note, 'try lattices')
   assert.deepEqual(counted().map((row) => row.note), ['try lattices'])
+})
+
+test("while the gateway cannot list a swarm's team, an admin who stops a branch is told to try again rather than that they are not an admin", async () => {
+  const { down, env, name } = world()
+  name(ada, 'ada')
+  name(bob, 'bob')
+  await value(Operations.seat(env, { member: bob, swarm: 's' }, ada))
+  const branch = { agent_id: 1, budget_usd: 5, parent_agent_id: null, role: 'tester', spent_usd: 1, status: { state: 'running' }, task: 'Test it' }
+  const halts: unknown[] = []
+  Object.assign(env.SWARMS.get(env.SWARMS.idFromName('s')), {
+    halt: async (...args: unknown[]) => (halts.push(args), { ok: true, value: [{ ...branch, status: { state: 'closed' } }] }),
+    subagents: async () => ({ ok: true, value: { agent: 'agt', list: [branch] } }),
+    voice: async () => ({ ok: true, value: null }),
+  })
+
+  down.add('/v1/teams/members')
+  assert.equal(await refused(Operations.stop(env, { branch: 1, swarm: 's' }, ada)), 502)
+  assert.equal(halts.length, 0)
+
+  down.clear()
+  assert.equal(await refused(Operations.stop(env, { branch: 1, swarm: 's' }, bob)), 403)
+  assert.equal((await value(Operations.stop(env, { branch: 1, swarm: 's' }, ada))).id, 1)
+  assert.equal(halts.length, 1)
 })
 
 test("a seat's steer tells the room the roster, with what is left of their budget", async () => {

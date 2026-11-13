@@ -992,7 +992,9 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
   const pool = target.budget === null ? (target.spent === null ? 0n : units(target.spent)) : (found.value.money.bases.get(target.id) ?? units(target.budget) - funded)
   const stake = funded + (pool > 0n ? pool : 0n)
   const mine = units(target.funders.find((funder) => funder.address === address.toLowerCase())?.amount ?? '0')
-  if (!(mine * 2n > stake) && !(await Team.admin(env, row, address).catch(() => false)))
+  const allowed = mine * 2n > stake ? Problem.ok(true) : await Team.admin(env, row, address).then(Problem.ok, Team.unlisted)
+  if (!allowed.ok) return allowed
+  if (!allowed.value)
     return Problem.fail(
       403,
       'access_denied',
