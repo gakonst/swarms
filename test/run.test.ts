@@ -534,3 +534,26 @@ test('a swarm that ran on a Boundless model is moved off it, whatever the gatewa
   assert.ok(!String(w.swarm.kv.get('instructions')).includes('boundless/'))
   assert.ok(w.sql.exec("SELECT text FROM feed WHERE kind = 'status'").toArray().some((entry) => /Moved the swarm off Boundless: it runs on Claude Fable 5\.2 now/.test(String(entry['text']))))
 })
+
+test('a paused swarm viewed ten minutes later lowers a backing that ended while it was paused to what it paid', async (t) => {
+  const key = '0x' + 'e'.repeat(40)
+  let backing = { backer: rider, createdAt: 1, ended: false, expiresAt: null, key, left: '10', limit: '10', spent: '0', tag: null, token: 'mach' }
+  const w = world((_request, url) => {
+    if (url.pathname === '/api/keys/credit') return Response.json({ deposited: '0', left: '0', spent: '0' })
+    if (url.pathname === '/api/keys/backings') return Response.json({ backings: [backing], left: backing.ended ? '0' : backing.left, spent: backing.spent })
+    return undefined
+  })
+  t.after(w.restore)
+  await w.seed('0')
+  await w.env.DB.prepare("insert into contributions (id, swarm, channel, contributor, token, amount, created_at) values (?, ?, ?, ?, 'mach', '10000000', 1)").bind('backing:' + key, id, key, rider).run()
+  w.swarm.kv.put('run', { at: Date.now() - 3_600_000, pause: { left: '0', wake: null, why: 'money' }, settled: Date.now(), state: 'paused' })
+  backing = { ...backing, ended: true, left: '0', spent: '1' }
+  const amount = async () => (await w.env.DB.prepare('select amount from contributions where id = ?').bind('backing:' + key).first<{ amount: string }>())?.amount
+  w.pass(9 * 60_000)
+  await w.viewed()
+  assert.deepEqual([w.alarm(), await amount()], [null, '10000000'])
+  w.pass(60_000)
+  await w.viewed()
+  await w.ring()
+  assert.deepEqual([w.swarm.run().state, await amount()], ['paused', '1000000'])
+})
