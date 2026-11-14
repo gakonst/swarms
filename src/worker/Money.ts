@@ -82,7 +82,8 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   const left = credited + backed
   const known = !plan.credit || (!!credit?.ok && (!backable || !!backings?.ok))
   const settling = backings?.ok ? await settle(self, row, backings.value.backings).catch((error: unknown) => (console.error('Settling backings failed', error), undefined)) : undefined
-  const settled = settling === true
+  const recovered = credit?.ok && Memo.units(credit.value.deposited) > 0n ? await recover(self, row, credit.value.deposited).catch((error: unknown) => (console.error('Recovering credited transfers failed', error), 0)) : 0
+  const settled = settling === true || recovered > 0
   if (backings?.ok && settling !== undefined && backings.value.backings.every((each) => each.ended)) self.kv.put('unbacked', Date.now())
 
   const previous = self.kv.get<Hand[]>('hands') ?? []
@@ -106,6 +107,30 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   self.beacon(updated)
   if (settled) self.changed('detail', 'members')
   return { known, left, listed, row: updated }
+}
+
+export async function recover(self: Swarm, row: Store.Row, deposited: string) {
+  if (self.kv.get<string>('deposited') === deposited) return 0
+  const listed = await Gateway.deposits(self.env, row.id)
+  if (!listed.ok) return 0
+  const transfers = new Map<string, Gateway.Credited[]>()
+  for (const deposit of listed.value.deposits) {
+    const hash = deposit.hash.toLowerCase()
+    transfers.set(hash, [...(transfers.get(hash) ?? []), deposit])
+  }
+  const counted = transfers.size ? await Store.counted(self.env, [...transfers.keys()]) : new Set<string>()
+  const written: Store.Gift[] = []
+  for (const [hash, logs] of transfers) {
+    const first = logs[0]
+    if (!first || counted.has(hash)) continue
+    const total = logs.reduce((sum, deposit) => sum + Memo.units(deposit.amount), 0n)
+    const gift = await Store.give(self.env, { amount: String(total), channel: null, contributor: first.from, id: hash, note: null, note_id: null, swarm: row.id, token: first.token })
+    if (gift) written.push(gift)
+  }
+  self.kv.put('deposited', deposited)
+  for (const gift of written)
+    await self.contributed({ amount: Memo.decimal(BigInt(gift.amount)), contributor: gift.contributor, hash: gift.id, kind: 'new', note: null, noteId: null, swarm: row.id, token: gift.token })
+  return written.length
 }
 
 export async function joined(self: Swarm, row: Store.Row, connected: Gateway.Listed[], previous: ReadonlySet<string>) {

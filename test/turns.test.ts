@@ -69,6 +69,7 @@ test('a swarm paused for money reads its credit once its calls are over, and goe
             requests.push(new URL(request.url).pathname)
             const path = new URL(request.url).pathname
             if (path === '/api/keys/backings') return Response.json({ backings: [], left: '0', spent: '0' })
+            if (path === '/api/keys/credit/deposits') return Response.json({ deposits: [] })
             return Response.json(path === '/api/keys/credit' ? { deposited: '1', left, spent: '0' } : { hands: [] })
           },
         },
@@ -121,7 +122,7 @@ test('a swarm paused for money reads its credit once its calls are over, and goe
 
   const later = swarm('0.03', pause, now - 3_600_000, now - 660_000)
   assert.equal(await later.settle(), null)
-  assert.deepEqual(later.requests.sort(), ['/api/keys/backings', '/api/keys/credit'])
+  assert.deepEqual(later.requests.sort(), ['/api/keys/backings', '/api/keys/credit', '/api/keys/credit/deposits'])
   const read = later.run()
   assert.ok(read.state === 'paused' && read.settled !== undefined && read.settled >= now)
 

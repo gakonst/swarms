@@ -640,3 +640,12 @@ Georgios: "do a few back and forths, optimize, then go and implement the most se
 - Not fixed: a transfer the gateway credited but D1 never stored (#18). The gateway's credit route reports only totals, with no deposits by hash, so Swarms can't find the missing transfer. Recording the same hash again stays safe, and the page keeps unrecorded hashes (`swarms.owed`).
 - The five fixer worktrees of the audit session (`swarms-fix-*`) and their branches no longer existed on gak-9.
 
+
+## Credited transfers are recovered by hash (2026-11-14)
+
+- Closes #18 of the 2026-11-10 audit: a transfer the gateway credited and Swarms never stored (the page lost the answer and its `swarms.owed` entry) is now counted. The gateway lists an app's credited transfers at `GET /api/keys/credit/deposits` (tempoxyz/gateway e44bcb7: `hash`, `log`, `token`, `from`, `amount`, `tag`, `created_at`, oldest first), which `Gateway.deposits` reads.
+- `Money.recover` runs in `Money.refresh` after a credit read that succeeded with `deposited` above zero, and only when `deposited` differs from the value of its last pass (the object's `deposited` key), so the operator key's shared management limit pays one listing per change in what riders sent, not one per refresh. It groups the listed logs by hash (one transaction can carry several), skips hashes already in `contributions` (`Store.counted`, one `json_each` query), stores each missing one as `POST …/contributions` would without a note (the tag commits to the note's text, which the gateway never saw), records the new total, then tells the object (`contributed`, kind `new`), which wakes a paused swarm. A recovered transfer refreshes the row as a settled backing does. A failed listing or write leaves the key unchanged, so the next refresh tries again.
+- A page that posts its hash after recovery stored it keeps its note: when `Store.give` finds the row already there and the request carries a note, `Operations.contribute` annotates it as a note on a counted transfer does, tells the object kind `noted` and answers `created: false`.
+- The first refresh of every swarm after the deploy lists its deposits once (47 swarms on production, each at its own pace), and counts whatever the gateway credited that Swarms never stored.
+- Checked with `pnpm check`, `pnpm build` and 225 node tests; the two new ones (`money.test.ts` recovery, `funding.test.ts` race) fail on the code before. `Store.counted` was run against the tests' SQLite D1 with a mixed-case hash.
+

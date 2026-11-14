@@ -270,6 +270,11 @@ export async function gift(env: Cloudflare.Env, id: string) {
   return env.DB.prepare('select * from contributions where id = ?').bind(id.toLowerCase()).first<Gift>()
 }
 
+export async function counted(env: Cloudflare.Env, ids: readonly string[]) {
+  const found = await env.DB.prepare('select id from contributions where id in (select value from json_each(?))').bind(JSON.stringify(ids.map((id) => id.toLowerCase()))).all<{ id: string }>()
+  return new Set(found.results.map((row) => row.id))
+}
+
 export async function annotate(env: Cloudflare.Env, swarm: string, id: string, input: { note: string; note_id: string }) {
   return env.DB.prepare(
     `update contributions set note = ?3, note_id = ?4 where id = ?2 and swarm = ?1 and note is null and (

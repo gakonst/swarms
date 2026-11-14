@@ -1335,6 +1335,7 @@ export async function contribute(
   const text = tagged && (row.steering !== 'team' || steers.value) ? tagged : null
   const noteId = text ? await Store.noteId(text) : null
   let written: Store.Gift | null
+  let recovered = false
   if (existing) {
     written = text && noteId && !existing.note ? await Store.annotate(env, row.id, request.hash, { note: text, note_id: noteId }) : null
     if (!written) {
@@ -1343,9 +1344,13 @@ export async function contribute(
     }
   } else {
     written = await Store.give(env, { amount: String(total), channel: null, contributor: first.from, id: request.hash as Hex, note: text, note_id: noteId, swarm: row.id, token: first.token })
+    if (!written && text && noteId) {
+      written = await Store.annotate(env, row.id, request.hash, { note: text, note_id: noteId })
+      recovered = written !== null
+    }
   }
   if (written) {
-    await stub(env, row.id).contributed({ amount: Memo.decimal(total), contributor: first.from, hash: request.hash, kind: existing ? 'noted' : 'new', note: text, noteId, swarm: row.id, token: first.token })
+    await stub(env, row.id).contributed({ amount: Memo.decimal(total), contributor: first.from, hash: request.hash, kind: existing || recovered ? 'noted' : 'new', note: text, noteId, swarm: row.id, token: first.token })
     if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
     if (!row.creator) retold(env, row)
   }
@@ -1354,7 +1359,7 @@ export async function contribute(
   if (!gift) return Problem.fail(502, 'unavailable', 'The contribution was not saved.')
   return Problem.ok({
     contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) },
-    created: !existing && written !== null,
+    created: !existing && !recovered && written !== null,
   })
 }
 

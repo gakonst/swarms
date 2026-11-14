@@ -138,6 +138,21 @@ test('a transfer already counted is refused, and still wakes a swarm that missed
   assert.deepEqual(await member(), ['10.000000', '10.000000', '0.000000'])
 })
 
+test('a transfer Swarms recovered from the gateway while its page was counting it keeps the note the page sent', async () => {
+  const hash = '0x' + 'cd'.repeat(32)
+  const recovered: { db?: ReturnType<typeof open> } = {}
+  const { calls, db, env } = world((path) => {
+    if (path !== '/api/keys/credit') return {}
+    recovered.db?.sqlite.prepare("insert into contributions (id, swarm, channel, contributor, token, amount, note, note_id, created_at) values (?, ?, null, ?, 'ousd', '10000000', null, null, 1)").run(hash, id, rider)
+    return { created: false, credit: {}, deposits: [{ amount: '10', from: rider, log: 0, tag: Credit.tag(id, 'idea two'), token: 'ousd' }] }
+  })
+  recovered.db = db
+  const raced = await Operations.contribute(env, { hash, note: 'idea two', swarm: id })
+  assert.ok(raced.ok)
+  assert.deepEqual([raced.value.created, raced.value.contributed.contribution.note], [false, 'idea two'])
+  assert.deepEqual(calls.map(([name, input]) => [name, (input as { kind?: string }).kind]), [['contributed', 'noted']])
+})
+
 test('a swarm told of money wakes before it logs and announces it, so a failed announcement leaves it awake', async () => {
   const woken: string[] = []
   const self = {

@@ -42,6 +42,8 @@ export type Standing = { deposited: string; left: string; spent: string }
 
 export type Deposit = { amount: string; from: `0x${string}`; log: number; tag: `0x${string}`; token: 'mach' | 'ousd' | 'pathusd' | 'usdce' }
 
+export type Credited = Deposit & { created_at: number; hash: `0x${string}` }
+
 export type Subagent = {
   agent_id: number
   budget_usd?: number
@@ -171,6 +173,10 @@ export function credit(env: Cloudflare.Env, swarm: string) {
 
 export function credited(env: Cloudflare.Env, swarm: string, hash: string) {
   return send<{ created: boolean; credit: Standing; deposits: Deposit[] }>(env, '/api/keys/credit', { app: app(swarm), body: { hash } })
+}
+
+export function deposits(env: Cloudflare.Env, swarm: string) {
+  return send<{ deposits: Credited[] }>(env, '/api/keys/credit/deposits', { app: app(swarm) })
 }
 
 export type Backing = {
