@@ -55,7 +55,7 @@ const routes = [
   ['GET', '/v1/swarms/:id/chat', "The room's newest messages, its backers, and with a session your standing.", '?after=<id>&before=<id>&limit=<n>'],
   ['POST', '/v1/swarms/:id/chat', 'Post as a signed-in backer with a username; @swarm with steer puts backing, or on a team-steered swarm the team budget, behind the idea, and btw collapses a side thread into it, or with artifact asks for an artifact of it.', '{ text, steer?, btw?, artifact? }'],
   ['POST', '/v1/swarms/:id/btw', "Ask the agent, or with branch one of its branches, a side question as a signed-in backer with a username and at least $0.01 in, answered from its context without interrupting it.", '{ question, thread?, branch? }'],
-  ['GET', '/v1/swarms/:id/team', 'Who steers it: open (any backer) or team, its admins, members and their budgets. A team starts as its creator alone.', ''],
+  ['GET', '/v1/swarms/:id/team', 'Who steers it: open (any backer) or team, its admins, members and their budgets. A team starts as its creator alone: whoever started it signed in, or sent its first ride.', ''],
   ['POST', '/v1/swarms/:id/team', "An admin's choice of who steers, and each member's default budget in USD per 30 days.", '{ steering?, memberBudget? }'],
   ['POST', '/v1/swarms/:id/team/members', 'An admin adds a member or admin by wallet or @username, with a budget of the swarm\'s money.', '{ member, role?, budget? }'],
   ['DELETE', '/v1/swarms/:id/team/members/:member', 'An admin removes a member; anyone leaves.', ''],
@@ -64,8 +64,8 @@ const routes = [
   ['POST', '/v1/swarms/:id/branches/:branch/stop', "Stop a branch you hold more than half of the money behind, or any as an admin; what it had not spent goes back to its backers.", ''],
   ['POST', '/v1/swarms/:id/branches/:branch/move', 'Move what you put behind a branch, and it has not spent, to another branch.', '{ amount, to }'],
   ['GET', '/v1/swarms/:id/chat/live', 'A WebSocket of new messages, presence and typing, and of the swarm itself: welcome with a version when it opens, pulse with its summary, changed naming what to read again, artifacts and roster. With listen=1 it follows without counting you in the room.', '?listen=1'],
-  ['POST', '/v1/auth/challenge', 'A sign-in message for Tempo Wallet to sign.', '{ chainId }'],
-  ['POST', '/v1/auth', 'Verify the signature; answers a session token.', '{ address, message, signature }'],
+  ['POST', '/v1/auth/challenge', 'A sign-in message for your Tempo account to sign, with its id.', '{}'],
+  ['POST', '/v1/auth', 'Verify the signature; answers a session token.', '{ address, id, message, signature }'],
   ['GET', '/v1/me', 'Your account: address, username and the handle rooms show.', ''],
   ['POST', '/v1/me', 'Set your username, which posting, steering and side questions need.', '{ name }'],
   ['POST', '/v1/swarms/:id/hands', 'Issue a hand to lend a machine.', '{ label? }'],
@@ -303,7 +303,7 @@ export function Docs(props: { config: Config | undefined }) {
       >
         <h3 className="docs-head">1. Sign in</h3>
         <p className="docs-text">
-          Tempo Wallet does it in one prompt: <code>wallet_connect</code> with <code>{"capabilities: { auth: { url: '/v1/auth', returnToken: true } }"}</code> answers <code>capabilities.auth.token</code>. A script can sign the message from <code>/v1/auth/challenge</code> itself and post it to <code>/v1/auth</code>. Tokens last 30 days.
+          The page has your Tempo account sign the message from <code>/v1/auth/challenge</code> in Tempo ID's dialog. A script signs it with the account's own key, not an access key, and posts it with the challenge's <code>id</code> to <code>/v1/auth</code>. Tokens last 30 days.
         </p>
         <h3 className="docs-head">2. Talk and steer</h3>
         <Code>{`curl -s ${origin}/v1/swarms/<id>/chat -H 'authorization: Bearer <token>' -H 'content-type: application/json' \\\n  -d '{"text":"@swarm try simd-json next","steer":"0.5"}'`}</Code>

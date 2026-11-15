@@ -38,6 +38,12 @@ app.all('/mcp', async (c) => (await import('./Mcp.ts')).handle(c.req.raw, c.env)
 
 app.get('/v1/config', async (c) => c.json(await Operations.config(c.env)))
 
+app.post(`${Sessions.path}/challenge`, async (c) => Problem.respond(await Sessions.challenge(c.env, c.req.raw)))
+
+app.post(Sessions.path, async (c) => Problem.respond(await Sessions.verify(c.env, await body(c.req.raw))))
+
+app.post(`${Sessions.path}/logout`, async (c) => Problem.respond(await Sessions.logout(c.env, c.req.raw)))
+
 app.post('/v1/feedback', async (c) => Problem.respond(await Feedback.file(c.env, await body(c.req.raw)), 201))
 
 app.get('/v1/me', async (c) => Problem.respond(await Operations.account(c.env, await Sessions.who(c.env, c.req.raw))))

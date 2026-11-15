@@ -78,12 +78,12 @@ function WalletButton(props: { config: Config | undefined }) {
       <div className="wallet-menu" data-open={open} ref={menu}>
         {wallet.pending ? (
           <span aria-busy="true" className="btn btn-medium wallet" onClick={() => setOpen(!open)}>
-            <span>{signed(wallet.account, wallet.address)}</span>
+            <span>{signed(wallet.account, wallet.address, wallet.email)}</span>
             {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
           </span>
         ) : (
-          <a className="btn btn-medium wallet" href={props.config ? `${props.config.explorer}/address/${wallet.address}` : undefined} onClick={tap} rel="noreferrer" target="_blank" title={wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : 'Your Tempo Wallet'}>
-            <span>{signed(wallet.account, wallet.address)}</span>
+          <a className="btn btn-medium wallet" href={props.config ? `${props.config.explorer}/address/${wallet.address}` : undefined} onClick={tap} rel="noreferrer" target="_blank" title={wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : wallet.email ? `${wallet.email} · ${wallet.address}` : 'Your Tempo ID'}>
+            <span>{signed(wallet.account, wallet.address, wallet.email)}</span>
             {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
           </a>
         )}
@@ -92,7 +92,7 @@ function WalletButton(props: { config: Config | undefined }) {
             className="wallet-out"
             onClick={() => {
               setOpen(false)
-              void Wallet.disconnect()
+              Wallet.disconnect()
             }}
             type="button"
           >
@@ -107,7 +107,7 @@ function WalletButton(props: { config: Config | undefined }) {
       onClick={() => {
         if (props.config) Wallet.signIn(props.config).then(() => setError(undefined), (reason: unknown) => setError(message(reason)))
       }}
-      title={error ?? 'Sign in with Tempo Wallet to post in rooms and see your balance'}
+      title={error ?? 'Sign in with Tempo ID to post in rooms and see your balance'}
       type="button"
     >
       Sign in

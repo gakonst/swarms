@@ -53,10 +53,9 @@ export function valid(amount: string, minimum = smallest) {
 }
 
 const working = {
-  connect: 'Connecting Tempo Wallet…',
   create: 'Setting up…',
   record: 'Recording…',
-  send: 'Approve in Tempo Wallet…',
+  send: 'Check prompt…',
 } as const satisfies Record<Pay.Working, string>
 
 async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency): Promise<Pay.Owed> {
@@ -82,7 +81,6 @@ export function Fuel(props: {
   onNote: (note: string) => void
   onSent?: ((target: Target) => void) | undefined
   prefill: Prefill
-  sign?: boolean | undefined
   slot: string
   steers?: boolean | undefined
   target: (step: (step: 'create') => void) => Promise<Target>
@@ -99,6 +97,12 @@ export function Fuel(props: {
   useEffect(() => {
     if (props.focus) steer.current?.focus({ preventScroll: true })
   }, [props.focus])
+  const warm = () => props.config && Wallet.warm(props.config)
+  useEffect(() => {
+    if (!props.config) return
+    Wallet.warm(props.config)
+    void import('../shared/Credit.ts')
+  }, [props.config, wallet.session])
   const busy = flow.at === 'busy'
   const step = (next: Pay.Working) => Pay.move(props.slot, { at: 'busy', step: next })
   const token = picked ?? choose(amount, wallet.balances)
@@ -106,8 +110,6 @@ export function Fuel(props: {
   const ok = valid(amount, floor)
   const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && flow.at !== 'unrecorded'
   const text = props.note.trim()
-  const balance = wallet.balances[token]
-  const low = balance !== undefined && ok && balance < units(amount)
   const least = Math.ceil(Number(floor) * 100) / 100
   const marks = least > stops[0] ? [least, ...stops.filter((stop) => stop > least)] : stops
   const at = nearest(amount, marks)
@@ -124,25 +126,16 @@ export function Fuel(props: {
     const config = props.config
     if (!config || !ready) return
     try {
-      let using = token
-      if (props.sign ? !Wallet.snapshot().session : !Wallet.snapshot().address) {
-        step('connect')
-        await (props.sign ? Wallet.signIn(config) : Wallet.connect(config))
-        await Wallet.refresh(config).catch(() => {})
-        using = picked ?? choose(amount, Wallet.snapshot().balances)
-      }
-      const held = Wallet.snapshot().balances[using]
-      if (held !== undefined && held < units(amount)) throw Object.assign(new Error('Your wallet holds less than this.'), { code: 'insufficient_balance' })
       const target = await props.target((next) => step(next))
       step('send')
-      await record(await transfer(config, target, units(amount), text, using))
+      await record(await transfer(config, target, units(amount), text, token))
     } catch (error) {
       Pay.move(props.slot, { at: 'failed', error: message(error) })
     }
   }
 
   return (
-    <div className="fuel">
+    <div className="fuel" onFocus={warm} onPointerDown={warm} onPointerEnter={warm}>
       <div className="fuel-amount">
         <label className="fuel-sum">
           <span aria-hidden="true">$</span>
@@ -158,7 +151,6 @@ export function Fuel(props: {
         {flow.at === 'busy' ? working[flow.step] : ok ? `${props.first ? 'Start it' : 'Ride it'} · ${dollars(amount)}` : props.first ? 'Start it' : 'Ride it'}
       </button>
       <div className="fuel-told" ref={told}>
-        {low && flow.at !== 'failed' && <Alert title="Not enough in your wallet." tone="warn">Add money in Tempo Wallet first.</Alert>}
         {flow.at === 'done' && <Alert action={{ label: 'Add more', onClick: () => Pay.move(props.slot, Pay.idle) }} title={`You're riding. ${dollars(flow.amount)} is in.`} tone="good">Thank you!</Alert>}
         {flow.at === 'unrecorded' && (
           <Alert action={{ label: 'Try again', onClick: () => void record(flow.owed) }} title="Sent, but not counted yet." tone="warn">

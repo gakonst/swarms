@@ -1,5 +1,6 @@
 import type { Address, Hex } from 'viem'
 import type { Account, Config, Currency } from '../shared/Api.ts'
+import { decimal } from '../shared/Memo.ts'
 import * as Site from '../shared/Site.ts'
 import * as Api from './api.ts'
 import { fixture } from './api.ts'
@@ -13,15 +14,16 @@ export type State = {
   address: Address | undefined
   balance: bigint | undefined
   balances: Partial<Record<Currency, bigint>>
+  email: string | undefined
   pending: boolean
   session: Session | undefined
 }
 
-let provider: Promise<Awaited<ReturnType<typeof load>>['provider']> | undefined
+let instance: ReturnType<typeof load> | undefined
 
-async function load() {
-  const { Provider, tempoWallet } = await import('accounts')
-  return { provider: Provider.create({ adapter: tempoWallet(), mpp: false }) }
+async function load(config: Config) {
+  const { Accounts } = await import('accounts')
+  return Accounts.create({ chain: config.chainId })
 }
 
 const chain = () => Promise.all([import('viem'), import('viem/tempo'), import('viem/tempo/chains')])
@@ -67,13 +69,14 @@ let state: State = {
   address: lower(session?.address ?? (fixture ? undefined : seen?.address)),
   balance: same(session?.address ?? seen?.address) && seen?.balance !== undefined ? BigInt(seen.balance) : undefined,
   balances: {},
+  email: same(session?.address ?? seen?.address) ? seen?.email : undefined,
   pending: !session && !!seen && !fixture,
   session: session && { ...session, address: lower(session.address) },
 }
 
 function mirror() {
   if (server || fixture) return
-  const value = state.address ? encodeURIComponent(JSON.stringify({ account: state.account, address: state.address, balance: state.balance?.toString() } satisfies Face)) : ''
+  const value = state.address ? encodeURIComponent(JSON.stringify({ account: state.account, address: state.address, balance: state.balance?.toString(), email: state.email } satisfies Face)) : ''
   document.cookie = value ? `${faceCookie}=${value}; path=/; max-age=31536000; samesite=lax` : `${faceCookie}=; path=/; max-age=0; samesite=lax`
 }
 
@@ -81,7 +84,7 @@ mirror()
 
 const seeds = new WeakMap<object, State>()
 
-const empty: State = { account: undefined, address: undefined, balance: undefined, balances: {}, pending: false, session: undefined }
+const empty: State = { account: undefined, address: undefined, balance: undefined, balances: {}, email: undefined, pending: false, session: undefined }
 
 export function initial(): State {
   const current = boot()
@@ -89,7 +92,7 @@ export function initial(): State {
   let seed = seeds.get(current)
   if (!seed) {
     const remembered = current.face
-    seed = { ...empty, account: remembered?.account, address: remembered?.address, balance: remembered?.balance === undefined ? undefined : BigInt(remembered.balance), pending: !!remembered }
+    seed = { ...empty, account: remembered?.account, address: remembered?.address, balance: remembered?.balance === undefined ? undefined : BigInt(remembered.balance), email: remembered?.email, pending: !!remembered }
     seeds.set(current, seed)
   }
   return seed
@@ -97,23 +100,18 @@ export function initial(): State {
 
 let checked = fixture
 
-let parted = 0
-
 Api.authorize(state.session?.token)
 
 const listeners = new Set<() => void>()
 
-function wallet() {
-  provider ??= load().then((loaded) => loaded.provider)
-  return provider
+function wallet(config: Config) {
+  instance ??= load(config)
+  return instance
 }
-
-const remembered = 'swarms.wallet'
 
 function set(change: Partial<State>) {
   const next = { ...change, ...(change.address ? { address: lower(change.address) } : {}), ...(change.session ? { session: { ...change.session, address: lower(change.session.address) } } : {}) }
   state = { ...state, ...next }
-  if (next.address && !fixture) localStorage.setItem(remembered, next.address)
   if ('session' in next) {
     Api.authorize(next.session?.token)
     if (!fixture) {
@@ -122,7 +120,7 @@ function set(change: Partial<State>) {
     }
   }
   if (!fixture) {
-    if (state.address) localStorage.setItem(faced, JSON.stringify({ account: state.account, address: state.address, balance: state.balance?.toString() } satisfies Face))
+    if (state.address) localStorage.setItem(faced, JSON.stringify({ account: state.account, address: state.address, balance: state.balance?.toString(), email: state.email } satisfies Face))
     else localStorage.removeItem(faced)
     mirror()
   }
@@ -142,57 +140,52 @@ export function snapshot() {
 
 function asked() {
   if (scene.has('hang')) return new Promise<never>(() => {})
-  if (scene.has('deny')) return new Promise<never>((_, reject) => setTimeout(() => reject(new Error('You declined the request in Tempo Wallet.')), 900 * pace))
+  if (scene.has('deny')) return new Promise<never>((_, reject) => setTimeout(() => reject(new Error('You declined the request in Tempo ID.')), 900 * pace))
   return new Promise((resolve) => setTimeout(resolve, 1200 * pace))
 }
 
 export async function restore(config: Config) {
   if (!checked) {
     checked = true
-    if (state.session) {
-      if (state.pending) set({ pending: false })
-      return void refresh(config).catch(() => {})
-    }
-    if (!state.address && !localStorage.getItem(remembered)) return
-    const at = parted
-    const accounts = await (await wallet())
-      .request({ method: 'eth_accounts' })
-      .catch(() => [] as readonly Address[])
-    if (parted !== at) return
-    const address = accounts[0]
     if (state.pending) set({ pending: false })
-    if (!address) return set({ account: undefined, address: undefined, balance: undefined, balances: {} })
-    if (address.toLowerCase() !== state.address) set({ account: undefined, address, balance: undefined, balances: {} })
   }
   if (state.address) await refresh(config)
 }
 
-export async function connect(config: Config) {
-  if (fixture) {
-    if (!state.address) set({ address: visitor })
-    return state.address ?? visitor
-  }
-  const provider = await wallet()
-  const listed = (await provider.request({ method: 'eth_accounts' }).catch(() => [] as readonly Address[]))[0]
-  const requested =
-    listed ??
-    (
-      await provider.request({ method: 'eth_requestAccounts' }).catch((error: unknown) => {
-        if (declined(error)) throw error
-        return [] as readonly Address[]
-      })
-    )[0]
-  const address = requested ?? (await signIn(config)).address
-  if (address.toLowerCase() === state.address) return address
-  const switched = !!state.session && state.session.address !== address.toLowerCase()
-  set({ account: switched ? undefined : state.account, address, ...(switched ? { session: undefined } : {}) })
-  void refresh(config).catch(() => {})
-  return address
+function declined(error: unknown): never {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+  if ((error instanceof Error && error.name === 'AbortError') || code === 'access_denied') throw new Error('You declined the request in Tempo ID.')
+  throw error
 }
 
-export function declined(error: unknown) {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
-  return code === 4001 || (error instanceof Error && /declined|rejected|denied|cancel/i.test(error.message))
+async function post<T>(config: Config, path: string, body: object, signal?: AbortSignal) {
+  const response = await fetch(Site.at(config.auth + path), { body: JSON.stringify(body), headers: { 'content-type': 'application/json' }, method: 'POST', ...(signal ? { signal } : {}) })
+  const answer = (await response.json().catch(() => ({}))) as T & { detail?: string }
+  if (!response.ok) throw new Api.Failure(answer, response.status)
+  return answer
+}
+
+type Challenge = { id: string; message: string }
+
+let ready: { at: number; challenge: Promise<Challenge> } | undefined
+
+function challenge(config: Config, take = false) {
+  if (!ready || Date.now() - ready.at > 5 * 60_000) {
+    const flight = { at: Date.now(), challenge: post<Challenge>(config, '/challenge', {}) }
+    flight.challenge.catch(() => {
+      if (ready === flight) ready = undefined
+    })
+    ready = flight
+  }
+  const held = ready.challenge
+  if (take) ready = undefined
+  return held
+}
+
+export function warm(config: Config) {
+  if (fixture || server) return
+  void wallet(config)
+  if (!state.session) void challenge(config).catch(() => {})
 }
 
 let renewing: Promise<string> | undefined
@@ -215,15 +208,13 @@ export async function signIn(config: Config) {
     void identify()
     return session
   }
-  const result = (await (await wallet()).request({
-    method: 'wallet_connect',
-    params: [{ capabilities: { auth: { returnToken: true, url: Site.at(config.auth) } }, chainId: config.chainId }],
-  } as never)) as { accounts: readonly { address: Address; capabilities?: { auth?: { token?: string } } }[] }
-  const account = result.accounts[0]
-  const token = account?.capabilities?.auth?.token
-  if (!account || !token) throw new Error('Tempo Wallet returned no session.')
-  const session = { address: account.address, token }
-  set({ account: undefined, address: account.address, pending: false, session })
+  const [accounts, asking] = await Promise.all([wallet(config), challenge(config, true)])
+  const signed = await accounts.dialog.signIn({ challenge: asking.message }).catch(declined)
+  void accounts.signOut().catch(() => {})
+  if (!signed.address || !signed.challengeSignature) throw new Error('Tempo ID returned no signature.')
+  const { token } = await post<{ token: string }>(config, '', { address: signed.address, id: asking.id, message: asking.message, signature: signed.challengeSignature })
+  const session = { address: signed.address, token }
+  set({ account: undefined, address: signed.address, email: signed.user.email, pending: false, session })
   void refresh(config).catch(() => {})
   void identify()
   return session
@@ -277,13 +268,9 @@ export function signOut() {
   if (token && !fixture) void fetch(Site.at('/v1/auth/logout'), { headers: { authorization: `Bearer ${token}` }, method: 'POST' }).catch(() => {})
 }
 
-export async function disconnect() {
-  parted += 1
+export function disconnect() {
   signOut()
-  set({ address: undefined, balance: undefined, balances: {}, pending: false })
-  if (fixture) return
-  localStorage.removeItem(remembered)
-  await (await wallet()).request({ method: 'wallet_disconnect' }).catch(() => {})
+  set({ address: undefined, balance: undefined, balances: {}, email: undefined, pending: false })
 }
 
 export async function send(config: Config, input: { amount: bigint; memo: Hex; to: Address; token: Currency }) {
@@ -292,24 +279,34 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
     if (fixtures.balances[input.token] < input.amount) throw Object.assign(new Error(`Your wallet holds less than this.`), { code: 'insufficient_balance' })
     const hash = `0x${Date.now().toString(16).padStart(64, '5')}` as Hex
     fixtures.sent.set(hash, { amount: input.amount, token: input.token })
+    if (!state.session) set({ address: visitor, pending: false, session: { address: visitor, token: 'fixture' } })
     return hash
   }
   const token = config.tokens.find((item) => item.id === input.token)
   if (!token) throw new Error('That token is not offered.')
-  const [{ encodeFunctionData }, { Abis }] = await chain()
-  return submit(config, [{ data: encodeFunctionData({ abi: Abis.tip20, args: [input.to, input.amount, input.memo], functionName: 'transferWithMemo' }), to: token.address }], input.token === 'mach' ? undefined : token.address)
-}
-
-async function submit(config: Config, calls: readonly { data: Hex; to: Address }[], feeToken?: Address) {
-  const address = await connect(config)
-  const receipt = (await (await wallet()).request({
-    method: 'eth_sendTransactionSync',
-    params: [{ calls, ...(feeToken ? { feeToken } : {}), from: address }],
-  } as never)) as { status?: string; transactionHash?: Hex }
-  if (!receipt.transactionHash) throw new Error('Tempo Wallet returned no transaction.')
-  if (receipt.status && receipt.status !== 'success' && receipt.status !== '0x1') throw new Error('The transaction reverted.')
+  const payment = { amount: decimal(input.amount), memo: input.memo, to: input.to, token: token.address }
+  const accounts = await wallet(config)
+  if (state.session) {
+    const { transaction } = await accounts.pay({ ...payment, account: state.session.address }).catch(declined)
+    void refresh(config).catch(() => {})
+    return transaction
+  }
+  const asking = await challenge(config, true)
+  const paid = await accounts.pay({ ...payment, challenge: asking.message }).catch((error) => {
+    warm(config)
+    return declined(error)
+  })
+  const switched = paid.address.toLowerCase() !== state.address
+  set({ ...(switched ? { account: undefined, balance: undefined, balances: {}, email: undefined } : {}), address: paid.address, pending: false })
+  await post<{ token: string }>(config, '', { address: paid.address, id: asking.id, message: asking.message, signature: paid.challengeSignature }).then(
+    ({ token }) => {
+      set({ session: { address: paid.address, token } })
+      void identify()
+    },
+    () => {},
+  )
   void refresh(config).catch(() => {})
-  return receipt.transactionHash
+  return paid.transaction
 }
 
 export async function refresh(config: Config) {

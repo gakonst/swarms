@@ -58,6 +58,7 @@ function face(cookie: string | null): Face | undefined {
       address: value.address,
       ...(value.account && typeof handle === 'string' && handle.length <= 40 ? { account: { address: value.address, handle, name: typeof value.account.name === 'string' ? value.account.name.slice(0, 40) : null } } : {}),
       ...(typeof value.balance === 'string' && /^\d{1,30}$/.test(value.balance) ? { balance: value.balance } : {}),
+      ...(typeof value.email === 'string' && value.email.length <= 254 && value.email.includes('@') ? { email: value.email } : {}),
     }
   } catch {
     return undefined

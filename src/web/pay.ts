@@ -6,7 +6,7 @@ export type Owed = { amount: string; hash: string; note: string; swarm: string }
 
 export type Counted = { at: 'counted' } | { at: 'later' } | { at: 'refused'; reason: string }
 
-export type Working = 'connect' | 'create' | 'record' | 'send'
+export type Working = 'create' | 'record' | 'send'
 
 export type Step = { at: 'idle' } | { at: 'busy'; step: Working } | { amount: string; at: 'done' } | { at: 'failed'; error: string; hash?: string }
 

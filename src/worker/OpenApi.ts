@@ -116,7 +116,7 @@ const schemas = {
     'The public repository that keeps the swarm\'s code, cloned read-only from clone, or read without a key from the gateway at /p/<owner>/<app>/git/<name>/files, read, log and diff.',
   ),
   Config: object({
-    auth: { description: "Where to sign in with Tempo Wallet: wallet_connect's capabilities.auth url.", type: 'string' },
+    auth: { description: 'Where to sign in with Tempo ID: POST <auth>/challenge, then POST <auth>.', type: 'string' },
     chainId: integer,
     credit: nullable(object({ owner: address, recipient: address }, "Where money for a swarm goes: recipient is the gateway's address a transfer is sent to, and owner the wallet whose gateway apps the swarms are, which the memo names. null while the gateway does not answer.")),
     explorer: string,
@@ -357,7 +357,7 @@ export function document(origin: string) {
       schemas,
     },
     info: {
-      description: `Swarms are crowdfunded, long-running AI agents on the Tempo gateway that research or build whatever their goal asks, in public. Backers send MACH, OUSD, USDC.e or pathUSD to the gateway with a memo that names the swarm and record it by hash; the gateway holds it as the swarm's credit and spends it on the agent's work. Notes on money steer the agent, weighted by the money behind them. Each swarm's backers talk in its room, where an @swarm message puts part of its author's backing behind an idea. Reading needs no account; posting needs a Tempo Wallet session from /v1/auth. Errors are problem JSON with a stable code. The same operations are MCP tools at ${origin}/mcp.`,
+      description: `Swarms are crowdfunded, long-running AI agents on the Tempo gateway that research or build whatever their goal asks, in public. Backers send MACH, OUSD, USDC.e or pathUSD to the gateway with a memo that names the swarm and record it by hash; the gateway holds it as the swarm's credit and spends it on the agent's work. Notes on money steer the agent, weighted by the money behind them. Each swarm's backers talk in its room, where an @swarm message puts part of its author's backing behind an idea. Reading needs no account; posting needs a Tempo ID session from /v1/auth. Errors are problem JSON with a stable code. The same operations are MCP tools at ${origin}/mcp.`,
       title: 'Swarms',
       version: '1',
     },
@@ -598,7 +598,7 @@ export function document(origin: string) {
       '/v1/swarms/{id}/team': {
         get: {
           description:
-            "Who steers the swarm. steering open: any backer steers with their own money, as @swarm in the room. steering team: only its team (seats) steers it, with the swarm's money, each within their budget (limit, USD per 30 days; null is no limit), and only they ask it side questions; anyone else still funds it and talks in its room, and a note on their money is not kept. The team starts as whoever started it signed in, or else its biggest backer; the people they add are members of the swarm's gateway team (tempoxyz/gateway Teams), created when the first one is added. admins choose.",
+            "Who steers the swarm. steering open: any backer steers with their own money, as @swarm in the room. steering team: only its team (seats) steers it, with the swarm's money, each within their budget (limit, USD per 30 days; null is no limit), and only they ask it side questions; anyone else still funds it and talks in its room, and a note on their money is not kept. The team starts as whoever started it signed in, or else whoever sent its first ride; the people they add are members of the swarm's gateway team (tempoxyz/gateway Teams), created when the first one is added. admins choose.",
           operationId: 'getTeam',
           parameters: [swarm],
           responses: { ...ok(ref('Roster'), "The swarm's steering policy and team."), ...failures(404, 502) },
@@ -698,10 +698,9 @@ export function document(origin: string) {
       '/v1/auth/challenge': {
         post: {
           description:
-            "Sign-in with Tempo Wallet (accounts' Handler.auth): a single-use SIWE message to sign. Tempo Wallet's wallet_connect does the whole exchange with capabilities.auth = { url: '/v1/auth', returnToken: true }.",
+            "Sign-in with Tempo ID (accounts' siwe plugin): a SIWE message for the signer's Tempo account, valid once for 10 minutes, and the id that /v1/auth takes with its signature. The page signs it in Tempo ID's dialog (dialog.signMessage). A script signs it with the account's own key; an access key's signature is refused. A request with an Origin header must come from the site's origin.",
           operationId: 'authChallenge',
-          requestBody: { content: { 'application/json': { schema: object({ chainId: integer }) } } },
-          responses: ok(object({ message: string }), 'The message to sign.'),
+          responses: { ...ok(object({ id: string, message: string }), 'The message to sign and its id.'), ...failures(401) },
           summary: 'Sign-in challenge',
         },
       },
@@ -710,10 +709,10 @@ export function document(origin: string) {
           description: `Verifies the signed challenge and answers a session token for Authorization: Bearer, valid for ${Sessions.days} days.`,
           operationId: 'authVerify',
           requestBody: {
-            content: { 'application/json': { schema: object({ address, message: string, signature: string }) } },
+            content: { 'application/json': { schema: object({ address, id: string, message: string, signature: string }) } },
             required: true,
           },
-          responses: ok(object({ token: string }), 'The session token.'),
+          responses: { ...ok(object({ token: string }), 'The session token.'), ...failures(400, 401, 502) },
           summary: 'Sign in',
         },
       },

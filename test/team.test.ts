@@ -289,6 +289,19 @@ test('money that makes someone else the biggest rider of a swarm nobody started 
   await value(Operations.contribute(env, { hash: hashes[1], swarm: 's' }))
   assert.deepEqual((await settled()).map((roster) => roster.admins), [[bob], [cyd]])
 })
+
+test('a team swarm started without a session belongs to whoever sends its first ride, however much more a later rider sends', async () => {
+  const { db, deposits, env, settled } = world({ creator: null })
+  const hashes = ['0x' + '66'.repeat(32), '0x' + '77'.repeat(32)] as const
+  deposits.set(hashes[0], [{ amount: '5', from: bob, log: 0, tag: Credit.tag('s'), token: 'ousd' }])
+  deposits.set(hashes[1], [{ amount: '9', from: cyd, log: 0, tag: Credit.tag('s'), token: 'ousd' }])
+
+  await value(Operations.contribute(env, { hash: hashes[0], swarm: 's' }))
+  await value(Operations.contribute(env, { hash: hashes[1], swarm: 's' }))
+  assert.deepEqual((await settled()).map((roster) => roster.admins), [[bob]])
+  assert.equal(db.sqlite.prepare("select creator from swarms where id = 's'").get()?.creator, bob)
+})
+
 test("a swarm's team is named with only what the gateway takes in a team name, whatever its title holds", () => {
   const allowed = /^[\p{L}\p{M}\p{N} ._&'-]+$/u
   for (const title of ['Solve P = NP.', 'Port zlib (C) to Rust: fast, safe?', 'Qué es /esto/ & aquello', '  ', '???', 'x'.repeat(80) + ': tail']) {

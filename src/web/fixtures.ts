@@ -606,7 +606,7 @@ export function live(key: string, after: number, listener: (event: LiveEvent | {
 
 export function create(input: { goal: string; problem?: string; steering?: Steering; title: string } & Partial<Setup.Choice>, who: `0x${string}` | undefined) {
   const steering = input.steering ?? (who ? 'team' : 'open')
-  if (steering === 'team' && !who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo Wallet to steer the swarm you start.'))
+  if (steering === 'team' && !who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to steer the swarm you start.'))
   const key = id(`${input.title}:${Date.now()}`)
   const swarm = build({ age: 0, goal: input.goal, id: key, problem: input.problem, owner: who ?? visitor, setup: setup({ ...input, template: input.template ?? Setup.fallback }), lines: [['status', 'Created. The first contribution starts its agent.']], spent: '0', status: 'funding', steering, title: input.title, updates: [] })
   fixtures.unshift(swarm)
@@ -947,12 +947,12 @@ function mentions(swarm: Live, text: string) {
 }
 
 export function account(who: `0x${string}` | undefined): Promise<Account> {
-  if (!who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo Wallet to read your account.'))
+  if (!who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to read your account.'))
   return delay({ address: who, handle: called(who), name: names.get(who.toLowerCase()) ?? null })
 }
 
 export function rename(who: `0x${string}` | undefined, name: string | null): Promise<Account> {
-  if (!who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo Wallet to set your username.'))
+  if (!who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to set your username.'))
   const wanted = name?.trim().replace(/^@/, '').toLowerCase() || null
   const wrong = wanted ? Mention.invalid(wanted) : undefined
   if (wrong) return Promise.reject(fail(400, 'invalid_request', wrong))
@@ -1038,7 +1038,7 @@ export async function say(key: string, input: { artifact?: boolean; steer?: stri
   const swarm = seed(await find(key))
   if (scene.has('stall')) return new Promise<Posted>(() => {})
   if (scene.has('mute')) return new Promise<Posted>((_, reject) => setTimeout(() => reject(fail(503, 'unavailable', 'The room is not answering right now.')), 600))
-  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to post in a room.')
+  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to post in a room.')
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   const self = me(swarm, who) as Me
   const seated = swarm.steering === 'team' ? rostered(swarm).seats.find((found) => found.address === who.toLowerCase()) : undefined
@@ -1066,7 +1066,7 @@ export async function say(key: string, input: { artifact?: boolean; steer?: stri
 
 export async function btw(key: string, input: { branch?: number; question: string; thread: readonly { answer: string; question: string }[] }, who: `0x${string}` | undefined) {
   const swarm = seed(await find(key))
-  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to ask the swarm side questions.')
+  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to ask the swarm side questions.')
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   const asker = me(swarm, who)
   if (!(asker?.member && units(asker.backed) >= 10_000n) && !(swarm.steering === 'team' && rostered(swarm).seats.some((found) => found.address === who.toLowerCase())))
@@ -1217,7 +1217,7 @@ export async function team(key: string): Promise<Roster> {
 }
 
 function governed(swarm: Live, who: `0x${string}` | undefined) {
-  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo Wallet to manage who steers a swarm.')
+  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to manage who steers a swarm.')
   if (!rostered(swarm).admins.includes(who.toLowerCase() as `0x${string}`)) throw fail(403, 'access_denied', "Only this swarm's admins choose who steers it.")
 }
 
@@ -1255,7 +1255,7 @@ export async function seat(key: string, input: { budget?: number | null; member:
 export async function unseat(key: string, member: string, who: `0x${string}` | undefined): Promise<Roster> {
   const swarm = seed(await find(key))
   const current = rosters.get(key)
-  if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo Wallet to leave or manage a swarm's team.")
+  if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo ID to leave or manage a swarm's team.")
   if (!current) throw member.toLowerCase() === swarm.owner.toLowerCase() ? fail(409, 'conflict', "The swarm's last admin stays: add another admin first.") : fail(404, 'not_found', "No one else is on this swarm's team.")
   const seats = current.seats.filter((found) => found.address !== member.toLowerCase())
   return regrouped(swarm, { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats })
@@ -1322,7 +1322,7 @@ export async function branches(key: string): Promise<Branches> {
 }
 
 function directing(swarm: Live, key: string, who: `0x${string}` | undefined) {
-  if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo Wallet to direct a swarm's money.")
+  if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo ID to direct a swarm's money.")
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   const seated = swarm.steering === 'team' ? rostered(swarm).seats.find((found) => found.address === who.toLowerCase()) : undefined
   if (swarm.steering === 'team' && !seated) throw fail(403, 'not_member', "Only this swarm's team directs its money. Its admins add who may: ask one of them in the room.")
