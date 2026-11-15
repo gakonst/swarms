@@ -55,7 +55,7 @@ const routes = [
   ['GET', '/v1/swarms/:id/chat', "The room's newest messages, its backers, and with a session your standing.", '?after=<id>&before=<id>&limit=<n>'],
   ['POST', '/v1/swarms/:id/chat', 'Post as a signed-in backer with a username; @swarm with steer puts backing, or on a team-steered swarm the team budget, behind the idea, and btw collapses a side thread into it, or with artifact asks for an artifact of it.', '{ text, steer?, btw?, artifact? }'],
   ['POST', '/v1/swarms/:id/btw', "Ask the agent, or with branch one of its branches, a side question as a signed-in backer with a username and at least $0.01 in, answered from its context without interrupting it.", '{ question, thread?, branch? }'],
-  ['GET', '/v1/swarms/:id/team', 'Who steers it: open (any backer) or team, its admins, members and their budgets. A team starts as its creator alone.', ''],
+  ['GET', '/v1/swarms/:id/team', 'Who steers it: open (any backer) or team, its admins, members and their budgets. A team starts as its creator alone: whoever started it signed in, or sent its first ride.', ''],
   ['POST', '/v1/swarms/:id/team', "An admin's choice of who steers, and each member's default budget in USD per 30 days.", '{ steering?, memberBudget? }'],
   ['POST', '/v1/swarms/:id/team/members', 'An admin adds a member or admin by wallet or @username, with a budget of the swarm\'s money.', '{ member, role?, budget? }'],
   ['DELETE', '/v1/swarms/:id/team/members/:member', 'An admin removes a member; anyone leaves.', ''],

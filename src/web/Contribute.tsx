@@ -53,7 +53,6 @@ export function valid(amount: string, minimum = smallest) {
 }
 
 const working = {
-  connect: 'Connecting Tempo ID…',
   create: 'Setting up…',
   record: 'Recording…',
   send: 'Check prompt…',
@@ -82,7 +81,6 @@ export function Fuel(props: {
   onNote: (note: string) => void
   onSent?: ((target: Target) => void) | undefined
   prefill: Prefill
-  sign?: boolean | undefined
   slot: string
   steers?: boolean | undefined
   target: (step: (step: 'create') => void) => Promise<Target>
@@ -99,6 +97,12 @@ export function Fuel(props: {
   useEffect(() => {
     if (props.focus) steer.current?.focus({ preventScroll: true })
   }, [props.focus])
+  const warm = () => props.config && Wallet.warm(props.config)
+  useEffect(() => {
+    if (!props.config) return
+    Wallet.warm(props.config)
+    void import('../shared/Credit.ts')
+  }, [props.config, wallet.session])
   const busy = flow.at === 'busy'
   const step = (next: Pay.Working) => Pay.move(props.slot, { at: 'busy', step: next })
   const token = picked ?? choose(amount, wallet.balances)
@@ -122,23 +126,16 @@ export function Fuel(props: {
     const config = props.config
     if (!config || !ready) return
     try {
-      let using = token
-      if (props.sign ? !Wallet.snapshot().session : !Wallet.snapshot().address) {
-        step('connect')
-        await (props.sign ? Wallet.signIn(config) : Wallet.connect(config))
-        await Wallet.refresh(config).catch(() => {})
-        using = picked ?? choose(amount, Wallet.snapshot().balances)
-      }
       const target = await props.target((next) => step(next))
       step('send')
-      await record(await transfer(config, target, units(amount), text, using))
+      await record(await transfer(config, target, units(amount), text, token))
     } catch (error) {
       Pay.move(props.slot, { at: 'failed', error: message(error) })
     }
   }
 
   return (
-    <div className="fuel">
+    <div className="fuel" onFocus={warm} onPointerDown={warm} onPointerEnter={warm}>
       <div className="fuel-amount">
         <label className="fuel-sum">
           <span aria-hidden="true">$</span>

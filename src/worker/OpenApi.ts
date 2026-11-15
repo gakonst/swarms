@@ -598,7 +598,7 @@ export function document(origin: string) {
       '/v1/swarms/{id}/team': {
         get: {
           description:
-            "Who steers the swarm. steering open: any backer steers with their own money, as @swarm in the room. steering team: only its team (seats) steers it, with the swarm's money, each within their budget (limit, USD per 30 days; null is no limit), and only they ask it side questions; anyone else still funds it and talks in its room, and a note on their money is not kept. The team starts as whoever started it signed in, or else its biggest backer; the people they add are members of the swarm's gateway team (tempoxyz/gateway Teams), created when the first one is added. admins choose.",
+            "Who steers the swarm. steering open: any backer steers with their own money, as @swarm in the room. steering team: only its team (seats) steers it, with the swarm's money, each within their budget (limit, USD per 30 days; null is no limit), and only they ask it side questions; anyone else still funds it and talks in its room, and a note on their money is not kept. The team starts as whoever started it signed in, or else whoever sent its first ride; the people they add are members of the swarm's gateway team (tempoxyz/gateway Teams), created when the first one is added. admins choose.",
           operationId: 'getTeam',
           parameters: [swarm],
           responses: { ...ok(ref('Roster'), "The swarm's steering policy and team."), ...failures(404, 502) },

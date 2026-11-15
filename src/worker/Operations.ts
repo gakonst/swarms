@@ -151,7 +151,7 @@ export const schema = {
       .describe('What the swarm should find out or build, what done looks like and what its updates should report.'),
     problem: z.enum(ids).optional().describe('The id of the idea-bank problem this swarm works on, from GET /v1/problems. A problem with an open swarm is not offered again until that swarm finishes.'),
     title: z.string().trim().min(1).max(80).describe('A short name for the swarm.'),
-    steering: steerings.optional().describe("Who steers the swarm. team, the default when signed in: only you and the people you add with POST /v1/swarms/:id/team/members; every other backer still funds it and chats in its room. open, the default otherwise: every backer, with their own money. team needs a session."),
+    steering: steerings.optional().describe("Who steers the swarm. team, the default when signed in: only you and the people you add with POST /v1/swarms/:id/team/members; every other backer still funds it and chats in its room. open, the default otherwise: every backer, with their own money. A team swarm started without a session belongs to whoever sends its first ride."),
     template: z
       .enum(Setup.templates)
       .default(Setup.fallback)
@@ -401,7 +401,6 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   const setup = Setup.priced(parsed.value.template === 'custom' ? chosen : (Setup.moved(chosen, prices) ?? chosen), prices)
   if (typeof setup === 'string') return Problem.fail(400, 'invalid_request', `${setup} GET /v1/config lists them.`)
   const policy = parsed.value.steering ?? (creator ? 'team' : 'open')
-  if (policy === 'team' && !creator) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to steer the swarm you start, or send steering open to let every backer steer it.')
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
   const row = await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup), steering: policy })
   if (!row) return Problem.fail(502, 'unavailable', 'The swarm was not saved.')
@@ -1352,7 +1351,7 @@ export async function contribute(
   if (written) {
     await stub(env, row.id).contributed({ amount: Memo.decimal(total), contributor: first.from, hash: request.hash, kind: existing || recovered ? 'noted' : 'new', note: text, noteId, swarm: row.id, token: first.token })
     if (text && noteId) await logged(Search.note(env, row.id, noteId, text))
-    if (!row.creator) retold(env, row)
+    if (!row.creator) retold(env, row.steering === 'team' && !existing ? { ...row, creator: (await Store.claim(env, row.id, first.from)) ?? null } : row)
   }
 
   const [gift, updated] = await Promise.all([written ?? Store.gift(env, request.hash), Store.find(env, row.id)])

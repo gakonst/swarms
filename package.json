@@ -17,7 +17,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@pierre/diffs": "1.6.2",
     "@resvg/resvg-wasm": "2.6.2",
-    "accounts": "1.0.0-alpha.20261113032129-57efa59",
+    "accounts": "1.0.0-alpha.20261115065101-c12d2b6",
     "hono": "^4.13.14",
     "mdast-util-gfm": "3.1.0",
     "micromark-extension-gfm": "3.0.0",

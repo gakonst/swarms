@@ -18,8 +18,8 @@ importers:
         specifier: 2.6.2
         version: 2.6.2
       accounts:
-        specifier: 1.0.0-alpha.20261113032129-57efa59
-        version: 1.0.0-alpha.20261113032129-57efa59(react@19.3.1)(typescript@6.0.2)(viem@2.57.19(typescript@6.0.2)(zod@4.6.7))(zod@4.6.7)
+        specifier: 1.0.0-alpha.20261115065101-c12d2b6
+        version: 1.0.0-alpha.20261115065101-c12d2b6(react@19.3.1)(typescript@6.0.2)(viem@2.57.19(typescript@6.0.2)(zod@4.6.7))(zod@4.6.7)
       hono:
         specifier: ^4.13.14
         version: 4.13.14
@@ -1107,13 +1107,13 @@ packages:
       wagmi:
         optional: true
 
-  accounts@1.0.0-alpha.20261113032129-57efa59:
-    resolution: {integrity: sha512-nNysEW6UtBR4LWoKBX/qBUcCerdzBBMvq1Ud3vmW8Wtia+vac8IRW4xVv4x6zmk5FXEOHOVUFyR6tQKeGmiPoA==}
+  accounts@1.0.0-alpha.20261115065101-c12d2b6:
+    resolution: {integrity: sha512-Si4yHGgbCsrDHIrT6s847p5yOsHg3Gb+fLo7dVHHOUK2nFb1Arx/XYxcWsGsD9nogzRtWOwKwx5n8ZenLFSaQg==}
     peerDependencies:
       '@wagmi/core': ^3.6.7
       expo-secure-store: '>=14'
       expo-web-browser: '>=14'
-      mppx: '>=0.17.1'
+      mppx: '>=0.19.0'
       react: '>=18'
       react-native-get-random-values: '>=1'
       viem: ^2.57.19
@@ -3191,7 +3191,7 @@ snapshots:
       - typescript
       - use-sync-external-store
 
-  accounts@1.0.0-alpha.20261113032129-57efa59(react@19.3.1)(typescript@6.0.2)(viem@2.57.19(typescript@6.0.2)(zod@4.6.7))(zod@4.6.7):
+  accounts@1.0.0-alpha.20261115065101-c12d2b6(react@19.3.1)(typescript@6.0.2)(viem@2.57.19(typescript@6.0.2)(zod@4.6.7))(zod@4.6.7):
     dependencies:
       jose: 6.2.15
       ox: 0.14.67(typescript@6.0.2)(zod@4.6.7)

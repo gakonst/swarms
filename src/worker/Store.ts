@@ -203,6 +203,14 @@ export async function update(env: Cloudflare.Env, id: string, fields: Fields) {
     .run().finally(() => wrote(id))
 }
 
+export async function claim(env: Cloudflare.Env, id: string, creator: `0x${string}`) {
+  const held = await env.DB.prepare('update swarms set creator = coalesce(creator, ?1), updated_at = ?2 where id = ?3 returning creator')
+    .bind(creator.toLowerCase(), Date.now(), id)
+    .first<{ creator: `0x${string}` | null }>()
+    .finally(() => wrote(id))
+  return held?.creator
+}
+
 export async function teamed(env: Cloudflare.Env, id: string, team: `0x${string}`) {
   const held = await env.DB.prepare(
     'update swarms set team = coalesce(team, ?1), updated_at = case when team is null then ?2 else updated_at end where id = ?3 returning team',

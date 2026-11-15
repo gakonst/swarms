@@ -152,14 +152,6 @@ export async function restore(config: Config) {
   if (state.address) await refresh(config)
 }
 
-export async function connect(config: Config) {
-  if (fixture) {
-    if (!state.address) set({ address: visitor })
-    return state.address ?? visitor
-  }
-  return state.address ?? (await signIn(config)).address
-}
-
 function declined(error: unknown): never {
   const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
   if ((error instanceof Error && error.name === 'AbortError') || code === 'access_denied') throw new Error('You declined the request in Tempo ID.')
@@ -171,6 +163,29 @@ async function post<T>(config: Config, path: string, body: object, signal?: Abor
   const answer = (await response.json().catch(() => ({}))) as T & { detail?: string }
   if (!response.ok) throw new Api.Failure(answer, response.status)
   return answer
+}
+
+type Challenge = { id: string; message: string }
+
+let ready: { at: number; challenge: Promise<Challenge> } | undefined
+
+function challenge(config: Config, take = false) {
+  if (!ready || Date.now() - ready.at > 5 * 60_000) {
+    const flight = { at: Date.now(), challenge: post<Challenge>(config, '/challenge', {}) }
+    flight.challenge.catch(() => {
+      if (ready === flight) ready = undefined
+    })
+    ready = flight
+  }
+  const held = ready.challenge
+  if (take) ready = undefined
+  return held
+}
+
+export function warm(config: Config) {
+  if (fixture || server) return
+  void wallet(config)
+  if (!state.session) void challenge(config).catch(() => {})
 }
 
 let renewing: Promise<string> | undefined
@@ -193,11 +208,11 @@ export async function signIn(config: Config) {
     void identify()
     return session
   }
-  const [accounts, challenge] = await Promise.all([wallet(config), post<{ id: string; message: string }>(config, '/challenge', {})])
-  const signed = await accounts.dialog.signIn({ challenge: challenge.message }).catch(declined)
+  const [accounts, asking] = await Promise.all([wallet(config), challenge(config, true)])
+  const signed = await accounts.dialog.signIn({ challenge: asking.message }).catch(declined)
   void accounts.signOut().catch(() => {})
   if (!signed.address || !signed.challengeSignature) throw new Error('Tempo ID returned no signature.')
-  const { token } = await post<{ token: string }>(config, '', { address: signed.address, id: challenge.id, message: challenge.message, signature: signed.challengeSignature })
+  const { token } = await post<{ token: string }>(config, '', { address: signed.address, id: asking.id, message: asking.message, signature: signed.challengeSignature })
   const session = { address: signed.address, token }
   set({ account: undefined, address: signed.address, email: signed.user.email, pending: false, session })
   void refresh(config).catch(() => {})
@@ -264,14 +279,34 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
     if (fixtures.balances[input.token] < input.amount) throw Object.assign(new Error(`Your wallet holds less than this.`), { code: 'insufficient_balance' })
     const hash = `0x${Date.now().toString(16).padStart(64, '5')}` as Hex
     fixtures.sent.set(hash, { amount: input.amount, token: input.token })
+    if (!state.session) set({ address: visitor, pending: false, session: { address: visitor, token: 'fixture' } })
     return hash
   }
   const token = config.tokens.find((item) => item.id === input.token)
   if (!token) throw new Error('That token is not offered.')
-  const account = await connect(config)
-  const { transaction } = await (await wallet(config)).pay({ account, amount: decimal(input.amount), memo: input.memo, to: input.to, token: token.address }).catch(declined)
+  const payment = { amount: decimal(input.amount), memo: input.memo, to: input.to, token: token.address }
+  const accounts = await wallet(config)
+  if (state.session) {
+    const { transaction } = await accounts.pay({ ...payment, account: state.session.address }).catch(declined)
+    void refresh(config).catch(() => {})
+    return transaction
+  }
+  const asking = await challenge(config, true)
+  const paid = await accounts.pay({ ...payment, challenge: asking.message }).catch((error) => {
+    warm(config)
+    return declined(error)
+  })
+  const switched = paid.address.toLowerCase() !== state.address
+  set({ ...(switched ? { account: undefined, balance: undefined, balances: {}, email: undefined } : {}), address: paid.address, pending: false })
+  await post<{ token: string }>(config, '', { address: paid.address, id: asking.id, message: asking.message, signature: paid.challengeSignature }).then(
+    ({ token }) => {
+      set({ session: { address: paid.address, token } })
+      void identify()
+    },
+    () => {},
+  )
   void refresh(config).catch(() => {})
-  return transaction
+  return paid.transaction
 }
 
 export async function refresh(config: Config) {
