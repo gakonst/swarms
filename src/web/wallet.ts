@@ -22,8 +22,8 @@ export type State = {
 let instance: ReturnType<typeof load> | undefined
 
 async function load(config: Config) {
-  const { Accounts } = await import('accounts')
-  return Accounts.create({ chain: config.chainId })
+  const [{ Accounts }, { dialog, siwe }] = await Promise.all([import('accounts'), import('accounts/plugins')])
+  return Accounts.create({ chain: config.chainId, plugins: [dialog(), siwe({ auth: Site.at(config.auth) })] })
 }
 
 const chain = () => Promise.all([import('viem'), import('viem/tempo'), import('viem/tempo/chains')])
@@ -158,34 +158,9 @@ function declined(error: unknown): never {
   throw error
 }
 
-async function post<T>(config: Config, path: string, body: object, signal?: AbortSignal) {
-  const response = await fetch(Site.at(config.auth + path), { body: JSON.stringify(body), headers: { 'content-type': 'application/json' }, method: 'POST', ...(signal ? { signal } : {}) })
-  const answer = (await response.json().catch(() => ({}))) as T & { detail?: string }
-  if (!response.ok) throw new Api.Failure(answer, response.status)
-  return answer
-}
-
-type Challenge = { id: string; message: string }
-
-let ready: { at: number; challenge: Promise<Challenge> } | undefined
-
-function challenge(config: Config, take = false) {
-  if (!ready || Date.now() - ready.at > 5 * 60_000) {
-    const flight = { at: Date.now(), challenge: post<Challenge>(config, '/challenge', {}) }
-    flight.challenge.catch(() => {
-      if (ready === flight) ready = undefined
-    })
-    ready = flight
-  }
-  const held = ready.challenge
-  if (take) ready = undefined
-  return held
-}
-
 export function warm(config: Config) {
   if (fixture || server) return
   void wallet(config)
-  if (!state.session) void challenge(config).catch(() => {})
 }
 
 let renewing: Promise<string> | undefined
@@ -208,11 +183,11 @@ export async function signIn(config: Config) {
     void identify()
     return session
   }
-  const [accounts, asking] = await Promise.all([wallet(config), challenge(config, true)])
-  const signed = await accounts.dialog.signIn({ challenge: asking.message }).catch(declined)
+  const accounts = await wallet(config)
+  const signed = await accounts.dialog.signIn().catch(declined)
   void accounts.signOut().catch(() => {})
-  if (!signed.address || !signed.challengeSignature) throw new Error('Tempo ID returned no signature.')
-  const { token } = await post<{ token: string }>(config, '', { address: signed.address, id: asking.id, message: asking.message, signature: signed.challengeSignature })
+  const token = (signed.auth as { token?: unknown } | undefined)?.token
+  if (!signed.address || typeof token !== 'string') throw new Error('Tempo ID returned no sign-in.')
   const session = { address: signed.address, token }
   set({ account: undefined, address: signed.address, email: signed.user.email, pending: false, session })
   void refresh(config).catch(() => {})
@@ -291,20 +266,11 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
     void refresh(config).catch(() => {})
     return transaction
   }
-  const asking = await challenge(config, true)
-  const paid = await accounts.pay({ ...payment, challenge: asking.message }).catch((error) => {
-    warm(config)
-    return declined(error)
-  })
+  const paid = await accounts.pay(payment).catch(declined)
   const switched = paid.address.toLowerCase() !== state.address
-  set({ ...(switched ? { account: undefined, balance: undefined, balances: {}, email: undefined } : {}), address: paid.address, pending: false })
-  await post<{ token: string }>(config, '', { address: paid.address, id: asking.id, message: asking.message, signature: paid.challengeSignature }).then(
-    ({ token }) => {
-      set({ session: { address: paid.address, token } })
-      void identify()
-    },
-    () => {},
-  )
+  const issued = (paid.auth as { token?: unknown } | undefined)?.token
+  set({ ...(switched ? { account: undefined, balance: undefined, balances: {}, email: undefined } : {}), address: paid.address, pending: false, ...(typeof issued === 'string' ? { session: { address: paid.address, token: issued } } : {}) })
+  if (typeof issued === 'string') void identify()
   void refresh(config).catch(() => {})
   return paid.transaction
 }

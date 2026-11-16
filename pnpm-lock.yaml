@@ -18,8 +18,8 @@ importers:
         specifier: 2.6.2
         version: 2.6.2
       accounts:
-        specifier: 1.0.0-alpha.20261115065101-c12d2b6
-        version: 1.0.0-alpha.20261115065101-c12d2b6(react@19.3.1)(typescript@6.0.2)(viem@2.57.19(typescript@6.0.2)(zod@4.6.7))(zod@4.6.7)
+        specifier: 1.0.0-alpha.20261116025252-85382d1
+        version: 1.0.0-alpha.20261116025252-85382d1(react@19.3.1)(typescript@6.0.2)(viem@2.57.19(typescript@6.0.2)(zod@4.6.7))(zod@4.6.7)
       hono:
         specifier: ^4.13.14
         version: 4.13.14
@@ -1107,8 +1107,8 @@ packages:
       wagmi:
         optional: true
 
-  accounts@1.0.0-alpha.20261115065101-c12d2b6:
-    resolution: {integrity: sha512-Si4yHGgbCsrDHIrT6s847p5yOsHg3Gb+fLo7dVHHOUK2nFb1Arx/XYxcWsGsD9nogzRtWOwKwx5n8ZenLFSaQg==}
+  accounts@1.0.0-alpha.20261116025252-85382d1:
+    resolution: {integrity: sha512-Cdgape/0cRTekTEXzjlcWjkHxY3f+tSUS4Ah09/R9pT6fBwE2+uN1Qpbr5jpJzmNARKZiCtuO6yhRbpFu1Gkgg==}
     peerDependencies:
       '@wagmi/core': ^3.6.7
       expo-secure-store: '>=14'
@@ -3191,7 +3191,7 @@ snapshots:
       - typescript
       - use-sync-external-store
 
-  accounts@1.0.0-alpha.20261115065101-c12d2b6(react@19.3.1)(typescript@6.0.2)(viem@2.57.19(typescript@6.0.2)(zod@4.6.7))(zod@4.6.7):
+  accounts@1.0.0-alpha.20261116025252-85382d1(react@19.3.1)(typescript@6.0.2)(viem@2.57.19(typescript@6.0.2)(zod@4.6.7))(zod@4.6.7):
     dependencies:
       jose: 6.2.15
       ox: 0.14.67(typescript@6.0.2)(zod@4.6.7)
