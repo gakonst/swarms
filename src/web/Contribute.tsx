@@ -97,12 +97,11 @@ export function Fuel(props: {
   useEffect(() => {
     if (props.focus) steer.current?.focus({ preventScroll: true })
   }, [props.focus])
-  const warm = () => props.config && Wallet.warm(props.config)
   useEffect(() => {
     if (!props.config) return
     Wallet.warm(props.config)
     void import('../shared/Credit.ts')
-  }, [props.config, wallet.session])
+  }, [props.config])
   const busy = flow.at === 'busy'
   const step = (next: Pay.Working) => Pay.move(props.slot, { at: 'busy', step: next })
   const token = picked ?? choose(amount, wallet.balances)
@@ -135,7 +134,7 @@ export function Fuel(props: {
   }
 
   return (
-    <div className="fuel" onFocus={warm} onPointerDown={warm} onPointerEnter={warm}>
+    <div className="fuel">
       <div className="fuel-amount">
         <label className="fuel-sum">
           <span aria-hidden="true">$</span>
