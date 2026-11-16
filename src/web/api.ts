@@ -194,7 +194,7 @@ export function exported(id: string, machine?: string) {
 export function hand(id: string, label: string) {
   return signed(() =>
     fixture
-      ? Promise.resolve({ cli: "nc hand 'https://gateway.tempo.xyz/v1/hands/attach' --token hand_demo_4f2a", command: 'curl -fsSL https://nanocode.xyz/install | sh && nc hand ...', label: label ?? '', library: "import { Hand } from 'nanocode'\nawait Hand.connect(url, { token })", name: (label || 'my-machine') + '-3c1f', npm: 'npm i nanocode@build-20f97e0', swarm: id, tab: null, token: 'hand_demo_4f2a', url: 'https://gateway.tempo.xyz/v1/hands/attach' } as Issued)
+      ? Promise.resolve({ cli: "nc hand 'https://gateway.tempo.xyz/v1/hands/attach' --token hand_demo_4f2a", command: 'curl -fsSL https://nanocode.xyz/install | sh && nc hand ...', label: label ?? '', library: "import { Hand } from 'nanocode'\nawait Hand.connect(url, { token })", name: (label || 'my-machine') + '-3c1f', npm: 'npm i nanocode-ts@build-1ee1936', swarm: id, tab: null, token: 'hand_demo_4f2a', url: 'https://gateway.tempo.xyz/v1/hands/attach' } as Issued)
       : request<Issued>(`${path(id)}/hands`, label ? { label } : {}),
   )
 }

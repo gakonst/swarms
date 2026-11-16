@@ -2,6 +2,6 @@ allowBuilds:
   esbuild: true
   workerd: true
 minimumReleaseAgeExclude:
-  - accounts@1.0.0-alpha.20261116025252-85382d1
+  - accounts@1.0.0-alpha.20261116025252-85382d1 || 1.0.0-alpha.20261116052638-4550531
   - ox@0.14.67
   - viem@2.57.19
