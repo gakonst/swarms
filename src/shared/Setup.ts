@@ -24,7 +24,7 @@ export const sol = 'vercel/openai/gpt-6.1-sol'
 
 export const astra = 'vercel/openai/gpt-6-astra'
 
-export const flash = '@cf/deepseek-ai/deepseek-v4.1-flash-1017'
+export const flash = 'vercel/deepseek/deepseek-v4.1-flash-1017'
 
 export const glmFlash = '@cf/zai-org/glm-5.3-flash'
 
