@@ -3,6 +3,7 @@ import { backend, siwe, viem } from 'accounts/plugins'
 import type { Address } from 'viem'
 import { http } from 'viem'
 import { z } from 'zod'
+import * as Site from '../shared/Site.ts'
 import * as Chain from './Chain.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
@@ -59,8 +60,7 @@ function store(db: D1Database) {
   })
 }
 
-function create(env: Cloudflare.Env) {
-  const origin = new URL(env.SWARMS_URL).origin
+function create(env: Cloudflare.Env, origin: string) {
   return Accounts.create({
     chain: Chain.chain.id,
     clientId: origin,
@@ -72,10 +72,17 @@ function create(env: Cloudflare.Env) {
   })
 }
 
-let instance: ReturnType<typeof create> | undefined
+const instances = new Map<string, ReturnType<typeof create>>()
 
-function accounts(env: Cloudflare.Env) {
-  instance ??= create(env)
+// Sign-in is for the site the Worker serves: SWARMS_URL, or the local host a dev server answers on
+// (Site.url), so a page on localhost signs in without a tunnel. A challenge's stored message names
+// its origin, so completing and reading sessions works with any instance.
+function accounts(env: Cloudflare.Env, origin = new URL(env.SWARMS_URL).origin) {
+  let instance = instances.get(origin)
+  if (!instance) {
+    instance = create(env, origin)
+    instances.set(origin, instance)
+  }
   return instance
 }
 
@@ -93,7 +100,8 @@ function refused(error: unknown): Problem.Result<never> {
 
 export async function challenge(env: Cloudflare.Env, request: Request): Promise<Problem.Result<{ id: string; message: string }>> {
   try {
-    return Problem.ok(await accounts(env).siwe.start({ request: request.headers.has('origin') ? request : new Request(env.SWARMS_URL) }))
+    const site = Site.url(env, request.url)
+    return Problem.ok(await accounts(env, new URL(site).origin).siwe.start({ request: request.headers.has('origin') ? request : new Request(site) }))
   } catch (error) {
     return refused(error)
   }
