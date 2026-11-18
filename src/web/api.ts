@@ -4,6 +4,7 @@ import type { Progress } from '../shared/Progress.ts'
 import type * as Setup from '../shared/Setup.ts'
 import type { Job, Listed, Logged, Machine, Shown } from '../shared/Fleet.ts'
 import * as Site from '../shared/Site.ts'
+import * as Connect from '../shared/Connect.ts'
 import { boot, seeded } from './boot.ts'
 import { visitor } from './stage.ts'
 
@@ -194,7 +195,7 @@ export function exported(id: string, machine?: string) {
 export function hand(id: string, label: string) {
   return signed(() =>
     fixture
-      ? Promise.resolve({ cli: "nc hand 'https://gateway.tempo.xyz/v1/hands/attach' --token hand_demo_4f2a", command: 'curl -fsSL https://nanocode.xyz/install | sh && nc hand ...', label: label ?? '', library: "import { Hand } from 'nanocode'\nawait Hand.connect(url, { token })", name: (label || 'my-machine') + '-3c1f', npm: 'npm i nanocode-ts@build-1ee1936', swarm: id, tab: null, token: 'hand_demo_4f2a', url: 'https://gateway.tempo.xyz/v1/hands/attach' } as Issued)
+      ? Promise.resolve({ cli: "nc hand 'https://gateway.tempo.xyz/v1/hands/attach' --token hand_demo_4f2a", command: 'curl -fsSL https://nanocode.xyz/install | sh && nc hand ...', label: label ?? '', library: "import { Hand } from 'nanocode'\nawait Hand.connect(url, { token })", name: (label || 'my-machine') + '-3c1f', npm: Connect.install, swarm: id, tab: null, token: 'hand_demo_4f2a', url: 'https://gateway.tempo.xyz/v1/hands/attach' } as Issued)
       : request<Issued>(`${path(id)}/hands`, label ? { label } : {}),
   )
 }

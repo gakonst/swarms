@@ -21,7 +21,7 @@
     "hono": "^4.13.14",
     "mdast-util-gfm": "3.1.0",
     "micromark-extension-gfm": "3.0.0",
-    "nanocode-ts": "https://github.com/gakonst/nanocode-ts/releases/download/build-1ee1936/nanocode-ts-1ee1936.tgz",
+    "nanocode-ts": "https://github.com/nanocodexyz/nanocode-ts/releases/download/build-6d58e23/nanocode-ts-6d58e23.tgz",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "^10.1.0",
