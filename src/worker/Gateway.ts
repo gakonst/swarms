@@ -148,7 +148,7 @@ let pricing: { at: number; value: Map<string, Setup.Price> } | undefined
 
 export async function prices(env: Cloudflare.Env) {
   if (pricing && Date.now() - pricing.at < 600_000) return pricing.value
-  const value = await Promise.race([
+  const value = await Clock.within(
     call(env, '/v1/models')
       .then((response) => (response.ok ? (response.json() as Promise<{ data?: { capabilities?: { tools?: boolean }; id: string; kind?: string; pricing?: { cached?: number; input?: number; output?: number } }[] }>) : undefined))
       .then((listed) => {
@@ -161,8 +161,8 @@ export async function prices(env: Cloudflare.Env) {
         }
         return found.size ? found : undefined
       }),
-    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 3000)),
-  ]).catch(() => undefined)
+    3000,
+  )
   if (value) pricing = { at: Date.now(), value }
   return value ?? pricing?.value
 }

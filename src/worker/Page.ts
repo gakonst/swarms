@@ -5,6 +5,7 @@ import type { Boot, Face } from '../shared/Boot.ts'
 import * as Site from '../shared/Site.ts'
 import * as Surface from '../shared/Surface.ts'
 import * as Artifacts from './Artifacts.ts'
+import { within } from './Clock.ts'
 import * as Edge from './Edge.ts'
 import * as Og from './Og.ts'
 import * as Operations from './Operations.ts'
@@ -75,10 +76,6 @@ function zone(cookie: string | null) {
   } catch {
     return undefined
   }
-}
-
-function within<T>(work: Promise<T>, ms: number) {
-  return Promise.race([work, new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), ms))]).catch(() => undefined)
 }
 
 type Head = Share.Share
@@ -172,7 +169,7 @@ async function draw(request: Request, env: Cloudflare.Env) {
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
   const writer = writable.getWriter()
   const gathering = gather(env, url)
-  const configuring = Operations.config(env)
+  const configuring = within(Operations.config(env), 2500)
   const top = before.replace(/<title>[^<]*<\/title>/, '').replace('</head>', '§HEAD§</head>')
   const [opening = '', closing = ''] = top.split('§HEAD§')
   void writer.write(encoder.encode(opening))
