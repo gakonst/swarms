@@ -195,13 +195,18 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const from = ctx.storage.kv.get<number>('v') ?? 0
     if (from < version) migrate(ctx.storage, from)
     ctx.storage.kv.put('instance', this.boot)
-    Work.reclaim(this.board, this.boot)
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
   }
 
   get board(): Work.Board {
-    const scope = `swarm:${this.ctx.storage.kv.get<string>('id') ?? 'new'}`
-    if (this.boarded?.scope !== scope) this.boarded = { board: Work.local(this.ctx.storage.sql, scope, this.boot), scope }
+    const id = this.ctx.storage.kv.get<string>('id')
+    if (!id) throw new Error('The board opens once the swarm has its id.')
+    const scope = `swarm:${id}`
+    if (this.boarded?.scope !== scope) {
+      const board = Work.local(this.ctx.storage.sql, scope, this.boot)
+      Work.reclaim(board, this.boot)
+      this.boarded = { board, scope }
+    }
     return this.boarded.board
   }
 
@@ -627,6 +632,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   override async alarm() {
     const indexing = Feed.indexed(this)
+    if (!this.kv.get<string>('id')) return
     const stepping = await Work.holding(this.board, 'stepping', stepLeaseMs, () => Turns.step(this).catch((error: unknown) => Turns.threw(this, error)))
     if (!('value' in stepping)) return
     const stepped = stepping.value
