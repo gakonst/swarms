@@ -790,6 +790,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return { ok: true, value: true }
   }
 
+  async settle(input: Store.Settlement) {
+    this.kv.put('id', input.swarm)
+    return Branching.settle(this, input)
+  }
+
   async halt(swarm: string, input: { agent: string; branch: number; said: string }): Promise<Gateway.Result<Gateway.Subagent[]>> {
     const agent = this.agent()?.id
     if (!agent) return { detail: 'The swarm has no agent yet.', ok: false, status: 409 }

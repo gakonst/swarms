@@ -830,7 +830,7 @@ async function swept(env: Cloudflare.Env, swarm: string, found: Directed) {
   const agent = found.agent
   if (!agent) return
   for (const branch of found.list.filter((each) => each.parent === null && each.state === 'closed' && !found.money.settled.has(each.id))) {
-    const returned = await Store.settle(env, { agent, branch: branch.id, left: branch.left === null ? null : Memo.units(branch.left), swarm })
+    const returned = await stub(env, swarm).settle({ agent, branch: branch.id, left: branch.left === null ? null : Memo.units(branch.left), swarm })
     await refunded(env, swarm, branch, returned)
   }
 }
@@ -1005,7 +1005,7 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
   const closed = halted.value.find((agent) => agent.agent_id === target.id)
   const after = closed?.budget_usd === undefined ? undefined : Memo.units(closed.budget_usd.toFixed(6)) - Memo.units((closed.spent_usd ?? 0).toFixed(6))
   const left = target.budget === null ? null : after !== undefined ? (after > 0n ? after : 0n) : target.left === null ? 0n : Memo.units(target.left)
-  await refunded(env, row.id, target, await Store.settle(env, { agent, branch: target.id, left, swarm: row.id }))
+  await refunded(env, row.id, target, await stub(env, row.id).settle({ agent, branch: target.id, left, swarm: row.id }))
   const [branch] = await fresh(env, row, [target.id], [{ ...target, state: 'closed' }])
   return Problem.ok(branch as Branch)
 }

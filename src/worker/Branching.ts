@@ -42,6 +42,13 @@ export function rebudget(self: Swarm, swarm: string, agent: string, branch: numb
   })
 }
 
+const settleLeaseMs = 60_000
+
+export async function settle(self: Swarm, input: Store.Settlement) {
+  const ran = await Work.once(self.board, Store.settling(input), settleLeaseMs, () => Store.settle(self.env, input))
+  return ran.ran ? ran.value : []
+}
+
 export async function settled(self: Swarm, row: Store.Row) {
   const agent = self.agent()?.id
   if (!agent) return
@@ -50,7 +57,7 @@ export async function settled(self: Swarm, row: Store.Row) {
   if (!listed.ok) return
   const closed = listed.value.filter((found) => found.parent_agent_id === null && found.status.state === 'closed')
   const settled = closed.length ? (await Store.funds(self.env, row.id, agent)).settled : new Set<number>()
-  for (const branch of closed.filter((found) => !settled.has(found.agent_id))) await Store.settle(self.env, { agent, branch: branch.agent_id, left: unspent(branch), swarm: row.id })
+  for (const branch of closed.filter((found) => !settled.has(found.agent_id))) await settle(self, { agent, branch: branch.agent_id, left: unspent(branch), swarm: row.id })
   self.kv.put('settledAt', at)
 }
 
@@ -59,7 +66,7 @@ export async function release(self: Swarm, swarm: string, current: string) {
     const listed = old.agent ? await Gateway.subagents(self.env, swarm, old.agent).catch(() => undefined) : undefined
     for (const branch of old.branches) {
       const found = listed?.ok ? listed.value.find((agent) => agent.agent_id === branch) : undefined
-      await Store.settle(self.env, { agent: old.agent, branch, left: found ? unspent(found) : null, swarm })
+      await settle(self, { agent: old.agent, branch, left: found ? unspent(found) : null, swarm })
     }
   }
 }

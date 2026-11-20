@@ -638,7 +638,13 @@ export async function noteId(note: string) {
   return Array.from(new Uint8Array(digest).slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export async function settle(env: Cloudflare.Env, input: { agent: string; branch: number; left: bigint | null; swarm: string }) {
+export type Settlement = { agent: string; branch: number; left: bigint | null; swarm: string }
+
+export function settling(input: { agent: string; branch: number }) {
+  return `settle:${input.agent}:${input.branch}`
+}
+
+export async function settle(env: Cloudflare.Env, input: Settlement) {
   const now = Date.now()
   const [returned] = await env.DB.batch<{ amount: string; budget: number; contributor: string }>([
     env.DB.prepare(
@@ -656,11 +662,12 @@ export async function settle(env: Cloudflare.Env, input: { agent: string; branch
         where nets.net > 0 and held.amount > 0 and sums.total > 0
       )
       insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
-      select lower(hex(randomblob(6))), ?1, contributor, 'branch ' || cast(?3 as integer), 'branch:' || cast(?3 as integer), -amount, case when budget = 1 then coalesce(since, ?5) else ?5 end, budget, ?3, ?2
+      select ?6 || ':' || contributor || ':' || budget, ?1, contributor, 'branch ' || cast(?3 as integer), 'branch:' || cast(?3 as integer), -amount, case when budget = 1 then coalesce(since, ?5) else ?5 end, budget, ?3, ?2
       from shares
-      where amount > 0 and not exists (select 1 from branches where swarm = ?1 and agent = ?2 and branch = ?3 and settled_at is not null)
+      where amount > 0
+      on conflict (id) do nothing
       returning contributor, budget, amount`,
-    ).bind(input.swarm, input.agent, input.branch, input.left === null ? null : String(input.left), now),
+    ).bind(input.swarm, input.agent, input.branch, input.left === null ? null : String(input.left), now, settling(input)),
     env.DB.prepare(
       'insert into branches (swarm, agent, branch, base, created_at, settled_at) values (?, ?, ?, ?, ?, ?) on conflict (swarm, agent, branch) do update set settled_at = excluded.settled_at where branches.settled_at is null',
     ).bind(input.swarm, input.agent, input.branch, '0', now, now),

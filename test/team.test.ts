@@ -254,6 +254,7 @@ test("while the gateway cannot list a swarm's team, an admin who stops a branch 
   const halts: unknown[] = []
   Object.assign(env.SWARMS.get(env.SWARMS.idFromName('s')), {
     halt: async (...args: unknown[]) => (halts.push(args), { ok: true, value: [{ ...branch, status: { state: 'closed' } }] }),
+    settle: (input: StoreModule.Settlement) => Store.settle(env, input),
     subagents: async () => ({ ok: true, value: { agent: 'agt', list: [branch] } }),
     voice: async () => ({ ok: true, value: null }),
   })

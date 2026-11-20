@@ -38,6 +38,7 @@ function world(gateway: (path: string, body: unknown) => unknown = () => ({}), l
     subagents: async () => ({ ok: true, value: { agent: 'agt', list: listed } }),
     voice: said('voice'),
     funded: said('funded'),
+    settle: (input: StoreModule.Settlement) => Branching.settle(self as never, input),
     wake: said('wake'),
   }
   const env: Cloudflare.Env = {
@@ -74,7 +75,7 @@ test('a branch the lead closed is settled when the gateway lists it, and looked 
   const { db, env, member } = world(() => (listing ? { agents: [closed, running] } : new Response('down', { status: 503 })))
   await funded(env, 1, 3_000_000n)
   const kv = new Map<string, unknown>()
-  const self = { agent: () => ({ id: 'agt' }), env, kv: { get: (key: string) => kv.get(key), put: (key: string, value: unknown) => void kv.set(key, value) } } as never
+  const self = { agent: () => ({ id: 'agt' }), board: Work.local(memorySql(), 'swarm:test', 'test'), env, kv: { get: (key: string) => kv.get(key), put: (key: string, value: unknown) => void kv.set(key, value) } } as never
   const row = { id } as never
 
   await Branching.settled(self, row)
@@ -86,6 +87,25 @@ test('a branch the lead closed is settled when the gateway lists it, and looked 
   assert.equal(typeof kv.get('settledAt'), 'number')
   assert.deepEqual(await member(), ['3.000000', '0.000000', '3.000000'])
   assert.equal(db.sqlite.prepare('select count(*) as n from branches where settled_at is not null').get()?.['n'], 1)
+})
+
+test("a branch is settled once on the swarm's board: a settle whose write failed is released and the next one writes it, and later ones return nothing", async () => {
+  const { db, env, member } = world()
+  await funded(env, 1, 3_000_000n)
+  const board = Work.local(memorySql(), 'swarm:test', 'test')
+  const self = { board, env } as never
+  const input = { agent: 'agt', branch: 1, left: null, swarm: id }
+  const batch = env.DB.batch.bind(env.DB)
+  ;(env.DB as { batch: unknown }).batch = async () => Promise.reject(new Error('D1 is down'))
+  await assert.rejects(Branching.settle(self, input), /D1 is down/)
+  assert.equal(board.task('settle:agt:1')?.phase, 'open')
+  ;(env.DB as { batch: unknown }).batch = batch
+
+  assert.deepEqual(await Branching.settle(self, input), [{ amount: 3_000_000n, budget: 0, contributor: rider }])
+  assert.equal(board.task('settle:agt:1')?.phase, 'done')
+  assert.deepEqual(await Promise.all([Branching.settle(self, input), Branching.settle(self, { ...input, left: 0n })]), [[], []])
+  assert.deepEqual(await member(), ['3.000000', '0.000000', '3.000000'])
+  assert.equal(db.sqlite.prepare("select count(*) as n from steers where id like 'settle:agt:1:%'").get()?.['n'], 1)
 })
 
 test('money behind a branch the lead closed goes back to its riders before a move from it or a stop is refused', async () => {
