@@ -5,7 +5,9 @@ import type * as MoneyModule from '../src/worker/Money.ts'
 import type * as OperationsModule from '../src/worker/Operations.ts'
 import type * as StoreModule from '../src/worker/Store.ts'
 import type * as SwarmModule from '../src/worker/Swarm.ts'
+import type * as WorkModule from '../src/worker/Work.ts'
 import { open } from './d1.ts'
+import { memorySql } from './sql.ts'
 
 registerHooks({
   resolve: (specifier, context, next) =>
@@ -16,6 +18,7 @@ const Money: typeof MoneyModule = await import('../src/worker/Money.ts')
 const Operations: typeof OperationsModule = await import('../src/worker/Operations.ts')
 const Store: typeof StoreModule = await import('../src/worker/Store.ts')
 const { Swarm }: typeof SwarmModule = await import('../src/worker/Swarm.ts')
+const Work: typeof WorkModule = await import('../src/worker/Work.ts')
 
 const id = 'abc123abc123'
 const dayMs = 86_400_000
@@ -45,14 +48,16 @@ function world(listing: Listing) {
     beacon: () => undefined,
     changed: () => undefined,
     env,
+    hand: async () => ({ ok: true, value: { command: 'nc hand', short: 'nc', token: 'token', url: 'wss://gateway.test' } }),
     kv: { get: (key: string) => kv.get(key), put: (key: string, value: unknown) => void kv.set(key, value) },
     log: (_kind: string, text: string) => void logged.push(text),
     remember: () => undefined,
+    slots: Work.local(memorySql(), 'swarm:' + id + ':hands', 'test'),
     turn: () => undefined,
   }
   const object = {
-    hand: async () => ({ ok: true, value: { command: 'nc hand', short: 'nc', token: 'token', url: 'wss://gateway.test' } }),
-    lent: () => Swarm.prototype.lent.call(self as never),
+    lend: (swarm: string, label: string, contributor: string | null) => Swarm.prototype.lend.call(self as never, swarm, label, contributor),
+    lent: (swarm: string) => Swarm.prototype.lent.call(self as never, swarm),
   }
   const lend = (name: string, created: number, seen: number | null, contributor: string | null = null) =>
     db.sqlite.prepare('insert into hands (swarm, name, label, contributor, created_at, seen_at) values (?, ?, ?, ?, ?, ?)').run(id, name, name, contributor, created, seen)

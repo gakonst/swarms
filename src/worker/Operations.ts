@@ -748,8 +748,8 @@ function spend(members: readonly Member[], address: Address, amount: bigint) {
 async function lender(env: Cloudflare.Env, swarm: string, address: Address) {
   const rows = (await Hands.list(env, swarm)).filter((hand) => hand.contributor?.toLowerCase() === address.toLowerCase() && hand.seen_at === null)
   if (!rows.length) return false
-  const marked = await Hands.seen(env, swarm, rows, await stub(env, swarm).lent())
-  return marked.some((hand) => hand.seen_at !== null)
+  const lent: { rows: Hands.Row[] } = await stub(env, swarm).lent(swarm)
+  return lent.rows.some((hand) => hand.contributor?.toLowerCase() === address.toLowerCase() && hand.seen_at !== null)
 }
 
 function unnamed() {
@@ -1220,40 +1220,25 @@ export async function hand(env: Cloudflare.Env, input: Input<'hand'>, contributo
   if (!parsed.ok) return parsed
   const row = await Store.find(env, parsed.value.swarm)
   if (!row) return missing()
-  const existing = Hands.held(await Hands.list(env, row.id))
-  const listed = existing.length ? await stub(env, row.id).lent() : []
-  const rows = await Hands.seen(env, row.id, existing, listed)
-  const evicted = Hands.evictable(rows, listed, Date.now())
-  if (rows.length - evicted.length >= Hands.limit)
-    return Problem.fail(409, 'conflict', `This swarm has ${Hands.limit} machines connected right now.`)
-  for (const hand of evicted) {
-    await Hands.free(env, row.id, hand.name)
-    await reached(Gateway.detach(env, row.id, hand.name))
-  }
-
   const label = parsed.value.label ?? ''
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const name = await Hands.issue(env, row.id, label, contributor ?? null)
-    if (!name) break
-    const minted = await stub(env, row.id).hand(row.id, name)
-    if (minted.ok) lending.delete(row.id)
-    if (minted.ok)
-      return Problem.ok({
-        cli: Connect.cli(minted.value),
-        command: minted.value.command,
-        label,
-        library: Connect.library({ name, token: minted.value.token, url: minted.value.url }),
-        name,
-        npm: Connect.install,
-        swarm: row.id,
-        tab: minted.value.tab ?? null,
-        token: minted.value.token,
-        url: minted.value.url,
-      })
-    await Hands.forget(env, row.id, name)
-    if (minted.status !== 409) return Problem.fail(502, 'upstream_failed', `The gateway did not issue the hand: ${minted.detail}`)
-  }
-  return Problem.fail(502, 'unavailable', 'No free hand name was found. Try again.')
+  const issued: Hands.Issued = await stub(env, row.id).lend(row.id, label, contributor ?? null)
+  if (!issued.ok && issued.reason === 'full') return Problem.fail(409, 'conflict', `This swarm has ${Hands.limit} machines connected right now.`)
+  if (!issued.ok && issued.reason === 'upstream') return Problem.fail(502, 'upstream_failed', `The gateway did not issue the hand: ${issued.detail}`)
+  if (!issued.ok) return Problem.fail(502, 'unavailable', 'No free hand name was found. Try again.')
+  const { minted, name } = issued
+  lending.delete(row.id)
+  return Problem.ok({
+    cli: Connect.cli(minted),
+    command: minted.command,
+    label,
+    library: Connect.library({ name, token: minted.token, url: minted.url }),
+    name,
+    npm: Connect.install,
+    swarm: row.id,
+    tab: minted.tab ?? null,
+    token: minted.token,
+    url: minted.url,
+  })
 }
 
 const lending = new Map<string, { at: number; hands: Lent[] }>()
@@ -1265,10 +1250,9 @@ export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise
   if (!parsed.ok) return parsed
   const cached = lending.get(parsed.value.swarm)
   if (cached && Date.now() - cached.at < lendingMs) return Problem.ok({ hands: cached.hands })
-  const [exists, rows] = await Promise.all([Store.exists(env, parsed.value.swarm), Hands.list(env, parsed.value.swarm)])
-  if (!exists) return missing()
-  const listed = rows.length ? await stub(env, parsed.value.swarm).lent() : []
-  const lent = Hands.lent(await Hands.seen(env, parsed.value.swarm, rows, listed), listed)
+  if (!(await Store.exists(env, parsed.value.swarm))) return missing()
+  const { listed, rows }: { listed: Gateway.Listed[] | undefined; rows: Hands.Row[] } = await stub(env, parsed.value.swarm).lent(parsed.value.swarm)
+  const lent = Hands.lent(rows, listed)
   if (listed) lending.set(parsed.value.swarm, { at: Date.now(), hands: lent })
   return Problem.ok({ hands: lent })
 }

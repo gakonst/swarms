@@ -60,12 +60,14 @@ test('a returned hand frees its slot and keeps its lender among the riders', asy
   t.after(w.restore)
   await w.seed('0')
   await lend(w.env)
-  await Hands.seen(w.env, id, await Hands.list(w.env, id), [{ connected: true, name: machine }] as never)
+  await Hands.seen(w.swarm, id, await Hands.list(w.env, id), [{ connected: true, name: machine }] as never)
+  assert.deepEqual(Hands.evictable(w.swarm.slots, [], Date.now()), [])
   w.pass(2 * Hands.unseenMs)
-  const rows = Hands.held(await Hands.list(w.env, id))
-  assert.deepEqual(Hands.evictable(rows, [], Date.now()).map((row) => row.name), [machine])
-  await Hands.free(w.env, id, machine)
-  assert.deepEqual(Hands.held(await Hands.list(w.env, id)), [])
+  assert.deepEqual(Hands.evictable(w.swarm.slots, [], Date.now()), [machine])
+  await Hands.free(w.swarm, id, machine)
+  assert.equal(w.swarm.slots.task(`hand:${machine}`)?.phase, 'done')
+  assert.deepEqual(Hands.evictable(w.swarm.slots, [], Date.now()), [])
+  assert.deepEqual((await Hands.list(w.env, id)).filter((row) => row.returned_at === null), [])
   assert.deepEqual((await Store.members(w.env, id)).map((member) => [member.address, member.ways]), [[rider, ['machine']]])
 })
 
@@ -74,7 +76,40 @@ test('without a hands listing no lent machine is evicted', async (t) => {
   t.after(w.restore)
   await w.seed('0')
   await lend(w.env, Date.now() - 2 * Hands.unseenMs)
-  const listed = await w.swarm.lent()
+  const { listed } = await w.swarm.lent(id)
   assert.equal(listed, undefined)
-  assert.deepEqual(Hands.evictable(Hands.held(await Hands.list(w.env, id)), listed, Date.now()), [])
+  assert.deepEqual(Hands.evictable(w.swarm.slots, listed, Date.now()), [])
+})
+
+test('a swarm lends at most its cap of hands: the next waits for an idle one to lapse, and a returned name is never issued again', async (t) => {
+  const minted: string[] = []
+  const w = world((request, url) => {
+    if (url.pathname !== '/v1/hands') return undefined
+    if (request.method === 'POST') {
+      const name = url.searchParams.get('name') ?? ''
+      minted.push(name)
+      return Response.json({ command: 'connect', short: name, token: 'hand_' + name, url: 'https://gateway.test/v1/hands/attach' })
+    }
+    return Response.json({ hands: minted.map((name, n) => ({ connected: !(gone && n === 0), name })) })
+  })
+  let gone = false
+  t.after(w.restore)
+  await w.seed('0')
+  const issued = []
+  for (let n = 0; n < Hands.limit; n++) issued.push(await w.swarm.lend(id, 'laptop', rider))
+  assert.ok(issued.every((hand) => hand.ok))
+  assert.deepEqual(await w.swarm.lend(id, 'laptop', rider), { ok: false, reason: 'full' })
+  assert.equal(minted.length, Hands.limit)
+  assert.equal(w.swarm.slots.held().length, Hands.limit)
+
+  gone = true
+  w.pass(2 * Hands.unseenMs)
+  const next = await w.swarm.lend(id, 'laptop', rider)
+  assert.ok(next.ok)
+  assert.equal(w.swarm.slots.task(`hand:${minted[0]}`)?.phase, 'done')
+  assert.equal(w.swarm.slots.held().length, Hands.limit)
+  const rows = await Hands.list(w.env, id)
+  assert.equal(rows.length, Hands.limit + 1)
+  assert.equal(rows.filter((row) => row.returned_at === null).length, Hands.limit)
+  assert.equal(new Set(minted).size, minted.length)
 })

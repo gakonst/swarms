@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
+import { registerHooks } from 'node:module'
 import test from 'node:test'
-import * as Hands from '../src/worker/Hands.ts'
+import type * as HandsModule from '../src/worker/Hands.ts'
+
+registerHooks({
+  resolve: (specifier, context, next) =>
+    specifier === 'cloudflare:workers' ? { shortCircuit: true, url: 'data:text/javascript,export const waitUntil = () => {}; export class DurableObject {}' } : next(specifier, context),
+})
+
+const Hands: typeof HandsModule = await import('../src/worker/Hands.ts')
 
 test('a priced hand shows its owner, charges and earnings as the gateway reports them', () => {
   const terms = Hands.terms({

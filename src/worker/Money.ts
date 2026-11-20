@@ -135,7 +135,7 @@ export async function recover(self: Swarm, row: Store.Row, deposited: string) {
 
 export async function joined(self: Swarm, row: Store.Row, connected: Gateway.Listed[], previous: ReadonlySet<string>) {
   const arrived = connected.some((hand) => !previous.has(hand.name))
-  const issued = new Map((arrived ? await Hands.seen(self.env, row.id, await Hands.list(self.env, row.id), connected) : []).map((hand) => [hand.name, hand]))
+  const issued = new Map((arrived ? await Hands.seen(self, row.id, await Hands.list(self.env, row.id), connected) : []).map((hand) => [hand.name, hand]))
   for (const hand of connected) {
     if (previous.has(hand.name)) continue
     const guest = issued.get(hand.name)

@@ -1,5 +1,7 @@
 import type { Lent, Terms } from '../shared/Api.ts'
-import type { Listed } from './Gateway.ts'
+import * as Gateway from './Gateway.ts'
+import type { Swarm } from './Swarm.ts'
+import type * as Work from './Work.ts'
 
 export type Row = { contributor: string | null; created_at: number; label: string; name: string; returned_at: number | null; seen_at: number | null; swarm: string }
 
@@ -24,15 +26,85 @@ function suffix() {
   return Array.from(crypto.getRandomValues(new Uint8Array(3)), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export async function issue(env: Cloudflare.Env, swarm: string, label: string, contributor: string | null) {
+// A lent hand is a claim on the swarm's hands board (its own scope, so the
+// cap counts only hands): the task `hand:<name>`, claimed with a cap of
+// `limit` and leased for `unseenMs`, renewed each time the swarm sees the
+// machine used. A lease that lapses is a stale hand, which no longer takes a
+// slot; so is an open task, a hand adopted already stale. Returning a hand finishes its task, so a name is never issued twice.
+// The D1 `hands` rows are the read model: written when the claim lands and
+// when its task finishes.
+export const slot = { hands: 'lent' }
+
+function task(name: string) {
+  return `hand:${name}`
+}
+
+function named(task: Work.Task) {
+  return task.id.slice('hand:'.length)
+}
+
+// Every hand not yet returned, holding its slot or stale.
+function slots(board: Work.Board) {
+  return board.tasks().filter((found) => found.labels['hands'] === slot.hands && (found.phase === 'open' || found.phase === 'claimed'))
+}
+
+function holds(found: Work.Task, now: number) {
+  return found.phase === 'claimed' && (found.untilMs ?? 0) > now
+}
+
+// Rows lent before hands were claims hold their slot as a claim whose lease
+// runs from when the swarm last saw them; one already past it is stale.
+function adopt(board: Work.Board, rows: readonly Row[], now: number) {
+  for (const row of rows) {
+    if (row.returned_at !== null || board.task(task(row.name))) continue
+    const posted = board.post({ id: task(row.name), labels: slot, spec: row.label })
+    const left = (row.seen_at ?? row.created_at) + unseenMs - now
+    if (posted.ok && left > 0) board.claim(task(row.name), { leaseMs: left })
+  }
+}
+
+export type Issued =
+  | { minted: Gateway.Minted; name: string; ok: true }
+  | { ok: false; reason: 'full' | 'unnamed' }
+  | { detail: string; ok: false; reason: 'upstream' }
+
+export async function issue(self: Swarm, swarm: string, label: string, contributor: string | null): Promise<Issued> {
+  const board = self.slots
+  const rows = (await list(self.env, swarm)).filter((row) => row.returned_at === null)
+  adopt(board, rows, Date.now())
+  const listed = slots(board).length ? await listing(self.env, swarm) : []
+  await seen(self, swarm, rows, listed)
+  const now = Date.now()
+  const evicted = evictable(board, listed, now)
+  const holding = slots(board).filter((found) => holds(found, now))
+  if (holding.length - holding.filter((found) => evicted.includes(named(found))).length >= limit) return { ok: false, reason: 'full' }
+  for (const name of evicted) {
+    await free(self, swarm, name)
+    await Gateway.detach(self.env, swarm, name).catch(() => undefined)
+  }
+
   for (let attempt = 0; attempt < 3; attempt++) {
+    if (slots(board).filter((found) => holds(found, Date.now())).length >= limit) return { ok: false, reason: 'full' }
     const name = `${slug(label)}-${suffix()}`
-    const result = await env.DB.prepare('insert or ignore into hands (swarm, name, label, contributor, created_at) values (?, ?, ?, ?, ?)')
+    const posted = board.post({ id: task(name), labels: slot, spec: label })
+    if (!posted.ok) continue
+    const claimed = board.claim(task(name), { cap: limit, leaseMs: unseenMs })
+    if (!claimed.ok) return { ok: false, reason: 'full' }
+    await self.env.DB.prepare('insert or ignore into hands (swarm, name, label, contributor, created_at) values (?, ?, ?, ?, ?)')
       .bind(swarm, name, label, contributor, Date.now())
       .run()
-    if (result.meta.changes > 0) return name
+    const minted = await self.hand(swarm, name)
+    if (minted.ok) return { minted: minted.value, name, ok: true }
+    board.finish(task(name), claimed.claim, { failed: minted.detail })
+    await self.env.DB.prepare('delete from hands where swarm = ? and name = ?').bind(swarm, name).run()
+    if (minted.status !== 409) return { detail: minted.detail, ok: false, reason: 'upstream' }
   }
-  return undefined
+  return { ok: false, reason: 'unnamed' }
+}
+
+export async function listing(env: Cloudflare.Env, swarm: string) {
+  const listed = await Gateway.hands(env, swarm)
+  return listed.ok ? listed.value.hands : undefined
 }
 
 export async function list(env: Cloudflare.Env, swarm: string) {
@@ -42,49 +114,59 @@ export async function list(env: Cloudflare.Env, swarm: string) {
   return results
 }
 
-export async function forget(env: Cloudflare.Env, swarm: string, name: string) {
-  await env.DB.prepare('delete from hands where swarm = ? and name = ?').bind(swarm, name).run()
-}
-
-export async function free(env: Cloudflare.Env, swarm: string, name: string) {
-  await env.DB.batch([
-    env.DB.prepare('delete from hands where swarm = ? and name = ? and seen_at is null').bind(swarm, name),
-    env.DB.prepare('update hands set returned_at = ? where swarm = ? and name = ?').bind(Date.now(), swarm, name),
+// Return a hand: its D1 row first, then its task, so a write that fails
+// leaves the claim held and the next issue returns it again.
+export async function free(self: Swarm, swarm: string, name: string) {
+  const board = self.slots
+  const found = board.task(task(name))
+  await self.env.DB.batch([
+    self.env.DB.prepare('delete from hands where swarm = ? and name = ? and seen_at is null').bind(swarm, name),
+    self.env.DB.prepare('update hands set returned_at = ? where swarm = ? and name = ? and returned_at is null').bind(Date.now(), swarm, name),
   ])
+  const claim = found?.phase === 'open' ? board.claim(found.id, { leaseMs: unseenMs }) : undefined
+  const holder = claim?.ok ? claim.claim : found?.phase === 'claimed' ? found.claim : undefined
+  if (found && holder) board.finish(found.id, holder, { done: 'returned' })
 }
 
-export function held(rows: readonly Row[]) {
-  return rows.filter((row) => row.returned_at === null)
-}
-
-export function used(hand: Listed | undefined) {
+export function used(hand: Gateway.Listed | undefined) {
   return !!hand && (hand.connected || (typeof hand['requests'] === 'number' && hand['requests'] > 0))
 }
 
-export async function seen(env: Cloudflare.Env, swarm: string, rows: readonly Row[], listed: readonly Listed[] | undefined) {
+// The swarm saw these hands used: renew their claims and mark their rows.
+export async function seen(self: Swarm, swarm: string, rows: readonly Row[], listed: readonly Gateway.Listed[] | undefined) {
+  const board = self.slots
   const now = Date.now()
+  adopt(board, rows, now)
+  for (const row of rows) {
+    const found = row.returned_at === null && used(listed?.find((hand) => hand.name === row.name)) ? board.task(task(row.name)) : null
+    if (found?.phase === 'claimed' && found.claim) board.renew(found.id, found.claim, unseenMs)
+    else if (found?.phase === 'open') board.claim(found.id, { leaseMs: unseenMs })
+  }
   const names = rows
     .filter((row) => (row.seen_at === null || row.seen_at < now - freshMs) && used(listed?.find((hand) => hand.name === row.name)))
     .map((row) => row.name)
   if (!names.length) return rows
-  await env.DB.batch(names.map((name) => env.DB.prepare('update hands set seen_at = ? where swarm = ? and name = ?').bind(now, swarm, name)))
+  await self.env.DB.batch(names.map((name) => self.env.DB.prepare('update hands set seen_at = ? where swarm = ? and name = ?').bind(now, swarm, name)))
   return rows.map((row) => (names.includes(row.name) ? { ...row, seen_at: now } : row))
 }
 
-export function evictable(rows: readonly Row[], listed: readonly Listed[] | undefined, now: number) {
+// Hands to return before issuing one: every idle hand whose lease lapsed, and
+// while the claims still fill the cap, the idle ones seen longest ago.
+export function evictable(board: Work.Board, listed: readonly Gateway.Listed[] | undefined, now: number) {
   if (!listed) return []
-  const idle = rows.filter((row) => !listed.find((hand) => hand.name === row.name)?.connected)
-  const stale = idle.filter((row) => (row.seen_at ?? row.created_at) < now - unseenMs)
-  if (rows.length - stale.length < limit) return stale
-  const spare = idle.filter((row) => !stale.includes(row)).sort((a, b) => (a.seen_at ?? 0) - (b.seen_at ?? 0) || a.created_at - b.created_at)
-  return [...stale, ...spare.slice(0, rows.length - stale.length - limit + 1)]
+  const idle = slots(board).filter((found) => !listed.find((hand) => hand.name === named(found))?.connected)
+  const stale = idle.filter((found) => !holds(found, now))
+  const holding = slots(board).filter((found) => holds(found, now)).length
+  if (holding < limit) return stale.map(named)
+  const spare = idle.filter((found) => !stale.includes(found)).sort((a, b) => (a.untilMs ?? 0) - (b.untilMs ?? 0))
+  return [...stale, ...spare.slice(0, holding - limit + 1)].map(named)
 }
 
 export const share = 5n
 
 const symbols: Record<string, string> = { ousd: 'OUSD', usdce: 'USDC.e' }
 
-export function terms(listed: Listed | undefined): Terms {
+export function terms(listed: Gateway.Listed | undefined): Terms {
   const pricing = listed?.['pricing'] as { currency?: unknown; describe?: unknown; payee?: unknown } | null | undefined
   const charges = listed?.['charges'] as { count?: unknown; usd?: unknown } | null | undefined
   const channels = Array.isArray(listed?.['channels']) ? (listed['channels'] as { accepted?: unknown; settled?: unknown }[]) : []
@@ -110,7 +192,7 @@ function usd(value: unknown) {
   return '$' + (typeof value === 'number' ? Number(value.toFixed(6)) : 0)
 }
 
-export function lent(rows: readonly Row[], listed: readonly Listed[] | undefined): Lent[] {
+export function lent(rows: readonly Row[], listed: readonly Gateway.Listed[] | undefined): Lent[] {
   return rows.map((row) => {
     const found = listed?.find((hand) => hand.name === row.name)
     return { at: row.created_at, connected: !!found?.connected, label: row.label, name: row.name, ...terms(found) }

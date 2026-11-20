@@ -11,6 +11,7 @@ import * as Mention from '../shared/Mention.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Gateway from './Gateway.ts'
+import * as Hands from './Hands.ts'
 import * as Phase from './Phase.ts'
 import type { Why } from '../shared/Api.ts'
 import * as Search from './Search.ts'
@@ -409,11 +410,26 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return Gateway.hand(this.env, swarm, name)
   }
 
-  async lent() {
-    const id = this.kv.get<string>('id')
-    if (!id) return []
-    const listed = await Gateway.hands(this.env, id)
-    return listed.ok ? listed.value.hands : undefined
+  // The swarm's lent hands: claims on a board of their own, so the cap of
+  // Hands.limit counts only hands.
+  get slots(): Work.Board {
+    const scope = `swarm:${this.ctx.storage.kv.get<string>('id') ?? 'new'}:hands`
+    if (this.slotted?.scope !== scope) this.slotted = { board: Work.local(this.ctx.storage.sql, scope, this.boot), scope }
+    return this.slotted.board
+  }
+
+  slotted: { board: Work.Board; scope: string } | undefined
+
+  async lend(swarm: string, label: string, contributor: string | null) {
+    this.kv.put('id', swarm)
+    return Hands.issue(this, swarm, label, contributor)
+  }
+
+  async lent(swarm: string) {
+    const rows = await Hands.list(this.env, swarm)
+    if (this.kv.get<string>('id') !== swarm) return { listed: [] as Gateway.Listed[], rows }
+    const listed = rows.length ? await Hands.listing(this.env, swarm) : []
+    return { listed, rows: await Hands.seen(this, swarm, rows, listed) }
   }
 
   async heal() {
