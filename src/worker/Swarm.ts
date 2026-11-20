@@ -422,18 +422,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return Gateway.hand(this.env, swarm, name)
   }
 
-  // The swarm's lent hands: claims on a board of their own, so the cap of
-  // Hands.limit counts only hands.
-  get slots(): Work.Board {
-    const id = this.ctx.storage.kv.get<string>('id')
-    if (!id) throw new Error('The hands board opens once the swarm has its id.')
-    const scope = `swarm:${id}:hands`
-    if (this.slotted?.scope !== scope) this.slotted = { board: Work.opening(scope, `swarm:${id}`, () => Host.open(this.ctx.storage, scope, `swarm:${id}`)), scope }
-    return this.slotted.board
-  }
-
-  slotted: { board: Work.Board; scope: string } | undefined
-
   async lend(swarm: string, label: string, contributor: string | null) {
     this.kv.put('id', swarm)
     return Hands.issue(this, swarm, label, contributor)

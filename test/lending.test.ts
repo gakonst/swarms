@@ -51,7 +51,7 @@ function world(listing: Listing) {
     kv: { get: (key: string) => kv.get(key), put: (key: string, value: unknown) => void kv.set(key, value) },
     log: (_kind: string, text: string) => void logged.push(text),
     remember: () => undefined,
-    slots: fresh('swarm:' + id + ':hands'),
+    board: fresh('swarm:' + id),
     turn: () => undefined,
   }
   const object = {

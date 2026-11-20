@@ -11,6 +11,7 @@
 import type { Board as Boards } from 'nanocode-ts'
 
 export type Board = Boards.Board
+export type Cap = Boards.Cap
 export type Claimed = Boards.Claimed
 export type NewTask = Boards.NewTask
 export type Outcome = Boards.Outcome
