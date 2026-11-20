@@ -53,21 +53,24 @@ export type Outcome = { done: string } | { failed: string }
 
 export type Steer = { atMs: number; by: string; id: string; key?: string | undefined; text: string }
 
+// Every method answers a promise, as nanocode-ts's Board does.
 export interface Board {
-  claim(id: string, opts: { atMs?: number; cap?: number; key?: string; leaseMs: number }): Claimed
-  finish(id: string, claim: string, outcome: Outcome): Verdict
-  heed(id: string, claim: string, steers: readonly string[]): Verdict
-  held(atMs?: number): Task[]
-  label(id: string, set: Record<string, string>, unset?: readonly string[]): Verdict
-  post(task: Post, opts?: { key?: string }): Verdict
-  ready(opts?: { atMs?: number; label?: [string, string] }): Task[]
-  release(id: string, claim: string, note?: string): Verdict
-  renew(id: string, claim: string, leaseMs: number): Claimed
-  steer(id: string, text: string, opts?: { key?: string }): Verdict
-  steers(id: string): Steer[]
-  task(id: string): Task | null
-  tasks(): Task[]
+  claim(id: string, opts: { atMs?: number; cap?: number; key?: string; leaseMs: number }): Promise<Claimed>
+  finish(id: string, claim: string, outcome: Outcome): Promise<Verdict>
+  heed(id: string, claim: string, steers: readonly string[]): Promise<Verdict>
+  held(atMs?: number): Promise<Task[]>
+  label(id: string, set: Record<string, string>, unset?: readonly string[]): Promise<Verdict>
+  post(task: Post, opts?: { key?: string }): Promise<Verdict>
+  ready(opts?: { atMs?: number; label?: [string, string] }): Promise<Task[]>
+  release(id: string, claim: string, note?: string): Promise<Verdict>
+  renew(id: string, claim: string, leaseMs: number): Promise<Claimed>
+  steer(id: string, text: string, opts?: { key?: string }): Promise<Verdict>
+  steers(id: string): Promise<Steer[]>
+  task(id: string): Promise<Task | null>
+  tasks(): Promise<Task[]>
 }
+
+type Synchronous = { [Method in keyof Board]: (...args: Parameters<Board[Method]>) => Awaited<ReturnType<Board[Method]>> }
 
 export type Sql = { exec<T extends Record<string, SqlStorageValue>>(query: string, ...values: unknown[]): { toArray(): T[] } }
 
@@ -129,6 +132,12 @@ function fail(rejection: Rejection): { ok: false; rejection: Rejection } {
 const ok = { ok: true } as const
 
 export function local(sql: Sql, scope: string, actor: string): Board {
+  const board = synchronous(sql, scope, actor)
+  const methods = Object.entries(board).map(([name, method]) => [name, (...args: never[]) => Promise.resolve().then(() => (method as (...args: never[]) => unknown)(...args))])
+  return Object.fromEntries(methods) as Board
+}
+
+function synchronous(sql: Sql, scope: string, actor: string): Synchronous {
   for (const statement of schema) sql.exec(statement)
   const now = (at?: number) => Math.max(at ?? 0, Date.now())
   const read = (id: string) => sql.exec<Stored>('SELECT * FROM work_tasks WHERE scope = ? AND id = ?', scope, id).toArray()[0]
@@ -264,16 +273,28 @@ export function local(sql: Sql, scope: string, actor: string): Board {
   }
 }
 
+// A board that opens on its first call: `open` runs once, and every call
+// waits for it, so the object can hand out its board before the open lands.
+export function opening(open: () => Promise<Board>): Board {
+  let opened: Promise<Board> | undefined
+  const board = () => (opened ??= open().catch((error: unknown) => {
+    opened = undefined
+    throw error
+  }))
+  const methods: (keyof Board)[] = ['claim', 'finish', 'heed', 'held', 'label', 'post', 'ready', 'release', 'renew', 'steer', 'steers', 'task', 'tasks']
+  return Object.fromEntries(methods.map((name) => [name, async (...args: never[]) => ((await board())[name] as (...args: never[]) => unknown)(...args)])) as never as Board
+}
+
 // Post a task unless it is there already.
-export function ensure(board: Board, task: Post) {
-  const posted = board.post(task)
+export async function ensure(board: Board, task: Post) {
+  const posted = await board.post(task)
   if (!posted.ok && posted.rejection.kind !== 'Exists') throw new Error(`Posting ${task.id} was refused: ${posted.rejection.kind}`)
 }
 
 // A lock is a task that is never finished: holding it is a claim, letting go
 // is a release, and a lock whose holder died opens again when its lease lapses.
-export function lock(board: Board, id: string, leaseMs: number, labels: Record<string, string> = instance) {
-  ensure(board, { id, labels, spec: `lock ${id}` })
+export async function lock(board: Board, id: string, leaseMs: number, labels: Record<string, string> = instance) {
+  await ensure(board, { id, labels, spec: `lock ${id}` })
   return board.claim(id, { leaseMs })
 }
 
@@ -285,22 +306,22 @@ export const instance = { lock: 'instance' }
 // A lock that outlives the object, such as a throttle.
 export const lasting = { lock: 'lasting' }
 
-export function reclaim(board: Board, actor: string) {
-  for (const task of board.held()) if (task.labels['lock'] === 'instance' && task.worker !== actor && task.claim) board.release(task.id, task.claim, 'its holder restarted')
+export async function reclaim(board: Board, actor: string) {
+  for (const task of await board.held()) if (task.labels['lock'] === 'instance' && task.worker !== actor && task.claim) await board.release(task.id, task.claim, 'its holder restarted')
 }
 
 // Run `work` holding the lock `id`, renewing its lease every third of it while
 // the work runs; while another holds it, `work` does not run and the refusal
 // comes back instead.
 export async function holding<T>(board: Board, id: string, leaseMs: number, work: () => Promise<T>): Promise<{ value: T } | { rejection: Rejection }> {
-  const held = lock(board, id, leaseMs)
+  const held = await lock(board, id, leaseMs)
   if (!held.ok) return { rejection: held.rejection }
-  const timer = setInterval(() => board.renew(id, held.claim, leaseMs), Math.max(1, Math.floor(leaseMs / 3)))
+  const timer = setInterval(() => void board.renew(id, held.claim, leaseMs).catch(() => undefined), Math.max(1, Math.floor(leaseMs / 3)))
   try {
     return { value: await work() }
   } finally {
     clearInterval(timer)
-    board.release(id, held.claim)
+    await board.release(id, held.claim)
   }
 }
 
@@ -317,15 +338,15 @@ export async function serial<T>(board: Board, id: string, leaseMs: number, work:
 // A once-only step, keyed by `id`: claimed here, finished when `work` returns,
 // and never run again by anyone once finished. A step that threw opens again.
 export async function once<T>(board: Board, id: string, leaseMs: number, work: () => Promise<T>): Promise<{ ran: true; value: T } | { ran: false }> {
-  ensure(board, { id, spec: `once ${id}` })
-  const held = board.claim(id, { leaseMs })
+  await ensure(board, { id, spec: `once ${id}` })
+  const held = await board.claim(id, { leaseMs })
   if (!held.ok) return { ran: false }
   try {
     const value = await work()
-    board.finish(id, held.claim, { done: '' })
+    await board.finish(id, held.claim, { done: '' })
     return { ran: true, value }
   } catch (error) {
-    board.release(id, held.claim, String(error))
+    await board.release(id, held.claim, String(error))
     throw error
   }
 }

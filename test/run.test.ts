@@ -129,18 +129,18 @@ test('a turn the gateway keeps refusing is tried again on the board backoff, and
   await w.ring()
   const first = w.swarm.run()
   assert.ok(first.state === 'waiting' && first.until === Date.now() + 15_000)
-  assert.equal(w.swarm.board.task('turn:1')?.dueAtMs, first.until)
+  assert.equal((await w.swarm.board.task('turn:1'))?.dueAtMs, first.until)
   for (let attempt = 1; attempt < 8; attempt++) {
     w.pass(3_600_000)
     await w.ring()
   }
-  assert.equal(w.swarm.board.task('turn:1')?.phase, 'failed')
-  assert.equal(w.swarm.board.task('turn:1')?.attempts, 8)
+  assert.equal((await w.swarm.board.task('turn:1'))?.phase, 'failed')
+  assert.equal((await w.swarm.board.task('turn:1'))?.attempts, 8)
   assert.ok(w.errors().some((text) => /failed 8 tries in a row/.test(text)))
   assert.equal(w.swarm.agent(), undefined)
   w.pass(60_000)
   await w.ring()
-  assert.equal(w.swarm.board.task('turn:1.1')?.attempts, 1)
+  assert.equal((await w.swarm.board.task('turn:1.1'))?.attempts, 1)
 })
 
 test('a swarm with money whose agent the gateway fails to create is retrying, not out of money', async (t) => {

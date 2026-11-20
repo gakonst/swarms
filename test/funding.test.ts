@@ -98,11 +98,11 @@ test("a branch is settled once on the swarm's board: a settle whose write failed
   const batch = env.DB.batch.bind(env.DB)
   ;(env.DB as { batch: unknown }).batch = async () => Promise.reject(new Error('D1 is down'))
   await assert.rejects(Branching.settle(self, input), /D1 is down/)
-  assert.equal(board.task('settle:agt:1')?.phase, 'open')
+  assert.equal((await board.task('settle:agt:1'))?.phase, 'open')
   ;(env.DB as { batch: unknown }).batch = batch
 
   assert.deepEqual(await Branching.settle(self, input), [{ amount: 3_000_000n, budget: 0, contributor: rider }])
-  assert.equal(board.task('settle:agt:1')?.phase, 'done')
+  assert.equal((await board.task('settle:agt:1'))?.phase, 'done')
   assert.deepEqual(await Promise.all([Branching.settle(self, input), Branching.settle(self, { ...input, left: 0n })]), [[], []])
   assert.deepEqual(await member(), ['3.000000', '0.000000', '3.000000'])
   assert.equal(db.sqlite.prepare("select count(*) as n from steers where id like 'settle:agt:1:%'").get()?.['n'], 1)

@@ -75,6 +75,7 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
         break
       }
       for (const event of read.value.events) ended = digest(self, event, run.turn) || ended
+      await Turns.progressed(self)
       if (read.value.next_cursor !== cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor: read.value.next_cursor })
       cursor = read.value.next_cursor
       if (!read.value.has_more) break
@@ -105,10 +106,10 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   if (report?.ok && !['queued', 'running'].includes(report.value.status)) return Turns.finish(self, row, run, report.value)
   if (report && !report.ok && report.status !== 401 && report.status < 500)
     return Turns.finish(self, row, run, { error: report.detail, request_id: run.turn, status: 'failed' })
-  const until = Turns.lease(self, run)
+  const until = await Turns.lease(self, run)
   if (until !== undefined && Date.now() >= until) {
     const failing = down || (!!report && !report.ok && report.status >= 500)
-    const idle = Math.round((Date.now() - Turns.progress(self.board, run).progressed) / 60_000)
+    const idle = Math.round((Date.now() - Turns.progress(self, run).progressed) / 60_000)
     const detail = !failing ? '' : !report || report.ok ? ': its events did not load' : `: ${report.detail}`
     await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
     return Turns.finish(self, row, run, { error: `The agent made no model call or tool call for ${idle} minutes${detail}, so the swarm stopped the turn to start another.`, request_id: run.turn, status: 'failed' })
@@ -156,6 +157,7 @@ export async function listen(self: Swarm, row: Store.Row, agent: Lead, run: Turn
         ended = digest(self, event, run.turn) || ended
         cursor = Math.max(cursor, event.seq)
       }
+      await Turns.progressed(self)
       if (cursor !== (self.agent() ?? agent).cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor })
       if (ended || Date.now() >= closing) stop.abort()
     }
@@ -269,7 +271,7 @@ const progress = new Set(['assistant.message', 'model.call.completed', 'run.comp
 
 export function advanced(self: Swarm, type: string | undefined, at: number) {
   if (type === undefined || !progress.has(type)) return
-  Turns.progressed(self, at)
+  if (at > (self.kv.get<number>('advanced') ?? 0)) self.kv.put('advanced', at)
 }
 
 const unpaidMost = 8

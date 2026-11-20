@@ -101,7 +101,7 @@ export async function snapshot(self: Swarm, swarm: string, name: string, snappin
     name,
     readme: path && read?.text !== undefined && read.text.length <= snapshotText ? { path, text: redact(read.text) } : null,
   } satisfies Snapshot)
-  if (snapping) self.board.release('snapping', snapping)
+  if (snapping) await self.board.release('snapping', snapping)
 }
 
 export type Graph = {

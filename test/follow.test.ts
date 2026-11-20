@@ -55,24 +55,27 @@ test('a working agent with no model or tool call for twenty minutes is reported 
   const logged: string[] = []
   const board = Work.local(memorySql(), 'swarm:abc', 'a')
   const started = Date.now() - 30 * 60_000
-  Work.ensure(board, { id: 'turn:1', spec: 'turn 1', terms: { retry: Turns.retry } })
-  const claimed = board.claim('turn:1', { leaseMs: 1_000 })
+  await Work.ensure(board, { id: 'turn:1', spec: 'turn 1', terms: { retry: Turns.retry } })
+  const claimed = await board.claim('turn:1', { leaseMs: 1_000 })
   assert.ok(claimed.ok)
+  kept.set('lease', { task: 'turn:1', untilMs: claimed.untilMs })
   const run = { claim: claimed.claim, from: 0, n: 1, since: started, started, state: 'working', task: 'turn:1', turn: 'agt_1:1' } as const
-  const object = {
+  const object: never = {
     board,
     kv: { get: (key: string) => kept.get(key), put: (key: string, value: unknown) => kept.set(key, value) },
     log: (_kind: string, text: string) => logged.push(text),
     run: () => run,
-    working: () => ({ ...Turns.progress(board, run), since: started }),
+    working: () => ({ ...Turns.progress(object, run), since: started }),
   } as never
   Follow.advanced(object, 'subagent.added', Date.now())
+  await Turns.progressed(object)
   Follow.stalled(object, Date.now())
   Follow.stalled(object, Date.now())
   assert.equal(logged.length, 1)
   assert.match(logged[0] ?? '', /no model call or tool call for 30 minutes/)
   Follow.advanced(object, 'model.call.completed', Date.now())
-  assert.ok((board.task('turn:1')?.untilMs ?? 0) >= Date.now() + Turns.leaseMs - 1_000)
+  await Turns.progressed(object)
+  assert.ok(((await board.task('turn:1'))?.untilMs ?? 0) >= Date.now() + Turns.leaseMs - 1_000)
   Follow.stalled(object, Date.now())
   assert.equal(logged.length, 1)
 })

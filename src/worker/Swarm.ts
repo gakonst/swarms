@@ -202,11 +202,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const id = this.ctx.storage.kv.get<string>('id')
     if (!id) throw new Error('The board opens once the swarm has its id.')
     const scope = `swarm:${id}`
-    if (this.boarded?.scope !== scope) {
-      const board = Work.local(this.ctx.storage.sql, scope, this.boot)
-      Work.reclaim(board, this.boot)
-      this.boarded = { board, scope }
-    }
+    if (this.boarded?.scope !== scope)
+      this.boarded = {
+        board: Work.opening(async () => {
+          const board = Work.local(this.ctx.storage.sql, scope, this.boot)
+          await Work.reclaim(board, this.boot)
+          return board
+        }),
+        scope,
+      }
     return this.boarded.board
   }
 
@@ -418,8 +422,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   // The swarm's lent hands: claims on a board of their own, so the cap of
   // Hands.limit counts only hands.
   get slots(): Work.Board {
-    const scope = `swarm:${this.ctx.storage.kv.get<string>('id') ?? 'new'}:hands`
-    if (this.slotted?.scope !== scope) this.slotted = { board: Work.local(this.ctx.storage.sql, scope, this.boot), scope }
+    const id = this.ctx.storage.kv.get<string>('id')
+    if (!id) throw new Error('The hands board opens once the swarm has its id.')
+    const scope = `swarm:${id}:hands`
+    if (this.slotted?.scope !== scope) this.slotted = { board: Work.opening(async () => Work.local(this.ctx.storage.sql, scope, this.boot)), scope }
     return this.slotted.board
   }
 
@@ -509,7 +515,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const since = Phase.since(run)
     if (since === null) return null
     if (run.state !== 'working') return { since }
-    return { ...Turns.progress(this.board, run), since }
+    return { ...Turns.progress(this, run), since }
   }
 
   turns(after = 0): Search.Turn[] {
@@ -652,8 +658,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const repo = this.kv.get<string>('repo')
     const snapshot = this.kv.get<Snapshot>('snapshot')
     if (id && repo && (!snapshot || snapshot.name !== repo || Date.now() - snapshot.at > Repo.snapshotMs)) {
-      const snapping = Work.lock(this.board, 'snapping', Repo.snapshotMs, Work.lasting)
-      if (snapping.ok) this.ctx.waitUntil(Repo.snapshot(this, id, repo, snapping.claim).catch((error: unknown) => console.error('Reading the repository failed', error)))
+      const snapping = async () => {
+        const held = await Work.lock(this.board, 'snapping', Repo.snapshotMs, Work.lasting)
+        if (held.ok) await Repo.snapshot(this, id, repo, held.claim)
+      }
+      this.ctx.waitUntil(snapping().catch((error: unknown) => console.error('Reading the repository failed', error)))
     }
     return snapshot && snapshot.name === repo ? snapshot : null
   }
@@ -680,7 +689,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const told = this.ctx.storage.sql.exec<{ weight: string }>('SELECT weight FROM steered WHERE note = ?', note.id).toArray()[0]
     if (told && BigInt(told.weight) >= Memo.units(note.weight)) return note
     if (Turns.heard(this, turn).some(([id, heard]) => id === note.id && heard === weight)) return note
-    Turns.steer(this, [[note.id, weight]])
+    await Turns.steer(this, [[note.id, weight]])
     const sent = await Gateway.prompt(this.env, swarm, agent, {
       prompt: Turns.weighed(this.tell([note])[0] ?? note),
       steer: true,

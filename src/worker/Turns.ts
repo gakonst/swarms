@@ -88,27 +88,28 @@ export async function step(self: Swarm) {
     const settling = await settle(self, row, run)
     if (self.run().state === 'paused') return settling
   }
-  if (run.state === 'working') return Follow.follow(self, row, adopted(self, run))
+  if (run.state === 'working') return Follow.follow(self, row, await adopted(self, run))
   return advance(self, row)
 }
 
-function posted(self: Swarm, n: number) {
-  const live = self.board.tasks().find((found) => found.labels['kind'] === 'turn' && !Work.terminal(found.phase))
+async function posted(self: Swarm, n: number) {
+  const live = (await self.board.tasks()).find((found) => found.labels['kind'] === 'turn' && !Work.terminal(found.phase))
   if (live) return live.id
   for (let k = 0; ; k++) {
     const id = k ? `turn:${n}.${k}` : `turn:${n}`
-    const found = self.board.task(id)
+    const found = await self.board.task(id)
     if (found && Work.terminal(found.phase)) continue
-    if (!found) Work.ensure(self.board, { id, labels: { kind: 'turn' }, spec: `turn ${n}`, terms: { retry } })
+    if (!found) await Work.ensure(self.board, { id, labels: { kind: 'turn' }, spec: `turn ${n}`, terms: { retry } })
     return id
   }
 }
 
-function adopted(self: Swarm, run: Turning): Turning {
+async function adopted(self: Swarm, run: Turning): Promise<Turning> {
   if (run.task && run.claim) return run
-  const task = posted(self, run.n)
-  const claimed = self.board.claim(task, { leaseMs })
+  const task = await posted(self, run.n)
+  const claimed = await self.board.claim(task, { leaseMs })
   if (!claimed.ok) return run
+  leased(self, task, claimed.untilMs)
   const next = { ...run, claim: claimed.claim, task }
   self.set(next)
   return next
@@ -116,30 +117,30 @@ function adopted(self: Swarm, run: Turning): Turning {
 
 type Taken = { claim: string; task: string } | { untilMs: number }
 
-function take(self: Swarm, run: Phase.Run): Taken {
+async function take(self: Swarm, run: Phase.Run): Promise<Taken> {
   const board = self.board
   const now = Date.now()
-  const task = posted(self, self.turned() + 1)
-  const found = board.task(task)
+  const task = await posted(self, self.turned() + 1)
+  const found = await board.task(task)
   if (found?.phase === 'claimed' && found.claim) {
     const ours = found.claim === Phase.sent(run)?.id
-    if (ours && board.renew(task, found.claim, sendingMs).ok) return { claim: found.claim, task }
-    if (!ours) board.release(task, found.claim, 'its holder restarted')
+    if (ours && (await board.renew(task, found.claim, sendingMs)).ok) return { claim: found.claim, task }
+    if (!ours) await board.release(task, found.claim, 'its holder restarted')
   }
-  const claimed = board.claim(task, { leaseMs: sendingMs })
+  const claimed = await board.claim(task, { leaseMs: sendingMs })
   if (claimed.ok) return { claim: claimed.claim, task }
   if (claimed.rejection.kind === 'Terminal' || claimed.rejection.kind === 'UnknownTask') {
-    const next = posted(self, self.turned() + 1)
-    const again = board.claim(next, { leaseMs: sendingMs })
+    const next = await posted(self, self.turned() + 1)
+    const again = await board.claim(next, { leaseMs: sendingMs })
     if (again.ok) return { claim: again.claim, task: next }
   }
   const rejection = claimed.rejection
   return { untilMs: 'untilMs' in rejection && rejection.untilMs !== undefined ? rejection.untilMs : now + Clock.retryMs }
 }
 
-function attempted(self: Swarm, task: string, claim: string, outcome: Work.Outcome, blamed = true) {
-  const verdict = self.board.finish(task, claim, outcome)
-  const left = self.board.task(task)
+async function attempted(self: Swarm, task: string, claim: string, outcome: Work.Outcome, blamed = true) {
+  const verdict = await self.board.finish(task, claim, outcome)
+  const left = await self.board.task(task)
   if (verdict.ok && blamed && left?.phase === 'failed') exhausted(self, left.attempts, 'failed' in outcome ? outcome.failed : '')
   return { attempts: left?.attempts ?? 1, due: left?.phase === 'open' ? (left.dueAtMs ?? Date.now()) : undefined, finished: verdict.ok }
 }
@@ -151,18 +152,26 @@ function exhausted(self: Swarm, attempts: number, detail: string) {
   self.log('error', `The agent's turn failed ${attempts} tries in a row, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.`, `${agent.id}: ${detail}`)
 }
 
-export function lease(self: Swarm, run: Turning) {
-  return run.task ? self.board.task(run.task)?.untilMs : undefined
+export async function lease(self: Swarm, run: Turning) {
+  return run.task ? (await self.board.task(run.task))?.untilMs : undefined
 }
 
-export function progress(board: Work.Board, run: Turning) {
-  const until = run.task ? board.task(run.task)?.untilMs : undefined
+function leased(self: Swarm, task: string, untilMs: number) {
+  self.kv.put('lease', { task, untilMs })
+}
+
+export function progress(self: Swarm, run: Turning) {
+  const lease = self.kv.get<{ task: string; untilMs: number }>('lease')
+  const until = lease && lease.task === run.task ? lease.untilMs : undefined
   return { progressed: Math.max(until === undefined ? 0 : until - leaseMs, run.started), stalled: until !== undefined && until - Date.now() <= leaseMs / 3 }
 }
 
-export function progressed(self: Swarm, at: number) {
+export async function progressed(self: Swarm) {
   const run = self.run()
-  if (run.state === 'working' && run.task && run.claim && at > progress(self.board, run).progressed) self.board.renew(run.task, run.claim, leaseMs)
+  const at = self.kv.get<number>('advanced') ?? 0
+  if (run.state !== 'working' || !run.task || !run.claim || at <= progress(self, run).progressed) return
+  const renewed = await self.board.renew(run.task, run.claim, leaseMs)
+  if (renewed.ok) leased(self, run.task, renewed.untilMs)
 }
 
 export function heard(self: Swarm, run: Turning): Phase.Told[] {
@@ -179,25 +188,25 @@ function said(steer: Work.Steer): Phase.Told {
   return [note, weight]
 }
 
-export function pending(self: Swarm) {
-  return new Set(self.board.steers(noteboard).map((steer) => said(steer)[0]))
+export async function pending(self: Swarm) {
+  return new Set((await self.board.steers(noteboard)).map((steer) => said(steer)[0]))
 }
 
-export function steer(self: Swarm, told: readonly Phase.Told[]) {
-  Work.ensure(self.board, { id: noteboard, labels: Work.instance, spec: "backers' notes" })
-  for (const [note, weight] of told) self.board.steer(noteboard, JSON.stringify({ note, weight }), { key: `${note}:${weight}` })
+export async function steer(self: Swarm, told: readonly Phase.Told[]) {
+  await Work.ensure(self.board, { id: noteboard, labels: Work.instance, spec: "backers' notes" })
+  for (const [note, weight] of told) await self.board.steer(noteboard, JSON.stringify({ note, weight }), { key: `${note}:${weight}` })
 }
 
-export function heed(self: Swarm, told: readonly Phase.Told[]) {
+export async function heed(self: Swarm, told: readonly Phase.Told[]) {
   if (!told.length) return
-  steer(self, told)
+  await steer(self, told)
   const board = self.board
   const wanted = new Set(told.map(([note, weight]) => `${note}:${weight}`))
-  const upto = board.steers(noteboard).filter((found) => wanted.has(said(found).join(':'))).at(-1)
-  const held = upto && Work.lock(board, noteboard, Clock.minuteMs)
+  const upto = (await board.steers(noteboard)).filter((found) => wanted.has(said(found).join(':'))).at(-1)
+  const held = upto && (await Work.lock(board, noteboard, Clock.minuteMs))
   if (upto && held?.ok) {
-    board.heed(noteboard, held.claim, [upto.id])
-    board.release(noteboard, held.claim)
+    await board.heed(noteboard, held.claim, [upto.id])
+    await board.release(noteboard, held.claim)
   }
   const at = Date.now()
   for (const [note, weight] of told) {
@@ -232,7 +241,7 @@ function held(self: Swarm, run: Phase.Run, taken: Taken) {
 }
 
 async function stumble(self: Swarm, row: Store.Row, run: Phase.Run, error: string, detail: string) {
-  const taken = take(self, run)
+  const taken = await take(self, run)
   return held(self, run, taken) ?? ('claim' in taken ? fail(self, row, taken.task, taken.claim, error, detail) : null)
 }
 
@@ -248,7 +257,7 @@ export async function advance(self: Swarm, found: Store.Row) {
     await pause(self, money.row, worked || money.row.contributors ? { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: null, why: 'money' } : { why: 'unfunded' })
     return null
   }
-  const taken = take(self, run)
+  const taken = await take(self, run)
   const later = held(self, run, taken)
   if (later !== undefined || !('claim' in taken)) return later ?? null
   const { claim, task } = taken
@@ -265,7 +274,7 @@ export async function advance(self: Swarm, found: Store.Row) {
   if (base) Repo.saw(self, base)
   else self.kv.delete('seen')
   const told = self.told()
-  const waiting = pending(self)
+  const waiting = await pending(self)
   const included = agent.briefed ? notes.filter((note) => waiting.has(note.id) || grown(told.get(note.id), Memo.units(note.weight))) : notes
   const repoLine = repoed(repo, money.left)
   const room = roomed(Site.home(self.env), row.id)
@@ -292,7 +301,8 @@ export async function advance(self: Swarm, found: Store.Row) {
 
   const now = Date.now()
   const turn = sent.ok ? sent.value.request_id : claim
-  self.board.renew(task, claim, leaseMs)
+  const renewed = await self.board.renew(task, claim, leaseMs)
+  if (renewed.ok) leased(self, task, renewed.untilMs)
   await Money.cap(self, row, money.left / Hands.share, money.listed)
   self.kv.put('agent', { ...(self.agent() ?? agent), briefed: true })
   self.ctx.storage.sql.exec(
@@ -303,7 +313,7 @@ export async function advance(self: Swarm, found: Store.Row) {
     String(money.row.spent),
     base,
   )
-  heed(self, start.told)
+  await heed(self, start.told)
   for (const note of notes.filter((found) => told.get(found.id) === null)) self.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
   self.touch()
   await self.move(money.row, { ...(start.again ? { again: true } : {}), balance: start.balance, from: self.last(), n, since: start.since ?? now, started: now, state: 'working', task, turn, claim }, { rounds: n })
@@ -316,7 +326,7 @@ export async function advance(self: Swarm, found: Store.Row) {
 async function fail(self: Swarm, row: Store.Row, task: string, claim: string, error: string, detail: string) {
   const run = self.run()
   failed(self, error, detail)
-  const until = attempted(self, task, claim, { failed: `${error} ${detail}` }).due ?? Date.now()
+  const until = (await attempted(self, task, claim, { failed: `${error} ${detail}` })).due ?? Date.now()
   await self.move(row, { since: Phase.since(run), state: 'waiting', until })
   return until
 }
@@ -413,12 +423,12 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   const answer = status === 'completed' && message ? Answer.parse(redact(message), Date.now()) : undefined
   const ended = Feed.rows(self, 'WHERE n = ?', n)[0]
   const task = run.task
-  heed(self, heard(self, run))
+  await heed(self, heard(self, run))
   self.kv.delete('heard')
   const grew = run.balance !== undefined && BigInt(money.row.balance) > BigInt(run.balance)
   const short = money.known && money.left < Store.reserveOf(money.row)
   const refused = status !== 'completed' && (short || (broke(message) && !grew))
-  const attempt = task && run.claim ? attempted(self, task, run.claim, status === 'completed' ? { done: message ?? '' } : { failed: message ?? status }, !refused) : { attempts: 1, due: undefined, finished: true }
+  const attempt = task && run.claim ? await attempted(self, task, run.claim, status === 'completed' ? { done: message ?? '' } : { failed: message ?? status }, !refused) : { attempts: 1, due: undefined, finished: true }
   await Work.once(self.board, `d1:${task ?? `turn:${n}`}#${n}`, Clock.minuteMs, () => projected(self, row.id, answer, ended))
   const pushed = commits.length ? ` and pushed ${commits.length} commit${commits.length === 1 ? '' : 's'} to ${repo.name}` : ''
   self.log(
