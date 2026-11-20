@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
+import * as Work from '../src/worker/Work.ts'
+import { memorySql } from './sql.ts'
 import type * as BranchingModule from '../src/worker/Branching.ts'
 import type * as OperationsModule from '../src/worker/Operations.ts'
 import type * as StoreModule from '../src/worker/Store.ts'
@@ -29,7 +31,7 @@ function world(gateway: (path: string, body: unknown) => unknown = () => ({}), l
   db.sqlite.prepare("insert into names (address, name, updated_at) values (?, 'ada', 1)").run(rider)
   const calls: [string, ...unknown[]][] = []
   const said = (name: string) => async (...args: unknown[]) => (calls.push([name, ...args]), { ok: true, value: null })
-  const self = { agent: () => ({ id: 'agt' }), budgeting: Promise.resolve(), changed: () => undefined, get env() { return env }, log: () => undefined, touch: () => undefined }
+  const self = { agent: () => ({ id: 'agt' }), board: Work.local(memorySql(), 'swarm:test', 'test'), changed: () => undefined, get env() { return env }, log: () => undefined, touch: () => undefined }
   const object = {
     contributed: said('contributed'),
     direct: (...args: Parameters<InstanceType<typeof Swarm>['direct']>) => Swarm.prototype.direct.apply(self as never, args),

@@ -77,7 +77,7 @@ export async function watch(self: Swarm, row: Store.Row) {
   for (const commit of fresh.reverse()) self.log('status', `Pushed ${commit.sha.slice(0, 7)} to ${repo.name}: ${redact(commit.message.split('\n')[0] ?? '')}`)
 }
 
-export async function snapshot(self: Swarm, swarm: string, name: string) {
+export async function snapshot(self: Swarm, swarm: string, name: string, snapping?: string) {
   const owner = await gatewayWallet(self)
   if (!owner) return
   const base = `/${encodeURIComponent(name)}`
@@ -101,7 +101,7 @@ export async function snapshot(self: Swarm, swarm: string, name: string) {
     name,
     readme: path && read?.text !== undefined && read.text.length <= snapshotText ? { path, text: redact(read.text) } : null,
   } satisfies Snapshot)
-  self.kv.delete('snapping')
+  if (snapping) self.board.release('snapping', snapping)
 }
 
 export type Graph = {

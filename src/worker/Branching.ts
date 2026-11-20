@@ -2,6 +2,7 @@ import * as Memo from '../shared/Memo.ts'
 import * as Gateway from './Gateway.ts'
 import * as Store from './Store.ts'
 import type { Swarm } from './Swarm.ts'
+import * as Work from './Work.ts'
 
 function unspent(branch: Gateway.Subagent) {
   if (branch.budget_usd === undefined) return null
@@ -28,15 +29,17 @@ export async function list(self: Swarm, swarm: string, agent: string): Promise<G
   return result
 }
 
+const budgetLeaseMs = 60_000
+
+// Budgets are set one at a time, each from the funds as they stand once its
+// turn comes, so a later write never lands under an earlier one.
 export function rebudget(self: Swarm, swarm: string, agent: string, branch: number) {
-  const run = self.budgeting.then(async () => {
+  return Work.serial(self.board, 'budgeting', budgetLeaseMs, async () => {
     const money = await Store.funds(self.env, swarm, agent)
     const funded = [...(money.shares.get(branch)?.values() ?? [])].reduce((sum, amount) => sum + amount, 0n)
     const total = (money.bases.get(branch) ?? 0n) + funded
     return Gateway.budget(self.env, swarm, agent, branch, Number(total > 0n ? total : 1n) / 1_000_000)
   })
-  self.budgeting = run.catch(() => undefined)
-  return run
 }
 
 export async function settled(self: Swarm, row: Store.Row) {

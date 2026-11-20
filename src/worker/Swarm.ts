@@ -25,6 +25,7 @@ import * as Repo from './Repo.ts'
 import * as Branching from './Branching.ts'
 import * as Chat from './Chat.ts'
 import * as Turns from './Turns.ts'
+import * as Work from './Work.ts'
 import * as Feed from './Feed.ts'
 import * as Runs from './Runs.ts'
 
@@ -69,6 +70,8 @@ export type Lead = { briefed: boolean; cursor: number; id: string; instructed?: 
 export type Turning = Extract<Phase.Run, { state: 'working' }>
 
 const version = 4
+
+const stepLeaseMs = 5 * 60_000
 
 const dead = ['turn', 'started', 'since', 'paused', 'why', 'failures', 'wanted', 'checked', 'n', 'fresh', 'unreachable', 'url', 'persona', 'cursor', 'shelved', 'terms', 'left', 'expected', 'poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'round', 'resting', 'stuck', 'kicked', 'rechecked', 'retired', 'retiring', 'tallied', 'workers', 'refundAt', 'refunded', 'closing', 'returning', 'open', 'source', 'pledge', 'swept']
 
@@ -142,7 +145,6 @@ const stillMs = 2_000
 export class Swarm extends DurableObject<Cloudflare.Env> {
   declare ctx: DurableObjectState<{}>
   declare env: Cloudflare.Env
-  stepping: Promise<number | null> | undefined
   checked = 0
   born = Date.now()
   branched = 0
@@ -164,7 +166,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   holders = new Map<string, { address: Address | undefined; at: number }>()
   beating: ReturnType<typeof setInterval> | undefined
 
-  budgeting: Promise<unknown> = Promise.resolve()
+  boarded: { board: Work.Board; scope: string } | undefined
 
   listing: { agent: string; at: number; pending: boolean; value: Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> } | undefined
 
@@ -192,7 +194,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const from = ctx.storage.kv.get<number>('v') ?? 0
     if (from < version) migrate(ctx.storage, from)
     ctx.storage.kv.put('instance', this.boot)
+    Work.reclaim(this.board, this.boot)
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
+  }
+
+  get board(): Work.Board {
+    const scope = `swarm:${this.ctx.storage.kv.get<string>('id') ?? 'new'}`
+    if (this.boarded?.scope !== scope) this.boarded = { board: Work.local(this.ctx.storage.sql, scope, this.boot), scope }
+    return this.boarded.board
   }
 
   get kv(): SyncKvStorage {
@@ -410,12 +419,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async heal() {
     const now = Date.now()
     const id = this.kv.get<string>('id')
-    if (id && !this.kv.get<number>('published') && now - (this.kv.get<number>('exposing') ?? 0) > 60_000) {
-      this.kv.put('exposing', now)
-      const row = await this.found(id)
-      if (row) await Turns.expose(this, row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
-      this.kv.delete('exposing')
-    }
+    if (id && !this.kv.get<number>('published'))
+      await Work.holding(this.board, 'exposing', Clock.minuteMs, async () => {
+        const row = await this.found(id)
+        if (row) await Turns.expose(this, row).catch((error: unknown) => console.error('Making the swarm data public failed', error))
+      })
     await Feed.reindex(this)
     if (id && now - (this.kv.get<number>('shelvedAt') ?? 0) > coverMs) await this.publish(id).catch((error: unknown) => console.error('Reading the artifacts failed', error))
     const run = this.run()
@@ -603,12 +611,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   override async alarm() {
     const indexing = Feed.indexed(this)
-    this.stepping ??= Turns.step(this)
-      .catch((error: unknown) => Turns.threw(this, error))
-      .finally(() => {
-        this.stepping = undefined
-      })
-    const stepped = await this.stepping
+    const stepping = await Work.holding(this.board, 'stepping', stepLeaseMs, () => Turns.step(this).catch((error: unknown) => Turns.threw(this, error)))
+    if (!('value' in stepping)) return
+    const stepped = stepping.value
     const next = indexing && this.run().state === 'paused' ? Math.min(stepped ?? Infinity, Date.now() + Feed.indexMs) : stepped
     if (next === null) return
     const pending = await this.ctx.storage.getAlarm()
@@ -625,9 +630,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const id = this.kv.get<string>('id')
     const repo = this.kv.get<string>('repo')
     const snapshot = this.kv.get<Snapshot>('snapshot')
-    if (id && repo && (!snapshot || snapshot.name !== repo || Date.now() - snapshot.at > Repo.snapshotMs) && Date.now() - (this.kv.get<number>('snapping') ?? 0) > Repo.snapshotMs) {
-      this.kv.put('snapping', Date.now())
-      this.ctx.waitUntil(Repo.snapshot(this, id, repo).catch((error: unknown) => console.error('Reading the repository failed', error)))
+    if (id && repo && (!snapshot || snapshot.name !== repo || Date.now() - snapshot.at > Repo.snapshotMs)) {
+      const snapping = Work.lock(this.board, 'snapping', Repo.snapshotMs, Work.lasting)
+      if (snapping.ok) this.ctx.waitUntil(Repo.snapshot(this, id, repo, snapping.claim).catch((error: unknown) => console.error('Reading the repository failed', error)))
     }
     return snapshot && snapshot.name === repo ? snapshot : null
   }
