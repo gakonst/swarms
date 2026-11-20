@@ -122,10 +122,6 @@ const heeded = events.find(
     event['ok'] === true &&
     Number(event['upto']) >= (steered?.seq ?? Infinity),
 )
-const finishers = new Map(
-  events.filter((event) => event.event === 'finished' && event['ok'] === true && event.task).map((event) => [event.task!, event.worker]),
-)
-finishers.set(Swarm.root, 'lead')
 const report = fs.existsSync(path.join(dir, 'report.md')) ? fs.readFileSync(path.join(dir, 'report.md'), 'utf8') : ''
 const summary = {
   ok: false,
@@ -146,7 +142,7 @@ const summary = {
     seq: steered?.seq ?? null,
     heededBy: heeded?.worker ?? null,
     heededUpto: heeded ? Number(heeded['upto']) : null,
-    finishedBy: finishers.get(Work.steered) ?? null,
+    finishedBy: Swarm.named(tasks.find((task) => task.id === Work.steered)?.worker),
     reportTop: Number(/# Top (\d+) words/.exec(report)?.[1] ?? 0),
   },
   workers: exits,
@@ -204,7 +200,7 @@ function observe(tasks: Board.Task[]) {
 
 function describe(task: Board.Task | undefined) {
   if (!task) return null
-  return { id: task.id, phase: task.phase, by: finishers.get(task.id) ?? null, attempts: task.attempts, outcome: Swarm.text(task.outcome) }
+  return { id: task.id, phase: task.phase, by: Swarm.named(task.worker), attempts: task.attempts, outcome: Swarm.text(task.outcome) }
 }
 
 function summarize(children: Board.Task[]) {

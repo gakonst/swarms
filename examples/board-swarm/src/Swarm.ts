@@ -10,6 +10,11 @@ export function actor(name: string) {
   return `agent:${name}`
 }
 
+/** The worker an actor names, such as w2 for agent:w2; a finished or failed task's worker is who finished it. */
+export function named(actor: string | undefined) {
+  return actor === undefined ? null : actor.replace(/^agent:/, '')
+}
+
 export type Fields = { worker: string; event: string; task?: string; [field: string]: unknown }
 
 export type Event = Fields & { atMs: number }
