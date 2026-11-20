@@ -21,6 +21,10 @@ Swarms holds no funds and no keys: the gateway holds the money and pays for the 
 
 Every swarm also plays as an X card (`/x/s/<id>`) and in Telegram (@TempoSwarmsBot).
 
+## Board swarm example
+
+[examples/board-swarm](examples/board-swarm) runs a small swarm on a nanocode Board shared through one SQLite file: a lead posts a goal as tasks with dependencies, worker processes claim them with leases, one worker is killed mid-task and another takes over, and a steer changes a task while it runs. `cd examples/board-swarm && npm install && npm run example`; it needs no API keys.
+
 ## Development
 
 ```sh
