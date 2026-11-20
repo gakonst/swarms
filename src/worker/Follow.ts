@@ -59,14 +59,12 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
 
   let ended = false
   let down = false
-  let answered = false
   const stream = self.stream
   const tried = stream.state === 'streaming' || Date.now() >= stream.retry
   const window = tried ? await listen(self, row, agent, run) : undefined
   if (window) {
     self.stream = streaming
     ended = window.ended
-    answered = true
   } else {
     if (tried) self.stream = stream.state === 'streaming' && stream.fails + 1 < streamFails ? { fails: stream.fails + 1, state: 'streaming' } : { retry: Date.now() + Clock.minuteMs, state: 'polling' }
     let cursor = agent.cursor
@@ -76,8 +74,6 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
         down = read.status >= 500
         break
       }
-      answered = true
-      if (read.value.events.length) Turns.reached(self)
       for (const event of read.value.events) ended = digest(self, event, run.turn) || ended
       if (read.value.next_cursor !== cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor: read.value.next_cursor })
       cursor = read.value.next_cursor
@@ -109,18 +105,13 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   if (report?.ok && !['queued', 'running'].includes(report.value.status)) return Turns.finish(self, row, run, report.value)
   if (report && !report.ok && report.status !== 401 && report.status < 500)
     return Turns.finish(self, row, run, { error: report.detail, request_id: run.turn, status: 'failed' })
-  const failing = down || (!!report && !report.ok && report.status >= 500)
-  if (!failing && (answered || report?.ok)) Turns.reached(self)
-  if (failing && Turns.unreachable(self, now)) {
-    const detail = !report || report.ok ? 'its events did not load' : report.detail
+  const until = Turns.lease(self, run)
+  if (until !== undefined && Date.now() >= until) {
+    const failing = down || (!!report && !report.ok && report.status >= 500)
+    const idle = Math.round((Date.now() - Turns.progress(self.board, run).progressed) / 60_000)
+    const detail = !failing ? '' : !report || report.ok ? ': its events did not load' : `: ${report.detail}`
     await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
-    Turns.abandon(self, agent.id, detail)
-    return Turns.finish(self, row, run, { error: `The agent's session stopped answering: ${detail}`, request_id: run.turn, status: 'failed' })
-  }
-  const idle = Date.now() - Math.max(self.kv.get<number>('progressed') ?? 0, run.started)
-  if (!failing && idle >= Clock.stuckMs) {
-    await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
-    return Turns.finish(self, row, run, { error: `The agent made no model call or tool call for ${Math.round(idle / 60_000)} minutes, so the swarm stopped the turn to start another.`, request_id: run.turn, status: 'failed' })
+    return Turns.finish(self, row, run, { error: `The agent made no model call or tool call for ${idle} minutes${detail}, so the swarm stopped the turn to start another.`, request_id: run.turn, status: 'failed' })
   }
   return window ? Date.now() : now + Clock.followMs
 }
@@ -162,7 +153,6 @@ export async function listen(self: Swarm, row: Store.Row, agent: Lead, run: Turn
           }
           continue
         }
-        Turns.reached(self)
         ended = digest(self, event, run.turn) || ended
         cursor = Math.max(cursor, event.seq)
       }
@@ -279,7 +269,7 @@ const progress = new Set(['assistant.message', 'model.call.completed', 'run.comp
 
 export function advanced(self: Swarm, type: string | undefined, at: number) {
   if (type === undefined || !progress.has(type)) return
-  if (at > (self.kv.get<number>('progressed') ?? 0)) self.kv.put('progressed', at)
+  Turns.progressed(self, at)
 }
 
 const unpaidMost = 8
@@ -301,7 +291,7 @@ export function stalled(self: Swarm, now: number) {
   if (self.kv.get<number>('stallNoted') === working.progressed) return
   self.kv.put('stallNoted', working.progressed)
   const minutes = Math.round((now - working.progressed) / 60_000)
-  self.log('error', `The agent has made no model call or tool call for ${minutes} minutes. Its session may be restarting without getting anywhere; after ${Math.round(Clock.stuckMs / 60_000)} minutes of it the swarm stops the turn and starts another.`, null)
+  self.log('error', `The agent has made no model call or tool call for ${minutes} minutes. Its session may be restarting without getting anywhere; after ${Math.round(Turns.leaseMs / 60_000)} minutes of it the swarm stops the turn and starts another.`, null)
 }
 
 export function record(self: Swarm, who: string | null, type: string | undefined, payload: Record<string, unknown>, event: number, at: number) {

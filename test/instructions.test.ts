@@ -110,7 +110,7 @@ test('a lead re-created later gets the text the swarm froze, not a newer one', a
 
 test("a lead that still has a payer route is moved to the swarm's backers once", async () => {
   const url = 'https://swarms.test/api/swarms/abc123def456/pay'
-  const kv = store([['agent', { briefed: true, cursor: 7, id: 'agt_old', instructed: true, unreachable: null, url }]])
+  const kv = store([['agent', { briefed: true, cursor: 7, id: 'agt_old', instructed: true, url }]])
   const { self, sent } = swarm(kv, () => Response.json({ id: 'agt_old' }))
   const lead = await Turns.lead(self, row)
   assert.ok(!('error' in lead))
@@ -122,7 +122,7 @@ test("a lead that still has a payer route is moved to the swarm's backers once",
 
 test('a lead on the shared persona gets the frozen text once, on its next turn, and the shared persona is never set', async () => {
   const url = 'backers'
-  const kv = store([['agent', { briefed: true, cursor: 7, id: 'agt_old', persona: true, unreachable: null, url }], ['secret', 's'.repeat(64)]])
+  const kv = store([['agent', { briefed: true, cursor: 7, id: 'agt_old', persona: true, url }], ['secret', 's'.repeat(64)]])
   const { self, sent } = swarm(kv, () => Response.json({ id: 'agt_old' }))
   const lead = await Turns.lead(self, row)
   assert.ok(!('error' in lead))
@@ -135,7 +135,7 @@ test('a lead on the shared persona gets the frozen text once, on its next turn, 
 
 test('a lead whose instructions the gateway refuses to give tries again next turn', async () => {
   const url = 'backers'
-  const kv = store([['agent', { briefed: true, cursor: 7, id: 'agt_old', persona: true, unreachable: null, url }], ['secret', 's'.repeat(64)]])
+  const kv = store([['agent', { briefed: true, cursor: 7, id: 'agt_old', persona: true, url }], ['secret', 's'.repeat(64)]])
   const { self, sent } = swarm(kv, () => Response.json({ detail: 'down' }, { status: 503 }))
   const lead = await Turns.lead(self, row)
   assert.ok(!('error' in lead))

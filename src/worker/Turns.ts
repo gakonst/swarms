@@ -20,6 +20,7 @@ import * as Follow from './Follow.ts'
 import * as Repo from './Repo.ts'
 import * as Branching from './Branching.ts'
 import * as Chat from './Chat.ts'
+import * as Work from './Work.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
 
 const repoCost = 1_100_000n
@@ -58,11 +59,15 @@ export function weighed(note: Note) {
   return `[${Words.dollars(Memo.units(note.weight))} behind this, from ${backers}] ${Mention.claimed(note.note)}`
 }
 
-const unreachableMs = 15 * 60_000
+export const leaseMs = 30 * 60_000
 
-const maxFailures = 3
+const sendingMs = 5 * 60_000
 
-const counted = 12
+export const retry: Work.Retry = { backoffMs: 15_000, maxAttempts: 8 }
+
+export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: retry.maxAttempts }
+
+export const noteboard = 'notes'
 
 const resetsToRenew = 2
 
@@ -71,8 +76,6 @@ const quickMs = 60_000
 const settleMs = 15_000
 
 const calmMs = 10 * 60_000
-
-const maxBackoffMs = 30 * 60_000
 
 export async function step(self: Swarm) {
   const id = self.kv.get<string>('id')
@@ -85,8 +88,122 @@ export async function step(self: Swarm) {
     const settling = await settle(self, row, run)
     if (self.run().state === 'paused') return settling
   }
-  if (run.state === 'working') return Follow.follow(self, row, run)
+  if (run.state === 'working') return Follow.follow(self, row, adopted(self, run))
   return advance(self, row)
+}
+
+function posted(self: Swarm, n: number) {
+  const live = self.board.tasks().find((found) => found.labels['kind'] === 'turn' && !Work.terminal(found.phase))
+  if (live) return live.id
+  for (let k = 0; ; k++) {
+    const id = k ? `turn:${n}.${k}` : `turn:${n}`
+    const found = self.board.task(id)
+    if (found && Work.terminal(found.phase)) continue
+    if (!found) Work.ensure(self.board, { id, labels: { kind: 'turn' }, spec: `turn ${n}`, terms: { retry } })
+    return id
+  }
+}
+
+function adopted(self: Swarm, run: Turning): Turning {
+  if (run.task && run.claim) return run
+  const task = posted(self, run.n)
+  const claimed = self.board.claim(task, { leaseMs })
+  if (!claimed.ok) return run
+  const next = { ...run, claim: claimed.claim, task }
+  self.set(next)
+  return next
+}
+
+type Taken = { claim: string; task: string } | { untilMs: number }
+
+function take(self: Swarm, run: Phase.Run): Taken {
+  const board = self.board
+  const now = Date.now()
+  const task = posted(self, self.turned() + 1)
+  const found = board.task(task)
+  if (found?.phase === 'claimed' && found.claim) {
+    const ours = found.claim === Phase.sent(run)?.id
+    if (ours && board.renew(task, found.claim, sendingMs).ok) return { claim: found.claim, task }
+    if (!ours) board.release(task, found.claim, 'its holder restarted')
+  }
+  const claimed = board.claim(task, { leaseMs: sendingMs })
+  if (claimed.ok) return { claim: claimed.claim, task }
+  if (claimed.rejection.kind === 'Terminal' || claimed.rejection.kind === 'UnknownTask') {
+    const next = posted(self, self.turned() + 1)
+    const again = board.claim(next, { leaseMs: sendingMs })
+    if (again.ok) return { claim: again.claim, task: next }
+  }
+  const rejection = claimed.rejection
+  return { untilMs: 'untilMs' in rejection && rejection.untilMs !== undefined ? rejection.untilMs : now + Clock.retryMs }
+}
+
+function attempted(self: Swarm, task: string, claim: string, outcome: Work.Outcome, blamed = true) {
+  const verdict = self.board.finish(task, claim, outcome)
+  const left = self.board.task(task)
+  if (verdict.ok && blamed && left?.phase === 'failed') exhausted(self, left.attempts, 'failed' in outcome ? outcome.failed : '')
+  return { attempts: left?.attempts ?? 1, due: left?.phase === 'open' ? (left.dueAtMs ?? Date.now()) : undefined, finished: verdict.ok }
+}
+
+function exhausted(self: Swarm, attempts: number, detail: string) {
+  const agent = self.agent()
+  if (!agent) return
+  self.kv.delete('agent')
+  self.log('error', `The agent's turn failed ${attempts} tries in a row, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.`, `${agent.id}: ${detail}`)
+}
+
+export function lease(self: Swarm, run: Turning) {
+  return run.task ? self.board.task(run.task)?.untilMs : undefined
+}
+
+export function progress(board: Work.Board, run: Turning) {
+  const until = run.task ? board.task(run.task)?.untilMs : undefined
+  return { progressed: Math.max(until === undefined ? 0 : until - leaseMs, run.started), stalled: until !== undefined && until - Date.now() <= leaseMs / 3 }
+}
+
+export function progressed(self: Swarm, at: number) {
+  const run = self.run()
+  if (run.state === 'working' && run.task && run.claim && at > progress(self.board, run).progressed) self.board.renew(run.task, run.claim, leaseMs)
+}
+
+export function heard(self: Swarm, run: Turning): Phase.Told[] {
+  const found = self.kv.get<{ told: Phase.Told[]; turn: string }>('heard')
+  return found?.turn === run.turn ? found.told : []
+}
+
+export function hear(self: Swarm, run: Turning, told: Phase.Told) {
+  self.kv.put('heard', { told: [...heard(self, run), told], turn: run.turn })
+}
+
+function said(steer: Work.Steer): Phase.Told {
+  const { note, weight } = JSON.parse(steer.text) as { note: string; weight: string }
+  return [note, weight]
+}
+
+export function pending(self: Swarm) {
+  return new Set(self.board.steers(noteboard).map((steer) => said(steer)[0]))
+}
+
+export function steer(self: Swarm, told: readonly Phase.Told[]) {
+  Work.ensure(self.board, { id: noteboard, labels: Work.instance, spec: "backers' notes" })
+  for (const [note, weight] of told) self.board.steer(noteboard, JSON.stringify({ note, weight }), { key: `${note}:${weight}` })
+}
+
+export function heed(self: Swarm, told: readonly Phase.Told[]) {
+  if (!told.length) return
+  steer(self, told)
+  const board = self.board
+  const wanted = new Set(told.map(([note, weight]) => `${note}:${weight}`))
+  const upto = board.steers(noteboard).filter((found) => wanted.has(said(found).join(':'))).at(-1)
+  const held = upto && Work.lock(board, noteboard, Clock.minuteMs)
+  if (upto && held?.ok) {
+    board.heed(noteboard, held.claim, [upto.id])
+    board.release(noteboard, held.claim)
+  }
+  const at = Date.now()
+  for (const [note, weight] of told) {
+    self.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at, weight) VALUES (?, ?, ?)', note, at, weight)
+    self.kv.delete('collapse:' + note)
+  }
 }
 
 export async function remodel(self: Swarm, row: Store.Row): Promise<Store.Row | { detail: string; error: string }> {
@@ -108,22 +225,37 @@ export async function remodel(self: Swarm, row: Store.Row): Promise<Store.Row | 
   return moved
 }
 
+function held(self: Swarm, run: Phase.Run, taken: Taken) {
+  if (!('untilMs' in taken)) return undefined
+  if (run.state === 'starting') self.set({ since: run.since, state: 'waiting', until: taken.untilMs })
+  return taken.untilMs
+}
+
+async function stumble(self: Swarm, row: Store.Row, run: Phase.Run, error: string, detail: string) {
+  const taken = take(self, run)
+  return held(self, run, taken) ?? ('claim' in taken ? fail(self, row, taken.task, taken.claim, error, detail) : null)
+}
+
 export async function advance(self: Swarm, found: Store.Row) {
-  const remodeled = await remodel(self, found)
-  if ('error' in remodeled) return retry(self, found, remodeled.error, remodeled.detail)
-  const row = remodeled
   const run = self.run()
+  const remodeled = await remodel(self, found)
+  if ('error' in remodeled) return stumble(self, found, run, remodeled.error, remodeled.detail)
+  const row = remodeled
   const worked = self.turned()
   const money = await Money.refresh(self, row, { credit: true, hands: Follow.handsDue(self, Date.now()) })
   if (run.state !== 'starting' && money.left < Store.reserveOf(money.row)) {
-    if (!money.known) return retry(self, money.row, 'The gateway did not say how much money the swarm has.', 'Reading its credit and backings failed, so the last figures were not taken as the answer.')
+    if (!money.known) return stumble(self, money.row, run, 'The gateway did not say how much money the swarm has.', 'Reading its credit and backings failed, so the last figures were not taken as the answer.')
     await pause(self, money.row, worked || money.row.contributors ? { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: null, why: 'money' } : { why: 'unfunded' })
     return null
   }
+  const taken = take(self, run)
+  const later = held(self, run, taken)
+  if (later !== undefined || !('claim' in taken)) return later ?? null
+  const { claim, task } = taken
   const repo = await Repo.located(self, row)
 
   const agent = await lead(self, row)
-  if ('error' in agent) return retry(self, money.row, agent.error, agent.detail)
+  if ('error' in agent) return fail(self, money.row, task, claim, agent.error, agent.detail)
 
   const n = run.state === 'starting' ? run.n : worked + 1
   const since = Phase.since(run)
@@ -133,32 +265,36 @@ export async function advance(self: Swarm, found: Store.Row) {
   if (base) Repo.saw(self, base)
   else self.kv.delete('seen')
   const told = self.told()
-  const included = agent.briefed ? notes.filter((note) => grown(told.get(note.id), Memo.units(note.weight))) : notes
+  const waiting = pending(self)
+  const included = agent.briefed ? notes.filter((note) => waiting.has(note.id) || grown(told.get(note.id), Memo.units(note.weight))) : notes
   const repoLine = repoed(repo, money.left)
   const room = roomed(Site.home(self.env), row.id)
   const text = agent.briefed
     ? next(self.tell(included), repo.state === 'ready' ? '' : repoLine, Persona.frozen(self.kv, Store.setup(row)).includes(Persona.roomless) ? room : '')
     : brief(money.row, self.tell(notes), repoLine, room)
-  const id = `${agent.id}:${n}`
   const tried = Phase.sent(run)
-  const again = tried?.id === id ? tried : undefined
+  const again = tried?.id === claim ? tried : undefined
   const start: Extract<Phase.Run, { state: 'starting' }> =
-    run.state === 'starting' && run.id === id
+    run.state === 'starting' && run.id === claim
       ? run
-      : { ...(Phase.again(run) ? { again: true } : {}), balance: String(money.row.balance), id, n, prompt: again?.prompt ?? text, since, state: 'starting', told: again?.told ?? included.map((note) => [note.id, String(Memo.units(note.weight))]) }
+      : { ...(Phase.again(run) ? { again: true } : {}), balance: String(money.row.balance), id: claim, n, prompt: again?.prompt ?? text, since, state: 'starting', told: again?.told ?? included.map((note) => [note.id, String(Memo.units(note.weight))]) }
   const prompt = start.prompt ?? text
   await self.move(money.row, start)
-  const sent = await Gateway.prompt(self.env, row.id, agent.id, { id: start.id, prompt, steer: false })
+  const sent = await Gateway.prompt(self.env, row.id, agent.id, { id: claim, prompt, steer: false })
   if (!sent.ok && sent.status !== 409) {
     if (sent.status === 404) self.kv.delete('agent')
-    if (sent.status >= 500 && unreachable(self, Date.now())) abandon(self, agent.id, sent.detail)
-    return retry(self, money.row, 'The gateway did not take the next message for the agent.', sent.detail)
+    if (sent.status < 500) return fail(self, money.row, task, claim, 'The gateway did not take the next message for the agent.', sent.detail)
+    failed(self, 'The gateway did not take the next message for the agent.', sent.detail)
+    const until = Date.now() + Clock.retryMs
+    await self.move(money.row, { sent: { id: claim, prompt, told: start.told }, since, state: 'waiting', until })
+    return until
   }
 
   const now = Date.now()
-  const turn = sent.ok ? sent.value.request_id : start.id
+  const turn = sent.ok ? sent.value.request_id : claim
+  self.board.renew(task, claim, leaseMs)
   await Money.cap(self, row, money.left / Hands.share, money.listed)
-  self.kv.put('agent', { ...(self.agent() ?? agent), briefed: true, unreachable: null })
+  self.kv.put('agent', { ...(self.agent() ?? agent), briefed: true })
   self.ctx.storage.sql.exec(
     "INSERT OR REPLACE INTO turns (n, turn, started_at, status, spent_before, base) VALUES (?, ?, ?, 'running', ?, ?)",
     n,
@@ -167,26 +303,22 @@ export async function advance(self: Swarm, found: Store.Row) {
     String(money.row.spent),
     base,
   )
-  for (const [note, weight] of start.told) {
-    self.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at, weight) VALUES (?, ?, ?)', note, now, weight)
-    self.kv.delete('collapse:' + note)
-  }
+  heed(self, start.told)
   for (const note of notes.filter((found) => told.get(found.id) === null)) self.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
   self.touch()
-  await self.move(money.row, { ...(start.again ? { again: true } : {}), balance: start.balance, from: self.last(), n, since: start.since ?? now, started: now, state: 'working', turn }, { rounds: n })
+  await self.move(money.row, { ...(start.again ? { again: true } : {}), balance: start.balance, from: self.last(), n, since: start.since ?? now, started: now, state: 'working', task, turn, claim }, { rounds: n })
   Relay.begin(self)
   self.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', prompt)
   if (start.since === null && !start.again) Chat.announce(self, `${worked ? 'Back at work' : 'Started working'}.`)
   return now + Clock.followMs
 }
 
-export async function retry(self: Swarm, row: Store.Row, error: string, detail: string) {
+async function fail(self: Swarm, row: Store.Row, task: string, claim: string, error: string, detail: string) {
   const run = self.run()
-  const now = Date.now()
   failed(self, error, detail)
-  const sent = Phase.sent(run)
-  await self.move(row, { ...(sent ? { sent } : {}), since: Phase.since(run), state: 'waiting', until: now + Clock.retryMs })
-  return now + Clock.retryMs
+  const until = attempted(self, task, claim, { failed: `${error} ${detail}` }).due ?? Date.now()
+  await self.move(row, { since: Phase.since(run), state: 'waiting', until })
+  return until
 }
 
 function failed(self: Swarm, error: string, detail: string) {
@@ -204,23 +336,6 @@ export function threw(self: Swarm, error: unknown) {
   const sent = Phase.sent(run)
   if (run.state === 'starting') self.set({ ...(sent ? { sent } : {}), since: run.since, state: 'waiting', until: now + Clock.retryMs })
   return now + Clock.retryMs
-}
-
-export function unreachable(self: Swarm, now: number) {
-  const agent = self.agent()
-  if (!agent) return false
-  if (agent.unreachable === null) self.kv.put('agent', { ...agent, unreachable: now })
-  return agent.unreachable !== null && now - agent.unreachable >= unreachableMs
-}
-
-export function reached(self: Swarm) {
-  const agent = self.agent()
-  if (agent && agent.unreachable !== null) self.kv.put('agent', { ...agent, unreachable: null })
-}
-
-export function abandon(self: Swarm, agent: string, detail: string) {
-  self.kv.delete('agent')
-  self.log('error', "The agent's session stopped answering for 15 minutes, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.", `${agent}: ${detail}`)
 }
 
 export const credited = 'backers'
@@ -244,7 +359,7 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
   const created = await Gateway.agent(self.env, row.id, { instructions, name: row.title.slice(0, 60), setup })
   if (!created.ok) return { detail: created.detail, error: 'The gateway did not create the agent.' }
   Persona.keep(self.kv, instructions)
-  const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, instructed: true, unreachable: null, url: credited }
+  const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, instructed: true, url: credited }
   self.kv.put('agent', agent)
   self.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it uses is paid from the money the swarm's riders sent, which the gateway holds as its credit.", created.value.id)
   await Branching.release(self, row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
@@ -296,16 +411,22 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   )
   self.touch()
   const answer = status === 'completed' && message ? Answer.parse(redact(message), Date.now()) : undefined
-  if (answer?.text) await Store.update(self.env, row.id, { answer: JSON.stringify(answer) })
   const ended = Feed.rows(self, 'WHERE n = ?', n)[0]
-  if (ended) await Search.report(self.env, row.id, ended).catch((error: unknown) => console.error('Indexing the update failed', error))
+  const task = run.task
+  heed(self, heard(self, run))
+  self.kv.delete('heard')
+  const grew = run.balance !== undefined && BigInt(money.row.balance) > BigInt(run.balance)
+  const short = money.known && money.left < Store.reserveOf(money.row)
+  const refused = status !== 'completed' && (short || (broke(message) && !grew))
+  const attempt = task && run.claim ? attempted(self, task, run.claim, status === 'completed' ? { done: message ?? '' } : { failed: message ?? status }, !refused) : { attempts: 1, due: undefined, finished: true }
+  await Work.once(self.board, `d1:${task ?? `turn:${n}`}#${n}`, Clock.minuteMs, () => projected(self, row.id, answer, ended))
   const pushed = commits.length ? ` and pushed ${commits.length} commit${commits.length === 1 ? '' : 's'} to ${repo.name}` : ''
   self.log(
     status === 'completed' ? 'status' : 'error',
     status === 'completed' ? `Posted an update after spending ${Words.dollars(spent > 0n ? spent : 0n)}${pushed}.` : `The agent stopped with an error after spending ${Words.dollars(spent > 0n ? spent : 0n)}${pushed}.`,
     status === 'completed' ? (commits.length ? commits.map((commit) => `${commit.sha.slice(0, 7)} ${commit.message.split('\n')[0]}`).join('\n') : null) : message,
   )
-  if (Follow.cued(self, 'artifacts', self.kv.get<number>('shelvedAt') ?? 0)) await self.publish(row.id)
+  if (attempt.finished && Follow.cued(self, 'artifacts', self.kv.get<number>('shelvedAt') ?? 0)) await self.publish(row.id)
   self.changed('detail')
   if (answer?.text) Chat.announce(self, `Update: ${Answer.excerpt(answer.text, 280)}`)
 
@@ -317,17 +438,19 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
     .one()
   const kinds = new Set((['kv', 'bucket', 'git'] as const).filter((kind) => stored[kind] > 0 || !self.kv.get<number>('published')))
   if (kinds.size) await expose(self, row, kinds).catch((error: unknown) => console.error('Making the swarm data public failed', error))
-  const grew = run.balance !== undefined && BigInt(money.row.balance) > BigInt(run.balance)
-  const short = money.known && money.left < Store.reserveOf(money.row)
-  if (status !== 'completed' && (short || (broke(message) && !grew))) {
-    await pause(self, money.row, { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: short ? null : Date.now() + Phase.patience(refusals(self)), why: 'money' })
+  if (refused) {
+    await pause(self, money.row, { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: short ? null : Date.now() + Work.delay(paying, attempt.attempts), why: 'money' })
     return null
   }
-  const failures = status === 'completed' ? 0 : failing(self, run.since)
   const renewed = status !== 'completed' && resets(self) >= resetsToRenew && renew(self, message)
-  const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : renewed ? Date.now() : Date.now() + backoff(failures)
+  const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : renewed ? Date.now() : (attempt.due ?? Date.now())
   await self.move(money.row, { since: run.since, state: 'waiting', until })
   return until
+}
+
+async function projected(self: Swarm, swarm: string, answer: ReturnType<typeof Answer.parse> | undefined, ended: Search.Turn | undefined) {
+  if (answer?.text) await Store.update(self.env, swarm, { answer: JSON.stringify(answer) })
+  if (ended) await Search.report(self.env, swarm, ended).catch((error: unknown) => console.error('Indexing the update failed', error))
 }
 
 export function settledUsd(report: Gateway.Report | undefined) {
@@ -342,25 +465,12 @@ async function charged(self: Swarm, row: Store.Row, run: Turning) {
   return report?.ok ? settledUsd(report.value) : undefined
 }
 
-export function backoff(failures: number) {
-  return failures < maxFailures ? settleMs : Math.min(maxBackoffMs, Clock.minuteMs * 2 ** (failures - maxFailures))
-}
-
 async function quiet(self: Swarm, row: Store.Row) {
   const agent = self.agent()?.id
   if (!agent) return true
   const listed = await Gateway.subagents(self.env, row.id, agent)
   if (!listed.ok) return listed.status < 500
   return listed.value.every((subagent) => !['pending', 'queued', 'running'].includes(subagent.status.state))
-}
-
-function refusals(self: Swarm) {
-  let count = 0
-  for (const row of self.ctx.storage.sql.exec<{ status: string }>('SELECT status FROM turns ORDER BY n DESC LIMIT 8').toArray()) {
-    if (row.status === 'completed') break
-    count += 1
-  }
-  return count
 }
 
 export function reset(message: string | null) {
@@ -386,14 +496,6 @@ function renew(self: Swarm, message: string | null) {
   return true
 }
 
-export function failing(self: Swarm, since: number) {
-  let count = 0
-  for (const row of self.ctx.storage.sql.exec<{ status: string }>('SELECT status FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, counted).toArray()) {
-    if (row.status === 'completed') break
-    count += 1
-  }
-  return count
-}
 
 export async function expose(self: Swarm, row: Store.Row, kinds: ReadonlySet<'bucket' | 'git' | 'kv'> = new Set(['bucket', 'git', 'kv'])) {
   const hidden: ['bucket' | 'git' | 'kv', string][] = []

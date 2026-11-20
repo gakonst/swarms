@@ -95,7 +95,7 @@ test('a step that keeps throwing logs one error row in ten minutes and never sta
   assert.equal(prompts(w.calls), 0)
 })
 
-test('an agent is abandoned only after fifteen minutes in which the gateway never answered, not after two failures fifteen minutes apart', async (t) => {
+test('a turn the gateway stops answering for is stopped when its lease runs out, as one that makes no progress is', async (t) => {
   let failing = false
   const w = world((_request, url) => (failing && url.pathname === '/v1/agents/agt_1/turns/agt_1:1' ? error() : undefined))
   t.after(w.restore)
@@ -110,17 +110,37 @@ test('an agent is abandoned only after fifteen minutes in which the gateway neve
     await w.ring()
   }
   await check(1, true)
-  assert.notEqual(w.swarm.agent()?.unreachable, null)
   await check(5, false)
-  assert.equal(w.swarm.agent()?.unreachable, null)
-  await check(11, true)
+  await check(22, true)
   assert.deepEqual([w.swarm.run().state, w.swarm.agent()?.id], ['working', 'agt_1'])
-  assert.deepEqual(w.errors(), [])
+  assert.ok(!w.errors().some((text) => /stopped the turn/.test(text)))
 
-  await check(16, true)
-  assert.deepEqual([w.swarm.run().state, w.swarm.agent()], ['waiting', undefined])
+  await check(3, true)
+  assert.deepEqual([w.swarm.run().state, w.swarm.agent()?.id], ['waiting', 'agt_1'])
   assert.ok(w.calls.includes('POST /v1/agents/agt_1/turns/agt_1:1/cancel'))
-  assert.ok(w.errors().some((text) => /stopped answering for 15 minutes/.test(text)))
+  assert.match(String(w.sql.exec('SELECT message FROM turns WHERE n = 1').toArray()[0]?.['message']), /made no model call or tool call for 31 minutes/)
+})
+
+test('a turn the gateway keeps refusing is tried again on the board backoff, and after eight tries the swarm starts a new agent', async (t) => {
+  const w = world((request, url) => (url.pathname === '/v1/agents/agt_1/turns' && request.method === 'POST' ? Response.json({ error: 'bad turn' }, { status: 400 }) : undefined))
+  t.after(w.restore)
+  await w.seed()
+  await w.swarm.wake('money')
+  await w.ring()
+  const first = w.swarm.run()
+  assert.ok(first.state === 'waiting' && first.until === Date.now() + 15_000)
+  assert.equal(w.swarm.board.task('turn:1')?.dueAtMs, first.until)
+  for (let attempt = 1; attempt < 8; attempt++) {
+    w.pass(3_600_000)
+    await w.ring()
+  }
+  assert.equal(w.swarm.board.task('turn:1')?.phase, 'failed')
+  assert.equal(w.swarm.board.task('turn:1')?.attempts, 8)
+  assert.ok(w.errors().some((text) => /failed 8 tries in a row/.test(text)))
+  assert.equal(w.swarm.agent(), undefined)
+  w.pass(60_000)
+  await w.ring()
+  assert.equal(w.swarm.board.task('turn:1.1')?.attempts, 1)
 })
 
 test('a swarm with money whose agent the gateway fails to create is retrying, not out of money', async (t) => {
@@ -196,7 +216,7 @@ test('a pause settles once even when the gateway no longer has the agent or a su
     })
     t.after(w.restore)
     await w.seed()
-    w.swarm.kv.put('agent', { briefed: true, cursor: 0, id: 'agt_gone', instructed: true, unreachable: null, url: 'backers' })
+    w.swarm.kv.put('agent', { briefed: true, cursor: 0, id: 'agt_gone', instructed: true, url: 'backers' })
     w.swarm.kv.put('run', { at: Date.now() - 60_000, pause: { left: '10000', needs: '50000', wake: null, why: 'money' }, state: 'paused' })
     let alarms = 0
     for (let next: number | null = Date.now(); next !== null && alarms < 30; next = w.alarm()) {
@@ -444,7 +464,7 @@ test('the branches a swarm last listed are answered when the gateway is slow or 
   const w = world((_request, url) => (url.pathname === '/v1/agents/agt_1/subagents' ? answer() : undefined))
   t.after(w.restore)
   await w.seed()
-  w.swarm.kv.put('agent', { briefed: true, cursor: 0, id: 'agt_1', unreachable: null })
+  w.swarm.kv.put('agent', { briefed: true, cursor: 0, id: 'agt_1' })
   const old = [{ id: 1, role: 'explorer', status: { state: 'running' } }]
   w.swarm.kv.put('subagents', { agent: 'agt_1', at: Date.now() - 3_600_000, list: old })
 
@@ -523,7 +543,7 @@ test('a swarm that ran on a Boundless model is moved off it, whatever the gatewa
   await w.seed('5000000')
   const old = { harness: 'claude', model: 'boundless/anthropic/claude-fable-5.2', most: '440960', step: '65600', steps: {}, subagents: { harnesses: ['claude'], models: ['boundless/anthropic/claude-fable-5.2'] }, template: 'fable' }
   await w.env.DB.prepare('update swarms set setup = ? where id = ?').bind(JSON.stringify(old), id).run()
-  w.swarm.kv.put('agent', { briefed: true, cursor: 7, id: 'agt_old', instructed: true, unreachable: null, url: 'backers' })
+  w.swarm.kv.put('agent', { briefed: true, cursor: 7, id: 'agt_old', instructed: true, url: 'backers' })
   w.swarm.kv.put('instructions', 'the old instructions, naming boundless/anthropic/claude-fable-5.2')
   await w.swarm.wake('money')
   await w.ring()

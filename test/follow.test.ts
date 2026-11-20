@@ -47,17 +47,24 @@ test('thinking that arrives only as live frames is kept by offset and taken as o
   assert.equal(Follow.buffers(object).take(null), 'an older thought')
 })
 
-test('a working agent with no model or tool call for twenty minutes is reported stalled once, and progress clears it', () => {
+test('a working agent with no model or tool call for twenty minutes is reported stalled once, and progress renews its lease and clears it', async () => {
+  const Work = await import('../src/worker/Work.ts')
+  const Turns = await import('../src/worker/Turns.ts')
+  const { memorySql } = await import('./sql.ts')
   const kept = new Map<string, unknown>()
   const logged: string[] = []
+  const board = Work.local(memorySql(), 'swarm:abc', 'a')
   const started = Date.now() - 30 * 60_000
+  Work.ensure(board, { id: 'turn:1', spec: 'turn 1', terms: { retry: Turns.retry } })
+  const claimed = board.claim('turn:1', { leaseMs: 1_000 })
+  assert.ok(claimed.ok)
+  const run = { claim: claimed.claim, from: 0, n: 1, since: started, started, state: 'working', task: 'turn:1', turn: 'agt_1:1' } as const
   const object = {
+    board,
     kv: { get: (key: string) => kept.get(key), put: (key: string, value: unknown) => kept.set(key, value) },
     log: (_kind: string, text: string) => logged.push(text),
-    working: () => {
-      const progressed = Math.max((kept.get('progressed') as number | undefined) ?? 0, started)
-      return { progressed, since: started, stalled: Date.now() - progressed >= 20 * 60_000 }
-    },
+    run: () => run,
+    working: () => ({ ...Turns.progress(board, run), since: started }),
   } as never
   Follow.advanced(object, 'subagent.added', Date.now())
   Follow.stalled(object, Date.now())
@@ -65,6 +72,7 @@ test('a working agent with no model or tool call for twenty minutes is reported 
   assert.equal(logged.length, 1)
   assert.match(logged[0] ?? '', /no model call or tool call for 30 minutes/)
   Follow.advanced(object, 'model.call.completed', Date.now())
+  assert.ok((board.task('turn:1')?.untilMs ?? 0) >= Date.now() + Turns.leaseMs - 1_000)
   Follow.stalled(object, Date.now())
   assert.equal(logged.length, 1)
 })

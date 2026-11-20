@@ -16,7 +16,7 @@ export type Run =
   | { state: 'new' }
   | { from?: Pause | undefined; sent?: Sent | undefined; since: number | null; state: 'waiting'; until: number }
   | { again?: boolean | undefined; balance?: string | undefined; id: string; n: number; prompt?: string | undefined; since: number | null; state: 'starting'; told: Told[] }
-  | { again?: boolean | undefined; balance?: string | undefined; from: number; n: number; since: number; started: number; state: 'working'; turn: string; wanted?: string | undefined }
+  | { again?: boolean | undefined; balance?: string | undefined; claim?: string | undefined; from: number; n: number; since: number; started: number; state: 'working'; task?: string | undefined; turn: string; wanted?: string | undefined }
   | { at: number; pause: Pause; settled?: number | undefined; state: 'paused' }
 
 export type Paused = Extract<Run, { state: 'paused' }>
@@ -76,10 +76,6 @@ function woken(run: Run) {
 export function waking(run: Run, now: number) {
   const wake = woken(run)
   return wake !== Infinity && wake > now ? wake : null
-}
-
-export function patience(failures: number) {
-  return Math.min(maxPatienceMs, rereadMs * 2 ** Math.max(0, failures - 1))
 }
 
 export function project(run: Run, n: number): { status: Status; why: Why | null } {

@@ -58,7 +58,6 @@ test('a pause goes on when the money is there, and one the gateway refused with 
   assert.ok(Phase.again({ from: refused, since: null, state: 'waiting', until: 0 }) && !Phase.again({ from: money, since: null, state: 'waiting', until: 0 }) && !Phase.again({ since: null, state: 'waiting', until: 0 }))
   assert.ok(!Phase.due({ at: 0, pause: refused, state: 'paused' }, Phase.rereadMs - 1))
   assert.ok(Phase.due({ at: 0, pause: refused, state: 'paused' }, Phase.rereadMs))
-  assert.deepEqual([1, 2, 3, 9].map(Phase.patience), [Phase.rereadMs, 2 * Phase.rereadMs, 4 * Phase.rereadMs, Phase.maxPatienceMs])
   assert.equal(Phase.waking({ at: 0, pause: { ...refused, wake: 600 }, state: 'paused' }, 599), 600)
   assert.equal(Phase.waking({ at: 0, pause: { ...refused, wake: 600 }, state: 'paused' }, 600), null)
   assert.equal(Phase.waking({ at: 0, pause: refused, state: 'paused' }, 0), Phase.rereadMs)

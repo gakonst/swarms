@@ -11,22 +11,10 @@ registerHooks({
 
 const Turns: typeof TurnsModule = await import('../src/worker/Turns.ts')
 
-test('failed turns never stop the swarm: they wait 15 s, then back off from a minute up to half an hour', () => {
-  assert.deepEqual([0, 1, 2, 3, 4, 5, 8, 20].map(Turns.backoff), [15_000, 15_000, 15_000, 60_000, 120_000, 240_000, 1_800_000, 1_800_000])
-})
-
-test('failed turns count back to the last completed one', () => {
-  const statuses = [{ status: 'failed' }, { status: 'failed' }, { status: 'completed' }, { status: 'failed' }]
-  const self = (rows: { status: string }[]) => ({ ctx: { storage: { sql: { exec: (_query: string, _since: number, limit: number) => ({ toArray: () => rows.slice(0, limit) }) } } } }) as never
-  assert.equal(Turns.failing(self(statuses), 0), 2)
-  assert.equal(Turns.failing(self(statuses.slice(2)), 0), 0)
-  assert.equal(Turns.failing(self([{ status: 'failed' }, { status: 'failed' }, { status: 'failed' }, { status: 'failed' }]), 0), 4)
-})
-
-test('a run of failed turns counts far enough for the backoff to reach half an hour', () => {
-  const rows = Array.from({ length: 20 }, () => ({ status: 'failed' }))
-  const self = { ctx: { storage: { sql: { exec: (_query: string, _since: number, limit: number) => ({ toArray: () => rows.slice(0, limit) }) } } } } as never
-  assert.equal(Turns.backoff(Turns.failing(self, 0)), 1_800_000)
+test("failed turns never stop the swarm: the board opens each again after its retry's backoff, doubling from 15 s, eight times before the agent is replaced", async () => {
+  const Work = await import('../src/worker/Work.ts')
+  assert.deepEqual([1, 2, 3, 4, 8].map((attempts) => Work.delay(Turns.retry, attempts)), [15_000, 30_000, 60_000, 120_000, 1_920_000])
+  assert.equal(Turns.retry.maxAttempts, 8)
 })
 
 test('two turns in a row ending in a session reset replace the agent once, and the new agent is not replaced for the old one', () => {

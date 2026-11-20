@@ -66,11 +66,11 @@ export type Spoken = {
 
 type Seen = { title: string; turn: number; version: number }
 
-export type Lead = { briefed: boolean; cursor: number; id: string; instructed?: boolean; unreachable: number | null; url: string }
+export type Lead = { briefed: boolean; cursor: number; id: string; instructed?: boolean; url: string }
 
 export type Turning = Extract<Phase.Run, { state: 'working' }>
 
-const version = 4
+const version = 5
 
 const stepLeaseMs = 5 * 60_000
 
@@ -92,7 +92,6 @@ function migrate(storage: DurableObjectStorage, from: number) {
         briefed: !kv.get<boolean>('fresh'),
         cursor: kv.get<number>('cursor') ?? 0,
         id: agent,
-        unreachable: kv.get<number>('unreachable') ?? null,
         url: kv.get<string>('url') ?? '',
       } satisfies Lead)
     for (const key of dead) kv.delete(key)
@@ -112,6 +111,7 @@ function migrate(storage: DurableObjectStorage, from: number) {
   }
   if (from < 3 && !kv.get<Lead>('agent')?.instructed) kv.delete('instructions')
   if (from < 4) kv.delete('settled')
+  if (from < 5) kv.delete('progressed')
   kv.put('v', version)
 }
 
@@ -509,8 +509,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const since = Phase.since(run)
     if (since === null) return null
     if (run.state !== 'working') return { since }
-    const progressed = Math.max(this.kv.get<number>('progressed') ?? 0, run.started)
-    return { progressed, since, stalled: Date.now() - progressed >= Clock.stallMs }
+    return { ...Turns.progress(this.board, run), since }
   }
 
   turns(after = 0): Search.Turn[] {
@@ -670,22 +669,25 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async steer(swarm: string, noteId: string): Promise<Note | undefined> {
     const row = await this.found(swarm)
     const agent = this.agent()?.id
-    const turn = this.turn()
+    const run = this.run()
+    const turn = run.state === 'working' ? run : undefined
     if (!turn) await this.wake('note')
     if (!row || !agent || !turn) return undefined
 
     const note = (await this.notes(row)).find((found) => found.id === noteId)
     if (!note) return undefined
+    const weight = String(Memo.units(note.weight))
     const told = this.ctx.storage.sql.exec<{ weight: string }>('SELECT weight FROM steered WHERE note = ?', note.id).toArray()[0]
     if (told && BigInt(told.weight) >= Memo.units(note.weight)) return note
+    if (Turns.heard(this, turn).some(([id, heard]) => id === note.id && heard === weight)) return note
+    Turns.steer(this, [[note.id, weight]])
     const sent = await Gateway.prompt(this.env, swarm, agent, {
       prompt: Turns.weighed(this.tell([note])[0] ?? note),
       steer: true,
     })
     if (!sent.ok) return undefined
 
-    this.ctx.storage.sql.exec('INSERT OR REPLACE INTO steered (note, at, weight) VALUES (?, ?, ?)', note.id, Date.now(), String(Memo.units(note.weight)))
-    this.kv.delete('collapse:' + note.id)
+    Turns.hear(this, turn, [note.id, weight])
     this.touch()
     this.changed('detail')
     this.log(
