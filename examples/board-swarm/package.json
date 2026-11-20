@@ -1,0 +1,20 @@
+{
+  "name": "board-swarm",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "example": "node --no-warnings src/lead.ts",
+    "test": "node --no-warnings --test test/*.test.ts",
+    "check": "tsc -p ."
+  },
+  "dependencies": {
+    "nanocode-ts": "https://github.com/nanocodexyz/nanocode-ts/releases/download/build-b7a4da2/nanocode-ts-b7a4da2.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "6.0.2"
+  }
+}
