@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
-import * as Work from '../src/worker/Work.ts'
-import { memorySql } from './sql.ts'
+import { fresh } from './board.ts'
 import type * as MoneyModule from '../src/worker/Money.ts'
+import './host.ts'
 
 registerHooks({
   resolve: (specifier, context, next) =>
@@ -41,7 +41,7 @@ function swarm(gifts: { amount: string; channel: string; id: string }[], behind:
   const self = {
     agent: () => ({ id: 'agt' }),
     beacon: () => undefined,
-    board: Work.local(memorySql(), 'swarm:test', 'test'),
+    board: fresh('swarm:test'),
     changed: () => undefined,
     env: {
       DB: {

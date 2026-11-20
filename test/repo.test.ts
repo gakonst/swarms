@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
 import type * as RepoModule from '../src/worker/Repo.ts'
+import './host.ts'
 
 registerHooks({
   resolve: (specifier, context, next) =>

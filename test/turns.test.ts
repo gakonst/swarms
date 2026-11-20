@@ -3,6 +3,7 @@ import { registerHooks } from 'node:module'
 import test from 'node:test'
 import type * as Phase from '../src/worker/Phase.ts'
 import type * as TurnsModule from '../src/worker/Turns.ts'
+import './host.ts'
 
 registerHooks({
   resolve: (specifier, context, next) =>

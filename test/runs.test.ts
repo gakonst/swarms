@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 import { folded, readable, track, tracker, type Tracked } from '../src/shared/Fleet.ts'
 import type * as RunsModule from '../src/worker/Runs.ts'
+import './host.ts'
 
 registerHooks({
   resolve: (specifier, context, next) =>

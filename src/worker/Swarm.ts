@@ -27,6 +27,7 @@ import * as Branching from './Branching.ts'
 import * as Chat from './Chat.ts'
 import * as Turns from './Turns.ts'
 import * as Work from './Work.ts'
+import * as Host from './Host.ts'
 import * as Feed from './Feed.ts'
 import * as Runs from './Runs.ts'
 
@@ -70,7 +71,7 @@ export type Lead = { briefed: boolean; cursor: number; id: string; instructed?: 
 
 export type Turning = Extract<Phase.Run, { state: 'working' }>
 
-const version = 5
+const version = 6
 
 const stepLeaseMs = 5 * 60_000
 
@@ -112,6 +113,8 @@ function migrate(storage: DurableObjectStorage, from: number) {
   if (from < 3 && !kv.get<Lead>('agent')?.instructed) kv.delete('instructions')
   if (from < 4) kv.delete('settled')
   if (from < 5) kv.delete('progressed')
+  // The board's own tables replace the ones Work.local kept.
+  if (from < 6) for (const table of ['work_tasks', 'work_keys', 'work_steers']) sql.exec(`DROP TABLE IF EXISTS ${table}`)
   kv.put('v', version)
 }
 
@@ -204,9 +207,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const scope = `swarm:${id}`
     if (this.boarded?.scope !== scope)
       this.boarded = {
-        board: Work.opening(async () => {
-          const board = Work.local(this.ctx.storage.sql, scope, this.boot)
-          await Work.reclaim(board, this.boot)
+        board: Work.opening(scope, `swarm:${id}`, async () => {
+          const board = await Host.open(this.ctx.storage, scope, `swarm:${id}`)
+          await Work.reclaim(board)
           return board
         }),
         scope,
@@ -425,7 +428,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const id = this.ctx.storage.kv.get<string>('id')
     if (!id) throw new Error('The hands board opens once the swarm has its id.')
     const scope = `swarm:${id}:hands`
-    if (this.slotted?.scope !== scope) this.slotted = { board: Work.opening(async () => Work.local(this.ctx.storage.sql, scope, this.boot)), scope }
+    if (this.slotted?.scope !== scope) this.slotted = { board: Work.opening(scope, `swarm:${id}`, () => Host.open(this.ctx.storage, scope, `swarm:${id}`)), scope }
     return this.slotted.board
   }
 

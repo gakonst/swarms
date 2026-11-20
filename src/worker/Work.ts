@@ -3,117 +3,23 @@
 // Every lock, timer and once-only step the swarm used to keep by hand (the
 // single-flight step, the budgeting chain, the soft locks in kv, the stuck and
 // stall timers, retry backoff, the steered notes, branch settlement and the
-// hand cap) is a task here: claimed with a lease, renewed while it is alive,
-// released or finished. `Board` is the shape of nanocode-ts's `Board`, which
-// opens over the swarm's own SQLite; until that build is pinned, `local` keeps
-// the same semantics in tables of the same database, so a swarm's claims live
-// as long as the object's storage does.
+// hand cap) is a task on nanocode-ts's Board, which keeps its log in the
+// object's own SQLite: claimed with a lease, renewed while it is alive,
+// released or finished. This module is the few helpers the swarm builds on
+// the board: locks, once-only steps and letting go of a past life's locks.
 
-export type Phase = 'open' | 'claimed' | 'done' | 'failed' | 'cancelled' | 'blocked'
+import type { Board as Boards } from 'nanocode-ts'
 
-export type Retry = { backoffMs: number; maxAttempts: number }
-
-export type Terms = { assignee?: string; dueAtMs?: number; every?: number; retry?: Retry }
-
-export type Post = { id: string; labels?: Record<string, string>; needs?: string[]; parent?: string; spec: string; terms?: Terms }
-
-export type Task = {
-  attempts: number
-  claim?: string | undefined
-  dueAtMs?: number | undefined
-  id: string
-  labels: Record<string, string>
-  needs: string[]
-  outcome?: string | undefined
-  parent: string | null
-  phase: Phase
-  spec: string
-  terms: Terms
-  untilMs?: number | undefined
-  worker?: string | undefined
-}
-
-export type Rejection =
-  | { kind: 'Exists' }
-  | { kind: 'UnknownTask' }
-  | { kind: 'UnknownParent'; parent: string }
-  | { kind: 'UnknownNeed'; need: string }
-  | { kind: 'Waiting'; need?: string | undefined; untilMs?: number | undefined }
-  | { claim: string; kind: 'Held'; untilMs: number; worker?: string | undefined }
-  | { kind: 'NotHolder' }
-  | { kind: 'Terminal' }
-  | { kind: 'Unheeded'; upto: number }
-  | { cap: number; kind: 'Full' }
-
-export type Verdict = { ok: true } | { ok: false; rejection: Rejection }
-
-export type Claimed = { claim: string; ok: true; tookOver: boolean; untilMs: number } | { ok: false; rejection: Rejection }
-
-export type Outcome = { done: string } | { failed: string }
-
-export type Steer = { atMs: number; by: string; id: string; key?: string | undefined; text: string }
-
-// Every method answers a promise, as nanocode-ts's Board does.
-export interface Board {
-  claim(id: string, opts: { atMs?: number; cap?: number; key?: string; leaseMs: number }): Promise<Claimed>
-  finish(id: string, claim: string, outcome: Outcome): Promise<Verdict>
-  heed(id: string, claim: string, steers: readonly string[]): Promise<Verdict>
-  held(atMs?: number): Promise<Task[]>
-  label(id: string, set: Record<string, string>, unset?: readonly string[]): Promise<Verdict>
-  post(task: Post, opts?: { key?: string }): Promise<Verdict>
-  ready(opts?: { atMs?: number; label?: [string, string] }): Promise<Task[]>
-  release(id: string, claim: string, note?: string): Promise<Verdict>
-  renew(id: string, claim: string, leaseMs: number): Promise<Claimed>
-  steer(id: string, text: string, opts?: { key?: string }): Promise<Verdict>
-  steers(id: string): Promise<Steer[]>
-  task(id: string): Promise<Task | null>
-  tasks(): Promise<Task[]>
-}
-
-type Synchronous = { [Method in keyof Board]: (...args: Parameters<Board[Method]>) => Awaited<ReturnType<Board[Method]>> }
-
-export type Sql = { exec<T extends Record<string, SqlStorageValue>>(query: string, ...values: unknown[]): { toArray(): T[] } }
-
-const schema = [
-  "CREATE TABLE IF NOT EXISTS work_tasks (scope TEXT NOT NULL, id TEXT NOT NULL, parent TEXT, spec TEXT NOT NULL, labels TEXT NOT NULL DEFAULT '{}', needs TEXT NOT NULL DEFAULT '[]', terms TEXT NOT NULL DEFAULT '{}', phase TEXT NOT NULL, claim TEXT, worker TEXT, until_ms INTEGER, due_at_ms INTEGER, attempts INTEGER NOT NULL DEFAULT 0, outcome TEXT, PRIMARY KEY (scope, id))",
-  'CREATE TABLE IF NOT EXISTS work_keys (scope TEXT NOT NULL, key TEXT NOT NULL, PRIMARY KEY (scope, key))',
-  'CREATE TABLE IF NOT EXISTS work_steers (seq INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, task TEXT NOT NULL, by TEXT NOT NULL, at_ms INTEGER NOT NULL, body TEXT NOT NULL, key TEXT, heeded INTEGER NOT NULL DEFAULT 0)',
-  'CREATE INDEX IF NOT EXISTS work_steers_pending ON work_steers (scope, task) WHERE heeded = 0',
-]
-
-type Stored = {
-  attempts: number
-  claim: string | null
-  due_at_ms: number | null
-  id: string
-  labels: string
-  needs: string
-  outcome: string | null
-  parent: string | null
-  phase: string
-  spec: string
-  terms: string
-  until_ms: number | null
-  worker: string | null
-}
-
-function loaded(row: Stored): Task {
-  return {
-    attempts: Number(row.attempts),
-    ...(row.claim === null ? {} : { claim: row.claim }),
-    ...(row.due_at_ms === null ? {} : { dueAtMs: Number(row.due_at_ms) }),
-    id: row.id,
-    labels: JSON.parse(row.labels) as Record<string, string>,
-    needs: JSON.parse(row.needs) as string[],
-    ...(row.outcome === null ? {} : { outcome: row.outcome }),
-    parent: row.parent,
-    phase: row.phase as Phase,
-    spec: row.spec,
-    terms: JSON.parse(row.terms) as Terms,
-    ...(row.until_ms === null ? {} : { untilMs: Number(row.until_ms) }),
-    ...(row.worker === null ? {} : { worker: row.worker }),
-  }
-}
+export type Board = Boards.Board
+export type Claimed = Boards.Claimed
+export type NewTask = Boards.NewTask
+export type Outcome = Boards.Outcome
+export type Phase = Boards.Phase
+export type Rejection = Boards.Rejection
+export type Retry = Boards.Retry
+export type Steer = Boards.Steer
+export type Task = Boards.Task
+export type Verdict = Boards.Verdict
 
 export function terminal(phase: Phase) {
   return phase === 'done' || phase === 'failed' || phase === 'cancelled'
@@ -125,168 +31,41 @@ export function delay(retry: Retry, attempts: number) {
   return retry.backoffMs * 2 ** Math.max(0, attempts - 1)
 }
 
-function fail(rejection: Rejection): { ok: false; rejection: Rejection } {
-  return { ok: false, rejection }
+// When a renewed lease now runs out, from the board's verdict.
+export function until(verdict: Verdict) {
+  if (!verdict.ok) return undefined
+  const renewed = (verdict.change as { Renewed?: { until_ms?: unknown } } | null)?.Renewed
+  return typeof renewed?.until_ms === 'number' ? renewed.until_ms : undefined
 }
 
-const ok = { ok: true } as const
-
-export function local(sql: Sql, scope: string, actor: string): Board {
-  const board = synchronous(sql, scope, actor)
-  const methods = Object.entries(board).map(([name, method]) => [name, (...args: never[]) => Promise.resolve().then(() => (method as (...args: never[]) => unknown)(...args))])
-  return Object.fromEntries(methods) as Board
-}
-
-function synchronous(sql: Sql, scope: string, actor: string): Synchronous {
-  for (const statement of schema) sql.exec(statement)
-  const now = (at?: number) => Math.max(at ?? 0, Date.now())
-  const read = (id: string) => sql.exec<Stored>('SELECT * FROM work_tasks WHERE scope = ? AND id = ?', scope, id).toArray()[0]
-  const task = (id: string) => {
-    const row = read(id)
-    return row ? loaded(row) : null
-  }
-  const seen = (key: string) => sql.exec<{ seen: number }>('SELECT 1 AS seen FROM work_keys WHERE scope = ? AND key = ?', scope, key).toArray().length > 0
-  const keep = (key: string | undefined) => {
-    if (key !== undefined) sql.exec('INSERT OR IGNORE INTO work_keys (scope, key) VALUES (?, ?)', scope, key)
-  }
-  const pending = (id: string) => sql.exec<{ seq: number }>('SELECT seq FROM work_steers WHERE scope = ? AND task = ? AND heeded = 0 ORDER BY seq', scope, id).toArray()
-  const held = (found: Task, at: number) => found.phase === 'claimed' && (found.untilMs ?? 0) > at
-  const holds = (id: string, claim: string): Task | Rejection => {
-    const found = task(id)
-    if (!found) return { kind: 'UnknownTask' }
-    if (terminal(found.phase)) return { kind: 'Terminal' }
-    if (found.phase !== 'claimed' || found.claim !== claim) return { kind: 'NotHolder' }
-    return found
-  }
-  const waiting = (found: Task, at: number): Rejection | undefined => {
-    if (found.dueAtMs !== undefined && found.dueAtMs > at) return { kind: 'Waiting', untilMs: found.dueAtMs }
-    for (const need of found.needs) if (task(need)?.phase !== 'done') return { kind: 'Waiting', need }
-    return undefined
-  }
-  const all = () => sql.exec<Stored>('SELECT * FROM work_tasks WHERE scope = ? ORDER BY id', scope).toArray().map(loaded)
-
-  return {
-    claim(id, opts) {
-      const at = now(opts.atMs)
-      const found = task(id)
-      if (!found) return fail({ kind: 'UnknownTask' })
-      if (terminal(found.phase)) return fail({ kind: 'Terminal' })
-      if (held(found, at)) return fail({ claim: found.claim ?? '', kind: 'Held', untilMs: found.untilMs ?? at, worker: found.worker })
-      const wait = waiting(found, at)
-      if (wait) return fail(wait)
-      if (opts.cap !== undefined) {
-        const others = all().filter((other) => other.id !== id && held(other, at)).length
-        if (others >= opts.cap) return fail({ cap: opts.cap, kind: 'Full' })
-      }
-      const tookOver = found.phase === 'claimed'
-      const claim = opts.key ?? `${actor}.${crypto.randomUUID()}`
-      const untilMs = at + opts.leaseMs
-      sql.exec("UPDATE work_tasks SET phase = 'claimed', claim = ?, worker = ?, until_ms = ?, due_at_ms = NULL, attempts = attempts + 1 WHERE scope = ? AND id = ?", claim, actor, untilMs, scope, id)
-      return { claim, ok: true, tookOver, untilMs }
-    },
-    finish(id, claim, outcome) {
-      const found = holds(id, claim)
-      if ('kind' in found) return fail(found)
-      const unheeded = pending(id).at(-1)
-      if (unheeded) return fail({ kind: 'Unheeded', upto: Number(unheeded.seq) })
-      const retry = found.terms.retry
-      if ('failed' in outcome && retry && found.attempts < retry.maxAttempts) {
-        sql.exec("UPDATE work_tasks SET phase = 'open', claim = NULL, worker = NULL, until_ms = NULL, due_at_ms = ?, outcome = ? WHERE scope = ? AND id = ?", Date.now() + delay(retry, found.attempts), outcome.failed, scope, id)
-        return ok
-      }
-      sql.exec('UPDATE work_tasks SET phase = ?, until_ms = NULL, outcome = ? WHERE scope = ? AND id = ?', 'done' in outcome ? 'done' : 'failed', 'done' in outcome ? outcome.done : outcome.failed, scope, id)
-      return ok
-    },
-    heed(id, claim, steers) {
-      const found = holds(id, claim)
-      if ('kind' in found) return fail(found)
-      const upto = Math.max(0, ...steers.map(Number))
-      if (!pending(id).some((steer) => Number(steer.seq) === upto)) return fail({ kind: 'Unheeded', upto })
-      sql.exec('UPDATE work_steers SET heeded = 1 WHERE scope = ? AND task = ? AND seq <= ?', scope, id, upto)
-      return ok
-    },
-    held(atMs) {
-      const at = now(atMs)
-      return all().filter((found) => held(found, at))
-    },
-    label(id, set, unset = []) {
-      const found = task(id)
-      if (!found) return fail({ kind: 'UnknownTask' })
-      const labels = { ...found.labels, ...set }
-      for (const key of unset) delete labels[key]
-      sql.exec('UPDATE work_tasks SET labels = ? WHERE scope = ? AND id = ?', JSON.stringify(labels), scope, id)
-      return ok
-    },
-    post(posted, opts = {}) {
-      if (opts.key !== undefined && seen(opts.key)) return ok
-      if (read(posted.id)) return fail({ kind: 'Exists' })
-      if (posted.parent !== undefined && !read(posted.parent)) return fail({ kind: 'UnknownParent', parent: posted.parent })
-      for (const need of posted.needs ?? []) if (!read(need)) return fail({ kind: 'UnknownNeed', need })
-      keep(opts.key)
-      sql.exec(
-        "INSERT INTO work_tasks (scope, id, parent, spec, labels, needs, terms, phase, due_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?)",
-        scope,
-        posted.id,
-        posted.parent ?? null,
-        posted.spec,
-        JSON.stringify(posted.labels ?? {}),
-        JSON.stringify(posted.needs ?? []),
-        JSON.stringify(posted.terms ?? {}),
-        posted.terms?.dueAtMs ?? null,
-      )
-      return ok
-    },
-    ready(opts = {}) {
-      const at = now(opts.atMs)
-      return all().filter((found) => (found.phase === 'open' || (found.phase === 'claimed' && !held(found, at))) && !waiting(found, at) && (!opts.label || found.labels[opts.label[0]] === opts.label[1]))
-    },
-    release(id, claim, note) {
-      const found = holds(id, claim)
-      if ('kind' in found) return fail(found)
-      sql.exec("UPDATE work_tasks SET phase = 'open', claim = NULL, worker = NULL, until_ms = NULL, outcome = ? WHERE scope = ? AND id = ?", note ?? null, scope, id)
-      return ok
-    },
-    renew(id, claim, leaseMs) {
-      const found = holds(id, claim)
-      if ('kind' in found) return fail(found)
-      const untilMs = Date.now() + leaseMs
-      sql.exec('UPDATE work_tasks SET until_ms = ? WHERE scope = ? AND id = ?', untilMs, scope, id)
-      return { claim, ok: true, tookOver: false, untilMs }
-    },
-    steer(id, text, opts = {}) {
-      const found = task(id)
-      if (!found) return fail({ kind: 'UnknownTask' })
-      if (terminal(found.phase)) return fail({ kind: 'Terminal' })
-      if (opts.key !== undefined && seen(opts.key)) return ok
-      keep(opts.key)
-      sql.exec('INSERT INTO work_steers (scope, task, by, at_ms, body, key) VALUES (?, ?, ?, ?, ?, ?)', scope, id, actor, Date.now(), text, opts.key ?? null)
-      return ok
-    },
-    steers(id) {
-      return sql
-        .exec<{ at_ms: number; body: string; by: string; key: string | null; seq: number }>('SELECT seq, by, at_ms, body, key FROM work_steers WHERE scope = ? AND task = ? AND heeded = 0 ORDER BY seq', scope, id)
-        .toArray()
-        .map((row) => ({ atMs: Number(row.at_ms), by: row.by, id: String(row.seq), ...(row.key === null ? {} : { key: row.key }), text: row.body }))
-    },
-    task,
-    tasks: all,
-  }
-}
+const methods = ['cancel', 'charter', 'claim', 'close', 'finish', 'grant', 'group', 'heed', 'held', 'post', 'ready', 'refresh', 'release', 'renew', 'reply', 'revoke', 'steer', 'steers', 'submit', 'task', 'tasks', 'work'] as const satisfies readonly Exclude<keyof Board, 'actor' | 'scope'>[]
 
 // A board that opens on its first call: `open` runs once, and every call
 // waits for it, so the object can hand out its board before the open lands.
-export function opening(open: () => Promise<Board>): Board {
+// Its calls run one at a time, in the order they were made: a nanocode-ts
+// board refuses a command while another of its commands waits on the SQLite
+// host ("board 0 is busy with another command"), and the object's alarm,
+// requests and timers all call the same board.
+export function opening(scope: string, actor: string, open: () => Promise<Board>): Board {
   let opened: Promise<Board> | undefined
-  const board = () => (opened ??= open().catch((error: unknown) => {
-    opened = undefined
-    throw error
-  }))
-  const methods: (keyof Board)[] = ['claim', 'finish', 'heed', 'held', 'label', 'post', 'ready', 'release', 'renew', 'steer', 'steers', 'task', 'tasks']
-  return Object.fromEntries(methods.map((name) => [name, async (...args: never[]) => ((await board())[name] as (...args: never[]) => unknown)(...args)])) as never as Board
+  let last: Promise<unknown> = Promise.resolve()
+  const board = () =>
+    (opened ??= open().catch((error: unknown) => {
+      opened = undefined
+      throw error
+    }))
+  const queued = <T>(run: () => Promise<T>) => {
+    const next = last.then(run, run)
+    last = next.catch(() => undefined)
+    return next
+  }
+  const calls = Object.fromEntries(methods.map((name) => [name, (...args: never[]) => queued(async () => ((await board())[name] as (...args: never[]) => unknown)(...args))]))
+  return { ...calls, actor, scope } as never as Board
 }
 
 // Post a task unless it is there already.
-export async function ensure(board: Board, task: Post) {
+export async function ensure(board: Board, task: NewTask) {
+  if (await board.task(task.id)) return
   const posted = await board.post(task)
   if (!posted.ok && posted.rejection.kind !== 'Exists') throw new Error(`Posting ${task.id} was refused: ${posted.rejection.kind}`)
 }
@@ -306,8 +85,11 @@ export const instance = { lock: 'instance' }
 // A lock that outlives the object, such as a throttle.
 export const lasting = { lock: 'lasting' }
 
-export async function reclaim(board: Board, actor: string) {
-  for (const task of await board.held()) if (task.labels['lock'] === 'instance' && task.worker !== actor && task.claim) await board.release(task.id, task.claim, 'its holder restarted')
+// Let go of the instance locks an earlier life held. The swarm claims as one
+// actor in every life, so this runs once as its board opens, before this life
+// has claimed anything: every instance lock still held is a past life's.
+export async function reclaim(board: Board) {
+  for (const task of await board.held()) if (task.labels['lock'] === instance.lock && task.claim) await board.release(task.id, task.claim, 'its holder restarted')
 }
 
 // Run `work` holding the lock `id`, renewing its lease every third of it while

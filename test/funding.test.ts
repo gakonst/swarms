@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
-import * as Work from '../src/worker/Work.ts'
-import { memorySql } from './sql.ts'
+import { fresh } from './board.ts'
 import type * as BranchingModule from '../src/worker/Branching.ts'
 import type * as OperationsModule from '../src/worker/Operations.ts'
 import type * as StoreModule from '../src/worker/Store.ts'
 import * as Credit from '../src/shared/Credit.ts'
 import { open } from './d1.ts'
+import './host.ts'
 
 registerHooks({
   resolve: (specifier, context, next) =>
@@ -31,7 +31,7 @@ function world(gateway: (path: string, body: unknown) => unknown = () => ({}), l
   db.sqlite.prepare("insert into names (address, name, updated_at) values (?, 'ada', 1)").run(rider)
   const calls: [string, ...unknown[]][] = []
   const said = (name: string) => async (...args: unknown[]) => (calls.push([name, ...args]), { ok: true, value: null })
-  const self = { agent: () => ({ id: 'agt' }), board: Work.local(memorySql(), 'swarm:test', 'test'), changed: () => undefined, get env() { return env }, log: () => undefined, touch: () => undefined }
+  const self = { agent: () => ({ id: 'agt' }), board: fresh('swarm:test'), changed: () => undefined, get env() { return env }, log: () => undefined, touch: () => undefined }
   const object = {
     contributed: said('contributed'),
     direct: (...args: Parameters<InstanceType<typeof Swarm>['direct']>) => Swarm.prototype.direct.apply(self as never, args),
@@ -75,7 +75,7 @@ test('a branch the lead closed is settled when the gateway lists it, and looked 
   const { db, env, member } = world(() => (listing ? { agents: [closed, running] } : new Response('down', { status: 503 })))
   await funded(env, 1, 3_000_000n)
   const kv = new Map<string, unknown>()
-  const self = { agent: () => ({ id: 'agt' }), board: Work.local(memorySql(), 'swarm:test', 'test'), env, kv: { get: (key: string) => kv.get(key), put: (key: string, value: unknown) => void kv.set(key, value) } } as never
+  const self = { agent: () => ({ id: 'agt' }), board: fresh('swarm:test'), env, kv: { get: (key: string) => kv.get(key), put: (key: string, value: unknown) => void kv.set(key, value) } } as never
   const row = { id } as never
 
   await Branching.settled(self, row)
@@ -92,7 +92,7 @@ test('a branch the lead closed is settled when the gateway lists it, and looked 
 test("a branch is settled once on the swarm's board: a settle whose write failed is released and the next one writes it, and later ones return nothing", async () => {
   const { db, env, member } = world()
   await funded(env, 1, 3_000_000n)
-  const board = Work.local(memorySql(), 'swarm:test', 'test')
+  const board = fresh('swarm:test')
   const self = { board, env } as never
   const input = { agent: 'agt', branch: 1, left: null, swarm: id }
   const batch = env.DB.batch.bind(env.DB)

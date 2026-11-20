@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
 import type * as EdgeModule from '../src/worker/Edge.ts'
+import './host.ts'
 
 const waited: Promise<unknown>[] = []
 const stored = new Map<string, Response>()

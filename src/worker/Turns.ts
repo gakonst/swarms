@@ -135,7 +135,7 @@ async function take(self: Swarm, run: Phase.Run): Promise<Taken> {
     if (again.ok) return { claim: again.claim, task: next }
   }
   const rejection = claimed.rejection
-  return { untilMs: 'untilMs' in rejection && rejection.untilMs !== undefined ? rejection.untilMs : now + Clock.retryMs }
+  return { untilMs: rejection.untilMs ?? (await board.task(task))?.dueAtMs ?? now + Clock.retryMs }
 }
 
 async function attempted(self: Swarm, task: string, claim: string, outcome: Work.Outcome, blamed = true) {
@@ -170,8 +170,8 @@ export async function progressed(self: Swarm) {
   const run = self.run()
   const at = self.kv.get<number>('advanced') ?? 0
   if (run.state !== 'working' || !run.task || !run.claim || at <= progress(self, run).progressed) return
-  const renewed = await self.board.renew(run.task, run.claim, leaseMs)
-  if (renewed.ok) leased(self, run.task, renewed.untilMs)
+  const until = Work.until(await self.board.renew(run.task, run.claim, leaseMs))
+  if (until !== undefined) leased(self, run.task, until)
 }
 
 export function heard(self: Swarm, run: Turning): Phase.Told[] {
@@ -184,7 +184,7 @@ export function hear(self: Swarm, run: Turning, told: Phase.Told) {
 }
 
 function said(steer: Work.Steer): Phase.Told {
-  const { note, weight } = JSON.parse(steer.text) as { note: string; weight: string }
+  const { note, weight } = JSON.parse(steer.body) as { note: string; weight: string }
   return [note, weight]
 }
 
@@ -205,7 +205,7 @@ export async function heed(self: Swarm, told: readonly Phase.Told[]) {
   const upto = (await board.steers(noteboard)).filter((found) => wanted.has(said(found).join(':'))).at(-1)
   const held = upto && (await Work.lock(board, noteboard, Clock.minuteMs))
   if (upto && held?.ok) {
-    await board.heed(noteboard, held.claim, [upto.id])
+    await board.heed(noteboard, held.claim, upto.seq)
     await board.release(noteboard, held.claim)
   }
   const at = Date.now()
@@ -301,8 +301,8 @@ export async function advance(self: Swarm, found: Store.Row) {
 
   const now = Date.now()
   const turn = sent.ok ? sent.value.request_id : claim
-  const renewed = await self.board.renew(task, claim, leaseMs)
-  if (renewed.ok) leased(self, task, renewed.untilMs)
+  const until = Work.until(await self.board.renew(task, claim, leaseMs))
+  if (until !== undefined) leased(self, task, until)
   await Money.cap(self, row, money.left / Hands.share, money.listed)
   self.kv.put('agent', { ...(self.agent() ?? agent), briefed: true })
   self.ctx.storage.sql.exec(

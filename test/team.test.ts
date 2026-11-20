@@ -8,6 +8,7 @@ import type * as OperationsModule from '../src/worker/Operations.ts'
 import type * as StoreModule from '../src/worker/Store.ts'
 import type * as TeamModule from '../src/worker/Team.ts'
 import { open } from './d1.ts'
+import './host.ts'
 
 const waited: Promise<unknown>[] = []
 

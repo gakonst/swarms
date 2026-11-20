@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
 import type * as FollowModule from '../src/worker/Follow.ts'
+import './host.ts'
 
 registerHooks({
   resolve: (specifier, context, next) =>
@@ -50,10 +51,10 @@ test('thinking that arrives only as live frames is kept by offset and taken as o
 test('a working agent with no model or tool call for twenty minutes is reported stalled once, and progress renews its lease and clears it', async () => {
   const Work = await import('../src/worker/Work.ts')
   const Turns = await import('../src/worker/Turns.ts')
-  const { memorySql } = await import('./sql.ts')
+  const { fresh } = await import('./board.ts')
   const kept = new Map<string, unknown>()
   const logged: string[] = []
-  const board = Work.local(memorySql(), 'swarm:abc', 'a')
+  const board = fresh('swarm:abc')
   const started = Date.now() - 30 * 60_000
   await Work.ensure(board, { id: 'turn:1', spec: 'turn 1', terms: { retry: Turns.retry } })
   const claimed = await board.claim('turn:1', { leaseMs: 1_000 })

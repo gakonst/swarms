@@ -4,6 +4,7 @@ import test from 'node:test'
 import * as Setup from '../src/shared/Setup.ts'
 import type * as PersonaModule from '../src/worker/Persona.ts'
 import type * as TurnsModule from '../src/worker/Turns.ts'
+import './host.ts'
 
 registerHooks({
   resolve: (specifier, context, next) =>

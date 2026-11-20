@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import { mock, test } from 'node:test'
+import './host.ts'
 
 let configured: () => Promise<unknown> = async () => ({ ready: true })
 

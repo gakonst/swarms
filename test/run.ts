@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import type * as SwarmModule from '../src/worker/Swarm.ts'
 import type * as StoreModule from '../src/worker/Store.ts'
 import { open } from './d1.ts'
+import './host.ts'
 
 registerHooks({
   resolve: (specifier, context, next) =>
