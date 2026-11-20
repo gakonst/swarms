@@ -42,24 +42,16 @@ const methods = ['cancel', 'charter', 'claim', 'close', 'finish', 'grant', 'grou
 
 // A board that opens on its first call: `open` runs once, and every call
 // waits for it, so the object can hand out its board before the open lands.
-// Its calls run one at a time, in the order they were made: a nanocode-ts
-// board refuses a command while another of its commands waits on the SQLite
-// host ("board 0 is busy with another command"), and the object's alarm,
-// requests and timers all call the same board.
+// An open that fails is tried again on the next call. The board queues its
+// own commands, so the object's alarm, requests and timers may call it at once.
 export function opening(scope: string, actor: string, open: () => Promise<Board>): Board {
   let opened: Promise<Board> | undefined
-  let last: Promise<unknown> = Promise.resolve()
   const board = () =>
     (opened ??= open().catch((error: unknown) => {
       opened = undefined
       throw error
     }))
-  const queued = <T>(run: () => Promise<T>) => {
-    const next = last.then(run, run)
-    last = next.catch(() => undefined)
-    return next
-  }
-  const calls = Object.fromEntries(methods.map((name) => [name, (...args: never[]) => queued(async () => ((await board())[name] as (...args: never[]) => unknown)(...args))]))
+  const calls = Object.fromEntries(methods.map((name) => [name, async (...args: never[]) => ((await board())[name] as (...args: never[]) => unknown)(...args)]))
   return { ...calls, actor, scope } as never as Board
 }
 

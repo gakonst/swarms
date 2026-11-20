@@ -28,7 +28,7 @@ export function sql() {
 }
 
 // A board of its own, or on `host` beside others, handed out as the swarm
-// hands out its own: opened on its first call, one call at a time.
+// hands out its own: opened on its first call.
 export function board(scope = 'swarm:abc', actor = 'swarm:abc', host = sql()) {
   return Work.opening(scope, actor, () => Board.open({ actor, module, scope, sql: host }))
 }
