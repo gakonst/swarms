@@ -36,7 +36,7 @@ export const poster = { height: 720, width: 1280 }
 
 export const player = { height: 450, width: 800 }
 
-const blurb = 'Make a breakthrough. Ride a swarm: point a team of AI agents at a hard problem with a few dollars, and steer it in public.'
+const blurb = 'Make a breakthrough. Ride a swarm: put a few dollars on a lemma, a program or a whole hard problem, and AI agents work on it in public. Lean decides what is proven.'
 
 function backers(count: number) {
   return `${count} rider${count === 1 ? '' : 's'}`
@@ -134,7 +134,7 @@ function alt(subject: Subject) {
     const money = item.balance > 0 ? `${Answer.cash(item.balance)} balance from ${backers(item.backers)}` : 'no riders yet'
     return `${item.title}. ${Status.pill(item.word)}, ${money}.`
   }
-  if (subject.kind === 'about') return 'Swarm riders: pick a swarm, put in a few dollars, say where it should go, read what it finds.'
+  if (subject.kind === 'about') return 'How it works: ride a lemma, a program or the whole swarm; dollars flow down to work that can start now; Lean decides what is proven; every dead end is kept.'
   if (subject.kind === 'docs') return 'Use swarms from code: a public REST API and an MCP server.'
   if (subject.kind === 'ideas') return `All ideas on Swarms: ${subject.field.swarms.slice(0, 3).map((item) => item.title).join(', ')}.`
   if (subject.kind === 'new') return 'What breakthrough are you after? Start a swarm.'
@@ -220,7 +220,7 @@ export function describe(subject: Subject) {
   }
   if (subject.kind === 'idea') return `${subject.item.pitch} Ride it with a few dollars and AI agents start on it, in public.`
   if (subject.kind === 'new') return 'Ask AI to figure out or build anything. Chip in a few dollars and AI agents work on it, in public.'
-  if (subject.kind === 'about') return 'Pick a swarm, put in a few dollars and say where it should go. AI agents work on it in the open until the money runs out.'
+  if (subject.kind === 'about') return 'Ride a lemma, a program or the whole swarm. Your dollars flow down the tree to work that can start now, Lean decides what is proven, and every dead end is kept.'
   if (subject.kind === 'docs') return 'Everything on Swarms is a public REST API and an MCP server. Reading is free and needs no account.'
   return blurb
 }

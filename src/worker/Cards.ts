@@ -332,7 +332,7 @@ export function start(fonts: Fonts, field: Field, width: number, height: number)
     brand(fonts, margin, top, k),
     stack(fonts.serif, ask, margin - 2 * k, askFirst, size, 1.04, { spacing: -0.04 * size }),
     box(margin, fieldTop, width - margin * 2, boxHigh, 18 * k, '#fbfcf9', ` stroke="#cfd9c6" stroke-width="1.5"`),
-    ideas.length ? say(fonts.mono, margin, listTop - 14 * k, 'Or back one of these', 16 * k, { fill: quiet, spacing: 0.4 * k }) : '',
+    ideas.length ? say(fonts.mono, margin, listTop - 14 * k, 'Or ride one of these', 16 * k, { fill: quiet, spacing: 0.4 * k }) : '',
     rows,
   ].join('')
   const asked = Glyphs.wrap(fonts.serif, example, 26 * k, width - margin * 2 - 60 * k, 1)[0] ?? ''
@@ -346,7 +346,7 @@ export function about(fonts: Fonts, width: number, height: number): Scene {
   const top = margin + 36 * k
   const size = 72 * k
   const headY = top + 52 * k + size * 0.8
-  const steps = ['Pick a swarm, or start one', 'Put in a few dollars and say where it should go', 'AI agents work on it until the money runs out', 'Read what they find and steer again']
+  const steps = ['Ride a lemma, a program or the whole swarm', 'Your dollars flow down to work that can start now', 'Lean decides what is proven', 'Every dead end is kept, with why']
   const rowTop = headY + 52 * k
   const rowHigh = (height - margin - rowTop) / steps.length
   const rows = steps
@@ -372,10 +372,10 @@ export function docs(fonts: Fonts, width: number, height: number): Scene {
   const leadFirst = headY + 34 * k + 27 * k
   const codeTop = leadFirst + (lead.length - 1) * 27 * k * 1.38 + 36 * k
   const code = [
-    ['GET', '/v1/swarms'],
-    ['GET', '/v1/swarms/:id/updates'],
+    ['GET', '/v1/swarms/:id/tree'],
+    ['GET', '/v1/swarms/:id/proofs'],
     ['POST', '/v1/swarms/:id/contributions'],
-    ['POST', '/mcp  swarms_list · swarm_get · swarm_contribute'],
+    ['POST', '/mcp  swarm_tree · swarm_node · swarm_contribute'],
   ]
   const codeHigh = height - margin * 0.8 - codeTop
   const step = (codeHigh - 40 * k) / code.length
