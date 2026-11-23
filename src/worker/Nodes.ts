@@ -571,7 +571,7 @@ export async function reconcile(self: Swarm, spentOf: (run: string) => Promise<b
 
 function whoOf(by: string, names: Map<string, string>): Tree.Who {
   if (/^0x[0-9a-f]{40}$/.test(by)) return { address: by as `0x${string}`, agent: null, handle: names.get(by) ?? Mention.short(by as `0x${string}`) }
-  if (by.startsWith('agent:')) return { address: null, agent: by.slice(6), handle: 'agent' }
+  if (by.startsWith('agent:')) return { address: null, agent: by, handle: 'agent' }
   return { address: null, agent: by || null, handle: by || 'swarm' }
 }
 

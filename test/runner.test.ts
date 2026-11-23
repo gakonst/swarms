@@ -41,7 +41,7 @@ test('a ride commits a run, the dispatcher spawns it with the commitment as its 
   assert.equal(spentRoot?.money.spent, '1.250000')
   const a = view.value.nodes.find((node) => node.title === 'Lemma A')
   const b = view.value.nodes.find((node) => node.title === 'Lemma B')
-  assert.equal(a?.by.agent, 'n:root')
+  assert.equal(a?.by.agent, 'agent:n:root')
   assert.deepEqual(b?.needs, [a?.id])
   await until(() => g.subs.length === 2)
   assert.equal(g.subs[1]?.role, 'n:' + a?.id + '#1')
