@@ -1,4 +1,5 @@
-import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, Posted, Problem, Room, Roster, Snapshot, Steering, Summary, Update } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, NodeUpdates, NodeView, Posted, Problem, ProgressView, ProofsView, Proposed, Room, Roster, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
+import type * as Tree from '../shared/Tree.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
 import type * as Setup from '../shared/Setup.ts'
@@ -265,6 +266,57 @@ export function move(id: string, branch: number, input: { amount: string; to: nu
 
 export function btw(id: string, input: { branch?: number; question: string; thread: readonly Btw.Exchange[] }) {
   return signed(() => fixture ? staged((fixtures) => fixtures.btw(id, input, who())) : request<Btw.Exchange>(`${path(id)}/btw`, input))
+}
+
+function v1(id: string) {
+  return `/v1/swarms/${encodeURIComponent(id)}`
+}
+
+function noded(id: string, node: string) {
+  return `${v1(id)}/nodes/${encodeURIComponent(node)}`
+}
+
+export function tree(id: string, query: { depth?: number; root?: string } = {}) {
+  const search = new URLSearchParams()
+  if (query.root) search.set('root', query.root)
+  if (query.depth !== undefined) search.set('depth', String(query.depth))
+  return fixture ? staged((fixtures) => fixtures.treeView(id, query)) : request<TreeView>(`${v1(id)}/tree${search.size ? `?${search}` : ''}`)
+}
+
+export function node(id: string, node: string) {
+  return fixture ? staged((fixtures) => fixtures.nodeView(id, node)) : request<NodeView>(noded(id, node))
+}
+
+export function nodeUpdates(id: string, node: string, after = 0) {
+  return fixture ? staged((fixtures) => fixtures.nodeUpdates(id, node)) : request<NodeUpdates>(`${noded(id, node)}/updates?after=${after}`)
+}
+
+export function burn(id: string) {
+  return fixture ? staged((fixtures) => fixtures.burn(id)) : request<ProgressView>(`${v1(id)}/progress?every=hour`)
+}
+
+export function proofs(id: string) {
+  return fixture ? staged((fixtures) => fixtures.proofs(id)) : request<ProofsView>(`${v1(id)}/proofs`)
+}
+
+export function ride(id: string, input: { hash: string; node: string }) {
+  return fixture ? staged((fixtures) => fixtures.ride(id, input)) : request<Contributed>(`${v1(id)}/contributions`, input)
+}
+
+export function propose(id: string, input: { form: Tree.Form; parent: string; spec: string; statement?: string; title: string }) {
+  return signed(() => (fixture ? staged((fixtures) => fixtures.propose(id, input, who())) : request<Proposed>(`${v1(id)}/nodes`, input)))
+}
+
+export function suggest(id: string, input: { parent: string; text: string }) {
+  return signed(() => (fixture ? staged((fixtures) => fixtures.suggest(id, input, who())) : request<Suggested>(`${v1(id)}/ideas`, input)))
+}
+
+export function steerNode(id: string, node: string, input: { amount: string; note: string }) {
+  return signed(() => (fixture ? staged((fixtures) => fixtures.steerNode(id, node, input, who())) : request<Tree.Node>(`${noded(id, node)}/steer`, input)))
+}
+
+export function moveNode(id: string, node: string, input: { amount: string; to: string }) {
+  return signed(() => (fixture ? staged((fixtures) => fixtures.moveNode(id, node, input, who())) : request<Tree.Node>(`${noded(id, node)}/move`, input)))
 }
 
 export type Line = { close: () => void; hello: () => void; typing: () => void }
