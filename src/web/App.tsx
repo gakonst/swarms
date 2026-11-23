@@ -55,6 +55,11 @@ function WalletButton(props: { config: Config | undefined }) {
   const menu = useRef<HTMLDivElement>(null)
   const token = wallet.session?.token
   const known = !!wallet.account
+  const out = !wallet.address
+
+  useEffect(() => {
+    if (props.config && out) Wallet.warm(props.config)
+  }, [props.config, out])
 
   useEffect(() => {
     if (token && !known) void Wallet.identify()
