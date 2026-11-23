@@ -9,6 +9,7 @@ import * as Glyphs from '../src/worker/Glyphs.ts'
 import * as Mp4 from '../src/worker/Mp4.ts'
 import * as Paint from '../src/worker/Paint.ts'
 import * as Share from '../src/worker/Share.ts'
+import * as Tree from '../src/shared/Tree.ts'
 
 const buffer = (path: string) => {
   const data = readFileSync(new URL(path, import.meta.url))
@@ -171,3 +172,123 @@ test('the field counts the money swarms have left to spend, not everything rider
   const field = Share.field([{ ...base, balance: '200.000000', id: 'a', remaining: '1.500000' }, { ...base, balance: '88.000000', id: 'b', remaining: '-0.200000' }] as never)
   assert.equal(field.balance, 1.5)
 })
+
+const usd = (value: number) => value.toFixed(6)
+
+function grown(id: string, over: Partial<Tree.Node> = {}): Tree.Node {
+  const spent = over.money?.spent ?? '0.000000'
+  return {
+    by: { address: null, agent: null, handle: 'ana' },
+    children: [],
+    counts: { 'dead end': 0, funded: 0, 'in flight': 0, proposed: 0, proven: 0, [over.status ?? 'proposed']: 1 },
+    createdAt: 1,
+    end: null,
+    form: 'lemma',
+    funders: [],
+    id,
+    money: { committed: '0.000000', granted: '0.000000', inherited: '0.000000', left: '0.000000', pledged: '0.000000', spent, subtree: { left: '0.000000', pledged: '0.000000', spent } },
+    needs: [],
+    parent: 'root',
+    proof: null,
+    riders: 0,
+    run: null,
+    spec: id,
+    statement: null,
+    status: 'proposed',
+    title: id,
+    updatedAt: 1,
+    ...over,
+  }
+}
+
+const check: Tree.Check = { at: 5, axioms: ['propext', 'Classical.choice', 'Quot.sound'], checker: 'lean4checker', command: 'lake build', commit: 'abc1234def5678', contentHash: 'f00d', durationMs: 1000, exitCode: 0, mathlib: '0123456789abcdef', repo: 'example/proofs', run: '42', statement: 'deadbeefdeadbeef', theorem: 'Pnp.N3fa91c2b0d', toolchain: 'leanprover/lean4:v4.22.0', url: 'https://github.com/example/proofs/actions/runs/42' }
+
+const lemmas = [
+  grown('3fa91c2b0d', { money: { committed: '0.000000', granted: '0.000000', inherited: '4.000000', left: '0.000000', pledged: '0.000000', spent: '3.500000', subtree: { left: '0.000000', pledged: '0.000000', spent: '3.500000' } }, proof: check, status: 'proven', title: 'Parity is not in <AC0> & co' }),
+  grown('0a0a0a0a0a', { end: { at: 6, check: null, into: null, kind: 'barrier', why: 'Relativizes, so Baker-Gill-Solovay rules it out.' }, status: 'dead end', title: 'Diagonalize against every machine' }),
+  grown('1b1b1b1b1b', { run: { agent: 3, attempt: 1, budget: '5.000000', checking: false, k: 1, since: 1, spent: '1.000000', task: 'r:1b1b1b1b1b:1', until: 2 }, status: 'in flight', title: 'A switching lemma for depth 3' }),
+  grown('2c2c2c2c2c', { needs: ['3fa91c2b0d'], title: 'Monotone circuits for clique' }),
+]
+
+const program = grown('9e9e9e9e9e', { children: lemmas.map((node) => node.id), counts: { 'dead end': 1, funded: 0, 'in flight': 1, proposed: 2, proven: 1 }, form: 'program', riders: 3, title: 'Lower bounds toward P != NP' })
+
+const root = grown('root', { children: [program.id], form: 'goal', parent: null, title: 'Does P = NP?' })
+
+const nodes = [root, program, ...lemmas]
+
+const view = { headline: Tree.headline(nodes), nodes }
+
+test('a tree swarm shares its headline count, never a total, with a card and an X player', () => {
+  const shared = Share.share('https://swarms.example', Share.tree('pnp', view))
+  const html = Share.tags(shared)
+  assert.equal(shared.url, 'https://swarms.example/s/pnp')
+  assert.equal(shared.title, 'Does P = NP? · Swarms')
+  assert.equal(shared.description, '1 proven · 2 on the frontier · 1 in flight · 1 dead end · $3.50 spent. Ride a lemma, a program or the whole swarm. Lean decides what is proven, and every dead end is kept.')
+  assert.doesNotMatch(shared.description, / of /)
+  assert.match(html, /<meta property="og:image" content="https:\/\/swarms\.example\/og\/s\/pnp\/card\.png\?v=[a-z0-9]+">/)
+  assert.match(html, /<meta name="twitter:player" content="https:\/\/swarms\.example\/x\/s\/pnp">/)
+  assert.match(html, /<meta name="twitter:label1" content="Proven"><meta name="twitter:data1" content="1">/)
+  assert.doesNotMatch(html, /og:video/)
+})
+
+test('the swarm card draws the count large and one square per lemma, filled when proven', () => {
+  const item = Cards.grove('pnp', view)
+  assert.deepEqual(item.cells, ['proven', 'dead', 'flight', 'open'])
+  const svg = Film.svg(Cards.tree(fonts, item, 1200, 630), true)
+  assert.equal([...svg.matchAll(/<rect [^>]*width="(?!1200)[^"]+" height="[^"]+" rx="[^"]+" fill="(#1a7a3c|#c8ccc2|#9fd18a|#ffffff)"/g)].length, 4)
+  assert.equal([...svg.matchAll(/fill="#1a7a3c"/g)].length, 1)
+  assert.match(svg, />1<\/text>/)
+  assert.match(svg, />proven<\/text>/)
+  assert.match(svg, /2 on the frontier/)
+  assert.match(svg, /\$3\.50 spent/)
+  assert.doesNotMatch(svg, / of \d/)
+})
+
+test('a node card says its status, why, what is under it and, when proven, the commit Lean checked', () => {
+  const proven = Cards.leaf('pnp', 'Does P = NP?', lemmas[0]!)
+  assert.equal(proven.checked, 'abc1234')
+  const svg = Film.svg(Cards.node(fonts, proven, 1200, 630), true)
+  assert.match(svg, /Checked by Lean · abc1234/)
+  assert.match(svg, /Parity is not in &lt;AC0&gt; &amp; co/)
+  assert.doesNotMatch(svg, /<AC0>/)
+  const dead = Film.svg(Cards.node(fonts, Cards.leaf('pnp', 'Does P = NP?', lemmas[1]!), 1200, 630), true)
+  assert.match(dead, /Kept as a dead end/)
+  assert.match(dead, /Stopped by a known barrier/)
+  const parent = Cards.leaf('pnp', 'Does P = NP?', program)
+  assert.equal(Cards.below(parent.counts), '1 proven · 1 in flight · 1 dead end · 1 open')
+  assert.match(Film.svg(Cards.node(fonts, parent, 1200, 630), true), /Ride this program →/)
+  assert.equal(Cards.ask('goal'), 'Ride the whole swarm')
+})
+
+test('a node page shares its own card and player, and keys map both ways', () => {
+  const subject = Share.node('pnp', 'Does P = NP?', lemmas[0]!)
+  const shared = Share.share('https://swarms.example', subject)
+  assert.equal(shared.url, 'https://swarms.example/s/pnp/n/3fa91c2b0d')
+  assert.equal(shared.player, 'https://swarms.example/x/s/pnp/n/3fa91c2b0d')
+  assert.equal(shared.image.card.split('?')[0], 'https://swarms.example/og/s/pnp/n/3fa91c2b0d/card.png')
+  assert.match(Share.tags(shared), /content="Proven, checked by Lean at abc1234"/)
+  assert.equal(Share.page(new URL('https://swarms.example/s/pnp/n/3fa91c2b0d')), 's/pnp/n/3fa91c2b0d')
+  assert.equal(Share.page(new URL('https://swarms.example/s/pnp/n/root')), 's/pnp/n/root')
+  assert.equal(Share.page(new URL('https://swarms.example/s/pnp/n/NOPE!')), undefined)
+})
+
+test('a card keeps its version while cents move, and changes when a lemma is proven', () => {
+  const version = Share.version(Share.tree('pnp', view))
+  const cents = nodes.map((node) => (node.id === '1b1b1b1b1b' ? { ...node, money: { ...node.money, spent: '0.010000', subtree: { ...node.money.subtree, spent: '0.010000' } } } : node))
+  assert.equal(Share.version(Share.tree('pnp', { headline: Tree.headline(cents), nodes: cents })), version)
+  const more = nodes.map((node) => (node.id === '2c2c2c2c2c' ? { ...node, proof: check, status: 'proven' as const } : node))
+  assert.notEqual(Share.version(Share.tree('pnp', { headline: Tree.headline(more), nodes: more })), version)
+})
+
+test('proofs and dead ends are announced with links to their node, and nothing else is', () => {
+  const proven = Share.announce('https://swarms.example', 'pnp', 'Does P = NP?', { at: 9, event: 'proven', node: lemmas[0]!, seq: 1, text: '' })
+  assert.equal(proven?.text, 'Does P = NP?\nProven, checked by Lean at abc1234: Parity is not in <AC0> & co')
+  assert.equal(proven?.url, 'https://swarms.example/s/pnp/n/3fa91c2b0d')
+  assert.equal(proven?.frame, 'https://swarms.example/x/s/pnp/n/3fa91c2b0d')
+  assert.match(proven?.intent ?? '', /^https:\/\/x\.com\/intent\/post\?text=Does%20P%20%3D%20NP%3F%0AProven.*&url=https%3A%2F%2Fswarms\.example%2Fx%2Fs%2Fpnp%2Fn%2F3fa91c2b0d$/)
+  const dead = Share.announce('https://swarms.example', 'pnp', 'Does P = NP?', { at: 9, event: 'ended', node: lemmas[1]!, seq: 2, text: '' })
+  assert.match(dead?.text ?? '', /Dead end, kept in the tree: Diagonalize against every machine\. Stopped by a known barrier: Relativizes/)
+  assert.equal(Share.announce('https://swarms.example', 'pnp', 'Does P = NP?', { at: 9, event: 'progress', node: lemmas[2]!, seq: 3, text: '' }), undefined)
+  assert.equal(Share.announce('https://swarms.example', 'pnp', 'Does P = NP?', { at: 9, event: 'proven', node: lemmas[3]!, seq: 4, text: '' }), undefined)
+})
+

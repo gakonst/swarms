@@ -2,6 +2,7 @@ import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
 import type { Mood } from '../shared/Status.ts'
+import type * as Tree from '../shared/Tree.ts'
 import * as Status from '../shared/Status.ts'
 import * as Glyphs from './Glyphs.ts'
 import type { Face } from './Glyphs.ts'
@@ -394,3 +395,238 @@ export function docs(fonts: Fonts, width: number, height: number): Scene {
   ].join('')
   return { gauge: null, height, hives: [], lines: [], links: [], parts, pulse: null, typed: '', width }
 }
+
+export type Cell = 'dead' | 'flight' | 'open' | 'proven'
+
+export type Grove = { cells: Cell[]; deadEnds: number; frontier: number; id: string; inFlight: number; perProven: number | null; proven: number; ridden: number; spent: number; title: string }
+
+export type Leaf = { checked: string | null; counts: Record<Tree.Status, number>; form: Tree.Form; id: string; ridden: number; riders: number; spent: number; status: Tree.Status; swarm: string; title: string; why: string; working: boolean }
+
+const ends: Record<Tree.End['kind'], string> = {
+  barrier: 'Stopped by a known barrier',
+  exhausted: 'Ran out of ideas',
+  merged: 'Merged into another node',
+  refuted: 'Refuted',
+  rejected: 'Rejected in triage',
+  withdrawn: 'Withdrawn by its riders',
+}
+
+export const words: Record<Tree.Status, string> = { 'dead end': 'Dead end', funded: 'Ridden', 'in flight': 'In flight', proposed: 'Proposed', proven: 'Proven' }
+
+export function why(node: Tree.Node) {
+  if (node.status === 'proven') return node.proof ? `Lean checked ${node.proof.theorem} against its frozen statement.` : 'Lean checked it against its frozen statement.'
+  if (node.status === 'dead end') {
+    const kind = node.end ? (node.end.kind === 'refuted' && node.end.check ? 'Refuted, checked by Lean' : ends[node.end.kind]) : 'Ended'
+    return node.end?.why ? `${kind}: ${node.end.why}` : `${kind}.`
+  }
+  if (node.status === 'in flight') return node.run?.checking ? 'A proof is in, and Lean is checking it.' : 'A worker is on it now.'
+  if (node.status === 'funded') return node.needs.length ? 'Ridden, and waiting for what it needs to be proven.' : 'Ridden, and waiting for a free worker.'
+  return Number(node.money.spent) > 0 ? 'Out of money. Ride it to start it again.' : 'Waiting for its first rider.'
+}
+
+export function grove(swarm: string, view: { headline: Tree.Headline; nodes: readonly Tree.Node[] }): Grove {
+  const byId = new Map(view.nodes.map((node) => [node.id, node]))
+  const order: Tree.Node[] = []
+  const seen = new Set<string>()
+  const walk = (id: string) => {
+    const node = byId.get(id)
+    if (!node || seen.has(id)) return
+    seen.add(id)
+    order.push(node)
+    for (const child of node.children) walk(child)
+  }
+  walk('root')
+  for (const node of view.nodes) walk(node.id)
+  const cell = (node: Tree.Node): Cell => (node.status === 'proven' ? 'proven' : node.status === 'dead end' ? 'dead' : node.status === 'in flight' ? 'flight' : 'open')
+  const head = view.headline
+  return {
+    cells: order.filter((node) => node.form === 'lemma').map(cell),
+    deadEnds: head.deadEnds,
+    frontier: head.frontier,
+    id: swarm,
+    inFlight: head.inFlight,
+    perProven: head.perProven === null ? null : Number(head.perProven),
+    proven: head.proven,
+    ridden: Number(head.pledged),
+    spent: Number(head.spent),
+    title: byId.get('root')?.title ?? 'Swarm',
+  }
+}
+
+export function leaf(swarm: string, title: string, node: Tree.Node): Leaf {
+  const counts = { ...node.counts }
+  counts[node.status] = Math.max(0, counts[node.status] - 1)
+  return {
+    checked: node.status === 'proven' && node.proof ? node.proof.commit.slice(0, 7) : null,
+    counts,
+    form: node.form,
+    id: node.id,
+    ridden: Number(node.money.subtree.pledged) + Number(node.money.inherited),
+    riders: node.riders,
+    spent: Number(node.money.subtree.spent),
+    status: node.status,
+    swarm: title,
+    title: node.title,
+    why: why(node),
+    working: node.status === 'in flight',
+  }
+}
+
+function plural(count: number, one: string, many = `${one}s`) {
+  return `${count.toLocaleString('en-US')} ${count === 1 ? one : many}`
+}
+
+export function below(counts: Record<Tree.Status, number>) {
+  const parts = [counts.proven ? `${counts.proven.toLocaleString('en-US')} proven` : '', counts['in flight'] ? `${counts['in flight'].toLocaleString('en-US')} in flight` : '', counts['dead end'] ? plural(counts['dead end'], 'dead end') : '', counts.funded + counts.proposed ? `${(counts.funded + counts.proposed).toLocaleString('en-US')} open` : '']
+  return parts.filter(Boolean).join(' · ')
+}
+
+export function tally(item: Grove) {
+  return [`${item.frontier.toLocaleString('en-US')} on the frontier`, `${item.inFlight.toLocaleString('en-US')} in flight`, plural(item.deadEnds, 'dead end')]
+}
+
+const fills: Record<Cell, string> = { dead: '#c8ccc2', flight: '#9fd18a', open: '#ffffff', proven: tones.live[2] }
+
+function strip(cells: readonly Cell[], x: number, y: number, wide: number, high: number, k: number) {
+  if (!cells.length) return `<line x1="${x.toFixed(1)}" y1="${(y + high / 2).toFixed(1)}" x2="${(x + wide).toFixed(1)}" y2="${(y + high / 2).toFixed(1)}" stroke="#d9e2cf" stroke-width="${(8 * k).toFixed(1)}" stroke-dasharray="${(9 * k).toFixed(1)} ${(7 * k).toFixed(1)}"/>`
+  let size = Math.min(34 * k, high, wide / cells.length > 34 * k ? 34 * k : high)
+  while (size > 1 && Math.floor(wide / size) * Math.floor(high / size) < cells.length) size *= 0.97
+  const columns = Math.min(cells.length, Math.max(1, Math.floor(wide / size)))
+  const rows = Math.ceil(cells.length / columns)
+  const gap = size > 6 ? Math.max(1, size * 0.18) : size > 3 ? 1 : 0
+  const top = y + (high - rows * size) / 2
+  return cells
+    .map((cell, index) => {
+      const cx = x + (index % columns) * size
+      const cy = top + Math.floor(index / columns) * size
+      const edge = cell === 'open' ? ` stroke="#b9c7ad" stroke-width="${Math.max(0.6, size * 0.08).toFixed(2)}"` : ''
+      return `<rect x="${cx.toFixed(2)}" y="${cy.toFixed(2)}" width="${(size - gap).toFixed(2)}" height="${(size - gap).toFixed(2)}" rx="${(size * 0.14).toFixed(2)}" fill="${fills[cell]}"${edge}/>`
+    })
+    .join('')
+}
+
+function button(fonts: Fonts, right: number, foot: number, label: string, k: number, dark = true) {
+  const wide = Glyphs.width(fonts.mono, label, 19 * k) + 56 * k
+  return {
+    svg: box(right - wide, foot - 40 * k, wide, 54 * k, 27 * k, dark ? deep : '#ffffff', dark ? '' : ` stroke="#b9c7ad" stroke-width="${(1.5 * k).toFixed(1)}"`) + say(fonts.mono, right - wide / 2, foot - 40 * k + 27 * k + 7 * k, label, 19 * k, { anchor: 'middle', fill: dark ? '#ffffff' : deep }),
+    wide,
+  }
+}
+
+export function tree(fonts: Fonts, item: Grove, width: number, height: number): Scene {
+  const { k, margin } = scale(width, height)
+  const top = margin + 36 * k
+  const right = width - margin
+  const room = right - margin
+  const titleSize = 40 * k
+  const title = Glyphs.wrap(fonts.serif, item.title, titleSize, room * 0.62, 1, -0.02 * titleSize)[0] ?? ''
+  const titleY = top + 62 * k
+  const bigSize = 168 * k
+  const bigY = titleY + 24 * k + bigSize * 0.74
+  const big = item.proven.toLocaleString('en-US')
+  const bigWide = Glyphs.width(fonts.serif, big, bigSize, -0.05 * bigSize)
+  const stats = tally(item)
+  const statSize = 24 * k
+  const statX = Math.max(margin + bigWide + 230 * k, width * 0.56)
+  const stripTop = bigY + 44 * k
+  const foot = height - margin
+  const stripHigh = foot - 96 * k - stripTop
+  const money = item.spent > 0 ? `${Answer.cash(item.spent)} spent` : 'Nothing spent yet'
+  const moneyWide = Glyphs.width(fonts.serif, money, 44 * k, -1.2 * k)
+  const extra = [item.perProven !== null ? `${Answer.cash(item.perProven)} a proof` : '', item.ridden > 0 ? `${Answer.cash(item.ridden)} ridden` : 'Be the first rider'].filter(Boolean).join(' · ')
+  const ride = button(fonts, right, foot, 'Ride it →', k)
+  const live = item.inFlight > 0 ? { color: dots.live, radius: 6 * k, x: statX - 18 * k, y: bigY - bigSize * 0.52 + statSize * 1.6 - 7 * k } : null
+  const parts = [
+    box(0, 0, width, height, 0, '#ffffff'),
+    brand(fonts, margin, top, k),
+    say(fonts.mono, right, top - 4 * k, 'Lean decides what is proven', 17 * k, { anchor: 'end', fill: quiet, spacing: 0.3 * k }),
+    say(fonts.serif, margin, titleY, title, titleSize, { fill: soft, spacing: -0.02 * titleSize }),
+    say(fonts.serif, margin - 6 * k, bigY, big, bigSize, { spacing: -0.05 * bigSize }),
+    say(fonts.serif, margin + bigWide + 10 * k, bigY, 'proven', 52 * k, { spacing: -1.2 * k }),
+    stack(fonts.mono, stats, statX, bigY - bigSize * 0.52, statSize, 1.6, { fill: '#26391e', spacing: 0.2 * k }),
+    strip(item.cells, margin, stripTop, room, stripHigh, k),
+    say(fonts.mono, margin, stripTop + stripHigh + 26 * k, item.cells.length ? 'One square per lemma, filled once Lean checks its proof' : 'No lemmas yet', 15 * k, { fill: quiet, spacing: 0.3 * k }),
+    say(fonts.serif, margin, foot + 6 * k, money, 44 * k, { spacing: -1.2 * k }),
+    say(fonts.mono, margin + moneyWide + 16 * k, foot + 2 * k, extra, 18 * k, { fill: quiet }),
+    ride.svg,
+  ].join('')
+  return { gauge: null, height, hives: [], lines: [], links: [], parts, pulse: live, typed: '', width }
+}
+
+function badge(fonts: Fonts, x: number, y: number, status: Tree.Status, label: string, k: number) {
+  const size = 17 * k
+  const high = 40 * k
+  const wide = Glyphs.width(fonts.mono, label, size) + 52 * k
+  const cx = x + 22 * k
+  const cy = y + high / 2
+  const r = 5.5 * k
+  const mark =
+    status === 'proven'
+      ? `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${tones.live[2]}"/>`
+      : status === 'dead end'
+        ? `<line x1="${(cx - r).toFixed(1)}" y1="${cy.toFixed(1)}" x2="${(cx + r).toFixed(1)}" y2="${cy.toFixed(1)}" stroke="#7a7f74" stroke-width="${(2.2 * k).toFixed(1)}"/>`
+        : status === 'in flight'
+          ? ''
+          : `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(r * 0.84).toFixed(1)}" fill="none" stroke="${status === 'funded' ? dots.money : dots.new}" stroke-width="${(1.8 * k).toFixed(1)}"/>`
+  const fill = status === 'proven' ? tones.live[0] : status === 'dead end' ? '#f1f1ee' : '#f3f6ee'
+  return {
+    pulse: status === 'in flight' ? { color: dots.live, radius: r, x: cx, y: cy } : null,
+    svg: box(x, y, wide, high, high / 2, fill) + mark + say(fonts.mono, x + 38 * k, y + high / 2 + size * 0.36, label, size, { fill: '#26391e', spacing: 0.3 * k }),
+  }
+}
+
+const kinds: Record<Tree.Form, string> = { approach: 'approach', goal: 'whole swarm', idea: 'idea', lemma: 'lemma', program: 'program', triage: 'triage' }
+
+export function ask(form: Tree.Form) {
+  return `Ride this ${kinds[form]}`.replace('this whole', 'the whole')
+}
+
+export function node(fonts: Fonts, item: Leaf, width: number, height: number): Scene {
+  const { k, margin } = scale(width, height)
+  const top = margin + 36 * k
+  const right = width - margin
+  const room = right - margin
+  const crumb = Glyphs.wrap(fonts.mono, item.swarm, 17 * k, room * 0.55, 1)[0] ?? ''
+  const tag = badge(fonts, margin, top + 34 * k, item.status, item.checked ? 'Proven · checked by Lean' : words[item.status], k)
+  const sizes = [78, 66, 56, 48].map((size) => size * k)
+  let size = sizes[0] ?? 78
+  let title = Glyphs.wrap(fonts.serif, item.title, size, room, 3, -0.035 * size)
+  for (const next of sizes) {
+    size = next
+    title = Glyphs.wrap(fonts.serif, item.title, size, room, 3, -0.035 * size)
+    if (Glyphs.wrap(fonts.serif, item.title, size, room, 9, -0.035 * size).length <= 3) break
+  }
+  const first = top + 34 * k + 40 * k + 34 * k + size * 0.8
+  const after = first + (title.length - 1) * size * 1.06
+  const foot = height - margin
+  const whySize = 28 * k
+  const whyFirst = after + 26 * k + whySize
+  const countsLine = below(item.counts)
+  const lowest = foot - 64 * k - (countsLine ? 34 * k : 0)
+  const fit = Math.max(0, Math.min(3, Math.floor((lowest - whyFirst) / (whySize * 1.42)) + 1))
+  const reason = fit ? Glyphs.wrap(fonts.serif, item.why, whySize, room, fit) : []
+  const money = item.spent > 0 ? `${Answer.cash(item.spent)} spent` : 'Nothing spent yet'
+  const moneyWide = Glyphs.width(fonts.serif, money, 40 * k, -1 * k)
+  const ridden = item.ridden > 0 ? `${Answer.cash(item.ridden)} ridden${item.riders ? ` · ${plural(item.riders, 'rider')}` : ''}` : 'No riders yet'
+  const end = item.checked
+    ? button(fonts, right, foot, `Checked by Lean · ${item.checked}`, k)
+    : item.status === 'dead end'
+      ? button(fonts, right, foot, 'Kept as a dead end', k, false)
+      : item.status === 'proven'
+        ? button(fonts, right, foot, 'Checked by Lean', k)
+        : button(fonts, right, foot, `${ask(item.form)} →`, k)
+  const parts = [
+    box(0, 0, width, height, 0, '#ffffff'),
+    brand(fonts, margin, top, k),
+    say(fonts.mono, right, top - 4 * k, crumb, 17 * k, { anchor: 'end', fill: quiet, spacing: 0.3 * k }),
+    tag.svg,
+    stack(fonts.serif, title, margin, first, size, 1.06, { spacing: -0.035 * size }),
+    stack(fonts.serif, reason, margin, whyFirst, whySize, 1.42, { fill: soft }),
+    countsLine ? say(fonts.mono, margin, foot - 56 * k, `Under it: ${countsLine}`, 18 * k, { fill: '#26391e', spacing: 0.2 * k }) : '',
+    say(fonts.serif, margin, foot + 6 * k, money, 40 * k, { spacing: -1 * k }),
+    say(fonts.mono, margin + moneyWide + 16 * k, foot + 2 * k, ridden, 18 * k, { fill: quiet }),
+    end.svg,
+  ].join('')
+  return { gauge: null, height, hives: [], lines: [], links: [], parts, pulse: tag.pulse, typed: '', width }
+}
+

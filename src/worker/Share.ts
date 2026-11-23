@@ -3,9 +3,10 @@ import type { Summary } from '../shared/Api.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
 import { open, problems } from '../shared/ResearchBrief.ts'
 import * as Status from '../shared/Status.ts'
+import type * as Tree from '../shared/Tree.ts'
 import * as Cards from './Cards.ts'
 
-export const look = 1
+export const look = 2
 
 export type Subject =
   | { field: Cards.Field; kind: 'home' }
@@ -13,6 +14,8 @@ export type Subject =
   | { field: Cards.Field; kind: 'new' }
   | { item: Cards.Swarm; kind: 'idea'; problem: string }
   | { item: Cards.Swarm; kind: 'swarm'; swarm: string }
+  | { item: Cards.Grove; kind: 'tree'; swarm: string }
+  | { item: Cards.Leaf; kind: 'node'; node: string; swarm: string }
   | { kind: 'about' }
   | { kind: 'docs' }
 
@@ -59,6 +62,14 @@ export function swarm(value: Summary): Subject {
   return { item: Cards.item(value), kind: 'swarm', swarm: value.id }
 }
 
+export function tree(swarm: string, view: { headline: Tree.Headline; nodes: readonly Tree.Node[] }): Subject {
+  return { item: Cards.grove(swarm, view), kind: 'tree', swarm }
+}
+
+export function node(swarm: string, title: string, value: Tree.Node): Subject {
+  return { item: Cards.leaf(swarm, title, value), kind: 'node', node: value.id, swarm }
+}
+
 export function idea(value: Problem): Subject {
   return { item: Cards.idea(value), kind: 'idea', problem: value.id }
 }
@@ -73,6 +84,8 @@ export function plain(kind: 'about' | 'docs'): Subject {
 
 export function page(url: URL) {
   const path = url.pathname.replace(/\/$/, '') || '/'
+  const leaf = /^\/s\/([A-Za-z0-9_-]{1,64})\/n\/([a-z0-9]{1,16})$/.exec(path)
+  if (leaf) return `s/${leaf[1]}/n/${leaf[2]}`
   const id = /^\/s\/([A-Za-z0-9_-]{1,64})(?:\/chat|\/code|\/results)?$/.exec(path)?.[1]
   if (id) return `s/${id}`
   if (path === '/new' && url.searchParams.has('q')) return problem(url.searchParams.get('q')) ? `new/${url.searchParams.get('q')}` : undefined
@@ -84,16 +97,19 @@ export function bot(request: Request) {
 }
 
 export function key(subject: Subject) {
-  if (subject.kind === 'swarm') return `s/${encodeURIComponent(subject.swarm)}`
+  if (subject.kind === 'node') return `s/${encodeURIComponent(subject.swarm)}/n/${subject.node}`
+  if (subject.kind === 'swarm' || subject.kind === 'tree') return `s/${encodeURIComponent(subject.swarm)}`
   if (subject.kind === 'idea') return `new/${subject.problem}`
   return subject.kind
 }
 
 export function moving(subject: Subject) {
-  return subject.kind !== 'about' && subject.kind !== 'docs'
+  return subject.kind !== 'about' && subject.kind !== 'docs' && subject.kind !== 'tree' && subject.kind !== 'node'
 }
 
 function steady(subject: Subject) {
+  if (subject.kind === 'tree') return { ...subject, item: { ...subject.item, perProven: subject.item.perProven === null ? null : Math.round(subject.item.perProven), ridden: Math.round(subject.item.ridden), spent: Math.round(subject.item.spent) } }
+  if (subject.kind === 'node') return { ...subject, item: { ...subject.item, ridden: Math.round(subject.item.ridden), spent: Math.round(subject.item.spent) } }
   if (subject.kind !== 'swarm') return subject
   const item = subject.item
   const fill = item.balance > 0 ? Math.round(Math.min(1, Math.max(0, item.left / item.balance)) * 20) : 0
@@ -111,6 +127,8 @@ export function asset(origin: string, subject: Subject, name: 'card.png' | 'post
 }
 
 function alt(subject: Subject) {
+  if (subject.kind === 'tree') return `${subject.item.title} ${headline(subject.item)}`
+  if (subject.kind === 'node') return `${subject.item.title}. ${Cards.words[subject.item.status]}. ${subject.item.why}`
   if (subject.kind === 'swarm' || subject.kind === 'idea') {
     const item = subject.item
     const money = item.balance > 0 ? `${Answer.cash(item.balance)} balance from ${backers(item.backers)}` : 'no riders yet'
@@ -124,12 +142,13 @@ function alt(subject: Subject) {
 }
 
 export function title(subject: Subject) {
-  if (subject.kind === 'swarm' || subject.kind === 'idea') return `${subject.item.title} · Swarms`
+  if (subject.kind === 'swarm' || subject.kind === 'idea' || subject.kind === 'tree' || subject.kind === 'node') return `${subject.item.title} · Swarms`
   return { about: 'Swarm riders · Swarms', docs: 'API and MCP · Swarms', home: 'Swarms · Make a breakthrough. Ride a swarm.', ideas: 'All swarms · Swarms', new: 'Start a swarm · Swarms' }[subject.kind]
 }
 
 export function playing(origin: string, subject: Subject) {
-  if (subject.kind === 'swarm') return `${origin}/x/s/${encodeURIComponent(subject.swarm)}`
+  if (subject.kind === 'node') return `${origin}/x${path(subject)}`
+  if (subject.kind === 'swarm' || subject.kind === 'tree') return `${origin}/x/s/${encodeURIComponent(subject.swarm)}`
   if (subject.kind === 'ideas') return `${origin}/x?view=join`
   if (subject.kind === 'new' || subject.kind === 'idea') return `${origin}/x?view=start`
   if (subject.kind === 'home') return `${origin}/x`
@@ -137,7 +156,8 @@ export function playing(origin: string, subject: Subject) {
 }
 
 export function path(subject: Subject) {
-  if (subject.kind === 'swarm') return `/s/${encodeURIComponent(subject.swarm)}`
+  if (subject.kind === 'node') return `/s/${encodeURIComponent(subject.swarm)}/n/${subject.node}`
+  if (subject.kind === 'swarm' || subject.kind === 'tree') return `/s/${encodeURIComponent(subject.swarm)}`
   if (subject.kind === 'idea') return `/new?q=${subject.problem}`
   return subject.kind === 'home' ? '/' : `/${subject.kind}`
 }
@@ -156,6 +176,16 @@ export function share(origin: string, subject: Subject, given: { description?: s
 }
 
 function labels(subject: Subject): [string, string][] {
+  if (subject.kind === 'tree')
+    return [
+      ['Proven', subject.item.proven.toLocaleString('en-US')],
+      ['Spent', Answer.cash(subject.item.spent)],
+    ]
+  if (subject.kind === 'node')
+    return [
+      ['Status', subject.item.checked ? `Proven, checked by Lean at ${subject.item.checked}` : Cards.words[subject.item.status]],
+      ['Spent', Answer.cash(subject.item.spent)],
+    ]
   if (subject.kind === 'swarm') {
     const item = subject.item
     return [
@@ -172,7 +202,17 @@ function labels(subject: Subject): [string, string][] {
   return []
 }
 
+export function headline(item: Cards.Grove) {
+  return `${item.proven.toLocaleString('en-US')} proven · ${Cards.tally(item).join(' · ')} · ${Answer.cash(item.spent)} spent.`
+}
+
 export function describe(subject: Subject) {
+  if (subject.kind === 'tree') return `${headline(subject.item)} Ride a lemma, a program or the whole swarm. Lean decides what is proven, and every dead end is kept.`
+  if (subject.kind === 'node') {
+    const item = subject.item
+    const money = item.ridden > 0 ? `${Answer.cash(item.ridden)} ridden, ${Answer.cash(item.spent)} spent.` : 'No riders yet.'
+    return `${Cards.words[item.status]}. ${item.why} ${money}`.slice(0, 300)
+  }
   if (subject.kind === 'swarm') {
     const item = subject.item
     const money = item.balance > 0 ? `${Answer.cash(item.balance)} balance from ${backers(item.backers)}` : 'No riders yet'
@@ -183,6 +223,27 @@ export function describe(subject: Subject) {
   if (subject.kind === 'about') return 'Pick a swarm, put in a few dollars and say where it should go. AI agents work on it in the open until the money runs out.'
   if (subject.kind === 'docs') return 'Everything on Swarms is a public REST API and an MCP server. Reading is free and needs no account.'
   return blurb
+}
+
+export type Notice = { frame: string; intent: string; text: string; url: string }
+
+function clip(text: string, most: number) {
+  return text.length > most ? `${text.slice(0, most - 1).trimEnd()}…` : text
+}
+
+export function announce(origin: string, swarm: string, title: string, delta: Tree.Delta): Notice | undefined {
+  if (!((delta.event === 'proven' && delta.node.status === 'proven') || (delta.event === 'ended' && delta.node.status === 'dead end'))) return undefined
+  return notice(origin, swarm, title, delta.node)
+}
+
+export function notice(origin: string, swarm: string, title: string, value: Tree.Node): Notice | undefined {
+  if (value.status !== 'proven' && value.status !== 'dead end') return undefined
+  const subject = node(swarm, title, value)
+  if (subject.kind !== 'node') return undefined
+  const said = value.status === 'proven' ? `Proven, checked by Lean${subject.item.checked ? ` at ${subject.item.checked}` : ''}: ${value.title}` : `Dead end, kept in the tree: ${value.title}. ${subject.item.why}`
+  const text = clip(`${title}\n${said}`, 240)
+  const frame = playing(origin, subject) ?? `${origin}${path(subject)}`
+  return { frame, intent: `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(frame)}`, text, url: `${origin}${path(subject)}` }
 }
 
 function escape(value: string) {

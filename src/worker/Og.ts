@@ -1,7 +1,9 @@
 import { waitUntil } from 'cloudflare:workers'
 import { initWasm, Resvg } from '@resvg/resvg-wasm'
 import resvg from '@resvg/resvg-wasm/index_bg.wasm'
+import type * as Tree from '../shared/Tree.ts'
 import * as Cards from './Cards.ts'
+import type * as Edge from './Edge.ts'
 import * as Film from './Film.ts'
 import mono from './fonts/mono.bin'
 import serif from './fonts/serif.bin'
@@ -11,6 +13,7 @@ import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Share from './Share.ts'
 import * as Site from '../shared/Site.ts'
+import * as XFrames from './XFrames.ts'
 
 type Name = 'card.png' | 'poster.png' | 'video.mp4'
 
@@ -47,8 +50,39 @@ export function parse(path: string): { key: string; name: Name } | undefined {
   const found = /^\/og\/(.+)\/(card\.png|poster\.png|video\.mp4)$/.exec(path)
   if (!found) return undefined
   const [, key = '', name] = found
-  if (!/^(home|ideas|new|about|docs|new\/[a-z0-9-]{1,64}|s\/[A-Za-z0-9_-]{1,64})$/.test(key)) return undefined
+  if (!/^(home|ideas|new|about|docs|new\/[a-z0-9-]{1,64}|s\/[A-Za-z0-9_-]{1,64}(\/n\/[a-z0-9]{1,16})?)$/.test(key)) return undefined
   return { key, name: name as Name }
+}
+
+type View = { headline: Tree.Headline; nodes: Tree.Node[] }
+
+type Reads = {
+  node?: (env: Cloudflare.Env, input: { node: string; swarm: string }) => Promise<Problem.Result<Tree.Node>>
+  tree?: (env: Cloudflare.Env, input: { depth?: number; swarm: string }) => Promise<Problem.Result<View>>
+}
+
+const reads = Operations as unknown as Reads
+
+export async function grove(env: Cloudflare.Env, swarm: string) {
+  const found = await reads.tree?.(env, { depth: 64, swarm })
+  return found?.ok ? found.value : undefined
+}
+
+export async function leaf(env: Cloudflare.Env, swarm: string, nid: string) {
+  if (!reads.node) return undefined
+  const [found, root] = await Promise.all([reads.node(env, { node: nid, swarm }), nid === 'root' ? undefined : reads.node(env, { node: 'root', swarm })])
+  if (!found.ok) return undefined
+  return { node: found.value, title: nid === 'root' ? found.value.title : root?.ok ? root.value.title : 'Swarm' }
+}
+
+async function tree(env: Cloudflare.Env, key: string): Promise<Share.Subject | undefined> {
+  const [swarm = '', , nid] = key.slice(2).split('/')
+  if (nid) {
+    const found = await leaf(env, swarm, nid)
+    return found && Share.node(swarm, found.title, found.node)
+  }
+  const found = await grove(env, swarm)
+  return found && Share.tree(swarm, found)
 }
 
 async function subject(env: Cloudflare.Env, key: string): Promise<Share.Subject | undefined> {
@@ -58,6 +92,8 @@ async function subject(env: Cloudflare.Env, key: string): Promise<Share.Subject 
     return problem && Share.idea(problem)
   }
   if (key.startsWith('s/')) {
+    const grown = await tree(env, key)
+    if (grown || key.includes('/n/')) return grown
     const found = await Operations.detail(env, { swarm: key.slice(2) }, false)
     return found.ok ? Share.swarm(found.value) : undefined
   }
@@ -104,6 +140,8 @@ export async function embed(env: Cloudflare.Env, given: string, origin: string, 
 }
 
 function scene(fonts: Cards.Fonts, subject: Share.Subject, width: number, height: number) {
+  if (subject.kind === 'tree') return Cards.tree(fonts, subject.item, width, height)
+  if (subject.kind === 'node') return Cards.node(fonts, subject.item, width, height)
   if (subject.kind === 'swarm') return Cards.swarm(fonts, subject.item, width, height)
   if (subject.kind === 'idea') return Cards.swarm(fonts, subject.item, width, height, 'Start it')
   if (subject.kind === 'home') return Cards.home(fonts, subject.field, width, height)
@@ -207,6 +245,32 @@ export async function serve(env: Cloudflare.Env, request: Request) {
     }))
   if (!item) return new Response('Not found', { headers: { 'cache-control': 'public, max-age=60' }, status: 404 })
   return served(request, item)
+}
+
+export async function head(env: Cloudflare.Env, site: string, url: URL): Promise<Share.Share | undefined> {
+  const key = Share.page(url)
+  if (!key?.startsWith('s/')) return undefined
+  const found = await tree(env, key)
+  return found && Share.share(site, found)
+}
+
+export function frame(env: Cloudflare.Env, id: string | undefined, nid?: string): Edge.Draw {
+  return async (request) => {
+    const url = new URL(request.url)
+    const site = Site.url(env, url)
+    if (id === undefined) {
+      const listed = await Operations.list(env, {}).catch(() => undefined)
+      return { response: XFrames.start(site, listed?.ok ? listed.value.swarms : [], url, env.TELEGRAM_BOT), whole: Promise.resolve(!!listed?.ok) }
+    }
+    if (nid !== undefined) {
+      const found = /^[a-z0-9]{1,16}$/.test(nid) ? await leaf(env, id, nid) : undefined
+      return { response: found ? XFrames.node(site, id, found.title, found.node, url, env.TELEGRAM_BOT) : XFrames.lost(site, url, env.TELEGRAM_BOT), whole: Promise.resolve(!!found) }
+    }
+    const grown = await grove(env, id)
+    if (grown) return { response: XFrames.tree(site, id, grown, url, env.TELEGRAM_BOT), whole: Promise.resolve(true) }
+    const result = await Operations.get(env, { swarm: id })
+    return { response: result.ok ? XFrames.swarm(site, result.value, url, env.TELEGRAM_BOT) : result.status === 404 ? XFrames.lost(site, url, env.TELEGRAM_BOT) : Problem.json(result), whole: Promise.resolve(result.ok) }
+  }
 }
 
 export async function warm(env: Cloudflare.Env, url: URL) {
