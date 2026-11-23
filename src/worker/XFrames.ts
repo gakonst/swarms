@@ -1,6 +1,9 @@
 import type { Overview, Summary } from '../shared/Api.ts'
 import { briefInstruction, open } from '../shared/ResearchBrief.ts'
+import * as Answer from '../shared/Answer.ts'
 import * as Status from '../shared/Status.ts'
+import type * as Tree from '../shared/Tree.ts'
+import * as Cards from './Cards.ts'
 import * as Share from './Share.ts'
 
 const headers = {
@@ -41,7 +44,7 @@ export function shell(request?: URL) {
   return request?.pathname === '/tg' || request?.pathname.startsWith('/tg/') ? '/tg' : '/x'
 }
 
-const host = (root: string) => `(()=>{const frame=document.getElementById('xframe-player');const own=location.origin;const allowed=value=>{try{const url=new URL(value);if(url.origin==='https://wallet.tempo.xyz'&&/^[a-z0-9-]{8,16}$/i.test(url.searchParams.get('user_code')||''))return 'wallet';if(url.origin===own&&(url.pathname.startsWith('${root}/s/')||url.pathname.startsWith('${root}/x/')))return 'page';if(url.origin==='https://x.com'&&url.pathname==='/intent/post')return 'page'}catch{}};addEventListener('message',event=>{const message=event.data;if(event.source!==frame.contentWindow||message?.type!=='swarms:open'||typeof message.url!=='string')return;const kind=allowed(message.url);if(!kind)return;let popup=null;try{popup=kind==='wallet'?window.open(message.url,'swarms-wallet','popup,width=460,height=760'):window.open(message.url,'_blank','noopener')}catch{}if(!popup&&kind==='wallet')location.href=message.url});const content=new URL(location.href);content.searchParams.set('xframes-content','');frame.src=content.href})();`
+const host = (root: string) => `(()=>{const frame=document.getElementById('xframe-player');const own=location.origin;const allowed=value=>{try{const url=new URL(value);if(url.origin==='https://wallet.tempo.xyz'&&/^[a-z0-9-]{8,16}$/i.test(url.searchParams.get('user_code')||''))return 'wallet';if(url.origin===own&&(url.pathname.startsWith('${root}/s/')||url.pathname.startsWith('${root}/x/')))return 'page';if(url.origin===own&&url.pathname.startsWith('${root}/v1/swarms/'))return 'page';if(url.origin==='https://github.com')return 'page';if(url.origin==='https://x.com'&&url.pathname==='/intent/post')return 'page'}catch{}};addEventListener('message',event=>{const message=event.data;if(event.source!==frame.contentWindow||message?.type!=='swarms:open'||typeof message.url!=='string')return;const kind=allowed(message.url);if(!kind)return;let popup=null;try{popup=kind==='wallet'?window.open(message.url,'swarms-wallet','popup,width=460,height=760'):window.open(message.url,'_blank','noopener')}catch{}if(!popup&&kind==='wallet')location.href=message.url});const content=new URL(location.href);content.searchParams.set('xframes-content','');frame.src=content.href})();`
 
 function attribute(value: string) {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -121,7 +124,7 @@ const wallet = `<section class="view center" data-view="approve" hidden>
     <p class="kicker">Send it with Tempo ID</p>
     <p class="code" id="code">$2</p>
     <a class="go wide" id="approve" target="_blank" rel="noreferrer">Open the swarm to pay ↗</a>
-    <p class="hint">You send USDC.e, OUSD, pathUSD or MACH from its page.</p>
+    <p class="hint">You pay in dollars on its page, with Tempo ID.</p>
     <button class="back" data-back type="button">Cancel</button>
   </section>
   <section class="view center" data-view="done" hidden>
@@ -134,7 +137,7 @@ const wallet = `<section class="view center" data-view="approve" hidden>
 export function start(origin: string, swarms: readonly Summary[] = [], request?: URL, bot?: string) {
   const base = rooted(origin) + shell(request)
   const title = 'Start a breakthrough, or be part of one'
-  const description = 'Fund AI agents that research and build in the open. Start one, or join one already running.'
+  const description = 'Ride AI agents that research and build in the open. Start one, or join one already running.'
   const free = open(swarms)
   const ideas = free.slice(0, 4)
   const latest = Math.max(0, ...swarms.map((item) => item.updatedAt))
@@ -178,7 +181,7 @@ export function start(origin: string, swarms: readonly Summary[] = [], request?:
 
 export function swarm(origin: string, value: Overview, request?: URL, bot?: string) {
   const working = value.status === 'running' ? value.working : null
-  const title = working ? `Live: ${value.title}` : `Fund ${value.title}`
+  const title = working ? `Live: ${value.title}` : `Ride ${value.title}`
   const description = working ? 'Watch this swarm work, live, and steer it.' : `${backers(value.contributors)} · ${dollars(value.balance)} balance.`
   const page = `${origin}/s/${encodeURIComponent(value.id)}`
   const latest = value.updates.at(-1)?.excerpt ?? null
@@ -187,7 +190,7 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
       <i class="dot" data-status="${value.status}"></i>
       <a class="name" href="${attribute(page)}" target="_blank" rel="noreferrer">${attribute(value.title)}</a>
       <span class="sum">${dollars(value.balance)} · ${value.contributors}</span>
-      <button class="go small" data-open="fund" type="button">Fund</button>
+      <button class="go small" data-open="fund" type="button">Ride</button>
     </header>
     <nav class="tabs" role="tablist">
       <button aria-selected="true" data-tab="transcript" role="tab" type="button">Transcript</button>
@@ -207,14 +210,14 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
   </section>
   <section class="view split" data-view="fund" hidden>
     <div class="left">
-      <header class="top"><button class="back" data-back type="button">←</button><h1>Fund it</h1></header>
+      <header class="top"><button class="back" data-back type="button">←</button><h1>Ride it</h1></header>
       <p class="fund-name"><i class="dot" data-status="${value.status}"></i>${attribute(value.title)}</p>
       <p class="hint">${dollars(value.balance)} balance · ${backers(value.contributors)}</p>
       <p class="goal">${attribute(latest ?? value.goal)}</p>
       ${value.notes.length ? `<ol class="list notes">${value.notes.slice(0, 3).map((note) => `<li class="row-item"><span>${attribute(note.note)}</span><em>${dollars(note.weight)}</em></li>`).join('')}</ol>` : ''}
       <p class="behind" id="behind" hidden></p>
     </div>
-    ${amounts('Fund')}
+    ${amounts('Ride')}
   </section>
   ${wallet}`
   return document(origin, `/s/${encodeURIComponent(value.id)}`, Share.swarm(value), title, description, content, {
@@ -225,18 +228,137 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
   }, 200, request, bot)
 }
 
+type View = { headline: Tree.Headline; nodes: readonly Tree.Node[] }
+
+const states: Record<Tree.Status, string> = { 'dead end': 'dead', funded: 'funded', 'in flight': 'flight', proposed: 'open', proven: 'proven' }
+
+function said(node: Tree.Node) {
+  if (node.status === 'proven') return node.proof ? `Proven · checked by Lean at ${node.proof.commit.slice(0, 7)}` : 'Proven · checked by Lean'
+  if (node.status === 'dead end') return `Dead end · ${Cards.why(node)}`
+  return Cards.words[node.status]
+}
+
+function settled(node: Tree.Node) {
+  return node.proof?.at ?? node.end?.at ?? node.updatedAt
+}
+
+function row(base: string, swarm: string, node: Tree.Node) {
+  return `<li><a class="row-item" href="${attribute(`${base}/s/${encodeURIComponent(swarm)}/n/${node.id}`)}"><i class="mark-node" data-state="${states[node.status]}"></i><span>${attribute(node.title)}<small>${attribute(said(node))}</small></span></a></li>`
+}
+
+function facts(item: Cards.Grove) {
+  return `<span data-count="frontier">${item.frontier.toLocaleString('en-US')}</span> on the frontier · <span data-count="inFlight">${item.inFlight.toLocaleString('en-US')}</span> in flight · <span data-count="deadEnds">${Cards.tally(item)[2]}</span> · <span data-count="spent">${Answer.cash(item.spent)}</span> spent`
+}
+
+export function tree(origin: string, swarm: string, view: View, request?: URL, bot?: string) {
+  const base = rooted(origin) + shell(request)
+  const item = Cards.grove(swarm, view)
+  const id = encodeURIComponent(swarm)
+  const page = `${origin}/s/${id}`
+  const name = attribute(item.title)
+  const latest = view.nodes
+    .filter((node) => node.status === 'proven' || node.status === 'dead end')
+    .sort((a, b) => settled(b) - settled(a))
+    .slice(0, 12)
+  const shown = item.cells.slice(0, 1200)
+  const content = `<section class="view room tree" data-view="room">
+    <header class="head">
+      <i class="mark-node" data-state="${item.inFlight ? 'flight' : 'open'}"></i>
+      <a class="name" href="${attribute(page)}" target="_blank" rel="noreferrer">${name}</a>
+      <button class="go small" data-open="fund" type="button">Ride</button>
+    </header>
+    <div class="score">
+      <p class="count"><b data-count="proven">${item.proven.toLocaleString('en-US')}</b>proven</p>
+      <p class="facts">${facts(item)}</p>
+    </div>
+    <div class="cells" title="One square per lemma, filled once Lean checks its proof">${shown.map((cell) => `<i data-cell="${cell}"></i>`).join('')}</div>
+    <ol class="list latest" id="latest">${latest.map((node) => row(base, swarm, node)).join('') || '<li class="beat quiet" id="empty-latest">No proofs or dead ends yet. Lean decides what is proven.</li>'}</ol>
+  </section>
+  <section class="view split" data-view="fund" hidden>
+    <div class="left">
+      <header class="top"><button class="back" data-back type="button">←</button><h1>Ride the whole swarm</h1></header>
+      <p class="fund-name">${name}</p>
+      <p class="hint">${Answer.cash(item.ridden)} ridden · ${Answer.cash(item.spent)} spent</p>
+      <p class="goal">Your dollars flow down to the lemmas that can be worked now. What is not spent stays yours.</p>
+    </div>
+    ${amounts('Ride')}
+  </section>
+  ${wallet}`
+  return document(origin, `/s/${id}`, Share.tree(swarm, view), `${item.title} · ${item.proven.toLocaleString('en-US')} proven`, Share.describe(Share.tree(swarm, view)), content, {
+    kind: 'tree',
+    page,
+    ride: `/s/${id}`,
+    start: swarm,
+    swarm: { id: swarm, title: item.title },
+  }, 200, request, bot)
+}
+
+export function node(origin: string, swarm: string, title: string, value: Tree.Node & { review?: boolean }, request?: URL, bot?: string, view?: { nodes: readonly Tree.Node[] }) {
+  const base = rooted(origin) + shell(request)
+  const item = Cards.leaf(swarm, title, value)
+  const id = encodeURIComponent(swarm)
+  const path = `/s/${id}/n/${value.id}`
+  const page = `${origin}${path}`
+  const notice = Share.notice(origin, swarm, title, value)
+  const open = value.status !== 'proven' && value.status !== 'dead end'
+  const under = value.children.length ? Cards.below(item.counts) : ''
+  const money = item.ridden > 0 ? `${Answer.cash(item.ridden)} ridden${item.riders ? ` by ${backers(item.riders)}` : ''} · ${Answer.cash(item.spent)} spent` : `No riders yet · ${Answer.cash(item.spent)} spent`
+  const proof = value.proof
+  const record = proof
+    ? `<dl class="record"><dt>Theorem</dt><dd>${attribute(proof.theorem)}</dd><dt>Commit</dt><dd>${attribute(proof.commit.slice(0, 12))}</dd><dt>Lean</dt><dd>${attribute(proof.toolchain)}</dd><dt>Mathlib</dt><dd>${attribute(proof.mathlib.slice(0, 12))}</dd><dt>Axioms</dt><dd>${attribute(proof.axioms.join(', ') || 'none')}</dd></dl><a class="ghost" href="${attribute(proof.url)}" target="_blank" rel="noreferrer">See the checked run ↗</a>`
+    : ''
+  const action = open ? '<button class="go small" data-open="fund" type="button">Ride</button>' : notice ? `<a class="go small" href="${attribute(notice.intent)}" target="_blank" rel="noreferrer">Share</a>` : ''
+  const content = `<section class="view room node" data-view="room">
+    <header class="head">
+      <a class="back" href="${attribute(`${base}/s/${id}`)}" aria-label="The whole swarm">←</a>
+      <a class="crumb" href="${attribute(page)}" target="_blank" rel="noreferrer">${attribute(title)}</a>
+      ${action}
+    </header>
+    <div class="feed">
+      <p class="badge" data-state="${states[value.status]}"><i class="mark-node" data-state="${states[value.status]}"></i>${attribute(item.checked ? 'Proven · checked by Lean' : Cards.words[value.status])}</p>${item.review ? '<p class="badge" data-state="open">Statement under review</p>' : ''}
+      <h1>${attribute(value.title)}</h1>
+      <p class="why">${attribute(item.why)}</p>
+      ${under ? `<p class="facts">Under it: ${attribute(under)}</p>` : ''}
+      <p class="facts">${attribute(money)}</p>
+      ${record}
+      ${value.statement ? `<pre class="lean">${attribute(value.statement)}</pre>` : ''}
+    </div>
+  </section>
+  <section class="view split" data-view="fund" hidden>
+    <div class="left">
+      <header class="top"><button class="back" data-back type="button">←</button><h1>${attribute(Cards.ask(value.form))}</h1></header>
+      <p class="fund-name"><i class="mark-node" data-state="${states[value.status]}"></i>${attribute(value.title)}</p>
+      <p class="hint">${attribute(money)}</p>
+      <p class="goal">It runs on your dollars first. What it does not spend stays yours.</p>
+    </div>
+    ${amounts('Ride')}
+  </section>
+  ${wallet}`
+  const shared = Share.node(swarm, title, value, view)
+  return document(origin, path, shared, `${value.title} · ${Cards.words[value.status]}`, Share.describe(shared), content, {
+    kind: 'node',
+    node: value.id,
+    page,
+    ride: path,
+    start: `${swarm}__${value.id}`,
+    swarm: { id: swarm, title },
+    up: `${base}/s/${id}`,
+    what: value.title,
+  }, 200, request, bot)
+}
+
 export function lost(origin: string, request?: URL, bot?: string) {
   const base = rooted(origin) + shell(request)
   const content = `<section class="view center" data-view="lost">
     <h2>This swarm drifted off.</h2>
     <div class="row"><a class="go" href="${base}?view=start">Start a swarm</a><a class="ghost" href="${base}?view=join">Join a swarm</a></div>
   </section>`
-  return document(origin, '', Share.listing('home', []), 'Swarms', 'Fund AI agents that research and build in the open.', content, { kind: 'lost' }, 404, request, bot)
+  return document(origin, '', Share.listing('home', []), 'Swarms', 'Ride AI agents that research and build in the open.', content, { kind: 'lost' }, 404, request, bot)
 }
 
 export function card(title: string) {
   const safe = attribute(title.trim().slice(0, 64) || 'Start a breakthrough')
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><rect width="1200" height="630" fill="#f6f8f2"/><rect x="60" y="60" width="1080" height="510" rx="40" fill="#1a3d2c"/><text x="120" y="160" fill="#b8d3a6" font-family="ui-monospace,monospace" font-size="26">Swarms</text><text x="118" y="300" fill="#fff" font-family="Georgia,serif" font-size="64">${safe}</text><rect x="120" y="400" width="240" height="76" rx="20" fill="#fff"/><text x="240" y="449" fill="#1a3d2c" font-family="ui-sans-serif,sans-serif" font-size="28" text-anchor="middle">Fund it →</text></svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><rect width="1200" height="630" fill="#f6f8f2"/><rect x="60" y="60" width="1080" height="510" rx="40" fill="#1a3d2c"/><text x="120" y="160" fill="#b8d3a6" font-family="ui-monospace,monospace" font-size="26">Swarms</text><text x="118" y="300" fill="#fff" font-family="Georgia,serif" font-size="64">${safe}</text><rect x="120" y="400" width="240" height="76" rx="20" fill="#fff"/><text x="240" y="449" fill="#1a3d2c" font-family="ui-sans-serif,sans-serif" font-size="28" text-anchor="middle">Ride it →</text></svg>`
   return new Response(svg, { headers: { 'cache-control': 'public, max-age=86400', 'content-type': 'image/svg+xml; charset=utf-8', 'x-content-type-options': 'nosniff' } })
 }
 
@@ -354,6 +476,35 @@ h2{margin:0;font-weight:400;font-size:28px;letter-spacing:-.02em;max-width:620px
 .behind{margin:6px 0 0;padding:10px 12px;border:1px solid #c5d4b6;border-radius:12px;background:#f1f6ea;font-size:15px}
 .behind b{display:block;font:11px ${mono};font-weight:400;color:#4b6a3a}
 @media(max-width:560px) and (max-aspect-ratio:1/1){.big b{font-size:56px!important}.door-peek{margin-top:6px}.door-peek .chip:nth-child(n+3){display:none}.goal{-webkit-line-clamp:2}.notes{display:none}.pay{padding:12px}.app{padding:12px}.doors{grid-template-columns:1fr}.door{padding:16px}.door-title{font-size:26px}.door-peek .chip:nth-child(n+4){display:none}.doors{align-content:stretch}.door{gap:8px}.split{grid-template-columns:1fr;gap:10px}h1{font-size:22px}.big b{font-size:42px}.go,.ghost{min-height:44px}.code{font-size:38px}.row{flex-direction:column;width:100%}.room{margin:-12px}.sum{display:none}.stake button{padding:0 7px}}
+.mark-node{flex-shrink:0;width:10px;height:10px;border-radius:50%;border:1.6px solid #6d8e52}
+.mark-node[data-state=proven]{background:#1a7a3c;border-color:#1a7a3c}
+.mark-node[data-state=flight]{background:#2fae5a;border-color:#2fae5a;box-shadow:0 0 0 4px #2fae5a22}
+.mark-node[data-state=funded]{border-color:#e0a43c}
+.mark-node[data-state=dead]{height:2px;border:0;border-radius:1px;background:#7a7f74}
+.score{padding:6px 16px 0}
+.count{display:flex;align-items:baseline;gap:8px;margin:0;font-size:24px;letter-spacing:-.02em}
+.count b{font-weight:400;font-size:64px;line-height:1;letter-spacing:-.04em}
+.facts{margin:4px 0 0;font:12px/1.5 ${mono};color:#4b5d40}
+.cells{display:flex;flex-wrap:wrap;gap:2px;max-height:52px;margin:10px 16px;overflow:hidden}
+.cells i{width:8px;height:8px;border-radius:2px;background:#fff;box-shadow:inset 0 0 0 1px #b9c7ad}
+.cells i[data-cell=proven]{background:#1a7a3c;box-shadow:none}
+.cells i[data-cell=flight]{background:#9fd18a;box-shadow:none}
+.cells i[data-cell=dead]{background:#c8ccc2;box-shadow:none}
+.latest{flex:1;min-height:0;margin:0 12px 12px;overflow-y:auto}
+.latest .row-item span{white-space:normal}
+.fresh{animation:fresh 2s ease-out}
+@keyframes fresh{from{background:#e6f3df}}
+.crumb{flex:1;min-width:0;overflow:hidden;font:12px ${mono};color:#5c7350;white-space:nowrap;text-overflow:ellipsis;text-decoration:none}
+.node .back{display:grid;place-items:center;text-decoration:none}
+.node .feed>*{margin:0 0 10px}
+.node h1{font-size:28px}
+.badge{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:14px;background:#f3f6ee;font:12px ${mono};color:#26391e}
+.badge[data-state=proven]{background:#e6f3df}.badge[data-state=dead]{background:#f1f1ee}
+.why{font-size:16px;line-height:1.45;color:#3d5232}
+.record{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;padding:10px 12px;border:1px solid #c5d4b6;border-radius:12px;background:#f1f6ea;font:12px ${mono}}
+.record dt{color:#5c7350}.record dd{margin:0;overflow-wrap:anywhere}
+.node .ghost{min-height:40px;font-size:14px}
+.lean{padding:10px 12px;border-radius:12px;background:#161616;color:#f3f6ee;font:12px/1.5 ${mono};white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto}
 .tg .app{height:var(--tg-viewport-stable-height,100dvh)}.tg .top .back{display:none}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `
@@ -377,7 +528,7 @@ let amount='2',choice=null,note='',currentSwarm=frame.swarm||null;
 if(tg){
   tg.ready();tg.expand();
   try{tg.setHeaderColor('#f6f8f2');tg.setBackgroundColor('#f6f8f2');tg.disableVerticalSwipes()}catch{}
-  tg.BackButton.onClick(()=>{if(history.length)back();else location.href=frame.base+'?view=join'});
+  tg.BackButton.onClick(()=>{if(history.length)back();else location.href=frame.up||frame.base+'?view=join'});
   document.addEventListener('click',event=>{const link=event.target instanceof Element?event.target.closest('a[target=_blank]'):null;if(!link||event.defaultPrevented)return;event.preventDefault();const url=new URL(link.href,location.href);if(url.origin==='https://t.me')tg.openTelegramLink(url.href);else tg.openLink(url.href)},true);
   chrome();
 }
@@ -397,17 +548,17 @@ async function send(path,options){
 function finish(){
   show('done');
   document.getElementById('done-title').textContent="Finish on the swarm's page"+(currentSwarm&&currentSwarm.title?': '+currentSwarm.title:'.');
-  const origin=frame.site,id=encodeURIComponent(currentSwarm.id),words=(note?'I put money behind "'+note+'" on ':'I funded ')+currentSwarm.title;
+  const origin=frame.site,id=encodeURIComponent(currentSwarm.id),where=frame.ride||'/s/'+id,words=(note?'I put money behind "'+note+'" on ':"I'm riding ")+(frame.what||currentSwarm.title);
   const watch=document.getElementById('watch');
-  if(tg){watch.removeAttribute('target');watch.textContent='Watch it';watch.href=frame.base+'/s/'+id;tg.HapticFeedback.notificationOccurred('success')}else watch.href=origin+'/s/'+id;
-  document.getElementById('share').href=frame.bot?'https://t.me/share/url?url='+encodeURIComponent('https://t.me/'+frame.bot+'?startapp='+id)+'&text='+encodeURIComponent(words):'https://x.com/intent/post?text='+encodeURIComponent(words+' '+origin+'/x/s/'+id);
+  if(tg){watch.removeAttribute('target');watch.textContent='Watch it';watch.href=frame.base+where;tg.HapticFeedback.notificationOccurred('success')}else watch.href=origin+where;
+  document.getElementById('share').href=frame.bot?'https://t.me/share/url?url='+encodeURIComponent('https://t.me/'+frame.bot+'?startapp='+(frame.start||id))+'&text='+encodeURIComponent(words):'https://x.com/intent/post?text='+encodeURIComponent(words+' '+origin+'/x'+where);
 }
 async function fund(box){
   const go=box&&box.querySelector('[data-go]');if(go)go.disabled=true;say(box,'');
   try{
     if(!currentSwarm){if(!choice)throw new Error('Pick an idea first.');currentSwarm=await send('/v1/swarms',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:choice.title,goal:choice.goal,problem:choice.id})})}
-    const search=new URLSearchParams({fund:'',amount,...(note?{note}:{})});
-    const link=document.getElementById('approve');link.href=(tg?frame.base:frame.site)+'/s/'+encodeURIComponent(currentSwarm.id)+'?'+search;
+    const search=new URLSearchParams(frame.ride?{ride:'',amount}:{fund:'',amount,...(note?{note}:{})});
+    const link=document.getElementById('approve');link.href=(tg?frame.base:frame.site)+(frame.ride||'/s/'+encodeURIComponent(currentSwarm.id))+'?'+search;
     document.getElementById('code').textContent='$'+amount;
     show('approve');
   }catch(error){say(box,error.message||'That did not go through.')}
@@ -505,6 +656,39 @@ if(frame.kind==='swarm'){
   const behind=document.getElementById('behind');
   document.querySelector('[data-open=fund]')?.addEventListener('click',()=>{note='';behind.hidden=true});
   if(query.get('tab')==='chat')tab('chat');else tab('transcript');
+}
+if(frame.kind==='tree'||frame.kind==='node'){
+  const live=frame.root+'/v1/swarms/'+encodeURIComponent(frame.swarm.id);
+  const count=value=>Number(value).toLocaleString('en-US');
+  const cash=value=>{const n=Number(value);if(!(n>0))return '$0.00';return n>=0.1?'$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'$'+String(Number(n.toPrecision(2)))};
+  const set=(name,text)=>document.querySelectorAll('[data-count='+name+']').forEach(item=>item.textContent=text);
+  let timer=null;
+  const refresh=()=>{clearTimeout(timer);timer=setTimeout(()=>fetch(live+'/tree?depth=1').then(response=>response.ok?response.json():null).then(view=>{const head=view&&view.headline;if(!head)return;set('proven',count(head.proven));set('frontier',count(head.frontier));set('inFlight',count(head.inFlight));set('deadEnds',count(head.deadEnds)+' dead end'+(head.deadEnds===1?'':'s'));set('spent',cash(head.spent))}).catch(()=>{}),400)};
+  const add=node=>{
+    const list=document.getElementById('latest');if(!list)return;document.getElementById('empty-latest')?.remove();
+    const item=document.createElement('li');item.className='fresh';
+    const link=document.createElement('a');link.className='row-item';link.href=frame.base+'/s/'+encodeURIComponent(frame.swarm.id)+'/n/'+node.id;
+    const mark=document.createElement('i');mark.className='mark-node';mark.dataset.state=node.status==='proven'?'proven':'dead';
+    const text=document.createElement('span');text.textContent=node.title;
+    const small=document.createElement('small');small.textContent=node.status==='proven'?'Proven · checked by Lean'+(node.proof?' at '+String(node.proof.commit).slice(0,7):''):'Dead end'+(node.end&&node.end.why?' · '+node.end.why:'');
+    text.append(small);link.append(mark,text);item.append(link);list.prepend(item);
+  };
+  const heard=delta=>{
+    if(!delta||!delta.node)return;
+    if(frame.kind==='node'){if(delta.node.id===frame.node&&['funded','started','checking','proven','ended'].includes(delta.event))location.reload();return}
+    if(delta.event==='proven'||delta.event==='ended')add(delta.node);
+    if(['posted','started','proven','ended'].includes(delta.event))refresh();
+  };
+  let source=null,retry=null;
+  const shut=()=>{clearTimeout(retry);retry=null;if(source){source.close();source=null}};
+  const open=()=>{
+    if(source||document.hidden||demo)return;
+    const current=new EventSource(live+'/live');source=current;
+    current.onmessage=message=>{let data=null;try{data=JSON.parse(message.data)}catch{return}heard(data&&data.type==='delta'?data.delta:data)};
+    current.onerror=()=>{current.close();if(source!==current)return;source=null;retry=setTimeout(()=>{refresh();open()},4000)};
+  };
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)shut();else{refresh();open()}});
+  open();
 }
 const view=query.get('view')||{join:'join',start:'start'}[query.get('tgWebAppStartParam')];
 if(view&&views.some(item=>item.dataset.view===view)){if(view!==current)history.push(current);show(view,false)}
