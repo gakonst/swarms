@@ -22,9 +22,12 @@ export type State = {
 let instance: ReturnType<typeof load> | undefined
 
 async function load(config: Config) {
+  verifyUrl = new URL(Site.at(config.auth), location.href).href
   const [{ Accounts }, { dialog, siwe }] = await Promise.all([import('accounts'), import('accounts/plugins')])
   return Accounts.create({ chain: config.chainId, fetch: primed, plugins: [dialog(), siwe({ auth: Site.at(config.auth) })] })
 }
+
+let verifyUrl: string | undefined
 
 let primer: { at: number; response: Promise<Response>; url: string } | undefined
 
@@ -49,7 +52,38 @@ async function primed(input: RequestInfo | URL, init?: RequestInit) {
     const response = await held.response.catch(() => undefined)
     if (response?.ok) return response
   }
+  if (verifyUrl && url === verifyUrl && init?.method === 'POST') return verified(input, init)
   return fetch(input, init)
+}
+
+async function verified(input: RequestInfo | URL, init: RequestInit) {
+  const before = state
+  const address = signer(init.body)
+  const opened = !!address && !state.session && !state.address
+  if (opened) {
+    const same = seen?.address.toLowerCase() === address.toLowerCase()
+    set({ account: same ? seen?.account : undefined, address, balance: same && seen?.balance !== undefined ? BigInt(seen.balance) : undefined, email: same ? seen?.email : undefined, pending: true })
+  }
+  const undo = () => {
+    if (opened && !state.session && state.address === lower(address)) set({ account: before.account, address: before.address, balance: before.balance, balances: before.balances, email: before.email, pending: before.pending })
+  }
+  try {
+    const response = await fetch(input, init)
+    if (!response.ok) undo()
+    return response
+  } catch (error) {
+    undo()
+    throw error
+  }
+}
+
+function signer(body: BodyInit | null | undefined) {
+  try {
+    const address = (JSON.parse(String(body)) as { address?: unknown }).address
+    return typeof address === 'string' && /^0x[0-9a-fA-F]{40}$/.test(address) ? (address as Address) : undefined
+  } catch {
+    return undefined
+  }
 }
 
 const chain = () => Promise.all([import('viem'), import('viem/tempo'), import('viem/tempo/chains')])

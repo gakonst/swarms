@@ -18,8 +18,8 @@ importers:
         specifier: 2.6.2
         version: 2.6.2
       accounts:
-        specifier: 1.0.0-alpha.20261116052638-4550531
-        version: 1.0.0-alpha.20261116052638-4550531(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7)
+        specifier: 1.2.20261123204450
+        version: 1.2.20261123204450(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7)
       hono:
         specifier: ^4.13.14
         version: 4.13.14
@@ -773,8 +773,8 @@ packages:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
     engines: {node: '>= 0.6'}
 
-  accounts@1.0.0-alpha.20261116052638-4550531:
-    resolution: {integrity: sha512-n69iBJguMD28bgnSNyk4RdUznMUo4a2Ad0EhgXGRvuzP+oHkTWzRhKAl5bMpx7+Be1GgmAxrJ5N26R2q6YqOtg==}
+  accounts@1.0.0-alpha.20261117214203-d38fbea:
+    resolution: {integrity: sha512-p3zzx23UJsGWYMgVsdmRyr7Nv+9exSNsGQF4KL5RNM2THFaUDgNRm5BRbRN1CxfSbqqYgSHi6D7w3D1mB3s/VQ==}
     peerDependencies:
       '@wagmi/core': ^3.6.7
       expo-secure-store: '>=14'
@@ -797,9 +797,10 @@ packages:
       react-native-get-random-values:
         optional: true
 
-  accounts@1.0.0-alpha.20261117214203-d38fbea:
-    resolution: {integrity: sha512-p3zzx23UJsGWYMgVsdmRyr7Nv+9exSNsGQF4KL5RNM2THFaUDgNRm5BRbRN1CxfSbqqYgSHi6D7w3D1mB3s/VQ==}
+  accounts@1.2.20261123204450:
+    resolution: {integrity: sha512-qkniqoF/Ei8GNy8GogeovjVQnf808WB/D710PvgD2oL6O+SiIL7vBZjSGVtyfZttCAfOrl/J/HgEn2GrD1qg1Q==}
     peerDependencies:
+      '@playwright/test': '>=1.43'
       '@wagmi/core': ^3.6.7
       expo-secure-store: '>=14'
       expo-web-browser: '>=14'
@@ -808,13 +809,13 @@ packages:
       react-native-get-random-values: '>=1'
       viem: ^2.57.19
     peerDependenciesMeta:
+      '@playwright/test':
+        optional: true
       '@wagmi/core':
         optional: true
       expo-secure-store:
         optional: true
       expo-web-browser:
-        optional: true
-      mppx:
         optional: true
       react:
         optional: true
@@ -1138,6 +1139,9 @@ packages:
 
   jose@6.2.15:
     resolution: {integrity: sha512-qdF6ewcZARtef63fJ9AKKZPgxw+t7USH6HLXYcD4CrdmSvDp79rpJSPFEKc90QBeGS63u1KQtN2MZQHC0yDIzA==}
+
+  jose@6.2.17:
+    resolution: {integrity: sha512-wOuK9V1yujQFH5S0ZWmLcDZN7+IKh9bUCC2ZPCf2HDlol3WWHy+PPyNjEI75FXRLMp3vDKQcupP59xhVU95hcg==}
 
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
@@ -1871,6 +1875,9 @@ packages:
   xstate@5.33.3:
     resolution: {integrity: sha512-AnDRjS/GyKHmbA1PyhVCYBqYsA7EGe3KGgeD0ht3NFsXzoz7leX/HQDFX9QlHFJ/ltLHPsgChJYwPzRvB/0b4g==}
 
+  xstate@5.33.4:
+    resolution: {integrity: sha512-eGNMu3BNqU0Z85P+ouYG5OCZqIABU+QsW6vUieFt9p9gOGs3C+BL10Exg7XdRPSXPQKlP6XoYpYf93r9VmW8mQ==}
+
   yaml@2.9.1:
     resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
     engines: {node: '>= 14.6'}
@@ -2380,7 +2387,7 @@ snapshots:
       mime-types: 3.0.2
       negotiator: 1.1.0
 
-  accounts@1.0.0-alpha.20261116052638-4550531(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7):
+  accounts@1.0.0-alpha.20261117214203-d38fbea(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7):
     dependencies:
       jose: 6.2.15
       ox: 0.14.67(typescript@6.0.2)(zod@4.6.7)
@@ -2393,14 +2400,14 @@ snapshots:
       - typescript
       - zod
 
-  accounts@1.0.0-alpha.20261117214203-d38fbea(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7):
+  accounts@1.2.20261123204450(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7):
     dependencies:
-      jose: 6.2.15
+      jose: 6.2.17
+      mppx: 0.20.1(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(typescript@6.0.2)(viem@2.57.19)
       ox: 0.14.67(typescript@6.0.2)(zod@4.6.7)
       viem: 2.57.19(mppx@0.20.1)(typescript@6.0.2)(zod@4.6.7)
-      xstate: 5.33.3
+      xstate: 5.33.4
     optionalDependencies:
-      mppx: 0.20.1(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(typescript@6.0.2)(viem@2.57.19)
       react: 19.3.1
     transitivePeerDependencies:
       - typescript
@@ -2762,6 +2769,8 @@ snapshots:
   jose@6.2.14: {}
 
   jose@6.2.15: {}
+
+  jose@6.2.17: {}
 
   json-schema-traverse@1.0.0: {}
 
@@ -3748,6 +3757,8 @@ snapshots:
   ws@8.22.0: {}
 
   xstate@5.33.3: {}
+
+  xstate@5.33.4: {}
 
   yaml@2.9.1:
     optional: true
