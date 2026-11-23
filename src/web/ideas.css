@@ -381,6 +381,9 @@ html[data-viewing] body { overflow:hidden; }
 .own-ask textarea::placeholder { color:var(--faint); }
 .own-ask textarea:focus { border-bottom-color:var(--fg); }
 .own-box { margin-top:var(--space-5); max-width:520px; }
+.new-name { margin-top:var(--space-2); font:12px/1.6 var(--mono); letter-spacing:.02em; color:var(--muted); overflow-wrap:anywhere; }
+.new-name b { font-weight:400; color:var(--fg); }
+.own-page .new-name { margin:calc(-1 * var(--space-3)) 0 var(--space-3); }
 .own-box .box { position:static; }
 .runs { display:grid; min-width:0; margin-top:var(--space-2); }
 .runs p { margin-bottom:6px; font:12px var(--mono); letter-spacing:.02em; color:var(--muted); }

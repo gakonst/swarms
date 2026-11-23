@@ -1,5 +1,6 @@
 import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
+import * as Nickname from '../shared/Nickname.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
 import { open, problems } from '../shared/ResearchBrief.ts'
 import * as Status from '../shared/Status.ts'
@@ -13,9 +14,9 @@ export type Subject =
   | { field: Cards.Field; kind: 'ideas' }
   | { field: Cards.Field; kind: 'new' }
   | { item: Cards.Swarm; kind: 'idea'; problem: string }
-  | { item: Cards.Swarm; kind: 'swarm'; swarm: string }
-  | { item: Cards.Grove; kind: 'tree'; swarm: string }
-  | { item: Cards.Leaf; kind: 'node'; node: string; swarm: string }
+  | { item: Cards.Swarm; kind: 'swarm'; name: string | null; swarm: string }
+  | { item: Cards.Grove; kind: 'tree'; name: string | null; swarm: string }
+  | { item: Cards.Leaf; kind: 'node'; name: string | null; node: string; swarm: string }
   | { kind: 'about' }
   | { kind: 'docs' }
 
@@ -61,15 +62,15 @@ export function problem(id: string | null) {
 }
 
 export function swarm(value: Summary): Subject {
-  return { item: Cards.item(value), kind: 'swarm', swarm: value.id }
+  return { item: Cards.item(value), kind: 'swarm', name: value.nickname, swarm: value.id }
 }
 
-export function tree(swarm: string, view: { headline: Tree.Headline; nodes: readonly Tree.Node[] }): Subject {
-  return { item: Cards.grove(swarm, view), kind: 'tree', swarm }
+export function tree(swarm: string, view: { headline: Tree.Headline; nodes: readonly Tree.Node[] }, name: string | null = null): Subject {
+  return { item: Cards.grove(swarm, view), kind: 'tree', name, swarm }
 }
 
-export function node(swarm: string, title: string, value: Tree.Node & { review?: boolean }, view?: { nodes: readonly Tree.Node[] }): Subject {
-  return { item: Cards.leaf(swarm, title, value, view), kind: 'node', node: value.id, swarm }
+export function node(swarm: string, title: string, value: Tree.Node & { review?: boolean }, view?: { nodes: readonly Tree.Node[] }, name: string | null = null): Subject {
+  return { item: Cards.leaf(swarm, title, value, view), kind: 'node', name, node: value.id, swarm }
 }
 
 export function idea(value: Problem): Subject {
@@ -158,21 +159,22 @@ export function playing(origin: string, subject: Subject) {
 }
 
 export function path(subject: Subject) {
-  if (subject.kind === 'node') return `/s/${encodeURIComponent(subject.swarm)}/n/${subject.node}`
-  if (subject.kind === 'swarm' || subject.kind === 'tree') return `/s/${encodeURIComponent(subject.swarm)}`
-  if (subject.kind === 'idea') return `/new?q=${subject.problem}`
+  if (subject.kind === 'node') return `${Nickname.path({ id: subject.swarm, nickname: subject.name })}/n/${subject.node}`
+  if (subject.kind === 'swarm' || subject.kind === 'tree') return Nickname.path({ id: subject.swarm, nickname: subject.name })
+  if (subject.kind === 'idea') return Nickname.usable(subject.problem) ? `/${subject.problem}` : `/new?q=${subject.problem}`
   return subject.kind === 'home' ? '/' : `/${subject.kind}`
 }
 
-export function share(origin: string, subject: Subject, given: { description?: string; title?: string } = {}): Share {
+export function share(origin: string, subject: Subject, given: { description?: string; path?: string; title?: string } = {}): Share {
+  const at = given.path ?? path(subject)
   return {
     description: given.description ?? describe(subject),
     image: { alt: alt(subject), card: asset(origin, subject, 'card.png'), poster: asset(origin, subject, 'poster.png') },
     labels: labels(subject),
-    oembed: `${origin}/oembed?url=${encodeURIComponent(`${origin}${path(subject)}`)}`,
+    oembed: `${origin}/oembed?url=${encodeURIComponent(`${origin}${at}`)}`,
     player: playing(origin, subject),
     title: given.title ?? title(subject),
-    url: `${origin}${path(subject)}`,
+    url: `${origin}${at}`,
     video: moving(subject) ? asset(origin, subject, 'video.mp4') : null,
   }
 }

@@ -1,5 +1,6 @@
 import * as Answer from '../shared/Answer.ts'
 import type { Cover, Summary } from '../shared/Api.ts'
+import * as Nickname from '../shared/Nickname.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
 import * as Status from '../shared/Status.ts'
 import { usd } from './format.ts'
@@ -16,11 +17,11 @@ export const lead = Answer.opening
 
 export function fromSwarm(swarm: Summary): Idea {
   const stood = Status.standing(swarm)
-  return { archived: !!swarm.archivedAt, backers: swarm.contributors, balance: Number(swarm.balance), cover: swarm.cover, href: `/s/${swarm.id}`, id: swarm.id, left: Number(swarm.remaining), mood: stood.mood, pitch: lead(swarm.goal, swarm.title), title: swarm.title, word: stood.word }
+  return { archived: !!swarm.archivedAt, backers: swarm.contributors, balance: Number(swarm.balance), cover: swarm.cover, href: Nickname.path(swarm), id: swarm.id, left: Number(swarm.remaining), mood: stood.mood, pitch: lead(swarm.goal, swarm.title), title: swarm.title, word: stood.word }
 }
 
 export function fromProblem(problem: Problem): Idea {
-  return { backers: 0, balance: 0, cover: null, href: `/new?q=${problem.id}`, id: `idea:${problem.id}`, left: 0, mood: 'new', pitch: problem.hint, title: problem.label, word: 'Not started' }
+  return { backers: 0, balance: 0, cover: null, href: Nickname.usable(problem.id) ? `/${problem.id}` : `/new?q=${problem.id}`, id: `idea:${problem.id}`, left: 0, mood: 'new', pitch: problem.hint, title: problem.label, word: 'Not started' }
 }
 
 export function Pill(props: { word: Status.Word; mood: Status.Mood }) {

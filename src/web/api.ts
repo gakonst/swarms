@@ -1,4 +1,4 @@
-import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, NodeUpdates, NodeView, Posted, Problem, ProgressView, ProofsView, Proposed, Room, Roster, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, Named, NodeUpdates, NodeView, Posted, Problem, ProgressView, ProofsView, Proposed, Room, Roster, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
@@ -54,9 +54,9 @@ async function signed<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-async function request<T>(path: string, body?: unknown, method?: 'DELETE'): Promise<T> {
+async function request<T>(path: string, body?: unknown, method?: 'DELETE' | 'PATCH'): Promise<T> {
   const headers: Record<string, string> = bearer ? { authorization: `Bearer ${bearer}` } : {}
-  const response = await fetch(Site.at(path), method ? { headers, method } : body === undefined ? { headers } : { body: JSON.stringify(body), headers: { ...headers, 'content-type': 'application/json' }, method: 'POST' })
+  const response = await fetch(Site.at(path), method === 'DELETE' ? { headers, method } : body === undefined ? { headers } : { body: JSON.stringify(body), headers: { ...headers, 'content-type': 'application/json' }, method: method ?? 'POST' })
   const data: unknown = await response.json().catch(() => undefined)
   if (response.ok) return data as T
   throw new Failure((data ?? {}) as Partial<Problem>, response.status)
@@ -151,7 +151,18 @@ export function live(id: string, after: () => number, listener: (event: Live | {
   }
 }
 
-export function create(input: { goal: string; problem?: string; steering?: Steering; title: string } & Partial<Setup.Choice>) {
+export function named(name: string) {
+  return fixture ? Promise.resolve(null) : request<Named>(`/api/names/${encodeURIComponent(name)}`).catch((error: unknown) => {
+    if (error instanceof Failure && error.status === 404) return null
+    throw error
+  })
+}
+
+export function nickname(id: string, nickname: string | null) {
+  return signed(() => (fixture ? Promise.reject(new Error('The fixture world keeps no nicknames.')) : request<Summary>(path(id), { nickname }, 'PATCH')))
+}
+
+export function create(input: { goal: string; nickname?: string; problem?: string; steering?: Steering; title: string } & Partial<Setup.Choice>) {
   return signed(() => (fixture ? staged((fixtures) => fixtures.create(input, who())) : request<Summary>('/api/swarms', input)))
 }
 

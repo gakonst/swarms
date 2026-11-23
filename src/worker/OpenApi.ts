@@ -334,6 +334,7 @@ const schemas = {
     goal: string,
     id: string,
     machines: integer,
+    nickname: nullable({ description: 'The swarm\'s nickname, its page at /<nickname>; null: none, and its page is /s/<id>.', type: 'string' }),
     pool: { ...usd, description: "What is left of the swarm's credit at the gateway." },
     remaining: { ...mach, description: 'The balance less what the swarm spent: what it has left to spend.' },
     setup: nullable(
@@ -481,6 +482,15 @@ export function document(origin: string) {
           summary: 'Set your username',
         },
       },
+      '/v1/names/{name}': {
+        get: {
+          description: 'Which swarm a nickname names: the swarm that has it now, or the one that had it, with that swarm\'s nickname now (null when it dropped it).',
+          operationId: 'getName',
+          parameters: [parameter('name', 'path', string, 'The nickname, as in /<nickname>.')],
+          responses: { ...ok(object({ name: string, nickname: nullable(string), swarm: string }), 'The swarm the name names.'), ...failures(400, 404) },
+          summary: 'Look up a nickname',
+        },
+      },
       '/v1/search': {
         get: {
           description:
@@ -508,11 +518,19 @@ export function document(origin: string) {
           description: 'A new swarm waits in funding until someone sends it money. Signed in, it starts on steering team: only you and the people you add steer it, and every other backer funds it and chats, unless you send steering open.',
           operationId: 'createSwarm',
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.create) } }, required: true },
-          responses: { ...ok(ref('Summary'), 'The swarm.', '201'), ...failures(400, 502, 503) },
+          responses: { ...ok(ref('Summary'), 'The swarm.', '201'), ...failures(400, 409, 502, 503) },
           summary: 'Create a swarm',
         },
       },
       '/v1/swarms/{id}': {
+        patch: {
+          description: "As one of the swarm's admins or the operator (signed in, or with the operator's gateway key as the bearer token): set the swarm's nickname, which makes its page /<nickname>; /s/<id> then sends its visitors there. A new nickname frees the old one, which keeps sending its visitors to the new page until another swarm takes it. null drops the nickname. 409 when another swarm has it.",
+          operationId: 'nameSwarm',
+          parameters: [swarm],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.nickname.omit({ swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Summary'), 'The swarm with its nickname.'), ...failures(400, 401, 403, 404, 409, 410, 502) },
+          summary: 'Name a swarm',
+        },
         get: {
           operationId: 'getSwarm',
           parameters: [swarm],

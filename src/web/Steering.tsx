@@ -1,7 +1,8 @@
 import { type FormEvent, useEffect, useState, useSyncExternalStore } from 'react'
-import type { Detail, Me, Roster, Seat, Steering as Policy } from '../shared/Api.ts'
+import type { Detail, Me, Roster, Seat, Steering as Policy, Summary } from '../shared/Api.ts'
 import * as Door from '../shared/Door.ts'
 import * as Mention from '../shared/Mention.ts'
+import * as Nickname from '../shared/Nickname.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
 import { seeded } from './boot.ts'
@@ -130,7 +131,7 @@ function named(seats: readonly Seat[], me: string | undefined) {
   return names.length <= 2 ? names.join(' and ') : `${names[0]}, ${names[1]} and ${names.length - 2} more`
 }
 
-export function Reins(props: { swarm: Pick<Detail, 'id' | 'steering'> }) {
+export function Reins(props: { onNamed: (swarm: Summary) => void; swarm: Pick<Detail, 'id' | 'nickname' | 'steering'> }) {
   const wallet = useWallet()
   const me = wallet.session?.address
   const roster = useRoster(props.swarm.id, props.swarm.steering)
@@ -147,10 +148,41 @@ export function Reins(props: { swarm: Pick<Detail, 'id' | 'steering'> }) {
           <div className="sheet-card">
             <button aria-label="Close" className="sheet-close" onClick={() => setOpen(false)} type="button">×</button>
             <Who id={props.swarm.id} me={me} roster={roster} team={team} />
+            {!!me && !!roster?.admins.includes(me as `0x${string}`) && <Naming id={props.swarm.id} nickname={props.swarm.nickname} onNamed={props.onNamed} />}
           </div>
         </div>
       )}
     </>
+  )
+}
+
+function Naming(props: { id: string; nickname: string | null; onNamed: (swarm: Summary) => void }) {
+  const [name, setName] = useState(props.nickname ?? '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const wanted = name.trim().toLowerCase()
+  const why = wanted ? Nickname.invalid(wanted) : undefined
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault()
+    setBusy(true)
+    setError(undefined)
+    try {
+      props.onNamed(await Api.nickname(props.id, wanted || null))
+    } catch (reason) {
+      setError(message(reason))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="reins-add reins-name" onSubmit={save}>
+      <span aria-hidden="true">swarms/</span>
+      <input aria-label="Nickname" autoCapitalize="none" autoComplete="off" disabled={busy} maxLength={Nickname.most} onChange={(event) => setName(event.target.value)} placeholder="nickname" spellCheck={false} title={why} value={name} />
+      <button className="btn btn-high" disabled={busy || !!why || wanted === (props.nickname ?? '')} type="submit">Save</button>
+      {error && <Alert title={explain(error).title} tone="bad">{explain(error).detail}</Alert>}
+    </form>
   )
 }
 

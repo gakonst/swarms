@@ -24,6 +24,7 @@ export type Summary = {
   goal: string
   id: string
   machines: number
+  nickname: string | null
   pool: string
   problem: string | null
   remaining: string
@@ -37,6 +38,8 @@ export type Summary = {
 }
 
 export type Steering = 'open' | 'team'
+
+export type Named = { name: string; nickname: string | null; swarm: string }
 
 export type Seat = { address: `0x${string}`; handle: string; left: string; limit: string | null; role: 'admin' | 'member'; spent: string }
 

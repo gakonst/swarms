@@ -60,6 +60,12 @@ app.get('/v1/search', async (c) =>
 
 app.get('/v1/swarms/:id', async (c) => Problem.respond(await Operations.get(c.env, { swarm: c.req.param('id') })))
 
+app.patch('/v1/swarms/:id', async (c) =>
+  Problem.respond(await Operations.nickname(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, '')))),
+)
+
+app.get('/v1/names/:name', async (c) => Problem.respond(await Operations.named(c.env, { name: c.req.param('name') })))
+
 app.get('/v1/swarms/:id/answer', async (c) => Problem.respond(await Operations.answer(c.env, { swarm: c.req.param('id') })))
 
 app.get('/v1/swarms/:id/updates', async (c) => Problem.respond(await Operations.updates(c.env, { ...c.req.query(), swarm: c.req.param('id') })))

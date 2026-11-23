@@ -2,6 +2,7 @@ import { cloudflare } from '@cloudflare/vite-plugin'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
+import { reserved } from './src/shared/Nickname.ts'
 import { base } from './src/shared/Site.ts'
 
 type Bundle = Parameters<NonNullable<Extract<Plugin['generateBundle'], Function>>>[1]
@@ -36,6 +37,7 @@ function preloads(): Plugin {
           [`^${base}/new/?$`, page('New')],
           [`^${base}/about/?$`, page('About')],
           [`^${base}/docs/?$`, page('Docs')],
+          [`^${base}/(?!(?:${[...reserved].join('|')})(?:/|$))[a-z0-9][a-z0-9-]{1,38}[a-z0-9](/chat|/code|/results|/n/[^/]+)?/?$`, [...page('Swarm'), ...page('TreePage')]],
         ]
         const table = routes.map(([path, files]) => [path, files.filter((file) => !entry.includes(file))])
         return html.replace('<script type="module"', `<script>(()=>{for(const[p,f]of${JSON.stringify(table)})if(new RegExp(p).test(location.pathname)){for(const h of f){const l=document.createElement('link');l.rel='modulepreload';l.crossOrigin='';l.href='${base}/'+h;document.head.append(l)}break}})()</script>\n    <script type="module"`)

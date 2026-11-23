@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
-import type { Config, Detail, Me, Member, Room as RoomState, Said } from '../shared/Api.ts'
+import type { Config, Detail, Me, Member, Room as RoomState, Said, Summary } from '../shared/Api.ts'
+import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
 import * as Status from '../shared/Status.ts'
 import * as Api from './api.ts'
@@ -12,11 +13,12 @@ import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
 import { useMedia, usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
+import * as Names from './names.ts'
 import { Now } from './Now.tsx'
 import { Results } from './Results.tsx'
 import { Room } from './Room.tsx'
 import { Reins, steerer, useRoster } from './Steering.tsx'
-import { Back, back, href, Link, navigate, useCanBack, useQuery } from './router.tsx'
+import { Back, back, href, Link, navigate, useBase, useCanBack, useQuery } from './router.tsx'
 import { stamp } from './format.ts'
 import * as Wire from './wire.ts'
 
@@ -29,7 +31,7 @@ export type View = 'chat' | 'code' | 'now' | 'results'
 export function Swarm(props: { config: Config | undefined; id: string; view: View }) {
   const id = props.id
   const view = props.view
-  const base = `/s/${encodeURIComponent(id)}`
+  const base = useBase(id)
   const at = view === 'now' ? base : `${base}/${view}`
   const wired = Wire.useWire(id, 'room', (signal) => {
     if (signal.type === 'pulse') setDetail((data) => Wire.pulsed(data, signal))
@@ -127,6 +129,12 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   const artifacts = shelf.data?.artifacts ?? []
   const viewing = opened ? artifacts.find((artifact) => artifact.slug === opened) : undefined
   const pitch = lead(swarm.goal, swarm.title)
+  const named = (renamed: Summary) => {
+    setDetail((data) => data && { ...data, nickname: renamed.nickname })
+    if (swarm.nickname) Names.keep(swarm.nickname, { name: swarm.nickname, nickname: renamed.nickname, swarm: id })
+    if (renamed.nickname) Names.keep(renamed.nickname, { name: renamed.nickname, nickname: renamed.nickname, swarm: id })
+    navigate(`${Nickname.path(renamed)}${view === 'now' ? '' : `/${view}`}${location.search}`, { keep: true, replace: true })
+  }
   const show = (next: View) => {
     if (next === view) return
     if (next === 'chat' && small) return navigate(`${base}/chat`)
@@ -210,7 +218,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
             <h1>{swarm.title}</h1>
             <p className="idea-kind" data-mood={archived ? 'new' : stood.mood}><i />{archived ? 'Archived' : pill(stood.word)}{swarm.contributors > 0 && <> · {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'}</>}</p>
             {pitch && <p className="idea-pitch">{pitch}</p>}
-            {archived ? <Archived swarm={swarm} /> : <Reins swarm={swarm} />}
+            {archived ? <Archived swarm={swarm} /> : <Reins onNamed={named} swarm={swarm} />}
           </div>
           <Tile className="idea-tile" cover={swarm.cover} id={swarm.id} mood={stood.mood} />
         </header>

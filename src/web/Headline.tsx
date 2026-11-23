@@ -4,7 +4,7 @@ import { scene } from './stage.ts'
 import { fixture } from './api.ts'
 import { ago, usd } from './format.ts'
 import * as Grove from './grove.ts'
-import { Link } from './router.tsx'
+import { Link, useBase } from './router.tsx'
 
 export type Last = { check: Tree.Check; node: string; title: string }
 
@@ -34,6 +34,7 @@ export function Spark(props: { burn: Tree.Burn | undefined; proven: number; now:
 
 export function Headline(props: { burn: Tree.Burn | undefined; headline: Tree.Headline; id: string; last: Last | undefined; now: number }) {
   const head = props.headline
+  const base = useBase(props.id)
   return (
     <header className="headline" aria-label="Progress">
       <div className="headline-line">
@@ -49,7 +50,7 @@ export function Headline(props: { burn: Tree.Burn | undefined; headline: Tree.He
       <p className="headline-last">
         {props.last ? (
           <>
-            Last proven <Link keep to={`/s/${encodeURIComponent(props.id)}/n/${props.last.node}`}>{props.last.title}</Link> · {ago(props.last.check.at, props.now)} · <a href={props.last.check.url} rel="noreferrer" target="_blank">checked record ↗</a>
+            Last proven <Link keep to={`${base}/n/${props.last.node}`}>{props.last.title}</Link> · {ago(props.last.check.at, props.now)} · <a href={props.last.check.url} rel="noreferrer" target="_blank">checked record ↗</a>
           </>
         ) : head.proven > 0 ? 'Checked by Lean' : 'Nothing proven yet. Lean decides what is proven.'}
       </p>
@@ -59,9 +60,10 @@ export function Headline(props: { burn: Tree.Burn | undefined; headline: Tree.He
 
 export function Program(props: { id: string; node: Tree.Node; nodes: Readonly<Record<string, Tree.Node>>; now: number; selected: boolean }) {
   const node = props.node
+  const base = useBase(props.id)
   const state = Grove.state(props.nodes, node.id)
   return (
-    <Link className="program" data={{ 'data-selected': String(props.selected) }} keep to={`/s/${encodeURIComponent(props.id)}/n/${node.id}`}>
+    <Link className="program" data={{ 'data-selected': String(props.selected) }} keep to={`${base}/n/${node.id}`}>
       <b className="program-title">{node.title}</b>
       <span className="program-counts">{node.counts.proven} proven · {node.counts['in flight']} in flight · {node.counts['dead end']} dead ends</span>
       <span className="program-line" title={state.last ? state.last.node.title : undefined}><i>Last</i>{state.last ? `${state.last.word}: ${state.last.node.title}, ${ago(state.last.at, props.now)}` : 'Nothing settled yet'}</span>
@@ -89,6 +91,7 @@ function visited(id: string) {
 }
 
 export function Since(props: { id: string; nodes: Readonly<Record<string, Tree.Node>>; now: number }) {
+  const base = useBase(props.id)
   const [last, setLast] = useState<number>()
   useEffect(() => {
     let before: number | undefined
@@ -125,7 +128,7 @@ export function Since(props: { id: string; nodes: Readonly<Record<string, Tree.N
       <p className="since-counts">{changed.proven.length} proven · {changed.dead.length} dead ends · {changed.posted.length} new</p>
       <ul>
         {[...changed.proven, ...changed.dead].slice(0, 3).map((node) => (
-          <li key={node.id}><Link keep to={`/s/${encodeURIComponent(props.id)}/n/${node.id}`}>{node.status === 'proven' ? '● ' : '⊘ '}{node.title}</Link></li>
+          <li key={node.id}><Link keep to={`${base}/n/${node.id}`}>{node.status === 'proven' ? '● ' : '⊘ '}{node.title}</Link></li>
         ))}
       </ul>
       <button className="since-close" onClick={dismiss} type="button">Got it</button>
