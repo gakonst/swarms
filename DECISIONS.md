@@ -801,3 +801,7 @@ The rebuild of DESIGN (design/DESIGN.md in the lead's workspace): one task tree 
 
 - The site's icons are paradigm.xyz's own files, byte for byte (`favicon.svg`, `favicon.ico`, `favicon-96x96.png`, `apple-touch-icon.png`), and `index.html` links the same four as paradigm.xyz does. The hrefs stay bare like the font preloads: the build's `renderBuiltUrl` prefixes public assets with `/swarms`, and the dev server serves them under it.
 - `favicon-96x96` joins the reserved nicknames, since `public/` now answers it at the top level of the site.
+
+## Riders never choose a model (2026-11-23)
+
+- Starting a swarm or proposing a node offers no model, harness or template (Georgios: "We are never allowing the user to choose models. We always just say $1 minimum buy-in and otherwise it's a slider and they can go up as high as they want, like we had."). `/new` lost its "Runs on" list and `?template=`, and its web request carries no `template`, so the Worker's default applies; the node proposal form never had a choice. The amount is the slider from `bd01a76`, at least $1 on `/new` too (it was the template's step cost), and its range grows: the top mark doubles while the amount is at or above it, so there is no hard top, and typing an amount works as before. Dollars only. Checked on the fixture world under `vite` at 1440×900 and 390×844 (no page scroll, slider to $1,000 after dragging to the end of $500), `pnpm check`, `pnpm build` and the node tests.

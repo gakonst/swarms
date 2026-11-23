@@ -2,7 +2,6 @@ import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed,
 import type * as Tree from '../shared/Tree.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
-import type * as Setup from '../shared/Setup.ts'
 import type { Job, Listed, Logged, Machine, Shown } from '../shared/Fleet.ts'
 import * as Site from '../shared/Site.ts'
 import * as Connect from '../shared/Connect.ts'
@@ -162,7 +161,7 @@ export function nickname(id: string, nickname: string | null) {
   return signed(() => (fixture ? Promise.reject(new Error('The fixture world keeps no nicknames.')) : request<Summary>(path(id), { nickname }, 'PATCH')))
 }
 
-export function create(input: { goal: string; nickname?: string; problem?: string; steering?: Steering; title: string } & Partial<Setup.Choice>) {
+export function create(input: { goal: string; nickname?: string; problem?: string; steering?: Steering; title: string }) {
   return signed(() => (fixture ? staged((fixtures) => fixtures.create(input, who())) : request<Summary>('/api/swarms', input)))
 }
 
