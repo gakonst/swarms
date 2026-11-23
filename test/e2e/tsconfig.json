@@ -3,8 +3,7 @@
   "compilerOptions": {
     "lib": ["es2023"],
     "types": ["../../worker-configuration.d.ts", "node", "vite/client"],
-    "paths": { "#ssr": ["../../src/worker/Ssr.d.ts"] },
-    "noUnusedLocals": true
+    "paths": { "#ssr": ["../../src/worker/Ssr.d.ts"] }
   },
   "include": [".", "../mock"]
 }
