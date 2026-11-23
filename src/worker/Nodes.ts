@@ -644,17 +644,17 @@ export async function ran(self: Swarm, run: string, result: Result, verify: (nid
   emit(self, nid, 'progress', result.summary || result.outcome)
   if (result.outcome === 'stuck') self.kv.put('stuck:' + nid, (self.kv.get<number>('stuck:' + nid) ?? 0) + 1)
   else self.kv.delete('stuck:' + nid)
-  if (result.outcome === 'proved' || result.outcome === 'refuted' || result.outcome === 'split') self.kv.delete('quiet:' + nid)
-  else self.kv.put('quiet:' + nid, (self.kv.get<number>('quiet:' + nid) ?? 0) + 1)
   if ((result.outcome === 'proved' || result.outcome === 'refuted') && result.commit && /^[0-9a-f]{40}$/.test(result.commit) && result.theorem) {
     await verify(nid, result.commit, result.theorem, result.outcome === 'refuted')
     emit(self, nid, 'checking', 'Checking ' + result.commit.slice(0, 7) + ' in Lean')
   }
+  let split = 0
   if (result.outcome === 'split' && result.children.length) {
     const found = await state(self)
     const titled = new Map<string, string>()
     for (const child of result.children) titled.set(normalized(child.title).toLowerCase(), await childId(nid, child.title))
-    for (const child of result.children.slice(0, 20))
+    for (const child of result.children.slice(0, 20)) {
+      if (!found.nodes.has(titled.get(normalized(child.title).toLowerCase()) ?? '')) split += 1
       await post(self, {
         by: 'agent:n:' + nid,
         form: child.statement ? 'lemma' : 'approach',
@@ -664,7 +664,10 @@ export async function ran(self: Swarm, run: string, result: Result, verify: (nid
         title: child.title,
         words: child.spec,
       })
+    }
   }
+  if (result.outcome === 'proved' || result.outcome === 'refuted' || split > 0) self.kv.delete('quiet:' + nid)
+  else self.kv.put('quiet:' + nid, (self.kv.get<number>('quiet:' + nid) ?? 0) + 1)
 }
 
 export async function reconcile(self: Swarm, spentOf: (run: string) => Promise<bigint | null>) {
