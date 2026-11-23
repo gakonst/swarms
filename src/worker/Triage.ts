@@ -160,6 +160,7 @@ export async function apply(self: Swarm, actions: readonly Action[], by: string,
       })
       if (wrote) {
         granted += amount
+        Nodes.resume(self, nid)
         Nodes.changed(self)
         Nodes.emit(self, nid, 'funded', '$' + one.amount + ' granted by triage')
       }

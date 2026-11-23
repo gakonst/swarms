@@ -375,22 +375,21 @@ export async function template() {
   return files.sort((a, b) => (a.path < b.path ? -1 : 1))
 }
 
-export async function statement(env: Cloudflare.Env, swarm: string, nid: string, text: string) {
-  const committed = await gateway(env, '/v1/git/commit', { branch: 'main', files: [{ path: statementPath(nid), text: statementFile(nid, text) }], message: `Statement of node ${nid}`, name: project }, Credit.app(swarm))
+export const cost = { commit: 5_000n, create: 1_000_000n }
+
+export const seedMessage = 'Lean project: pinned toolchain and Mathlib, definitions and the seed statements'
+
+export async function create(env: Cloudflare.Env, swarm: string): Promise<'created' | 'exists' | null> {
+  const created = await gateway(env, '/v1/git/create', { name: project, public: true }, Credit.app(swarm))
+  return created.ok ? 'created' : created.status === 409 ? 'exists' : null
+}
+
+export async function commit(env: Cloudflare.Env, swarm: string, files: { path: string; text: string }[], message: string) {
+  const committed = await gateway(env, '/v1/git/commit', { branch: 'main', files, message, name: project }, Credit.app(swarm))
   return committed.ok
 }
 
-export async function seed(env: Cloudflare.Env, swarm: string, files?: { path: string; text: string }[]): Promise<{ ok: true; repo: string | null } | { ok: false; detail: string }> {
-  const created = await gateway(env, '/v1/git/create', { name: project, public: true }, Credit.app(swarm))
-  if (created.status === 409) return { ok: true, repo: project }
-  if (!created.ok) return { detail: `The gateway did not create the proofs repository (${created.status}).`, ok: false }
-  const committed = await gateway(
-    env,
-    '/v1/git/commit',
-    { branch: 'main', files: files ?? (await template()), message: 'Lean project: pinned toolchain and Mathlib, definitions and the seed statements', name: project },
-    Credit.app(swarm),
-  )
-  if (!committed.ok) return { detail: `The gateway did not write the Lean project (${committed.status}).`, ok: false }
-  return { ok: true, repo: project }
+export function statement(env: Cloudflare.Env, swarm: string, nid: string, text: string) {
+  return commit(env, swarm, [{ path: statementPath(nid), text: statementFile(nid, text) }], `Statement of node ${nid}`)
 }
 

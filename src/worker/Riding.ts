@@ -202,6 +202,7 @@ export async function pledge(self: Swarm, input: { amount: bigint; contributor: 
   if (target !== Flow.free && (!task || Work.terminal(task.phase) || target === Nodes.triage)) target = Flow.free
   const wrote = await Nodes.budgeting(self, () => Flow.write(self.env, { from: null, id: input.hash.toLowerCase(), kind: 'pledge', parts: [[contributor, input.amount]], swarm: Nodes.swarm(self), to: { node: target, run: null } }))
   if (wrote) {
+    Nodes.resume(self, target)
     Nodes.changed(self)
     await seed(self)
     const handle = (await Store.account(self.env, contributor as Address)).handle
@@ -211,27 +212,7 @@ export async function pledge(self: Swarm, input: { amount: bigint; contributor: 
   return { nid: target }
 }
 
-export async function seed(self: Swarm) {
-  if (self.kv.get<number>('seeded')) return true
-  const made = await project(self)
-    .then((files) => Verify.seed(self.env, Nodes.swarm(self), files))
-    .catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
-  if (made.ok || ('status' in made && made.status === 409)) {
-    self.kv.put('seeded', Date.now())
-    return true
-  }
-  return false
-}
-
-async function project(self: Swarm) {
-  const found = await Nodes.state(self)
-  const files = new Map((await Verify.template()).map((file) => [file.path, file]))
-  for (const [nid, task] of found.nodes) {
-    const statement = Nodes.parse(task.spec).statement
-    if (statement !== null) files.set(Verify.statementPath(nid), { path: Verify.statementPath(nid), text: Verify.statementFile(nid, statement) })
-  }
-  return [...files.values()].sort((a, b) => (a.path < b.path ? -1 : 1))
-}
+export const seed = Nodes.seed
 
 async function arm(self: Swarm, at: number) {
   const pending = await self.ctx.storage.getAlarm()

@@ -20,6 +20,7 @@ const ends: Record<Tree.End['kind'], string> = { barrier: 'Ruled out by a barrie
 export function why(node: Tree.Node, nodes: Readonly<Record<string, Tree.Node>>) {
   if (node.status === 'proven') return node.proof ? `Checked by Lean ${stamp(node.proof.at)}` : 'Checked by Lean'
   if (node.status === 'dead end') return node.end ? `${ends[node.end.kind]}: ${node.end.why}` : 'Ended'
+  if (node.paused !== null && node.status !== 'in flight') return `Paused: ${node.paused} runs without a result`
   if (node.status === 'in flight') return node.run?.checking ? 'A worker says proved. The verifier is building it; proven only once it checks.' : node.run ? `Run ${node.run.k} is working: ${usd(node.run.spent)} of ${usd(node.run.budget)} spent` : 'Working'
   const waits = node.needs.map((need) => nodes[need]).filter((need): need is Tree.Node => !!need && need.status !== 'proven')
   if (waits.length) return `Waits on ${waits.map((need) => need.title).join(', ')}`
@@ -251,7 +252,7 @@ export function NodePanel(props: {
       )}
       <section className="node-part">
         <h3>People</h3>
-        <p>{node.by.agent ? 'Split off by the worker on its parent' : <>Idea by <b>@{node.by.handle}</b></>}</p>
+        <p>{node.by.agent === 'seed' ? "Seeded by the swarm's authors" : node.by.agent ? 'Split off by the worker on its parent' : <>Idea by <b>@{node.by.handle}</b></>}</p>
         {(view?.funders ?? node.funders).length > 0 && (
           <ul className="node-list node-riders">
             {(view?.funders ?? node.funders).map((funder) => <li key={`${funder.who.handle}:${funder.since}`}><span>@{funder.who.handle}</span><span>{usd(funder.amount)}</span></li>)}

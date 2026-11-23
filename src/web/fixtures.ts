@@ -1421,6 +1421,8 @@ function who(index: number): Tree.Who {
   return { address: people[index % people.length] as `0x${string}`, agent: null, handle: handles[index % handles.length] ?? 'rider' }
 }
 
+const sown: Tree.Who = { address: null, agent: 'seed', handle: 'seed' }
+
 function worker(parent: string): Tree.Who {
   return { address: null, agent: `agent:n:${parent}`, handle: 'worker' }
 }
@@ -1531,7 +1533,7 @@ function sprout(sprig: Sprig, index: number): Twig {
   const left = seeded ? (key === 'root' ? micro(40) : key === 'cook' || key === 'schaefer' ? micro(5) : 0n) : micro(leftGiven)
   const minutes = 2880 - index * 90
   const node = nid(key)
-  const by = extra.by === 'agent' && parent ? worker(nid(parent)) : who(typeof extra.by === 'number' ? extra.by : index)
+  const by = seeded ? sown : extra.by === 'agent' && parent ? worker(nid(parent)) : who(typeof extra.by === 'number' ? extra.by : index)
   const proof = status === 'proven' ? checked(key, Math.max(20, 1400 - index * 60)) : null
   const end = status === 'dead end' && extra.end ? { at: at(Math.max(30, 1500 - index * 40)), check: extra.end[0] === 'refuted' ? checked(key, 300) : null, into: null, kind: extra.end[0], why: extra.end[1] } : null
   const runs = seeded ? [] : (extra.summaries ?? (spent > 0n ? ['Read the parent and its siblings; planned the first step'] : [])).map((summary, k): NodeRun => {
@@ -1609,6 +1611,7 @@ function derive(): Record<string, Tree.Node> {
       money: { committed: twig.run ? twig.run.budget : '0', granted: decimal(children.reduce((sum, child) => sum + units(child.money.inherited), 0n)), inherited: decimal(twig.inherited), left: decimal(twig.left), pledged: decimal(twig.pledged), spent: decimal(twig.spent), subtree: { left: decimal(left), pledged: decimal(pledged), spent: decimal(spent) } },
       needs: twig.needs,
       parent: twig.parent,
+      paused: null,
       proof: twig.proof,
       review: twig.statement !== null && (scene.has('seeded') || twig.status === 'proposed'),
       riders: twig.funders.length,

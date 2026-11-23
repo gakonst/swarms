@@ -48,7 +48,7 @@ export const Row = memo(function Row(props: { blocked: number; landed: number | 
         <span className="tree-row-bar" title={`$${Number(node.money.subtree.spent).toFixed(2)} spent of $${(Number(node.money.subtree.spent) + Number(node.money.subtree.left)).toFixed(2)}`}>
           <i style={{ width: `${Math.round(share * 100)}%` }} />
         </span>
-        <span className="tree-row-by">@{node.by.handle}</span>
+        <span className="tree-row-by">{node.by.agent === 'seed' ? '' : '@' + node.by.handle}</span>
       </a>
     </li>
   )

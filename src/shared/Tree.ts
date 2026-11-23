@@ -43,6 +43,7 @@ export type Run = { task: string; k: number; attempt: number; agent: number | nu
 export type Node = {
   id: string
   parent: string | null
+  paused: number | null
   form: Form
   title: string
   spec: string

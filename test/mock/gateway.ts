@@ -109,6 +109,8 @@ class Problem extends Error {
 
 const decimal = Chain.decimal
 
+export const gitCost = { commit: 5_000n, create: 1_000_000n }
+
 const units = Chain.units
 
 export type Gateway = Awaited<ReturnType<typeof start>>
@@ -221,6 +223,12 @@ export async function start(options: Options = {}) {
     app(agent.app).charges.push({ agent: agent.id, at: Date.now(), subagent: sub?.id ?? null, tree: top, usd: amount, what })
     if (sub) sub.own += amount
     return { ok: true as const }
+  }
+
+  const bill = (found: App, usd: bigint, what: string) => {
+    const standingNow = ledger(found.name)
+    if (standingNow.left - standingNow.held < usd) throw new Problem(402, 'over_limit', `This app's credit has $${decimal(standingNow.left)} left, less than this call's $${decimal(usd)}: the call was not paid: over_limit`)
+    found.charges.push({ agent: '', at: Date.now(), subagent: null, tree: null, usd, what })
   }
 
   const finish = (agent: Agent, sub: Sub, status: Status) => {
@@ -615,12 +623,14 @@ export async function start(options: Options = {}) {
       const repo = String(body['name'] ?? '')
       if (!repo) throw new Problem(400, 'invalid_request', 'Name the repository.')
       if (found.git.has(repo)) throw new Problem(409, 'conflict', `Repository ${repo} exists.`)
+      bill(found, gitCost.create, 'git.create')
       found.git.set(repo, { public: body['public'] === true })
       return { name: repo, public: body['public'] === true }
     }
     if (path === '/v1/git/commit' && found) {
       const repo = String(body['name'] ?? '')
       if (!found.git.has(repo)) throw new Problem(404, 'not_found', `No repository ${repo}.`)
+      bill(found, gitCost.commit, 'git.commit')
       const sha = keccak256(stringToHex(`commit:${repo}:${found.commits.length}:${String(body['message'] ?? '')}`)).slice(2, 42)
       found.commits.push({ branch: String(body['branch'] ?? 'main'), date: new Date().toISOString(), message: String(body['message'] ?? ''), parents: [], sha })
       return { sha }

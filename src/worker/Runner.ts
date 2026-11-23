@@ -581,6 +581,7 @@ export async function tick(self: Swarm): Promise<number | null> {
     await Nodes.reconcile(self, (run) => spentOf(self, run))
   }
   await late(self).catch((error: unknown) => console.error('Charging late spend failed', error))
+  await Nodes.git(self).catch((error: unknown) => console.error('Writing to the proofs repository failed', error))
   await Triage.schedule(self)
   await Nodes.consider(self)
   const tasks = await self.board.tasks()
@@ -589,7 +590,7 @@ export async function tick(self: Swarm): Promise<number | null> {
   if (open.length) ensure(self)
   const rests = open.map((task) => self.kv.get<number>('rest:' + task.id) ?? 0).filter((at) => at > now)
   const leases = open.flatMap((task) => (task.untilMs && task.untilMs > now ? [task.untilMs + 1000] : []))
-  const due = [...rests, ...leases, Triage.due(self, now), open.length ? now + 60_000 : Infinity]
+  const due = [...rests, ...leases, Triage.due(self, now), open.length || Nodes.gitDue(self) ? now + 60_000 : Infinity]
   const next = Math.min(...due)
   return Number.isFinite(next) ? next : null
 }

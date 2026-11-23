@@ -220,11 +220,12 @@ test("a new swarm's proofs repository is created public and gets the Lean projec
     SWARMS_GATEWAY_KEY: 'test',
   } as unknown as Cloudflare.Env
   const files = [{ path: 'lean-toolchain', text: 'leanprover/lean4:v4.36.0\n' }]
-  assert.deepEqual(await Verify.seed(env, 'abc123def456', files), { ok: true, repo: 'proofs' })
+  assert.equal(await Verify.create(env, 'abc123def456'), 'created')
+  assert.equal(await Verify.commit(env, 'abc123def456', files, Verify.seedMessage), true)
   assert.deepEqual(calls.map((call) => [call.path, call.app]), [['/v1/git/create', 'swarm-abc123def456'], ['/v1/git/commit', 'swarm-abc123def456']])
   assert.deepEqual(calls[0]?.body, { name: 'proofs', public: true })
   assert.deepEqual(calls[1]?.body['files'], files)
-  assert.deepEqual(await Verify.seed(env, 'abc123def456', files), { ok: true, repo: 'proofs' })
+  assert.equal(await Verify.create(env, 'abc123def456'), 'exists')
   assert.equal(calls.length, 3)
 })
 

@@ -113,6 +113,7 @@ const treeNode = object({
   }),
   needs: { items: string, type: 'array' },
   parent: nullable(string),
+  paused: nullable({ description: 'How many runs in a row ended without a proof, split or refutation, once that reached the cap: the node waits for a fresh pledge or a triage grant. null: not paused.', ...integer }),
   proof: nullable(check),
   review: { description: 'The statement is seeded and still under human review.', type: 'boolean' },
   riders: integer,

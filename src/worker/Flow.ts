@@ -114,6 +114,7 @@ export function fold(rows: readonly Row[]): Ledger {
       continue
     }
     add(ledger.left, row.node, row.amount)
+    if (row.kind === 'spend') add(ledger.spent, row.node, -row.amount)
     const own = row.kind === 'pledge' || row.kind === 'move' || (row.kind === 'return' && row.amount < 0n && row.peer === free)
     if (own) {
       add(ledger.pledged, row.node, row.amount)

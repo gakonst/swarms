@@ -14,9 +14,9 @@ export const root = 'root'
 
 export const triage = 'triage'
 
-export type Settings = { ideaMin: string; runCap: string; runMin: string; runStep: string; slots: number; triageShare: number }
+export type Settings = { ideaMin: string; quietRuns: number; runCap: string; runMin: string; runStep: string; slots: number; triageShare: number }
 
-export const defaults: Settings = { ideaMin: '1.000000', runCap: '25.000000', runMin: '0.500000', runStep: '5.000000', slots: 16, triageShare: 0.05 }
+export const defaults: Settings = { ideaMin: '1.000000', quietRuns: 12, runCap: '25.000000', runMin: '0.500000', runStep: '5.000000', slots: 16, triageShare: 0.05 }
 
 export const retry: Work.Retry = { backoffMs: 15_000, maxAttempts: 3 }
 
@@ -107,7 +107,7 @@ export function settings(self: Swarm): Settings {
 
 export function units(self: Swarm) {
   const set = settings(self)
-  return { ideaMin: Memo.units(set.ideaMin), runCap: Memo.units(set.runCap), runMin: Memo.units(set.runMin), runStep: Memo.units(set.runStep), slots: set.slots, triageShare: set.triageShare }
+  return { ideaMin: Memo.units(set.ideaMin), quietRuns: set.quietRuns ?? defaults.quietRuns, runCap: Memo.units(set.runCap), runMin: Memo.units(set.runMin), runStep: Memo.units(set.runStep), slots: set.slots, triageShare: set.triageShare }
 }
 
 export function swarm(self: Swarm) {
@@ -199,7 +199,18 @@ function left(found: State, nid: string) {
 }
 
 function waiting(self: Swarm, nid: string) {
-  return (self.kv.get<number>('stuck:' + nid) ?? 0) >= stuckRuns
+  return (self.kv.get<number>('stuck:' + nid) ?? 0) >= stuckRuns || paused(self, nid) !== null
+}
+
+export function paused(self: Swarm, nid: string) {
+  const quiet = self.kv.get<number>('quiet:' + nid) ?? 0
+  return quiet >= units(self).quietRuns ? quiet : null
+}
+
+export function resume(self: Swarm, nid: string) {
+  if (paused(self, nid) === null) return false
+  self.kv.delete('quiet:' + nid)
+  return true
 }
 
 export function emit(self: Swarm, nid: string, event: Event, text: string) {
@@ -239,11 +250,108 @@ export async function post(self: Swarm, input: Posting) {
   })
   if (posted.ok) {
     emit(self, id, 'posted', normalized(input.title))
-    if (input.statement !== null && self.kv.get<number>('seeded')) self.ctx.waitUntil(Verify.statement(self.env, swarm(self), id, input.statement).catch(() => false))
+    if (input.statement !== null) {
+      self.kv.put('statement:' + id, input.statement)
+      if (self.kv.get<number>('seeded')) self.ctx.waitUntil(statements(self).catch((error: unknown) => console.error('Committing statements failed', error)))
+    }
     return { created: true, nid: id }
   }
   if (posted.rejection.kind === 'Exists') return { created: false, nid: id }
   throw new Error('Posting node ' + id + ' was refused: ' + posted.rejection.kind)
+}
+
+const flushing = new WeakSet<Swarm>()
+
+export async function statements(self: Swarm) {
+  if (!self.kv.get<number>('seeded') || flushing.has(self)) return
+  flushing.add(self)
+  try {
+    for (const [key, text] of [...self.kv.list<string>({ prefix: 'statement:' })]) {
+      const nid = key.slice('statement:'.length)
+      if (text !== '') {
+        if (!(await Verify.statement(self.env, swarm(self), nid, text).catch(() => false))) continue
+        self.kv.put(key, '')
+      }
+      await charge(self, nid, 'git:statement:' + nid, Verify.cost.commit)
+      self.kv.delete(key)
+    }
+  } finally {
+    flushing.delete(self)
+  }
+}
+
+export async function seed(self: Swarm) {
+  if (self.kv.get<number>('seeded')) return true
+  self.kv.put('seeding', Date.now())
+  const id = swarm(self)
+  try {
+    if (!self.kv.get<string>('proofsRepo')) {
+      const made = await Verify.create(self.env, id)
+      if (!made) return false
+      self.kv.put('proofsRepo', made)
+    }
+    if (self.kv.get<string>('proofsRepo') === 'created') await charge(self, root, 'git:create', Verify.cost.create)
+    let included: string[] = []
+    if (!self.kv.get<number>('seedCommitted')) {
+      included = [...self.kv.list<string>({ prefix: 'statement:' })].map(([key]) => key)
+      if (!(await Verify.commit(self.env, id, await project(self), Verify.seedMessage))) return false
+      self.kv.put('seedCommitted', Date.now())
+    }
+    await charge(self, root, 'git:seed', Verify.cost.commit)
+    for (const key of included) self.kv.delete(key)
+    self.kv.put('seeded', Date.now())
+    self.kv.delete('seeding')
+    return true
+  } catch (error) {
+    console.error('Seeding the proofs repository failed', error)
+    return false
+  }
+}
+
+export async function git(self: Swarm) {
+  if (!self.kv.get<number>('seeded') && self.kv.get<number>('seeding')) await seed(self)
+  await statements(self)
+}
+
+export function gitDue(self: Swarm) {
+  if (!self.kv.get<number>('seeded')) return !!self.kv.get<number>('seeding')
+  return [...self.kv.list({ limit: 1, prefix: 'statement:' })].length > 0
+}
+
+async function project(self: Swarm) {
+  const found = await state(self)
+  const files = new Map((await Verify.template()).map((file) => [file.path, file]))
+  for (const [nid, task] of found.nodes) {
+    const statement = parse(task.spec).statement
+    if (statement !== null) files.set(Verify.statementPath(nid), { path: Verify.statementPath(nid), text: Verify.statementFile(nid, statement) })
+  }
+  return [...files.values()].sort((a, b) => (a.path < b.path ? -1 : 1))
+}
+
+function lineage(found: State, nid: string) {
+  const chain = [nid]
+  for (let task = found.nodes.get(nid); task; ) {
+    const parent = parentOf(task)
+    if (parent === null || chain.includes(parent)) break
+    chain.push(parent)
+    task = found.nodes.get(parent)
+  }
+  return chain
+}
+
+export async function charge(self: Swarm, nid: string, key: string, amount: bigint) {
+  return budgeting(self, async () => {
+    const id = swarm(self)
+    if (await Flow.written(self.env, id, key)) return false
+    const found = await state(self)
+    const chain = [...lineage(found, nid), Flow.free]
+    const rest = [...found.ledger.left].filter(([node, value]) => value > 0n && !chain.includes(node)).sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0)).map(([node]) => node)
+    const buckets = [...chain, ...rest].map((node) => ({ held: Flow.shares(found.rows, { node, run: null }), node }))
+    const from = buckets.find((one) => Flow.sum(one.held.values()) >= amount) ?? buckets.reduce((best, one) => (Flow.sum(one.held.values()) > Flow.sum(best.held.values()) ? one : best))
+    const wrote = await Flow.write(self.env, { from: { node: from.node, run: null }, id: key, kind: 'spend', parts: Flow.split(from.held, amount), swarm: id, to: null })
+    if (wrote) changed(self)
+    return wrote
+  })
 }
 
 export function budgeting<T>(self: Swarm, work: () => Promise<T>) {
@@ -537,6 +645,8 @@ export async function ran(self: Swarm, run: string, result: Result, verify: (nid
   emit(self, nid, 'progress', result.summary || result.outcome)
   if (result.outcome === 'stuck') self.kv.put('stuck:' + nid, (self.kv.get<number>('stuck:' + nid) ?? 0) + 1)
   else self.kv.delete('stuck:' + nid)
+  if (result.outcome === 'proved' || result.outcome === 'refuted' || result.outcome === 'split') self.kv.delete('quiet:' + nid)
+  else self.kv.put('quiet:' + nid, (self.kv.get<number>('quiet:' + nid) ?? 0) + 1)
   if ((result.outcome === 'proved' || result.outcome === 'refuted') && result.commit && /^[0-9a-f]{40}$/.test(result.commit) && result.theorem) {
     await verify(nid, result.commit, result.theorem, result.outcome === 'refuted')
     emit(self, nid, 'checking', 'Checking ' + result.commit.slice(0, 7) + ' in Lean')
@@ -682,6 +792,7 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
       },
       needs: needs(task),
       parent: parentOf(task),
+      paused: paused(self, nid),
       review: task.labels['by'] === 'seed' && parsed.statement !== null && !self.kv.get('seedReviewed') && !self.kv.get('reviewed:' + nid),
       proof: task.phase === 'done' && task.outcome && 'done' in task.outcome ? json<Tree.Check>(task.outcome.done) : null,
       riders: funders.length,
