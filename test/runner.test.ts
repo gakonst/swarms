@@ -127,3 +127,77 @@ test('ending a node cascades to its children, closes their runs and returns mone
   assert.equal(node.value.end?.kind, 'withdrawn')
   assert.equal(node.value.runs[0]?.spent, '1.000000')
 })
+
+
+test('a run whose result was folded before a restart is finished from that fold, not failed or folded again', async (t) => {
+  const g = gateway()
+  const w = await planted(g.route)
+  t.after(async () => {
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  const board = w.swarm.board
+  const finish = board.finish
+  let refused = 0
+  board.finish = async (task, claim, outcome) => {
+    if (task === 'r:root:1' && refused++ === 0) throw new Error('the object restarted')
+    return finish(task, claim, outcome)
+  }
+  await w.swarm.treePledge(id, { amount: '5', contributor: ana, hash: '0x' + '5'.repeat(64), nid: null })
+  await until(() => g.subs.length === 1)
+  const sub = g.subs[0] as Sub
+  sub.spent_usd = 5
+  sub.status = { output: { children: [], commit: null, outcome: 'progress', summary: 'Worked', theorem: null, why: null }, state: 'completed' }
+  Runner.wake(w.swarm)
+  await until(() => refused === 1)
+  await Runner.stop(w.swarm)
+  w.swarm.runtime = undefined
+  await Runner.tick(w.swarm)
+  await until(async () => (await w.swarm.board.task('r:root:1'))?.phase === 'done')
+  const task = await w.swarm.board.task('r:root:1')
+  assert.equal(JSON.parse((task?.outcome as { done: string }).done).summary, 'Worked')
+  const progress = w.swarm.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM tree_deltas WHERE node = 'root' AND event = 'progress'").one().n
+  assert.equal(Number(progress), 1)
+  assert.equal(w.swarm.kv.get<number>('quiet:root'), 1)
+})
+
+test('stream deltas with no new spend take no lock, and a completion on the stream ends the watch at once, though the last listing is still fresh', async (t) => {
+  const g = gateway()
+  let push: ((text: string) => void) | undefined
+  const route = async (request: Request, url: URL) => {
+    if (/^\/v1\/agents\/agt_d\d+\/events$/.test(url.pathname) && url.searchParams.get('live') === '1') {
+      const body = new ReadableStream<Uint8Array>({ start: (controller) => void (push = (text) => controller.enqueue(new TextEncoder().encode(text))) })
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } })
+    }
+    return g.route(request, url)
+  }
+  const w = await planted(route)
+  const kept = { ...Runner.timing }
+  Runner.timing.listMs = 600_000
+  Runner.timing.streamUpMs = 600_000
+  t.after(async () => {
+    Object.assign(Runner.timing, kept)
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  await w.swarm.treePledge(id, { amount: '5', contributor: ana, hash: '0x' + '6'.repeat(64), nid: null })
+  await until(() => g.subs.length === 1 && !!push && !!w.swarm.runtime?.follow?.up)
+  const sub = g.subs[0] as Sub
+  const board = w.swarm.board
+  const claim = board.claim
+  let locked = 0
+  board.claim = async (task, options) => {
+    if (task === 'budgeting') locked += 1
+    return claim(task, options)
+  }
+  for (let seq = 1; seq <= 20; seq++) {
+    push!('data: {"seq":' + seq + ',"event":{"source":"subagent","update":{"event":{"type":"reasoning.summary.delta"},"id":1,"type":"event"}}}\n\n')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+  assert.ok(locked <= 1, 'deltas with no new spend took the budgeting lock ' + locked + ' times')
+  sub.spent_usd = 1
+  sub.status = { output: { children: [], commit: null, outcome: 'progress', summary: 'Streamed', theorem: null, why: null }, state: 'completed' }
+  push!('data: {"seq":21,"event":{"source":"subagent","update":{"id":1,"status":{"state":"completed"},"type":"completion"}}}\n\n')
+  await until(async () => (await w.swarm.board.task('r:root:1'))?.phase === 'done', 3000)
+})
+
