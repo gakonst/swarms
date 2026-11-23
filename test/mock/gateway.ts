@@ -572,7 +572,7 @@ export async function start(options: Options = {}) {
         const paid = await meter(agent, null, 0.001, 5, 'side_question')
         if (!paid.ok) throw new Problem(paid.status, 'over_limit', paid.error)
         const question = String(body['question'] ?? '')
-        return { text: Model.pick(question) ?? `The mock lead answers: ${question}`, usage: { estimated_cost: { total_usd: 0.001 } } }
+        return { text: Model.pick(question) ?? Model.about(question) ?? `The mock lead answers: ${question}`, usage: { estimated_cost: { total_usd: 0.001 } } }
       }
       if (rest === '/subagents' && method === 'GET') return { agents: [...agent.subs.values()].map((each) => raw(agent, each)) }
       if (rest === '/subagents' && method === 'POST') {

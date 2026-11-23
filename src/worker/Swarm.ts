@@ -8,6 +8,7 @@ import * as Memo from '../shared/Memo.ts'
 import * as Shelf from '../shared/Artifact.ts'
 import * as Site from '../shared/Site.ts'
 import * as Mention from '../shared/Mention.ts'
+import * as About from './About.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Gateway from './Gateway.ts'
@@ -48,6 +49,7 @@ export type Contributed = {
 }
 
 export type View = {
+  about: string | null
   code: Code | null
   feed: Entry[]
   hands: Hand[]
@@ -473,6 +475,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   view(shape: { feed?: number; pushed?: boolean; texts?: boolean } = {}): View {
     const stamp = this.stamp()
     this.ctx.waitUntil(this.heal())
+    this.ctx.waitUntil(About.ensure(this).catch((error: unknown) => console.error('About failed', error)))
     const sql = this.ctx.storage.sql
     const limit = shape.feed ?? 200
     const feed = limit > 0
@@ -489,6 +492,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const shown = shape.pushed ? Feed.updates(turns).filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) : Feed.updates(turns)
     const paused = Phase.paused(this.run())
     return {
+      about: About.read(this),
       code: id && repo && owner ? { app: Gateway.app(id), clone: `${this.env.GATEWAY_URL}/p/${owner}/${Gateway.app(id)}/git/${repo}.git`, name: repo, owner } : null,
       feed,
       hands: this.kv.get<Hand[]>('hands') ?? [],

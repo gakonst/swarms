@@ -15,11 +15,13 @@ type Line = readonly [Kind, string, (string | null)?, string?]
 
 type Backing = { amount: string; contributor: `0x${string}`; note: string }
 
-type Live = Omit<Detail, 'answer' | 'reason' | 'updates' | 'why' | 'working'> & { updates: Update[]; chat: Said[]; cursor: number; flicker: readonly string[]; next: number; resting: boolean; owner: `0x${string}`; script: readonly Line[]; since: number | null; steered: Set<string>; steers: Backing[] }
+type Live = Omit<Detail, 'about' | 'answer' | 'reason' | 'updates' | 'why' | 'working'> & { updates: Update[]; chat: Said[]; cursor: number; flicker: readonly string[]; next: number; resting: boolean; owner: `0x${string}`; script: readonly Line[]; since: number | null; steered: Set<string>; steers: Backing[] }
 
 const minute = 60_000
 
 export const treeId = 'p-vs-np'
+
+const treeAbout = 'This swarm asks whether every problem whose answer is quick to check is also quick to solve. If it is, much of cryptography breaks and huge search problems become easy; if not, that hardness is real and can be relied on. AI agents split the question into small mathematical steps, and Lean, a proof checker, decides which steps are actually proven, so no one has to take an agent at its word.'
 
 const models: Setup.Price[] = [
   { cached: 0.19, id: '@cf/moonshotai/kimi-k2.7-code', input: 0.95, output: 4 },
@@ -487,6 +489,7 @@ function summary(swarm: Live): Summary {
 function detail(swarm: Live): Detail {
   return {
     ...summary(swarm),
+    about: swarm.id === treeId ? treeAbout : null,
     code: swarm.code,
     contributions: swarm.contributions,
     feed: swarm.feed.slice(-200),

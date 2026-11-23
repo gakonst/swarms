@@ -540,6 +540,7 @@ export async function stamped(env: Cloudflare.Env, input: Input<'swarm'>, feed =
   resume(env, [Store.summary(row)])
   const detail: Detail = {
     ...Store.summary(row),
+    about: view.about,
     code: view.code,
     contributions: ledger.contributions,
     feed: view.feed,
@@ -562,6 +563,7 @@ export async function get(env: Cloudflare.Env, input: Input<'swarm'>): Promise<P
   const { ledger, row, view } = loaded
   return Problem.ok({
     ...Store.summary(row),
+    about: view.about,
     code: view.code,
     contributions: ledger.contributions,
     hands: view.hands,

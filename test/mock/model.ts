@@ -184,6 +184,12 @@ export function pick(question: string): string | undefined {
   return JSON.stringify({ harness: model.includes('/anthropic/') ? 'claude' : 'codex', model, why: asked ? 'A rider asked for it.' : 'The first one listed.' })
 }
 
+export function about(question: string): string | undefined {
+  if (!question.startsWith('Not a model pick.')) return undefined
+  const goal = (question.split('\n')[3] ?? '').replace(/\.$/, '')
+  return `This swarm works on one hard question: ${goal}. AI agents break it into small steps and work on them in public, and Lean, a proof checker, decides which steps are really proven. If it works, the answer would settle something people have argued about for years, and anyone could check it themselves.`
+}
+
 export function spawned(prompt: string): Spawn | undefined {
   for (let start = prompt.indexOf('{'); start !== -1; start = prompt.indexOf('{', start + 1)) {
     let depth = 0

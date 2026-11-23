@@ -290,6 +290,7 @@ const schemas = {
     allOf: [
       ref('Summary'),
       object({
+        about: nullable({ description: "One paragraph on what the swarm is trying to do and why it matters, written once from its goal by the swarm's orchestrator and paid from the swarm's money; null until it is written.", type: 'string' }),
         code: nullable(ref('Code')),
         contributions: { items: ref('Contribution'), type: 'array' },
         hands: { items: ref('Hand'), type: 'array' },

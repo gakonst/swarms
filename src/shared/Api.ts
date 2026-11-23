@@ -155,6 +155,7 @@ export type Live =
   | { type: 'end' | 'idle' }
 
 export type Detail = Summary & {
+  about: string | null
   code: Code | null
   contributions: Contribution[]
   feed: Entry[]
@@ -185,6 +186,7 @@ export type Brief = Omit<Update, 'text'> & { excerpt: string }
 export type Why = 'unfunded' | 'money' | 'costly' | 'rest' | 'idle'
 
 export type Overview = Summary & {
+  about: string | null
   code: Code | null
   contributions: Contribution[]
   hands: Hand[]

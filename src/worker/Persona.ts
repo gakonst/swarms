@@ -287,6 +287,17 @@ export function pick(input: { budget: string; models: { id: string; step: string
   ].join('\n')
 }
 
+export function about(goal: string) {
+  return [
+    'Not a model pick. Explain this swarm to someone who just found it.',
+    '',
+    'Its goal:',
+    goal.length > 2000 ? goal.slice(0, 1999) + '…' : goal,
+    '',
+    'Answer with one plain paragraph of at most 80 words: what the swarm is trying to do, why it would matter if it worked, and how anyone would know it did. Everyday words, a short gloss for any term of art, no hype, no headings, lists, links or JSON, and nothing about money, models or tokens.',
+  ].join('\n')
+}
+
 export function spawn(input: { role: string; task: string; model: string; harness: string; budget_usd: number }) {
   return JSON.stringify({ budget_usd: input.budget_usd, harness: input.harness, model: input.model, output_schema: output, role: input.role, task: input.task })
 }
