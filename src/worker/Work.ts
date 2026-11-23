@@ -112,8 +112,8 @@ export async function serial<T>(board: Board, id: string, leaseMs: number, work:
 
 // A once-only step, keyed by `id`: claimed here, finished when `work` returns,
 // and never run again by anyone once finished. A step that threw opens again.
-export async function once<T>(board: Board, id: string, leaseMs: number, work: () => Promise<T>): Promise<{ ran: true; value: T } | { ran: false }> {
-  await ensure(board, { id, spec: `once ${id}` })
+export async function once<T>(board: Board, id: string, leaseMs: number, work: () => Promise<T>, labels: Record<string, string> = {}): Promise<{ ran: true; value: T } | { ran: false }> {
+  await ensure(board, { id, labels, spec: `once ${id}` })
   const held = await board.claim(id, { leaseMs })
   if (!held.ok) return { ran: false }
   try {

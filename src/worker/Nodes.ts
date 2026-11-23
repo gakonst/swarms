@@ -640,6 +640,14 @@ function resolveNeeds(names: readonly string[], titled: Map<string, string>, fou
   })
 }
 
+export function ranId(run: string) {
+  return 'ran:' + run
+}
+
+export async function deliver(self: Swarm, run: string, result: Result, verify: (nid: string, sha: string, theorem: string, refutes: boolean) => Promise<void>) {
+  return (await Work.once(self.board, ranId(run), lockMs, () => ran(self, run, result, verify), Work.instance)).ran
+}
+
 export async function ran(self: Swarm, run: string, result: Result, verify: (nid: string, sha: string, theorem: string, refutes: boolean) => Promise<void>) {
   const nid = Flow.runNode(run)
   emit(self, nid, 'progress', result.summary || result.outcome)

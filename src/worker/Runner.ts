@@ -342,7 +342,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   const outcome = state === 'completed' ? result(sub?.result, why) : { ...result(sub?.result, why), outcome: 'stuck' as const, summary: clip(why, 200) }
   if (state === 'failed' && /over_limit/.test(sub?.status.error ?? '')) self.kv.put('bounded:' + nid, Date.now())
   else self.kv.delete('bounded:' + nid)
-  await Nodes.ran(self, task.id, outcome, (node, sha, theorem, refutes) => postVerify(self, node, sha, theorem, refutes))
+  await Nodes.deliver(self, task.id, outcome, (node, sha, theorem, refutes) => postVerify(self, node, sha, theorem, refutes))
   await Nodes.consider(self)
   return { done: JSON.stringify(outcome) }
 }
