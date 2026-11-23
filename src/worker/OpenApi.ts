@@ -666,7 +666,10 @@ export function document(origin: string) {
         },
       },
       '/v1/swarms/{id}/archive': {
-        post: { description: 'The operator only: archive a swarm. Its running work stops, open branches settle, it takes no rides (410) and its pages stay read-only. Money left stays in its gateway credit.', operationId: 'archive', parameters: [swarm], responses: { ...ok(ref('Summary'), 'The archived swarm.'), ...failures(401, 403, 404, 502) }, summary: 'Archive a swarm' },
+        post: { description: "The operator only (signed in as the operator's wallet, or with the operator's gateway key as the bearer token): archive a swarm. Its running work stops, open branches settle, it takes no rides (410) and its pages stay read-only. Money left stays in its gateway credit.", operationId: 'archive', parameters: [swarm], responses: { ...ok(ref('Summary'), 'The archived swarm.'), ...failures(401, 403, 404, 502) }, summary: 'Archive a swarm' },
+      },
+      '/v1/swarms/{id}/ledger': {
+        get: { description: "A tree swarm's books: everything riders put in, what runs spent, what the buckets hold, live spend of runs in flight, the gateway credit and the drift between them (ok within one metered call).", operationId: 'ledger', parameters: [swarm], responses: { ...ok(object({ drift: dollars, gateway: nullable(object({ deposited: string, left: string, spent: string })), held: dollars, live: dollars, ok: { type: 'boolean' }, pledged: dollars, spent: dollars, swarm: string }), 'The books.'), ...failures(404) }, summary: 'Ledger' },
       },
       '/v1/me/swarms/{id}': {
         get: { description: "Signed in: your money in a tree swarm: each node's share that is yours, your free money (yours to move), what your rides spent and what is refundable.", operationId: 'standing', parameters: [swarm], responses: { ...ok(ref('Standing'), 'Your standing.'), ...failures(401, 404) }, summary: 'Your standing' },

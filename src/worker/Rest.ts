@@ -208,7 +208,11 @@ app.post('/v1/swarms/:id/nodes/:nid/review', async (c) => Problem.respond(await 
 
 app.post('/v1/swarms/:id/triage', async (c) => Problem.respond(await Operations.triage(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
 
-app.post('/v1/swarms/:id/archive', async (c) => Problem.respond(await Operations.archive(c.env, { swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
+app.post('/v1/swarms/:id/archive', async (c) =>
+  Problem.respond(await Operations.archive(c.env, { swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, '')))),
+)
+
+app.get('/v1/swarms/:id/ledger', async (c) => Problem.respond(await Operations.ledger(c.env, { swarm: c.req.param('id') })))
 
 app.get('/v1/me/swarms/:id', async (c) => Problem.respond(await Operations.standing(c.env, { swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
 

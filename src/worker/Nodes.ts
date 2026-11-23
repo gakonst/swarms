@@ -30,7 +30,7 @@ export const schema = [
 
 export type Event = Tree.Delta['event']
 
-export type Spawned = { agent: string; at: number; sub: number }
+export type Spawned = { agent: string; at: number; sub: number; turn?: string }
 
 export type Live = { budget: string; spent: string }
 

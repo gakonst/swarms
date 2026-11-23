@@ -118,6 +118,10 @@ export function result(raw: string | undefined, fallback: string): Nodes.Result 
   return { children, commit, outcome, summary: text(value['summary'], 200) ?? fallback, theorem: text(value['theorem'], 200), why: text(value['why']) }
 }
 
+function leased(self: Swarm) {
+  return Number((self.env as unknown as Record<string, unknown>)['SWARMS_LEASE_MS']) || timing.leaseMs
+}
+
 function spawnApi(env: Cloudflare.Env) {
   return (env as unknown as Record<string, unknown>)['SWARMS_SPAWN'] === 'api'
 }
@@ -258,7 +262,7 @@ async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promis
         const args: Gateway.Spawn = { budget_usd: Flow.number(budget), ...worker(self), output_schema: triaging ? Triage.output : output, role, task: words }
         const made = await spawn(self, swarm, agent.value, args, lease.claim, abort.signal)
         if (!made.ok) return await refusal(self, task, lease, made)
-        spawned = { agent: agent.value, at: Date.now(), sub: made.value }
+        spawned = { agent: agent.value, at: Date.now(), sub: made.value, ...(spawnApi(self.env) ? {} : { turn: lease.claim }) }
         counted(self, agent.value)
         const last = steers.at(-1)
         if (last) await Nodes.heedNode(self, nid, last.seq)
@@ -311,14 +315,14 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
       relayed = steer.seq
       Nodes.emit(self, nid, 'steered', clip(steer.body, 280))
     }
-    if (Date.now() - seen > timing.leaseMs) break
+    if (Date.now() - seen > Math.max(leased(self), timing.leaseMs)) break
     await wait(self, runtime(self).follow?.up ? timing.streamUpMs : timing.streamDownMs, signal)
   }
   const state = sub?.status.state ?? 'gone'
   const ended = sub ? finished.has(state) : true
   if (sub && !ended) await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
   else if (sub && state === 'completed') await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
-  const used = sub ? Flow.micro(sub.spent_usd) : Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')
+  const used = (sub ? Flow.micro(sub.spent_usd) : Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')) + (await dispatched(self, swarm, spawned))
   for (const steer of await lease.steers().catch(() => [])) if (steer.seq > relayed) await self.board.steer(Nodes.nodeId(nid), steer.body)
   const why = !sub ? 'The run is gone from the gateway.' : !ended ? 'The run stalled and was stopped.' : (sub.status.error ?? 'The run ' + state + '.')
   await Nodes.settleRun(self, task.id, used)
@@ -406,6 +410,12 @@ export async function halt(self: Swarm, run: string) {
   if (spent !== null) await Nodes.settleRun(self, run, spent)
 }
 
+export async function dispatched(self: Swarm, swarm: string, spawned: Nodes.Spawned) {
+  if (!spawned.turn) return 0n
+  const report = await Gateway.turn(self.env, swarm, spawned.agent, spawned.turn)
+  return report.ok ? Flow.micro(report.value.spent_usd) : 0n
+}
+
 export async function spentOf(self: Swarm, run: string, close = false): Promise<bigint | null> {
   const spawned = self.kv.get<Nodes.Spawned>('run:' + run)
   if (!spawned) return 0n
@@ -414,7 +424,18 @@ export async function spentOf(self: Swarm, run: string, close = false): Promise<
   if (!listed.ok) return null
   const sub = listed.value.find((one) => one.agent_id === spawned.sub)
   if (close && sub && !finished.has(sub.status.state)) await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
-  return Flow.micro(sub?.spent_usd)
+  return Flow.micro(sub?.spent_usd) + (await dispatched(self, swarm, spawned))
+}
+
+export async function live(self: Swarm) {
+  const swarm = Nodes.swarm(self)
+  let total = 0n
+  for (const task of await self.board.tasks()) {
+    if (task.labels['kind'] !== 'run' || Work.terminal(task.phase) || (await self.board.task(Nodes.settleId(task.id)))?.phase === 'done') continue
+    const spent = await spentOf(self, task.id)
+    total += spent ?? Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')
+  }
+  return total
 }
 
 export function follow(self: Swarm, swarm: string, agent: string) {
@@ -463,9 +484,9 @@ export function ensure(self: Swarm) {
   const rt = runtime(self)
   const board = resting(self)
   if (!rt.pools.runs || rt.pools.runs.stats().state !== 'running')
-    rt.pools.runs = Board.pool(board, { concurrency: Nodes.units(self).slots, idleMs: timing.idleMs, label: ['kind', 'run'], leaseMs: timing.leaseMs, pollMs: timing.pollMs, run: (task, lease) => run(self, task, lease) })
+    rt.pools.runs = Board.pool(board, { concurrency: Nodes.units(self).slots, idleMs: timing.idleMs, label: ['kind', 'run'], leaseMs: leased(self), pollMs: timing.pollMs, run: (task, lease) => run(self, task, lease) })
   if (!rt.pools.verifies || rt.pools.verifies.stats().state !== 'running')
-    rt.pools.verifies = Board.pool(board, { concurrency: verifiers, idleMs: timing.idleMs, label: ['kind', 'verify'], leaseMs: timing.leaseMs, pollMs: timing.pollMs, run: (task, lease) => check(self, task, lease) })
+    rt.pools.verifies = Board.pool(board, { concurrency: verifiers, idleMs: timing.idleMs, label: ['kind', 'verify'], leaseMs: leased(self), pollMs: timing.pollMs, run: (task, lease) => check(self, task, lease) })
 }
 
 export async function stop(self: Swarm) {
@@ -492,7 +513,8 @@ export async function tick(self: Swarm): Promise<number | null> {
   const open = tasks.filter((task) => (task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && !Work.terminal(task.phase))
   if (open.length) ensure(self)
   const rests = open.map((task) => self.kv.get<number>('rest:' + task.id) ?? 0).filter((at) => at > now)
-  const due = [...rests, Triage.due(self, now), open.length ? now + 5 * 60_000 : Infinity]
+  const leases = open.flatMap((task) => (task.untilMs && task.untilMs > now ? [task.untilMs + 1000] : []))
+  const due = [...rests, ...leases, Triage.due(self, now), open.length ? now + 60_000 : Infinity]
   const next = Math.min(...due)
   return Number.isFinite(next) ? next : null
 }

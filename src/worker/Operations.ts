@@ -1685,13 +1685,25 @@ export async function standing(env: Cloudflare.Env, input: Input<'swarm'>, addre
   return Problem.ok(await stub(env, row.value.id).treeStanding(row.value.id, address))
 }
 
-export async function archive(env: Cloudflare.Env, input: Input<'swarm'>, address?: Address): Promise<Problem.Result<Summary>> {
+async function digest(text: string) {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))
+}
+
+export async function keyed(env: Cloudflare.Env, bearer: string | undefined) {
+  if (!bearer || !env.SWARMS_GATEWAY_KEY) return false
+  const [given, held] = await Promise.all([digest(bearer), digest(env.SWARMS_GATEWAY_KEY)])
+  return given.every((byte, index) => byte === held[index])
+}
+
+export async function archive(env: Cloudflare.Env, input: Input<'swarm'>, address?: Address, operated = false): Promise<Problem.Result<Summary>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
-  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID as the operator.')
-  const operator = await Gateway.wallet(env)
-  if (!operator) return Problem.fail(502, 'unavailable', 'The gateway did not answer, so the operator cannot be checked right now.')
-  if (address.toLowerCase() !== operator.toLowerCase()) return Problem.fail(403, 'access_denied', 'Only the operator archives a swarm.')
+  if (!operated) {
+    if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo ID as the operator, or send the operator's gateway key as the bearer token.")
+    const operator = await Gateway.wallet(env)
+    if (!operator) return Problem.fail(502, 'unavailable', 'The gateway did not answer, so the operator cannot be checked right now.')
+    if (address.toLowerCase() !== operator.toLowerCase()) return Problem.fail(403, 'access_denied', 'Only the operator archives a swarm.')
+  }
   const row = await Store.find(env, parsed.value.swarm)
   if (!row) return missing()
   const at = row.archived_at ?? Date.now()
@@ -1708,6 +1720,14 @@ export async function verified(env: Cloudflare.Env, request: Request): Promise<P
   if (!row || row.form !== 'tree' || row.archived_at) return Problem.ok({ counted: false })
   await stub(env, row.id).treeVerified(row.id, read.nid, read.sha, read.outcome, read.claim ?? 'proof')
   return Problem.ok({ counted: true })
+}
+
+export async function ledger(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<Ledgered>> {
+  const parsed = parse(schema.swarm, input)
+  if (!parsed.ok) return parsed
+  const row = await treeRow(env, parsed.value.swarm)
+  if (!row.ok) return row
+  return Problem.ok(await stub(env, row.value.id).treeHealth(row.value.id))
 }
 
 export async function ledgers(env: Cloudflare.Env): Promise<Ledgered[]> {

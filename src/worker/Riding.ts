@@ -334,8 +334,7 @@ export async function health(self: Swarm): Promise<Ledgered> {
   const swarm = Nodes.swarm(self)
   const rows = await Flow.rows(self.env, swarm)
   const totals = Flow.totals(rows)
-  let live = 0n
-  for (const task of await self.board.tasks()) if (task.labels['kind'] === 'run' && !Work.terminal(task.phase)) live += Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')
+  const live = await Runner.live(self)
   const credit = await Gateway.credit(self.env, swarm)
   const gateway = credit.ok ? { deposited: credit.value.deposited, left: credit.value.left, spent: credit.value.spent } : null
   const drift = gateway ? Memo.units(gateway.left) - (totals.held - live) : 0n
