@@ -269,6 +269,7 @@ app.post('/api/swarms/:id/nodes/:nid/move', async (c) =>
 app.post('/api/swarms/:id/nodes/:nid/end', async (c) =>
   Problem.respond(await Operations.nodeEnd(c.env, { ...(await Rest.body(c.req.raw)), node: c.req.param('nid'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
 )
+app.post('/api/swarms/:id/nodes/:nid/review', async (c) => Problem.respond(await Operations.review(c.env, { node: c.req.param('nid'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
 app.post('/api/swarms/:id/triage', async (c) => Problem.respond(await Operations.triage(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
 app.post('/api/swarms/:id/archive', async (c) => Problem.respond(await Operations.archive(c.env, { swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
 app.get('/api/me/swarms/:id', async (c) => Problem.respond(await Operations.standing(c.env, { swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))

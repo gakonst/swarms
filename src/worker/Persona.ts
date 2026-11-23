@@ -159,7 +159,17 @@ export type TreeNode = { form: string; nid: string; spec: string; statement: str
 
 export type TreeContext = { ancestors: string[]; failures: string[]; siblings: string[]; steers: string[] }
 
-export function node(setup: Setup.Setup | null, task: TreeNode, context: TreeContext) {
+export function rules(setup: Setup.Setup | null) {
+  return [
+    '# How to work',
+    '',
+    'Think on paper first and write Lean only for a step that survives. Prove the statement exactly as written: the checker binds your theorem to it. Split rather than sprawl: when the node is too big, return split with smaller lemmas, each with its own Lean statement and the siblings it needs. Keep every dead end with its why. Commit to branch node/<nid> of the swarm repository and return the commit and theorem name when you claim a proof.',
+    '',
+    ...models(setup),
+  ].join('\n')
+}
+
+export function node(setup: Setup.Setup | null, task: TreeNode, context: TreeContext, frozenRules: string = rules(setup)) {
   return [
     '# Your node',
     '',
@@ -171,11 +181,7 @@ export function node(setup: Setup.Setup | null, task: TreeNode, context: TreeCon
     ...(context.siblings.length ? ['# Beside it', '', ...context.siblings.map((line) => `- ${line}`), ''] : []),
     ...(context.steers.length ? ['# From riders, with the money behind each', '', ...context.steers, ''] : []),
     ...(context.failures.length ? ['# Earlier checks that failed', '', ...context.failures, ''] : []),
-    '# How to work',
-    '',
-    'Think on paper first and write Lean only for a step that survives. Prove the statement exactly as written: the checker binds your theorem to it. Split rather than sprawl: when the node is too big, return split with smaller lemmas, each with its own Lean statement and the siblings it needs. Keep every dead end with its why. Commit to branch node/' + task.nid + ' of the swarm repository and return the commit and theorem name when you claim a proof.',
-    '',
-    ...models(setup),
+    frozenRules.replaceAll('<nid>', task.nid),
     '',
     'Answer with the JSON your output schema asks for: outcome (proved, refuted, split, progress or stuck), a one-line summary, commit, theorem, children and why.',
   ].join('\n')

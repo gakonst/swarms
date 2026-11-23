@@ -204,6 +204,8 @@ app.post('/v1/swarms/:id/nodes/:nid/end', async (c) =>
   Problem.respond(await Operations.nodeEnd(c.env, { ...(await body(c.req.raw)), node: c.req.param('nid'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
 )
 
+app.post('/v1/swarms/:id/nodes/:nid/review', async (c) => Problem.respond(await Operations.review(c.env, { node: c.req.param('nid'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
+
 app.post('/v1/swarms/:id/triage', async (c) => Problem.respond(await Operations.triage(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
 
 app.post('/v1/swarms/:id/archive', async (c) => Problem.respond(await Operations.archive(c.env, { swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))

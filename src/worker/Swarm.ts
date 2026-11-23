@@ -964,6 +964,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return Riding.triage(this, action, by)
   }
 
+  async treeReview(swarm: string, nid: string, by: string) {
+    this.kv.put('id', swarm)
+    return Riding.review(this, nid, by)
+  }
+
   async treeStanding(swarm: string, contributor: string) {
     this.kv.put('id', swarm)
     return Riding.standing(this, contributor)
@@ -974,9 +979,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return Riding.health(this)
   }
 
-  async treeVerified(swarm: string, nid: string, sha: string, outcome: Tree.Check | { failed: string }) {
+  async treeVerified(swarm: string, nid: string, sha: string, outcome: Tree.Check | { failed: string }, claim: 'proof' | 'refutation' = 'proof') {
     this.kv.put('id', swarm)
-    await Runner.verified(this, nid, sha, outcome)
+    await Runner.verified(this, nid, sha, outcome, claim)
     return true
   }
 

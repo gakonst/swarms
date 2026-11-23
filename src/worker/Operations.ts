@@ -1665,6 +1665,17 @@ export async function triage(env: Cloudflare.Env, input: Input<'triage'>, addres
   return Problem.ok({ applied: await stub(env, row.value.id).treeTriage(row.value.id, action, 'admin:' + address.toLowerCase()) })
 }
 
+export async function review(env: Cloudflare.Env, input: Input<'node'>, address?: Address): Promise<Problem.Result<{ reviewed: boolean }>> {
+  const parsed = parse(schema.node, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID as an admin of the swarm.')
+  const row = await treeRow(env, parsed.value.swarm, true)
+  if (!row.ok) return row
+  if (!(await Team.admin(env, row.value, address).catch(() => false))) return Problem.fail(403, 'access_denied', "Only the swarm's admins sign off a seeded statement.")
+  const done = answered(await stub(env, row.value.id).treeReview(row.value.id, parsed.value.node, address.toLowerCase()))
+  return done.ok ? Problem.ok({ reviewed: done.value }) : done
+}
+
 export async function standing(env: Cloudflare.Env, input: Input<'swarm'>, address?: Address): Promise<Problem.Result<Rider>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
@@ -1695,7 +1706,7 @@ export async function verified(env: Cloudflare.Env, request: Request): Promise<P
   if (!read) return Problem.ok({ counted: false })
   const row = await Store.find(env, read.swarm)
   if (!row || row.form !== 'tree' || row.archived_at) return Problem.ok({ counted: false })
-  await stub(env, row.id).treeVerified(row.id, read.nid, read.sha, read.outcome)
+  await stub(env, row.id).treeVerified(row.id, read.nid, read.sha, read.outcome, read.claim ?? 'proof')
   return Problem.ok({ counted: true })
 }
 
@@ -1708,21 +1719,24 @@ async function plant(env: Cloudflare.Env, row: Store.Row, request: z.output<type
   const keys = new Map<string, string>([['root', Nodes.root]])
   const seed: Nodes.Posting[] = []
   for (const one of request.seed) {
+    if (one.key === Nodes.root) continue
     const parent = keys.get(one.parent)
     if (!parent) return Problem.fail(400, 'invalid_request', 'Seed node ' + one.key + ' names a parent that comes later or not at all: ' + one.parent + '.')
     const made = await Nodes.nid(parent, one.title)
     keys.set(one.key, made)
-    seed.push({ by: 'seed', form: one.form, needs: one.needs.flatMap((need) => keys.get(need) ?? []), nid: made, parent, statement: one.statement ?? null, title: one.title, words: one.spec })
+    const written = Nodes.parse(one.spec)
+    const words = written.title.trim() === one.title.trim() ? written.words : one.spec
+    seed.push({ by: 'seed', form: one.form, needs: one.needs.flatMap((need) => keys.get(need) ?? []), nid: made, parent, statement: one.statement ?? written.statement ?? null, title: one.title, words })
   }
   await stub(env, row.id).plant({
     dispatcher: Persona.dispatcher(),
     root: { statement: request.statement ?? null, title: request.title, words: request.goal },
     seed,
+    rules: Persona.rules(setup),
     settings: Nodes.defaults,
     setup,
     swarm: row.id,
   })
-  await Verify.seed(env, row.id)
   return Problem.ok(null)
 }
 

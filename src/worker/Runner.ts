@@ -228,7 +228,7 @@ async function brief(self: Swarm, found: Nodes.State, nid: string, steers: strin
     .exec<{ text: string }>("SELECT text FROM tree_deltas WHERE node = ? AND event = 'progress' AND text LIKE 'Lean check failed%' ORDER BY seq DESC LIMIT 3", nid)
     .toArray()
     .map((row) => row.text)
-  return Persona.node(setup(self), { form: node?.labels['form'] ?? 'idea', nid, spec: node?.spec ?? '', statement: parsed.statement, title: parsed.title }, { ancestors, failures, siblings, steers })
+  return Persona.node(setup(self), { form: node?.labels['form'] ?? 'idea', nid, spec: node?.spec ?? '', statement: parsed.statement, title: parsed.title }, { ancestors, failures, siblings, steers }, self.kv.get<string>('nodeRules') ?? Persona.rules(setup(self)))
 }
 
 async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promise<Board.Outcome> {
@@ -355,7 +355,7 @@ async function check(self: Swarm, task: Work.Task, lease: Board.PoolLease): Prom
   const nid = task.labels['node'] ?? ''
   const sha = task.labels['sha'] ?? ''
   const refutes = task.labels['refutes'] === '1'
-  const key = 'verified:' + Nodes.verifyId(nid, sha)
+  const key = 'verified:' + Nodes.verifyId(nid, sha) + (refutes ? ':neg' : '')
   const node = await self.board.task(Nodes.nodeId(nid))
   if (!node || Work.terminal(node.phase)) return { failed: 'The node ended before its check.' }
   let outcome = self.kv.get<Tree.Check | { failed: string }>(key)
@@ -365,7 +365,7 @@ async function check(self: Swarm, task: Work.Task, lease: Board.PoolLease): Prom
     const theorem = String((json(task.spec) ?? {})['theorem'] ?? '')
     let asked: Awaited<ReturnType<typeof Verify.request>> = { detail: 'not asked', ok: false }
     for (let attempt = 1; attempt <= Nodes.retry.maxAttempts && !asked.ok; attempt++) {
-      asked = await Verify.request(self.env, { nid, sha, statement: refutes ? '¬ (' + statement + ')' : statement, swarm, theorem })
+      asked = await Verify.request(self.env, { claim: refutes ? 'refutation' : 'proof', nid, sha, statement, swarm, theorem })
       if (!asked.ok && attempt < Nodes.retry.maxAttempts) await wait(self, Work.delay(Nodes.retry, attempt), lease.signal)
     }
     if (!asked.ok) return { failed: 'The verifier did not take the check: ' + asked.detail }
@@ -374,7 +374,7 @@ async function check(self: Swarm, task: Work.Task, lease: Board.PoolLease): Prom
       await wait(self, timing.verifyMs, lease.signal)
     }
   }
-  if ('failed' in outcome || !trusted(outcome, sha, refutes ? undefined : node.labels['stmt'])) {
+  if ('failed' in outcome || !trusted(outcome, sha, node.labels['stmt'])) {
     const log = 'failed' in outcome ? outcome.failed : 'The check did not match the commit or the frozen statement.'
     await self.board.steer(Nodes.nodeId(nid), 'The Lean check of ' + sha.slice(0, 7) + ' failed:\n' + log.slice(-2000))
     Nodes.emit(self, nid, 'progress', 'Lean check failed for ' + sha.slice(0, 7))
@@ -388,13 +388,11 @@ async function check(self: Swarm, task: Work.Task, lease: Board.PoolLease): Prom
 }
 
 
-export async function verified(self: Swarm, nid: string, sha: string, outcome: Tree.Check | { failed: string }) {
-  const id = Nodes.verifyId(nid, sha)
-  self.kv.put('verified:' + id, outcome)
-  for (const vid of [id, id + ':neg']) {
-    const task = await self.board.task(vid)
-    if (task?.claim && !runtime(self).pools.verifies?.stats().running) await self.board.release(vid, task.claim, 'the check came back')
-  }
+export async function verified(self: Swarm, nid: string, sha: string, outcome: Tree.Check | { failed: string }, claim: 'proof' | 'refutation' = 'proof') {
+  const vid = Nodes.verifyId(nid, sha) + (claim === 'refutation' ? ':neg' : '')
+  self.kv.put('verified:' + vid, outcome)
+  const task = await self.board.task(vid)
+  if (task?.claim && !runtime(self).aborts.size && !runtime(self).pools.verifies?.stats().running) await self.board.release(vid, task.claim, 'the check came back')
   wake(self)
   ensure(self)
   await arm(self, Date.now())

@@ -66,6 +66,7 @@ export function gateway() {
       return Response.json({ agents: subs })
     }
     if (url.pathname === '/api/keys/credit') return Response.json({ deposited: '10', left: '10', spent: '0' })
+    if (url.pathname === '/api/keys/me') return Response.json({ wallet: '0x' + 'e'.repeat(40) })
     return undefined
   }
   return { budgets, make, prompts, route, spawned, state, subs }
@@ -80,11 +81,17 @@ export async function until(check: () => boolean | Promise<boolean>, ms = 5000) 
   throw new Error('timed out')
 }
 
+export function github(env: Cloudflare.Env) {
+  Object.assign(env, { GITHUB: { fetch: async (request: Request) => (request.method === 'GET' ? Response.json({ workflow_runs: [] }) : new Response(null, { status: 204 })) }, SWARMS_GITHUB_TOKEN: 't' })
+}
+
 export async function planted(route: Parameters<typeof world>[0], triageShare = 0, statement: string | null = null) {
   const w = world(route)
+  github(w.env)
   await Store.insert(w.env, { creator: null, form: 'tree', goal: 'g', id, problem: null, setup: null, steering: 'open', title: 'Tree' })
   await w.swarm.plant({
     dispatcher: 'spawn',
+    rules: 'rules',
     root: { statement, title: 'Does P = NP?', words: 'The question.' },
     seed: [],
     settings: { ...Nodes.defaults, triageShare },

@@ -21,7 +21,7 @@ const firstChat = 30
 const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/board'])
 
 export function rendered(path: string) {
-  return listed.has(path) || /^\/s\/[^/]+(\/chat|\/code|\/results)?\/?$/.test(path)
+  return listed.has(path) || /^\/s\/[^/]+(\/chat|\/code|\/results|\/n\/[0-9a-z]+)?\/?$/.test(path)
 }
 
 export function moved(url: URL) {
@@ -94,8 +94,10 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   }
   if (path === '/about' || path === '/docs') return { data, head: Share.share(site, Share.plain(path === '/about' ? 'about' : 'docs')), status: 200, whole: true }
   if (!rendered(path)) return { data, head: lost, status: 404, whole: false }
-  const [, raw = '', tail] = /^\/s\/([^/]+)(\/chat|\/code|\/results)?\/?$/.exec(path) ?? []
+  const [, raw = '', tail, picked] = /^\/s\/([^/]+)(\/chat|\/code|\/results|\/n\/([0-9a-z]+))?\/?$/.exec(path) ?? []
   const id = decodeURIComponent(raw)
+  const row = await within(Store.find(env, id), 1500)
+  if (row?.form === 'tree' && !row.archived_at) return grove(env, site, id, picked ?? 'root', lost)
   const shelved = within(Operations.artifacts(env, { swarm: id }, site), 2500)
   const laid = shelved.then((read) => {
     const found = read?.ok ? read.value.artifacts.find(Surface.is) : undefined
@@ -132,6 +134,31 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
     status: 200,
     whole: !!room?.ok && !!updates?.ok,
   }
+}
+
+async function grove(env: Cloudflare.Env, site: string, id: string, nid: string, lost: Head): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
+  const data: Record<string, unknown> = {}
+  const [detail, tree, node, burn, proofs, room] = await Promise.all([
+    within(Operations.detail(env, { swarm: id }, false), 2500),
+    within(Operations.tree(env, { depth: 2, swarm: id }), 2500),
+    within(Operations.node(env, { node: nid, swarm: id }), 2500),
+    within(Operations.burn(env, { every: 'hour', swarm: id }), 2500),
+    within(Operations.proofs(env, { swarm: id }), 2500),
+    within(Operations.room(env, { swarm: id }), 2500),
+  ])
+  if (!detail) return { data, head: Share.share(site, Share.listing('home', [])), status: 200, whole: false }
+  if (!detail.ok) {
+    data['!' + id] = detail.detail
+    return { data, head: lost, status: detail.status === 404 ? 404 : 200, whole: false }
+  }
+  data[id] = { ...detail.value, feed: [], updates: [] }
+  if (tree?.ok) data['tree:' + id] = tree.value
+  else if (tree) data['!tree:' + id] = tree.detail
+  if (node?.ok) data['node:' + id + ':' + nid] = node.value
+  if (burn?.ok) data['burn:' + id] = burn.value
+  if (proofs?.ok) data['proofs:' + id] = proofs.value
+  if (room?.ok) data['room:' + id] = { ...room.value, messages: room.value.messages.slice(-firstChat) }
+  return { data, head: Share.share(site, Share.swarm(detail.value)), status: node && !node.ok && node.status === 404 ? 404 : 200, whole: !!tree?.ok && !!node?.ok }
 }
 
 export async function lost(request: Request, env: Cloudflare.Env) {

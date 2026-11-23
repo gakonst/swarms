@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { world } from './run.ts'
+import { github } from './dispatch.ts'
 import * as Credit from '../src/shared/Credit.ts'
 import * as Setup from '../src/shared/Setup.ts'
 import type * as OperationsModule from '../src/worker/Operations.ts'
@@ -39,6 +40,7 @@ function setup() {
     return undefined
   })
   ;(w.env as unknown as Record<string, unknown>)['SWARMS'] = { get: () => w.swarm, idFromName: (name: string) => name }
+  github(w.env)
   return { deposits, w }
 }
 

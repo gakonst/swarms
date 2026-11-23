@@ -629,6 +629,9 @@ export function document(origin: string) {
           summary: 'End a node',
         },
       },
+      '/v1/swarms/{id}/nodes/{nid}/review': {
+        post: { description: "As an admin of the swarm: sign off a seeded node's Lean statement, so the page stops showing it as under review.", operationId: 'reviewNode', parameters: [swarm, parameter('nid', 'path', string, 'The node id.')], responses: { ...ok(object({ reviewed: { type: 'boolean' } }), 'Signed off.'), ...failures(401, 403, 404, 410) }, summary: 'Sign off a statement' },
+      },
       '/v1/swarms/{id}/ideas': {
         post: {
           description: 'Signed in: a suggestion without money, at most 5 a day. Triage may adopt it as a node credited to you.',

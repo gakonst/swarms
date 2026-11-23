@@ -11,10 +11,12 @@ import * as Runner from './Runner.ts'
 import * as Store from './Store.ts'
 import type { Swarm } from './Swarm.ts'
 import * as Triage from './Triage.ts'
+import * as Verify from './Verify.ts'
 import * as Work from './Work.ts'
 
 export type Plant = {
   dispatcher: string
+  rules: string
   root: { statement: string | null; title: string; words: string }
   seed: Nodes.Posting[]
   settings: Nodes.Settings
@@ -39,6 +41,7 @@ export async function plant(self: Swarm, input: Plant) {
   self.kv.put('tree', input.settings)
   self.kv.put('treeSetup', input.setup)
   self.kv.put('dispatcherText', input.dispatcher)
+  self.kv.put('nodeRules', input.rules)
   await Nodes.post(self, { by: 'seed', form: 'goal', needs: [], nid: Nodes.root, parent: null, ...input.root })
   await Nodes.post(self, { by: 'seed', form: 'triage', needs: [], nid: Nodes.triage, parent: Nodes.root, statement: null, title: 'Triage', words: "Weighs riders' proposals and suggestions for the root's money." })
   for (const node of input.seed) {
@@ -110,7 +113,7 @@ export async function node(self: Swarm, nid: string): Promise<Answer<NodeView>> 
   const authors = await Store.handles(self.env, results.map((idea) => idea.author as Address))
   const suggestions: Suggestion[] = results.map((idea) => ({ at: idea.created_at, id: idea.id, text: redact(idea.text), who: Nodes.who(idea.author, authors) }))
   const task = found.nodes.get(nid)
-  const review = !!task && task.labels['by'] === 'seed' && !self.kv.get<boolean>('reviewed:' + nid) && Nodes.parse(task.spec).statement !== null
+  const review = !!task && task.labels['by'] === 'seed' && !self.kv.get('reviewed:' + nid) && Nodes.parse(task.spec).statement !== null
   return { ok: true, value: { ...shown, funders: Nodes.allFunders(found, nid, names), review, runs, steers, suggestions } }
 }
 
@@ -200,11 +203,22 @@ export async function pledge(self: Swarm, input: { amount: bigint; contributor: 
   const wrote = await Nodes.budgeting(self, () => Flow.write(self.env, { from: null, id: input.hash.toLowerCase(), kind: 'pledge', parts: [[contributor, input.amount]], swarm: Nodes.swarm(self), to: { node: target, run: null } }))
   if (wrote) {
     Nodes.changed(self)
+    await seed(self)
     const handle = (await Store.account(self.env, contributor as Address)).handle
     Nodes.emit(self, target === Flow.free ? Nodes.root : target, 'funded', '@' + handle + ' rode it with $' + trim(input.amount) + (target === Flow.free ? ', kept free to move' : ''))
     await Runner.tick(self).then((next) => (next === null ? undefined : arm(self, next)))
   }
   return { nid: target }
+}
+
+export async function seed(self: Swarm) {
+  if (self.kv.get<number>('seeded')) return true
+  const made = await Verify.seed(self.env, Nodes.swarm(self)).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
+  if (made.ok || ('status' in made && made.status === 409)) {
+    self.kv.put('seeded', Date.now())
+    return true
+  }
+  return false
 }
 
 async function arm(self: Swarm, at: number) {
@@ -328,6 +342,14 @@ export async function health(self: Swarm): Promise<Ledgered> {
   const balanced = totals.held === totals.pledged - totals.spent
   const ok = balanced && gateway !== null && (drift < 0n ? -drift : drift) <= tolerance
   return { drift: Flow.usd(drift), gateway, held: Flow.usd(totals.held), live: Flow.usd(live), ok, pledged: Flow.usd(totals.pledged), spent: Flow.usd(totals.spent), swarm }
+}
+
+export async function review(self: Swarm, nid: string, by: string): Promise<Answer<boolean>> {
+  const found = await Nodes.state(self)
+  if (!found.nodes.has(nid)) return fail(404, 'No node has this id.')
+  self.kv.put('reviewed:' + nid, { at: Date.now(), by })
+  Nodes.changed(self)
+  return { ok: true, value: true }
 }
 
 export async function archive(self: Swarm, at: number) {
