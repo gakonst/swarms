@@ -23,19 +23,27 @@ export type Run = {
 export type Options = {
   check?: (inputs: Inputs) => Record<string, unknown>
   delayMs?: number | null
-  fail?: (inputs: Inputs) => string | null
-  hook?: string
+  fail?: (inputs: Inputs) => Failure | null
+  hook?: string | null
   port?: number
   repo?: string
   secret?: string
   token?: string
 }
 
-export const axioms = ['propext', 'Classical.choice', 'Quot.sound']
+export const allowed = ['propext', 'Classical.choice', 'Quot.sound']
 
-export const toolchain = 'leanprover/lean4:v4.25.0'
+export const axioms: string[] = []
 
-export const mathlib = '8d6b1a4c0f9e2b7a3c5d1e0f2a4b6c8d0e1f3a5b'
+export const toolchain = 'leanprover/lean4:v4.36.0'
+
+export const mathlib = 'fc4f59e577feb1a4956671bc04ac18aaaf8cd842'
+
+export const checker = 'swarms-proofs check 1'
+
+export function title(inputs: Inputs) {
+  return `verify ${inputs['swarm'] ?? ''} ${inputs['nid'] ?? ''} ${inputs['sha'] ?? ''}${inputs['claim'] === 'refutation' ? ' refutation' : ''}`
+}
 
 export function hash(statement: string) {
   return createHash('sha256').update(statement).digest('hex').slice(0, 16)
@@ -45,8 +53,10 @@ export function sign(secret: string, body: string) {
   return 'sha256=' + createHmac('sha256', secret).update(body).digest('hex')
 }
 
-export function failing(inputs: Inputs) {
-  if (/mock:unprovable|sorry/.test(inputs['statement'] ?? '') || /fail/i.test(inputs['theorem'] ?? '')) return 'error: declaration uses sorry; #print axioms lists sorryAx'
+export type Failure = { error: string; exitCode: number }
+
+export function failing(inputs: Inputs): Failure | null {
+  if (/mock:unprovable|sorry/.test(inputs['statement'] ?? '') || /fail/i.test(inputs['theorem'] ?? '')) return { error: 'axioms outside the allowlist: [sorryAx]', exitCode: 5 }
   return null
 }
 
@@ -128,7 +138,7 @@ export async function start(options: Options = {}) {
   const shown = (run: Run) => ({
     conclusion: run.conclusion,
     created_at: run.created_at,
-    display_title: `verify ${run.inputs['nid'] ?? ''} ${run.inputs['sha'] ?? ''}`,
+    display_title: title(run.inputs),
     event: 'workflow_dispatch',
     head_branch: run.head_branch,
     head_sha: run.head_sha,
@@ -158,32 +168,36 @@ export async function start(options: Options = {}) {
   const complete = async (id: number, forced?: 'failure' | 'success') => {
     const run = runs.find((each) => each.id === id)
     if (!run || run.status === 'completed') return run
-    const reason = forced === 'success' ? null : forced === 'failure' ? 'forced failure' : (options.fail ?? failing)(run.inputs)
+    const failure = forced === 'success' ? null : forced === 'failure' ? { error: 'forced failure', exitCode: 2 } : (options.fail ?? failing)(run.inputs)
     run.status = 'completed'
-    run.conclusion = reason ? 'failure' : 'success'
+    run.conclusion = failure ? 'failure' : 'success'
     const started = Date.parse(run.created_at)
+    const nid = run.inputs['nid'] ?? ''
     const statement = run.inputs['statement'] ?? ''
-    if (reason) run.log = [`lake build`, `Pnp/Check/N${run.inputs['nid'] ?? ''}.lean: ${reason}`, 'error: build failed'].join('\n')
-    else {
-      run.check = options.check?.(run.inputs) ?? {
-        axioms,
-        checker: 'lean4checker v4.25.0',
-        command: 'lake build && lake env lean Pnp/Check.lean && lake exe lean4checker',
-        contentHash: createHash('sha256').update(`${run.inputs['sha'] ?? ''}:${statement}`).digest('hex'),
-        durationMs: Math.max(1, Date.now() - started),
-        exitCode: 0,
-        mathlib,
-        nid: run.inputs['nid'] ?? '',
-        sha: run.inputs['sha'] ?? '',
-        statement: hash(statement),
-        theorem: run.inputs['theorem'] ?? '',
-        toolchain,
-      }
-      const id = next++
-      artifacts.set(id, { name: 'check', run: run.id, zip: zip({ 'check.json': JSON.stringify(run.check, null, 2) }) })
-      run.artifact = id
-      run.log = 'lake build\nBuild completed successfully.\n#print axioms: ' + axioms.join(', ')
+    run.log = failure ? ['lake build Pnp.Challenge.N' + nid, `Pnp/Challenge/N${nid}.lean: ${failure.error}`, 'error: build failed'].join('\n') : 'lake build Pnp.Challenge.N' + nid + '\nBuild completed successfully.\nlake exe check ' + nid + ': ok'
+    run.check = options.check?.(run.inputs) ?? {
+      axioms,
+      checker,
+      claim: run.inputs['claim'] ?? 'proof',
+      command: `lake build Pnp.Challenge.N${nid} && lake exe check ${nid} && lake env leanchecker Pnp.Statements.N${nid} Pnp.Challenge.N${nid}`,
+      commit: run.inputs['sha'] ?? '',
+      contentHash: createHash('sha256').update(`${run.inputs['sha'] ?? ''}:${statement}`).digest('hex'),
+      durationMs: Math.max(1, Date.now() - started),
+      error: failure?.error ?? null,
+      exitCode: failure?.exitCode ?? 0,
+      mathlib,
+      nid,
+      ok: !failure,
+      problem: run.inputs['problem'] ?? 'pnp',
+      statement: hash(statement),
+      swarm: run.inputs['swarm'] ?? '',
+      theorem: run.inputs['theorem'] ?? '',
+      toolchain,
+      version: 1,
     }
+    const artifact = next++
+    artifacts.set(artifact, { name: 'check', run: run.id, zip: zip({ 'check.json': JSON.stringify(run.check, null, 2), ...(failure ? { 'check.tail': run.log.slice(-4096) } : {}) }) })
+    run.artifact = artifact
     await deliver(run)
     return run
   }

@@ -12,6 +12,8 @@ export type Transfer = { at: number; block: number; hash: Hex; logs: Log[] }
 
 export const chainId = 4217
 
+export const configCommitment = '0x5bd93359'
+
 export const recipient: Address = '0x40def0cf3b5d28b6e9a7976ba10591e515afecfe'
 
 export function prefix(owner: string, app: string): Hex {
@@ -96,6 +98,7 @@ export function create() {
       if (body.method === 'eth_chainId') return answer(toHex(chainId))
       if (body.method === 'eth_blockNumber') return answer(toHex(block))
       if (body.method === 'eth_getCode') return answer('0x')
+      if (body.method === 'eth_call' && String((body.params?.[0] as { data?: string } | undefined)?.data ?? '').startsWith(configCommitment)) return answer('0x' + '0'.repeat(64))
       if (body.method === 'eth_getTransactionReceipt') {
         const found = transfers.get(String(body.params?.[0] ?? '').toLowerCase())
         return answer(found ? { blockNumber: toHex(found.block), status: '0x1', transactionHash: found.hash } : null)
