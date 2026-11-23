@@ -4,7 +4,9 @@ import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import type { Readable } from 'node:stream'
+import type * as Chain from '../mock/chain.ts'
 import * as Mock from '../mock/gateway.ts'
+import { account } from './rider.ts'
 import * as GitHub from '../mock/github.ts'
 
 export type Dev = Awaited<ReturnType<typeof start>>
@@ -34,7 +36,7 @@ export async function start(options: { gateway?: Mock.Options; leaseMs?: number;
   const state = fs.mkdtempSync(path.join(process.env['E2E_STATE'] ?? os.tmpdir(), 'swarms-e2e-'))
   const port = options.port ?? (await free())
   const url = `http://127.0.0.1:${port}/swarms`
-  const gateway = await Mock.start(options.gateway)
+  const gateway = await Mock.start({ wallet: account('operator').address.toLowerCase() as Chain.Address, ...options.gateway })
   const github = await GitHub.start({ hook: url + '/v1/hooks/github' })
   const env: Record<string, string | undefined> = {
     ...process.env,

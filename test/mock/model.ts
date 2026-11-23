@@ -10,7 +10,7 @@ export type Spawn = { budget_usd?: number; role: string; steps?: Step[]; task: s
 
 export type Step =
   | { think: string }
-  | { ms?: number; spend: number }
+  | { calls?: number; ms?: number; spend: number }
   | { wait: number }
   | { stall: number }
   | { crash: string }
@@ -18,6 +18,8 @@ export type Step =
   | { answer: Record<string, unknown> }
   | { overspend: number }
   | { join?: boolean; spawn: Spawn }
+
+export const call = 0.02
 
 export type Refusal = { error: string; ok: false; status: 402 | 429 }
 
@@ -118,14 +120,19 @@ export async function play(steps: readonly Step[], context: Context): Promise<En
       continue
     }
     if ('spend' in step) {
-      const paid = await pay(context, step.spend, step.ms ?? 50)
-      if (!paid.ok) return { error: paid.error, state: 'failed' }
+      const calls = step.calls ?? Math.max(1, Math.ceil(step.spend / call - 1e-9))
+      const each = Math.round((step.spend / calls) * 1_000_000) / 1_000_000
+      for (let made = 0; made < calls; made++) {
+        if (context.closed()) return { state: 'closed' }
+        const paid = await pay(context, made === calls - 1 ? Math.round((step.spend - each * (calls - 1)) * 1_000_000) / 1_000_000 : each, Math.max(1, Math.round((step.ms ?? 50) / calls)))
+        if (!paid.ok) return { error: paid.error, state: 'failed' }
+      }
       continue
     }
     if ('overspend' in step) {
       for (;;) {
         if (context.closed()) return { state: 'closed' }
-        const paid = await pay(context, step.overspend, 20)
+        const paid = await pay(context, Math.min(step.overspend, call), 10)
         if (!paid.ok) return { error: paid.error, state: 'failed' }
       }
     }
