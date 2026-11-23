@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict'
 import * as Credit from '../../src/shared/Credit.ts'
 import type * as Tree from '../../src/shared/Tree.ts'
 import * as Chain from '../mock/chain.ts'
+import * as Model from '../mock/model.ts'
 import type { Dev } from './dev.ts'
 import type { Rider } from './rider.ts'
 
@@ -14,6 +15,8 @@ export type Ledgered = { drift: string; gateway: { deposited: string; left: stri
 export type Standing = { buckets: { amount: string; node: string }[]; committed: string; free: string; refundable: string; spent: string }
 
 export const tolerance = 50_000n
+
+export const call = Chain.units(String(Model.call))
 
 export class Missing extends Error {}
 
@@ -55,14 +58,15 @@ export function swarm(dev: Dev, id: string) {
     for (let tries = 0; tries < 50; tries++) {
       const off = mock.left - (units(health.held) - units(health.live))
       first ??= off
-      if ((off < 0n ? -off : off) <= tolerance && units(health.gateway?.left) === mock.left) break
+      const apart = units(health.gateway?.left) - mock.left
+      if ((off < 0n ? -off : off) <= tolerance && (apart < 0n ? -apart : apart) <= call) break
       await new Promise((resolve) => setTimeout(resolve, 200))
       health = await ledger()
       mock = dev.gateway.ledger(app)
     }
     assert.ok(health.gateway, at + ': the ledger did not read the gateway credit')
     const read = units(health.gateway.left) - mock.left
-    assert.ok((read < 0n ? -read : read) <= tolerance, at + ': the ledger read a different gateway credit')
+    assert.ok((read < 0n ? -read : read) <= call, at + ': the ledger read the gateway credit more than one metered call apart from the mock')
     assert.equal(units(health.held), units(health.pledged) - units(health.spent), at + ': buckets do not sum to pledges less spend')
     const drift = mock.left - (units(health.held) - units(health.live))
     drifts.push({ at, drift: Chain.decimal(drift), first: Chain.decimal(first ?? 0n), live: health.live, mock: Chain.decimal(mock.left) })
