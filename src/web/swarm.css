@@ -82,7 +82,8 @@ button.crew-bud:hover, .crew-row[data-open] .crew-bud { background:var(--wash); 
 .crew-row[data-state='done'] .crew-metric { background:var(--green-wash); color:var(--green-ink); }
 .crew-line { grid-column:2 / -1; min-width:0; overflow:hidden; font-size:13.5px; line-height:1.35; color:var(--soft); white-space:nowrap; text-overflow:ellipsis; }
 .crew-row:is([data-state='failed'], [data-state='stopped'], [data-state='starved']) .crew-title { color:var(--muted); }
-.crew-open { display:grid; gap:8px; padding:4px 8px 14px 24px; font-size:14px; line-height:1.45; color:var(--soft); overflow-wrap:anywhere; }
+.crew-row[data-open] .crew-line { display:block; white-space:normal; -webkit-line-clamp:none; }
+.crew-open { display:block; margin:0; padding:2px 8px 14px 24px; font-size:14px; line-height:1.45; color:var(--soft); overflow-wrap:anywhere; }
 .crew-open b { display:block; margin-bottom:2px; font:400 11px var(--mono); letter-spacing:.02em; color:var(--muted); }
 .crew-rest button { display:flex; align-items:center; gap:10px; width:100%; min-height:40px; padding:0 8px 0 4px; border:0; background:none; font:12px var(--mono); color:var(--muted); text-align:left; cursor:pointer; }
 .crew-rest button::before { content:'⋯'; width:10px; text-align:center; color:var(--fg); }
@@ -122,10 +123,20 @@ button.crew-bud:hover, .crew-row[data-open] .crew-bud { background:var(--wash); 
   :is(.swarm-shell, .grove) > .panel { grid-column:1; grid-row:3; }
   :is(.swarm-shell, .grove) > .panel-chat { grid-column:2; grid-row:2 / 4; padding:8px 0 16px; }
   .panel-chat[hidden] { display:flex; }
+  .panel-page { scrollbar-gutter:stable; }
   .tab[data-tab='chat'] { display:none; }
   .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
   .grove-tree { container:grove / inline-size; }
   .grove-body { grid-template-columns:minmax(0,1fr) clamp(280px,38%,420px); }
+}
+
+@media (min-width:900px) and (max-width:1279px) {
+  .swarm-shell, .grove { grid-template-columns:minmax(0,1fr) 320px; }
+  .strip-stats .strip-big b { font-size:44px; }
+  .strip-line { flex-wrap:nowrap; }
+  .backers { flex:none; flex-wrap:nowrap; gap:0 12px; }
+  .backer::before, .backer-name { display:none; }
+  .grove-body { grid-template-columns:minmax(0,1fr) minmax(240px,40%); }
 }
 
 @container grove (max-width:640px) {

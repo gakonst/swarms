@@ -51,14 +51,9 @@ export function Board(props: { branches: readonly Branch[] }) {
                   <Faces funders={funders(branch)} riders={branch?.funders.length ?? 0} />
                   <span className="bud-money">{cash(String(member.spent))}</span>
                 </span>
-                <span className="crew-line">{member.summary ?? word}</span>
+                <span className="crew-line">{opened && more ? more : (member.summary ?? word)}</span>
               </Bud>
-              {opened && (more || member.blockers) && (
-                <div className="crew-open">
-                  {more && <p>{more}</p>}
-                  {member.blockers && <p><b>Blockers</b>{member.blockers}</p>}
-                </div>
-              )}
+              {opened && member.blockers && <p className="crew-open"><b>Blockers</b>{member.blockers}</p>}
             </li>
           )
         })}
