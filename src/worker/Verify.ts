@@ -113,6 +113,15 @@ async function json<value>(response: Response): Promise<value | null> {
   return (await response.json().catch(() => null)) as value | null
 }
 
+export function reachable(url: string) {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' || (parsed.protocol === 'http:' && (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname) || parsed.hostname.endsWith('.local')))
+  } catch {
+    return false
+  }
+}
+
 async function source(env: Env, ask: Ask) {
   if (ask.source) return ask.source
   const me = await gateway(env, '/api/keys/me', null)
@@ -141,7 +150,7 @@ export async function request(env: Env, ask: Ask): Promise<{ ok: true; run: numb
   const earlier = (await runs(env)).find((run) => run.display_title === named && run.conclusion !== 'cancelled')
   if (earlier) return { ok: true, run: earlier.id }
   const from = await source(env, ask)
-  if (!from || !/^https:\/\//.test(from)) return { detail: 'no public https source for the candidate commit', ok: false }
+  if (!from || !reachable(from)) return { detail: 'no public https source for the candidate commit', ok: false }
   const response = await github(env, `/repos/${repo(env)}/actions/workflows/verify.yml/dispatches`, {
     body: JSON.stringify({
       inputs: { claim: ask.claim ?? 'proof', nid: ask.nid, problem: ask.problem ?? 'pnp', sha: ask.sha, source: from, statement: ask.statement, swarm: ask.swarm, theorem: ask.theorem },
