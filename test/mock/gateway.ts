@@ -93,6 +93,7 @@ export const models = [
   { capabilities: { tools: true }, id: 'vercel/anthropic/claude-opus-5.5', kind: 'generate', metered: true, pricing: { cached: 0.000_000_5, input: 0.000_005, output: 0.000_025 } },
   { capabilities: { tools: true }, id: 'vercel/anthropic/claude-fable-5.2', kind: 'generate', metered: true, pricing: { cached: 0.000_000_3, input: 0.000_003, output: 0.000_015 } },
   { capabilities: { tools: true }, id: 'vercel/openai/gpt-6.1-sol', kind: 'generate', metered: true, pricing: { cached: 0.000_000_125, input: 0.000_001_25, output: 0.000_01 } },
+  { capabilities: { tools: true }, id: 'vercel/google/gemini-3.8-flash', kind: 'generate', metered: true, pricing: { cached: 0.000_000_075, input: 0.000_000_75, output: 0.000_003_75 } },
   { capabilities: { tools: true }, id: 'vercel/openai/gpt-6-astra', kind: 'generate', metered: true, pricing: { cached: 0.000_000_05, input: 0.000_000_5, output: 0.000_004 } },
   { capabilities: { tools: true }, id: 'boundless/z-ai/glm-5.3-flash', kind: 'generate', metered: false, pricing: { cached: 0, input: 0, output: 0 } },
   { capabilities: { tools: false }, id: 'vercel/openai/text-embedding-4', kind: 'embed', metered: true, pricing: { input: 0.000_000_02 } },
@@ -325,11 +326,13 @@ export async function start(options: Options = {}) {
       if (settings.unsolicited) spawn(agent, null, { role: asked.role + ' (extra)', steps: [{ stall: 86_400_000 }], task: 'Unasked.' })
       emit('tool.result', { call_id: 'call_' + turn.request_id, name: 'spawn_agent', output: JSON.stringify({ agent_id: sub.id }) })
       emit('assistant.message', { text: 'Spawned ' + asked.role })
-    } else emit('assistant.message', { text: 'Noted.' })
+    }
+    const answer = asked ? 'done' : (Model.pick(turn.prompt) ?? 'Noted.')
+    if (!asked) emit('assistant.message', { text: answer })
     if (turn.status !== 'running') return
     turn.status = 'completed'
     emit('run.completed', {})
-    append(agent, { ok: { message: 'done' }, spent_usd: Chain.usd(turn.spent), status: 'completed', type: 'result' }, turn.request_id)
+    append(agent, { ok: { message: answer }, spent_usd: Chain.usd(turn.spent), status: 'completed', type: 'result' }, turn.request_id)
   }
 
   const find = (id: string, name: string | null) => {
@@ -565,9 +568,11 @@ export async function start(options: Options = {}) {
         return { events: page, has_more: agent.events.filter((each) => each.seq > after).length > page.length, next_cursor: page.at(-1)?.seq ?? after }
       }
       if (rest === '/side_question' && method === 'POST') {
+        if (!agent.turns.size) throw new Problem(409, 'conflict', 'the session has no conversation to ask about yet')
         const paid = await meter(agent, null, 0.001, 5, 'side_question')
         if (!paid.ok) throw new Problem(paid.status, 'over_limit', paid.error)
-        return { text: `The mock lead answers: ${String(body['question'] ?? '')}`, usage: { estimated_cost: { total_usd: 0.001 } } }
+        const question = String(body['question'] ?? '')
+        return { text: Model.pick(question) ?? `The mock lead answers: ${question}`, usage: { estimated_cost: { total_usd: 0.001 } } }
       }
       if (rest === '/subagents' && method === 'GET') return { agents: [...agent.subs.values()].map((each) => raw(agent, each)) }
       if (rest === '/subagents' && method === 'POST') {
@@ -707,9 +712,12 @@ export async function start(options: Options = {}) {
   const described = (agent: Agent) => ({
     app: agent.app,
     events: agent.events.length,
+    harness: agent.harness,
     id: agent.id,
     instructions: agent.instructions,
+    model: agent.model,
     name: agent.name,
+    offer: agent.subagents,
     subagents: [...agent.subs.values()].map((each) => ({ ...raw(agent, each), messages: each.messages.map(({ message, priority, read }) => ({ message, priority, read })) })),
     turns: [...agent.turns.values()].map(({ prompt, request_id, status }) => ({ prompt, request_id, status })),
   })

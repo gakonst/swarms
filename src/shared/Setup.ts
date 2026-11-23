@@ -4,7 +4,9 @@ export type Harness = (typeof harnesses)[number]
 
 export const templates = ['cheap', 'frontier-mix', 'fable', 'frontier-anthropic', 'frontier-openai', 'free', 'custom'] as const
 
-export type Template = (typeof templates)[number]
+export type Chosen = (typeof templates)[number]
+
+export type Template = Chosen | 'board'
 
 export type Offer = { harnesses: Harness[]; models: string[] }
 
@@ -14,7 +16,7 @@ export type Costs = { most: string; step: string; steps: Record<string, string> 
 
 export type Setup = { harness: Harness; model: string; subagents: Offer | null; template: Template } & Costs
 
-export type Choice = { harness?: Harness | undefined; model?: string | undefined; subagents?: Offer | null | undefined; template: Template }
+export type Choice = { harness?: Harness | undefined; model?: string | undefined; subagents?: Offer | null | undefined; template: Chosen }
 
 export const fable = 'vercel/anthropic/claude-fable-5.2'
 
@@ -60,7 +62,7 @@ export function moved(setup: Omit<Setup, keyof Costs>, metered: { has(model: str
 
 export const fallback = 'frontier-anthropic' satisfies Template
 
-export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hint: string; label: string; model: string; subagents: Offer | null }> = {
+export const presets: Record<Exclude<Chosen, 'custom'>, { harness: Harness; hint: string; label: string; model: string; subagents: Offer | null }> = {
   cheap: {
     harness: 'codex',
     hint: 'Codex on DeepSeek V4.1 Flash leads. Subagents use DeepSeek V4.1 Flash or GLM-5.3 Flash, the cheapest models the gateway offers, on Codex or Claude Code.',
@@ -106,6 +108,7 @@ export const presets: Record<Exclude<Template, 'custom'>, { harness: Harness; hi
 }
 
 export const labels: Record<Template, string> = {
+  board: 'Board',
   cheap: presets.cheap.label,
   custom: 'Custom',
   fable: presets.fable.label,
@@ -113,6 +116,22 @@ export const labels: Record<Template, string> = {
   'frontier-anthropic': presets['frontier-anthropic'].label,
   'frontier-mix': presets['frontier-mix'].label,
   'frontier-openai': presets['frontier-openai'].label,
+}
+
+export const providers = ['anthropic', 'google', 'openai']
+
+export function provider(model: string) {
+  return model.split('/').at(-2) ?? ''
+}
+
+export function harnessOf(model: string): Harness {
+  return provider(model) === 'anthropic' ? 'claude' : 'codex'
+}
+
+export function board(prices: ReadonlyMap<string, Price>): Omit<Setup, keyof Costs> | string {
+  const models = [...prices.keys()].filter((model) => providers.includes(provider(model))).sort()
+  if (!models.length) return 'The gateway lists no OpenAI, Anthropic or Google model right now.'
+  return { harness: 'claude', model: fable, subagents: { harnesses: [...harnesses], models }, template: 'board' }
 }
 
 export const context = 50_000
@@ -162,10 +181,12 @@ export function priced(setup: Omit<Setup, keyof Costs>, prices: ReadonlyMap<stri
 export function told(setup: Setup) {
   const dollars = (value: string) => '$' + (Number(value) / 1_000_000).toFixed(Number(value) < 10_000 ? 4 : 3)
   const harness = (value: Harness) => (value === 'claude' ? 'Claude Code' : 'Codex')
+  const offer = setup.subagents && setup.subagents.models.map((model) => (setup.steps[model] ? model + ' (about ' + dollars(setup.steps[model]) + ' a call)' : model)).join(', ')
+  if (setup.template === 'board' && setup.subagents)
+    return `Models: the swarm's orchestrator picked the model you run on for this run. Your own subagents may use the ${setup.subagents.harnesses.map(harness).join(' or ')} harness with ${offer}: name one of them as spawn_agent's model, since the gateway refuses any other. Give each subagent a budget_usd of at least ${budgetCalls} of its model's calls.`
   const lead = `Models (the swarm's ${labels[setup.template]} setup): you run on ${harness(setup.harness)} with ${setup.model}, about ${dollars(setup.step)} a model call at a ${context.toLocaleString('en-US')}-token context, mostly cached, and up to ${dollars(setup.most)} uncached.`
   if (!setup.subagents) return `${lead} Your subagents may use any harness and gateway model; frontier models cost far more a call, so size each subagent's budget_usd to the model you give it.`
-  const offered = setup.subagents.models.map((model) => (setup.steps[model] ? `${model} (about ${dollars(setup.steps[model])} a call)` : model)).join(', ')
-  return `${lead} Your subagents may use only the ${setup.subagents.harnesses.map(harness).join(' or ')} harness with ${offered}: name one of them as spawn_agent's model, since the gateway refuses any other. Give each subagent a budget_usd of at least ${budgetCalls} of its model's calls.`
+  return `${lead} Your subagents may use only the ${setup.subagents.harnesses.map(harness).join(' or ')} harness with ${offer}: name one of them as spawn_agent's model, since the gateway refuses any other. Give each subagent a budget_usd of at least ${budgetCalls} of its model's calls.`
 }
 
 export function reserve(setup: Pick<Setup, 'most'> | null | undefined) {

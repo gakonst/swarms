@@ -4,6 +4,7 @@ import { ana, bo, gateway, id, planted, proof, until, type Sub } from './dispatc
 import type * as NodesModule from '../src/worker/Nodes.ts'
 import type * as RunnerModule from '../src/worker/Runner.ts'
 import type * as FlowModule from '../src/worker/Flow.ts'
+import * as Setup from '../src/shared/Setup.ts'
 
 const Nodes: typeof NodesModule = await import('../src/worker/Nodes.ts')
 const Runner: typeof RunnerModule = await import('../src/worker/Runner.ts')
@@ -276,3 +277,68 @@ test('a run posted while the pool is busy is claimed at once, not at the next po
   assert.equal(g.subs[1]?.role, 'n:' + b.nid + '#1')
 })
 
+
+const board: Setup.Setup = { harness: 'claude', model: Setup.fable, most: '0', step: '0', steps: {}, subagents: { harnesses: ['claude', 'codex'], models: [Setup.fable, Setup.sol, 'vercel/google/gemini-3.8-flash'] }, template: 'board' }
+
+test("a board swarm's orchestrator is Fable 5.2, and it picks each run's model from the listed ones, heeding riders' notes", async (t) => {
+  const g = gateway()
+  g.state.side = JSON.stringify({ harness: 'codex', model: Setup.sol, why: 'The rider asked for GPT.' })
+  const w = await planted(g.route, 0, null, board)
+  t.after(async () => {
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  w.swarm.kv.put('stuck:root', Nodes.stuckRuns)
+  await w.swarm.treePledge(id, { amount: '12', contributor: ana, hash: '0x' + 'c'.repeat(64), nid: null })
+  await w.swarm.treeSteer(id, { amount: '0', contributor: ana, nid: 'root', note: 'Use GPT for this one.' })
+  assert.equal(g.subs.length, 0)
+  w.swarm.kv.delete('stuck:root')
+  await Runner.tick(w.swarm)
+  await until(() => g.subs.length === 1)
+  assert.deepEqual([g.agents[0]?.['name'], g.agents[0]?.['model'], g.agents[0]?.['harness']], ['orchestrator', Setup.fable, 'claude'])
+  assert.deepEqual(g.agents[0]?.['subagents'], board.subagents)
+  assert.equal(g.sides.length, 1)
+  assert.match(g.sides[0] ?? '', /^Pick the model for the next run of node root: Does P = NP\?/)
+  assert.match(g.sides[0] ?? '', /Use GPT for this one\./)
+  assert.match(g.sides[0] ?? '', /- vercel\/google\/gemini-3\.8-flash/)
+  assert.match(g.sides[0] ?? '', /Budget: \$5\./)
+  assert.deepEqual([g.spawned[0]?.['model'], g.spawned[0]?.['harness'], g.spawned[0]?.['budget_usd']], [Setup.sol, 'codex', 4.998])
+  const view = await w.swarm.treeRead(id, { depth: 1, root: 'root', status: undefined })
+  assert.ok(view.ok)
+  assert.equal(view.value.nodes.find((node) => node.id === 'root')?.run?.model, Setup.sol)
+  const started = w.swarm.ctx.storage.sql.exec<{ text: string }>("SELECT text FROM tree_deltas WHERE node = 'root' AND event = 'started'").one().text
+  assert.equal(started, 'Run 1 started on GPT-6.1 Sol')
+  const sub = g.subs[0] as Sub
+  sub.spent_usd = 1
+  sub.status = { output: { children: [], commit: null, outcome: 'progress', summary: 'Worked', theorem: null, why: null }, state: 'completed' }
+  Runner.wake(w.swarm)
+  await until(async () => (await w.swarm.board.task('r:root:1'))?.phase === 'done')
+  await until(async () => {
+    const shown = await w.swarm.treeRead(id, { depth: 1, root: 'root', status: undefined })
+    return shown.ok && shown.value.nodes.find((node) => node.id === 'root')?.money.spent === '1.002000'
+  })
+})
+
+test('the first pick opens the conversation as a turn, and an answer off the list runs on Fable 5.2', async (t) => {
+  const g = gateway()
+  g.state.pick = JSON.stringify({ harness: 'codex', model: 'vercel/openai/gpt-9', why: 'Not offered.' })
+  const w = await planted(g.route, 0, null, board)
+  t.after(async () => {
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  await w.swarm.treePledge(id, { amount: '12', contributor: ana, hash: '0x' + 'd'.repeat(64), nid: null })
+  await until(() => g.subs.length === 1)
+  assert.equal(g.sides.length, 1)
+  assert.equal(g.prompts.length, 1)
+  assert.match(g.prompts[0] ?? '', /^Pick the model for the next run of node root/)
+  assert.deepEqual([g.spawned[0]?.['model'], g.spawned[0]?.['harness'], g.spawned[0]?.['budget_usd']], [Setup.fable, 'claude', 4.996])
+})
+
+test('a pick names a listed model and a harness the gateway runs, or falls back to the given model', () => {
+  const models = [Setup.fable, Setup.sol, 'vercel/google/gemini-3.8-flash']
+  assert.deepEqual(Runner.picked('{"harness":"claude","model":"vercel/google/gemini-3.8-flash","why":"Cheap and good at search."}', models, Setup.fable), { harness: 'claude', model: 'vercel/google/gemini-3.8-flash', why: 'Cheap and good at search.' })
+  assert.deepEqual(Runner.picked('Sure: {"harness":"cursor","model":"vercel/google/gemini-3.8-flash"}', models, Setup.fable), { harness: 'codex', model: 'vercel/google/gemini-3.8-flash', why: null })
+  assert.deepEqual(Runner.picked('{"harness":"codex","model":"vercel/openai/gpt-9"}', models, Setup.fable), { harness: 'claude', model: Setup.fable, why: null })
+  assert.deepEqual(Runner.picked(undefined, models, Setup.fable), { harness: 'claude', model: Setup.fable, why: null })
+})

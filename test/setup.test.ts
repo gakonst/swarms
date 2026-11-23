@@ -97,3 +97,15 @@ test('no template names a Boundless model, a custom setup that does is refused, 
   )
   assert.equal(Setup.moved({ harness: 'codex', model: 'boundless/deepseek/deepseek-v4.1-flash-1017', subagents: null, template: 'cheap' }, prices)?.model, Setup.flash)
 })
+
+test('a board setup leads with Fable 5.2 on Claude Code and offers every listed OpenAI, Anthropic and Google model on either harness', () => {
+  const price = (id: string) => [id, { cached: 0.0000001, id, input: 0.000001, output: 0.000004 }] as const
+  const prices = new Map([Setup.flash, Setup.glm, Setup.sol, Setup.fable, 'vercel/google/gemini-3.8-flash', Setup.kimi].map(price))
+  const board = Setup.board(prices)
+  assert.deepEqual(board, { harness: 'claude', model: Setup.fable, subagents: { harnesses: ['claude', 'codex'], models: [Setup.fable, 'vercel/google/gemini-3.8-flash', Setup.sol] }, template: 'board' })
+  assert.equal(Setup.board(new Map([Setup.flash, Setup.glm].map(price))), 'The gateway lists no OpenAI, Anthropic or Google model right now.')
+  const priced = Setup.priced(board as Exclude<typeof board, string>, prices)
+  assert.ok(typeof priced !== 'string')
+  assert.match(Setup.told(priced), /^Models: the swarm's orchestrator picked the model you run on for this run\. Your own subagents may use the Claude Code or Codex harness with vercel\/anthropic\/claude-fable-5\.2 \(about \$/)
+  assert.deepEqual([Setup.harnessOf(Setup.fable), Setup.harnessOf(Setup.sol), Setup.harnessOf('vercel/google/gemini-3.8-flash')], ['claude', 'codex', 'codex'])
+})

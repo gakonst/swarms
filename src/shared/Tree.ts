@@ -40,7 +40,7 @@ export type Money = {
   subtree: { spent: Usd; left: Usd; pledged: Usd }
 }
 export type Doing = { text: string; at: number }
-export type Run = { task: string; k: number; attempt: number; agent: number | null; since: number; until: number; budget: Usd; spent: Usd; checking: boolean; doing?: Doing | null }
+export type Run = { task: string; k: number; attempt: number; agent: number | null; since: number; until: number; budget: Usd; spent: Usd; checking: boolean; doing?: Doing | null; model?: string | null }
 export type Node = {
   id: string
   parent: string | null

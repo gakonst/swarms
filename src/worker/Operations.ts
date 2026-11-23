@@ -191,7 +191,8 @@ export const schema = {
       .enum(Setup.templates)
       .default(Setup.fallback)
       .describe(
-        'Which models the swarm runs on. frontier-anthropic (the default): Claude Code on Claude Fable 5.2, for the lead and every subagent. frontier-mix: Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, Kimi K3.1 Pro or GLM-5.3 on Claude Code or Codex. fable: Claude Code on Fable 5.2 leads, and subagents use Fable 5.2, Opus 5.5, Kimi K3.1 Pro or GLM-5.3. cheap: Codex on DeepSeek V4.1 Flash leads, and subagents use DeepSeek V4.1 Flash or GLM-5.3 Flash on Codex or Claude Code. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra. Every template runs on models the gateway charges for by what each call uses; the Claude models come through Vercel, and no swarm runs on Boundless (the boundless/ ids) until it charges a call as it streams, so those are refused. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
+        "Agent swarms only: a tree swarm ignores template, harness, model and subagents, since riders never choose its models; its orchestrator, Claude Code on Claude Fable 5.2, picks each run's harness and model from the OpenAI, Anthropic and Google models the gateway lists, guided by riders' notes. " +
+          'Which models the swarm runs on. frontier-anthropic (the default): Claude Code on Claude Fable 5.2, for the lead and every subagent. frontier-mix: Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, Kimi K3.1 Pro or GLM-5.3 on Claude Code or Codex. fable: Claude Code on Fable 5.2 leads, and subagents use Fable 5.2, Opus 5.5, Kimi K3.1 Pro or GLM-5.3. cheap: Codex on DeepSeek V4.1 Flash leads, and subagents use DeepSeek V4.1 Flash or GLM-5.3 Flash on Codex or Claude Code. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra. Every template runs on models the gateway charges for by what each call uses; the Claude models come through Vercel, and no swarm runs on Boundless (the boundless/ ids) until it charges a call as it streams, so those are refused. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
       ),
     harness: z.enum(Setup.harnesses).optional().describe('custom only: the lead agent\'s harness, claude (Claude Code) or codex.'),
     model: z.string().min(1).max(200).optional().describe('custom only: the lead agent\'s gateway model id, such as vercel/anthropic/claude-opus-5.5.'),
@@ -486,17 +487,19 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   const parsed = parse(schema.create, input)
   if (!parsed.ok) return parsed
 
-  const chosen = Setup.resolve(parsed.value)
-  if (typeof chosen === 'string') return Problem.fail(400, 'invalid_request', chosen)
-  if (parsed.value.template !== 'custom' && (parsed.value.harness || parsed.value.model || parsed.value.subagents !== undefined))
+  const tree = parsed.value.form === 'tree'
+  const asked = tree ? undefined : Setup.resolve(parsed.value)
+  if (typeof asked === 'string') return Problem.fail(400, 'invalid_request', asked)
+  if (!tree && parsed.value.template !== 'custom' && (parsed.value.harness || parsed.value.model || parsed.value.subagents !== undefined))
     return Problem.fail(400, 'invalid_request', 'harness, model and subagents go with template custom.')
   const prices = await Gateway.prices(env)
   if (!prices) return Problem.fail(503, 'unavailable', "The gateway's model prices could not be read, so the swarm's costs are unknown. Try again shortly.")
-  const setup = Setup.priced(parsed.value.template === 'custom' ? chosen : (Setup.moved(chosen, prices) ?? chosen), prices)
+  const chosen = asked ?? Setup.board(prices)
+  if (typeof chosen === 'string') return Problem.fail(503, 'unavailable', chosen)
+  const setup = Setup.priced(tree || parsed.value.template === 'custom' ? chosen : (Setup.moved(chosen, prices) ?? chosen), prices)
   if (typeof setup === 'string') return Problem.fail(400, 'invalid_request', `${setup} GET /v1/config lists them.`)
   const policy = parsed.value.steering ?? (creator ? 'team' : 'open')
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
-  const tree = parsed.value.form === 'tree'
   if (!tree && (parsed.value.seed.length || parsed.value.statement)) return Problem.fail(400, 'invalid_request', 'seed and statement go with form tree.')
   const named = parsed.value.nickname
   if (named && (await Store.called(env, named))?.current === named) return taken(named)
@@ -1819,7 +1822,7 @@ async function plant(env: Cloudflare.Env, row: Store.Row, request: z.output<type
     seed.push({ by: 'seed', form: one.form, needs: one.needs.flatMap((need) => keys.get(need) ?? []), nid: made, parent, statement: one.statement ?? written.statement ?? null, title: one.title, words })
   }
   await stub(env, row.id).plant({
-    dispatcher: Persona.dispatcher(),
+    dispatcher: Persona.orchestrator(),
     reviewed: request.reviewed,
     root: { statement: request.statement ?? null, title: request.title, words: request.goal },
     seed,
