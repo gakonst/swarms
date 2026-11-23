@@ -37,6 +37,8 @@
 .panel[hidden], .grove-body[hidden], .swarm-shell .idea-now[hidden] { display:none; }
 .panel-chat { display:flex; padding:12px 0 16px; }
 .panel-chat > .chat { flex:1; min-width:0; border:1px solid var(--rule); border-radius:12px; }
+.panel-chat .chat-here, .panel-chat .chat-list { padding-inline:14px; }
+.panel-chat .chat-foot { padding-inline:10px; }
 .panel-page { overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; padding:16px 0 40px; }
 .swarm-shell .idea-now { align-items:start; }
 .swarm-shell .idea-now .box { top:0; }
