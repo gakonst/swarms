@@ -142,7 +142,7 @@ async function gather(env: Cloudflare.Env, url: URL, calling: Calling): Promise<
   const id = found ? found.swarm : decodeURIComponent(raw)
   if (named && found) data[`name:${named.name}`] = { name: named.name, nickname: found.current, swarm: id }
   const row = await within(Store.find(env, id), 1500)
-  if (row?.form === 'tree' && !row.archived_at) return grove(env, site, url, id, picked ?? 'root', lost)
+  if (row?.form === 'tree' && !row.archived_at) return grove(env, site, url, id, picked ?? 'root', lost, data)
   const shelved = within(Operations.artifacts(env, { swarm: id }, site), 2500)
   const laid = shelved.then((read) => {
     const found = read?.ok ? read.value.artifacts.find(Surface.is) : undefined
@@ -190,8 +190,7 @@ async function unclaimed(env: Cloudflare.Env, site: string, name: string): Promi
   return { data, head: Share.share(site, subject, { path: `/${name}`, ...(problem ? {} : { title: `Start a swarm on ${Nickname.topic(name)} · Swarms` }) }), status: 200, whole: false }
 }
 
-async function grove(env: Cloudflare.Env, site: string, url: URL, id: string, nid: string, lost: Head): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
-  const data: Record<string, unknown> = {}
+async function grove(env: Cloudflare.Env, site: string, url: URL, id: string, nid: string, lost: Head, data: Record<string, unknown>): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
   const [detail, tree, node, burn, proofs, room, headed] = await Promise.all([
     within(Operations.detail(env, { swarm: id }, false), 2500),
     within(Operations.tree(env, { depth: 2, swarm: id }), 2500),

@@ -79,7 +79,7 @@ button.bud-fold[aria-expanded='true'] i { transform:rotate(90deg); }
   .strip-stats { flex-wrap:nowrap; gap:0 14px; overflow:hidden; font-size:11px; white-space:nowrap; }
   .strip-stats b { margin-right:4px; font-size:18px; }
   .strip-stats .strip-big b { font-size:30px; }
-  .strip-stats > :not(.strip-big):nth-child(n+4) { display:none; }
+  .strip-stats > :not(.strip-big) { display:none; }
   .strip-latest { font-size:12px; }
   .backers { flex:none; flex-wrap:nowrap; gap:0; }
   .backers li + li { margin-left:-6px; }
