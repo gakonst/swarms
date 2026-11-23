@@ -47,6 +47,7 @@ function preloads(): Plugin {
 
 export default defineConfig(({ command }) => {
   const gateway = command === 'serve' ? process.env['SWARMS_GATEWAY'] : undefined
+  const passed = ['GITHUB_API', 'SWARMS_GITHUB_TOKEN', 'SWARMS_GITHUB_WEBHOOK_SECRET', 'SWARMS_PROOFS_REPO', 'SWARMS_SPAWN', 'SWARMS_LEASE_MS', 'SWARMS_TRIAGE_MS'].flatMap((name) => (process.env[name] ? [[name, process.env[name]] as const] : []))
 
   return {
     experimental: { renderBuiltUrl: (file: string) => `${base}/${file}` },
@@ -65,6 +66,7 @@ export default defineConfig(({ command }) => {
           ? {
               config: (config) => {
                 config.services = []
+                if (passed.length) config.vars = { ...config.vars, ...Object.fromEntries(passed) }
                 if (!gateway) return
                 config.vars = { ...config.vars, GATEWAY_URL: gateway }
                 config.compatibility_flags = (config.compatibility_flags ?? []).filter(

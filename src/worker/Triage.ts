@@ -174,9 +174,13 @@ export async function apply(self: Swarm, actions: readonly Action[], by: string,
   return applied
 }
 
+function every(self: Swarm) {
+  return Number((self.env as unknown as Record<string, unknown>)['SWARMS_TRIAGE_MS']) || everyMs
+}
+
 export function due(self: Swarm, now: number) {
   if (!self.kv.get<boolean>('triaging')) return Infinity
-  return Math.max(now, (self.kv.get<number>('triagedAt') ?? 0) + everyMs)
+  return Math.max(now, (self.kv.get<number>('triagedAt') ?? 0) + every(self))
 }
 
 async function fresh(self: Swarm, since: number) {
@@ -199,7 +203,7 @@ export async function schedule(self: Swarm) {
   const grew = rootLeft >= (self.kv.get<string>('triageRoot') ? Memo.units(self.kv.get<string>('triageRoot') ?? '0') : 0n) + set.runStep
   const waiting = await fresh(self, since)
   self.kv.put('triaging', waiting > 0)
-  if (open || (now - since < everyMs && !grew) || (waiting === 0 && !grew)) return false
+  if (open || (now - since < every(self) && !grew) || (waiting === 0 && !grew)) return false
   return Nodes.budgeting(self, async () => {
     const state = await Nodes.state(self)
     const pledged = state.ledger.pledged.get(Nodes.root) ?? 0n

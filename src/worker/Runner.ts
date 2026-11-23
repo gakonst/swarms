@@ -255,11 +255,13 @@ async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promis
     if (!spawned) {
       const listed = await list(self, swarm, agent.value, true)
       const adopted = listed.ok ? listed.value.find((sub) => sub.role === role && sub.parent_agent_id === null) : undefined
-      if (adopted) spawned = { agent: agent.value, at: Date.now(), sub: adopted.agent_id }
+      const prompted = self.kv.get<string>('prompted:' + task.id)
+      if (adopted) spawned = { agent: agent.value, at: Date.now(), sub: adopted.agent_id, ...(prompted ? { turn: prompted } : {}) }
       else {
         const steers = triaging ? [] : await Nodes.unheeded(self, nid)
         const words = triaging ? await Triage.task(self, found) : await brief(self, found, nid, steers.map((steer) => steer.body))
         const args: Gateway.Spawn = { budget_usd: Flow.number(budget), ...worker(self), output_schema: triaging ? Triage.output : output, role, task: words }
+        if (!spawnApi(self.env)) self.kv.put('prompted:' + task.id, lease.claim)
         const made = await spawn(self, swarm, agent.value, args, lease.claim, abort.signal)
         if (!made.ok) return await refusal(self, task, lease, made)
         spawned = { agent: agent.value, at: Date.now(), sub: made.value, ...(spawnApi(self.env) ? {} : { turn: lease.claim }) }
