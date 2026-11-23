@@ -258,8 +258,7 @@ test('a node ends and money returns along its edges to the cent', async (t) => {
   if (!needs(t)) return
   nids['end'] = await s.propose(bob, { form: 'lemma', parent: nids['program']!, spec: 'A run that hangs until its rider ends it.\n\nmock:stall', statement: 'theorem e2e_end : True', title: 'A lemma its rider ends (e2e)' }, '4')
   await s.until('its run to start', async () => (await s.node(nids['end']!)).run ?? undefined)
-  const before = { bob: await standing(bob), node: await s.node(nids['end']!), parent: by(await s.tree(), nids['program']!)! }
-  const total = units(before.node.money.left) + units(before.node.money.committed)
+  const before = { bob: await standing(bob), node: await s.node(nids['end']!) }
   const ended = await bob.call('POST', `/v1/swarms/${s.id}/nodes/${nids['end']}/end`, { why: 'Not worth it.' })
   assert.ok(ended.status === 200 || ended.status === 201, JSON.stringify(ended.body))
   const settled = await s.until('the node to settle', async () => {
@@ -267,11 +266,14 @@ test('a node ends and money returns along its edges to the cent', async (t) => {
     return node.status === 'dead end' && node.run === null && units(node.money.left) === 0n && units(node.money.committed) === 0n ? node : undefined
   })
   assert.equal(settled.end?.kind, 'withdrawn')
-  const now = { bob: await standing(bob), parent: by(await s.tree(), nids['program']!)! }
-  const spent = units(settled.money.spent) - units(before.node.money.spent)
-  const back = units(now.bob.free) - units(before.bob.free) + (units(now.parent.money.left) - units(before.parent.money.left))
-  assert.equal(back + spent, total, `$${Chain.decimal(total)} on the node came back as $${Chain.decimal(back)} with $${Chain.decimal(spent)} spent`)
-  assert.ok(units(now.bob.free) > units(before.bob.free), "bob's own money came back to him")
+  const now = await standing(bob)
+  const money = settled.money
+  assert.equal(units(money.pledged) + units(money.inherited) - units(money.granted), units(money.spent), `what reached the node less what it spent is all returned: ${JSON.stringify(money)}`)
+  const toBob = units(now.free) - units(before.bob.free)
+  assert.equal(toBob, units(before.node.money.pledged) - units(money.pledged), `bob's free money grew by $${Chain.decimal(toBob)}, his returned share is $${Chain.decimal(units(before.node.money.pledged) - units(money.pledged))}`)
+  assert.ok(toBob > 0n, "bob's own money came back to him")
+  assert.ok(units(before.node.money.inherited) >= units(money.inherited), 'what the parent granted went back up its edge')
+  assert.equal(now.buckets.find((bucket) => bucket.node === nids['end'])?.amount ?? '0.000000', '0.000000')
   await s.balanced('ended')
 })
 
