@@ -279,7 +279,7 @@ export function tree(origin: string, swarm: string, view: View, request?: URL, b
       <header class="top"><button class="back" data-back type="button">←</button><h1>Ride the whole swarm</h1></header>
       <p class="fund-name">${name}</p>
       <p class="hint">${Answer.cash(item.ridden)} ridden · ${Answer.cash(item.spent)} spent</p>
-      <p class="goal">Your dollars flow down to the lemmas that can be worked now. What a node does not spend comes back to you inside the swarm, to put on any other.</p>
+      <p class="goal">Your dollars flow down to the lemmas that can be worked now. What is not spent stays yours.</p>
     </div>
     ${amounts('Ride')}
   </section>
@@ -329,7 +329,7 @@ export function node(origin: string, swarm: string, title: string, value: Tree.N
       <header class="top"><button class="back" data-back type="button">←</button><h1>${attribute(Cards.ask(value.form))}</h1></header>
       <p class="fund-name"><i class="mark-node" data-state="${states[value.status]}"></i>${attribute(value.title)}</p>
       <p class="hint">${attribute(money)}</p>
-      <p class="goal">It runs on your dollars first, and what is left flows to the lemmas under it. What it does not spend comes back to you inside the swarm.</p>
+      <p class="goal">It runs on your dollars first. What it does not spend stays yours.</p>
     </div>
     ${amounts('Ride')}
   </section>
@@ -342,6 +342,7 @@ export function node(origin: string, swarm: string, title: string, value: Tree.N
     start: `${swarm}__${value.id}`,
     swarm: { id: swarm, title },
     up: `${base}/s/${id}`,
+    what: value.title,
   }, 200, request, bot)
 }
 
@@ -546,7 +547,7 @@ async function send(path,options){
 function finish(){
   show('done');
   document.getElementById('done-title').textContent="Finish on the swarm's page"+(currentSwarm&&currentSwarm.title?': '+currentSwarm.title:'.');
-  const origin=frame.site,id=encodeURIComponent(currentSwarm.id),where=frame.ride||'/s/'+id,words=(note?'I put money behind "'+note+'" on ':"I'm riding ")+currentSwarm.title;
+  const origin=frame.site,id=encodeURIComponent(currentSwarm.id),where=frame.ride||'/s/'+id,words=(note?'I put money behind "'+note+'" on ':"I'm riding ")+(frame.what||currentSwarm.title);
   const watch=document.getElementById('watch');
   if(tg){watch.removeAttribute('target');watch.textContent='Watch it';watch.href=frame.base+where;tg.HapticFeedback.notificationOccurred('success')}else watch.href=origin+where;
   document.getElementById('share').href=frame.bot?'https://t.me/share/url?url='+encodeURIComponent('https://t.me/'+frame.bot+'?startapp='+(frame.start||id))+'&text='+encodeURIComponent(words):'https://x.com/intent/post?text='+encodeURIComponent(words+' '+origin+'/x'+where);
