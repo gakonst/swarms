@@ -19,6 +19,7 @@ import type {
   Issued,
   Kind,
   Lent,
+  Listing,
   Me,
   Member,
   Named,
@@ -63,6 +64,7 @@ import * as Mention from '../shared/Mention.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
+import * as Clock from './Clock.ts'
 import * as Edge from './Edge.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
@@ -466,15 +468,25 @@ export async function config(env: Cloudflare.Env): Promise<Config> {
   }
 }
 
-export async function list(env: Cloudflare.Env, input: Input<'list'>): Promise<Problem.Result<{ swarms: Summary[] }>> {
+export async function list(env: Cloudflare.Env, input: Input<'list'>): Promise<Problem.Result<Listing>> {
   const parsed = parse(schema.list, input)
   if (!parsed.ok) return parsed
 
   const status = parsed.value.status
-  const swarms = await Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row)))
+  const [swarms, riding] = await Promise.all([
+    Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row))),
+    Edge.cached(env, 'riding', listSeconds, () => Store.riding(env)),
+  ])
+  const heads = await Edge.cached(env, `heads?status=${status ?? ''}`, listSeconds, () => headlines(env, swarms))
   resume(env, swarms)
   Store.know(swarms.map((swarm) => swarm.id))
-  return Problem.ok({ swarms })
+  return Problem.ok({ funders: Object.fromEntries(swarms.flatMap((swarm) => (riding.funders[swarm.id] ? [[swarm.id, riding.funders[swarm.id]!]] : []))), heads, riders: riding.riders, swarms })
+}
+
+async function headlines(env: Cloudflare.Env, swarms: readonly Summary[]) {
+  const trees = swarms.filter((swarm) => swarm.form === 'tree' && !swarm.archivedAt)
+  const read = await Promise.all(trees.map(async (swarm) => [swarm.id, await Clock.within(tree(env, { depth: 0, swarm: swarm.id }), 800)] as const))
+  return Object.fromEntries(read.flatMap(([id, view]) => (view?.ok ? [[id, view.value.headline]] : [])))
 }
 
 function resume(env: Cloudflare.Env, swarms: readonly Pick<Summary, 'id' | 'status' | 'why'>[]) {
@@ -482,8 +494,8 @@ function resume(env: Cloudflare.Env, swarms: readonly Pick<Summary, 'id' | 'stat
   if (stale.length) waitUntil(Promise.allSettled(stale.map((swarm) => stub(env, swarm.id).revive())))
 }
 
-export function listed(value: { swarms: Summary[] }) {
-  return { swarms: value.swarms.map((swarm) => (swarm.answer ? { ...swarm, answer: { ...swarm.answer, text: Answer.lead(swarm.answer.text) } } : swarm)) }
+export function listed(value: Listing) {
+  return { ...value, swarms: value.swarms.map((swarm) => (swarm.answer ? { ...swarm, answer: { ...swarm.answer, text: Answer.lead(swarm.answer.text) } } : swarm)) }
 }
 
 export async function create(env: Cloudflare.Env, input: Input<'create'>, creator?: Address): Promise<Problem.Result<Summary>> {

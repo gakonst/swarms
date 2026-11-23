@@ -223,7 +223,7 @@ const listMs = 60_000
 export function useSwarms() {
   const lobby = useLobby((event) => {
     if (event.type === 'welcome') reload()
-    else set((data) => data && { swarms: [event.swarm, ...data.swarms.filter((swarm) => swarm.id !== event.swarm.id)] })
+    else set((data) => data && { ...data, swarms: [event.swarm, ...data.swarms.filter((swarm) => swarm.id !== event.swarm.id)] })
   })
   const [list, reload, set] = usePoll(() => Api.swarms(), lobby === 'down' ? listMs : null, 'swarms', { keep: true })
   return list

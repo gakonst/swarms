@@ -1,4 +1,4 @@
-import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Live, Lobby, Named, NodeUpdates, NodeView, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Room, Roster, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Listing, Live, Lobby, Named, NodeUpdates, NodeView, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Room, Roster, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
@@ -74,7 +74,7 @@ export function config() {
 }
 
 export function swarms() {
-  return fixture ? staged((fixtures) => fixtures.swarms()) : request<{ swarms: Summary[] }>('/api/swarms')
+  return fixture ? staged((fixtures) => fixtures.swarms()) : request<Listing>('/api/swarms')
 }
 
 export function swarm(id: string, feed = true) {

@@ -39,6 +39,8 @@ export type Summary = {
 
 export type Steering = 'open' | 'team'
 
+export type Listing = { funders: Record<string, Tree.Funder[]>; heads: Record<string, Tree.Headline>; riders: number; swarms: Summary[] }
+
 export type Named = { name: string; nickname: string | null; swarm: string }
 
 export type Seat = { address: `0x${string}`; handle: string; left: string; limit: string | null; role: 'admin' | 'member'; spent: string }

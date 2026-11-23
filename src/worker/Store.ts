@@ -2,6 +2,7 @@ import type { Account, Answer, Contribution, Cover, Currency, Member, Note, Summ
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Setup from '../shared/Setup.ts'
+import type * as Tree from '../shared/Tree.ts'
 import * as Replica from './Replica.ts'
 import * as Search from './Search.ts'
 
@@ -130,6 +131,20 @@ export async function list(env: Cloudflare.Env, status?: Summary['status']) {
     .bind(...(status ? [status] : []))
     .all<Row>()
   return results
+}
+
+export async function riding(env: Cloudflare.Env) {
+  const [top, count] = await env.DB.batch<Record<string, unknown>>([
+    env.DB.prepare(
+      `select r.swarm, r.contributor, r.total, r.since, n.name from (select c.swarm, lower(c.contributor) as contributor, sum(cast(c.amount as integer)) as total, min(c.created_at) as since, row_number() over (partition by c.swarm order by sum(cast(c.amount as integer)) desc, min(c.created_at)) as k
+      from contributions c join swarms s on s.id = c.swarm where s.hidden = 0 group by c.swarm, lower(c.contributor)) r left join names n on n.address = r.contributor where r.k <= 3 order by r.swarm, r.k`,
+    ),
+    env.DB.prepare('select count(distinct lower(c.contributor)) as riders from contributions c join swarms s on s.id = c.swarm where s.hidden = 0'),
+  ])
+  const funders: Record<string, Tree.Funder[]> = {}
+  for (const row of (top?.results ?? []) as { contributor: `0x${string}`; name: string | null; since: number; swarm: string; total: number }[])
+    (funders[row.swarm] ??= []).push({ amount: Memo.decimal(BigInt(row.total)), since: row.since, who: { address: row.contributor, agent: null, handle: row.name ?? Mention.short(row.contributor) } })
+  return { funders, riders: Number((count?.results[0] as { riders?: number } | undefined)?.riders ?? 0) }
 }
 
 const known = new Set<string>()

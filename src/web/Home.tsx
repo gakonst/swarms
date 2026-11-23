@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { Summary } from '../shared/Api.ts'
+import { useEffect, useState } from 'react'
+import type { Listing, Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Status from '../shared/Status.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
-import { Card, fromProblem, fromSwarm, type Idea } from './Card.tsx'
-import { type Cell, Field, type Hive } from './Field.tsx'
-import { usd } from './format.ts'
+import { cash, doing, Faces } from './Branches.tsx'
+import { Card, fromProblem, fromSwarm, lead, type Idea } from './Card.tsx'
+import { type Cell, Spiral } from './Field.tsx'
+import { ago } from './format.ts'
+import { useNow } from './hooks.ts'
 import { open as openProblems, problems } from './research.ts'
 import { href, Link } from './router.tsx'
 import * as Wire from './wire.ts'
@@ -32,6 +34,14 @@ const fits: Record<Filter, (idea: Idea) => boolean> = {
   waiting: (idea) => idea.word === 'Not started',
 }
 
+const first = 6
+
+const step = 8
+
+const least = 1
+
+type Doing = { at: number; text: string }
+
 function sorted(swarms: readonly Summary[] | undefined) {
   return [...(swarms ?? [])].filter((swarm) => !Status.test(swarm)).sort((a, b) => order[a.status] - order[b.status] || b.createdAt - a.createdAt)
 }
@@ -46,7 +56,7 @@ function useIdeas() {
   const current = ranked.filter((swarm) => swarm.form === 'tree' && !swarm.archivedAt)
   const earlier = ranked.filter((swarm) => !(swarm.form === 'tree' && !swarm.archivedAt)).map(fromSwarm)
   const ideas = current.map(fromSwarm).flatMap((idea, index) => (index % 3 === 2 && seeds.length ? [idea, seeds.shift()!] : [idea])).concat(seeds)
-  return { earlier, free, ideas, latest, list, open, ranked }
+  return { earlier, ideas, list }
 }
 
 function Earlier(props: { ideas: readonly Idea[] }) {
@@ -79,118 +89,128 @@ function keep(filter: Filter) {
   history.replaceState(history.state, '', href(`/ideas${filter === 'open' ? '' : `?filter=${filter}`}`))
 }
 
-function grown(swarm: Summary, head: Record<Tree.Status, number> | undefined): Record<Cell, number> {
-  if (head) {
-    const raw = { dead: head['dead end'], flight: head['in flight'], open: head.funded + head.proposed + 1, proven: head.proven, spent: 0 }
-    const sum = raw.dead + raw.flight + raw.open + raw.proven
-    const scale = sum > 220 ? 220 / sum : 1
-    const out = { dead: Math.round(raw.dead * scale), flight: Math.round(raw.flight * scale), open: Math.round(raw.open * scale), proven: Math.round(raw.proven * scale), spent: 0 }
-    return { ...out, open: out.open + Math.max(0, 8 - sum) }
-  }
+function live(swarm: Summary, head: Tree.Headline | undefined) {
+  return !swarm.archivedAt && (swarm.status === 'running' || (head?.inFlight ?? 0) > 0)
+}
+
+function board(listing: Listing | undefined) {
+  return (listing?.swarms ?? [])
+    .filter((swarm) => !Status.test(swarm) && Number(swarm.balance) >= least)
+    .sort((a, b) => Number(!!a.archivedAt) - Number(!!b.archivedAt) || Number(b.balance) - Number(a.balance) || b.updatedAt - a.updatedAt)
+}
+
+function sown(swarm: Summary, head: Tree.Headline | undefined): Record<Cell, number> {
   const balance = Math.max(0, Number(swarm.balance))
-  const count = Math.min(200, Math.round(12 + 14 * Math.sqrt(balance)))
+  const count = Math.round(Math.min(44, 8 + 4 * Math.sqrt(balance)))
+  if (head) {
+    const nodes = Math.max(1, head.proven + head.deadEnds + head.inFlight + head.frontier)
+    const proven = Math.round((count * head.proven) / nodes)
+    const dead = Math.round((count * head.deadEnds) / nodes)
+    const flight = Math.min(count - proven - dead, head.inFlight, 5)
+    return { dead, flight, open: count - proven - dead - flight, proven, spent: 0 }
+  }
   const spent = balance > 0 ? Math.round(count * Math.min(1, Math.max(0, Number(swarm.spent)) / balance)) : 0
-  const flight = swarm.status === 'running' ? Math.min(count - spent, Math.max(1, Math.min(5, swarm.machines))) : 0
+  const flight = live(swarm, head) ? Math.min(count - spent, Math.max(1, Math.min(5, swarm.machines))) : 0
   return { dead: 0, flight, open: count - spent - flight, proven: 0, spent }
 }
 
-function useHeads(ids: readonly string[]) {
-  const [heads, setHeads] = useState<Readonly<Record<string, Record<Tree.Status, number>>>>({})
-  const key = ids.join()
+function useDoing(swarms: readonly Summary[]) {
+  const [found, setFound] = useState<Readonly<Record<string, Doing>>>({})
+  const key = swarms.map((swarm) => `${swarm.id}:${swarm.updatedAt}`).join()
   useEffect(() => {
     let alive = true
-    for (const id of ids)
-      Api.tree(id, { depth: 0 })
+    for (const swarm of swarms)
+      Api.tree(swarm.id, { depth: 8 })
         .then((view) => {
-          const root = view.nodes.find((node) => node.parent === null)
-          if (alive && root) setHeads((kept) => ({ ...kept, [id]: root.counts }))
+          const latest = view.nodes.flatMap((node) => doing(node) ?? []).sort((a, b) => b.at - a.at)[0]
+          if (alive && latest) setFound((kept) => ({ ...kept, [swarm.id]: latest }))
         })
         .catch(() => {})
     return () => {
       alive = false
     }
   }, [key])
-  return heads
+  return found
 }
 
-function plural(count: number, word: string) {
-  return `${count} ${word}${count === 1 ? '' : 's'}`
+function told(swarm: Summary, head: Tree.Headline | undefined, said: Doing | undefined): Doing | null {
+  if (said) return said
+  if (head) return { at: head.lastProvenAt ?? swarm.updatedAt, text: `${head.proven} proven · ${head.inFlight} in flight` }
+  return swarm.answer && !swarm.answer.done ? { at: swarm.answer.at, text: lead(swarm.answer.text, swarm.title) } : null
+}
+
+function Activity(props: { doing: Doing | undefined; head: Tree.Headline | undefined; now: number; swarm: Summary }) {
+  const swarm = props.swarm
+  if (swarm.archivedAt) return <span className="lot-line">Archived</span>
+  if (!live(swarm, props.head)) return <span className="lot-line">{props.head?.proven ? `${props.head.proven} proven` : Status.pill(Status.word(swarm))}</span>
+  const said = told(swarm, props.head, props.doing)
+  return (
+    <span className="lot-line" data-live="true">
+      <span>{said?.text || 'Working now'}</span>
+      <time>{ago(said?.at ?? swarm.updatedAt, props.now)}</time>
+    </span>
+  )
+}
+
+function Lot(props: { doing: Doing | undefined; funders: readonly Tree.Funder[]; head: Tree.Headline | undefined; now: number; swarm: Summary }) {
+  const swarm = props.swarm
+  const working = live(swarm, props.head)
+  return (
+    <li className="limb lot" data-old={!!swarm.archivedAt || undefined} data-status={working ? 'in flight' : undefined}>
+      <Link className="lot-link" to={Nickname.path(swarm)}>
+        <Spiral cells={sown(swarm, props.head)} id={swarm.id} live={working} />
+        <span className="lot-title">{swarm.title}</span>
+        <span className="lot-money">{cash(swarm.balance)}</span>
+        <span className="lot-faces"><Faces funders={props.funders} riders={swarm.contributors} /></span>
+        <Activity doing={props.doing} head={props.head} now={props.now} swarm={swarm} />
+      </Link>
+    </li>
+  )
+}
+
+function count(value: number) {
+  return value.toLocaleString('en-US')
 }
 
 export function Home() {
-  const { earlier, free, ideas, list, open, ranked } = useIdeas()
-  const [view, setView] = useState<'popular' | 'live' | 'new'>('popular')
-  const heads = useHeads(ranked.filter((item) => item.form === 'tree' && !item.archivedAt).slice(0, 6).map((item) => item.id))
-  const hives = useMemo<Hive[]>(() => {
-    const joins = [...ranked].sort((a, b) => Number(!!a.archivedAt) - Number(!!b.archivedAt)).slice(0, 14).map(
-      (item): Hive => ({
-        cells: grown(item, heads[item.id]),
-        detail: `${item.archivedAt ? 'Earlier' : Status.pill(Status.word(item))} · ${usd(item.balance)}`,
-        id: item.id,
-        live: item.status === 'running' && !item.archivedAt,
-        old: !!item.archivedAt,
-        path: Nickname.path(item),
-        title: item.title,
-      }),
-    )
-    const seeds = free.slice(0, 4).map((item): Hive => ({ cells: { dead: 0, flight: 0, open: 8, proven: 0, spent: 0 }, detail: 'No riders yet', id: `idea:${item.id}`, live: false, old: false, path: Nickname.usable(item.id) ? `/${item.id}` : `/new?q=${item.id}`, title: item.label }))
-    return joins.concat(seeds)
-  }, [ranked.map((item) => [item.id, item.status, item.balance, item.spent, item.machines, item.archivedAt].join()).join('|'), free.map((item) => item.id).join(), heads])
-  const working = open.filter((swarm) => swarm.status === 'running').length
-  const balance = open.reduce((sum, swarm) => sum + Math.max(0, Number(swarm.remaining)), 0)
-  const shown = ideas.filter((idea) => (view === 'live' ? fits.running(idea) : view === 'new' ? fits.waiting(idea) : true)).slice(0, 12)
-  const tabs = [['popular', 'Popular'], ['live', 'Working now'], ['new', 'No riders yet']] as const
+  const list = Wire.useSwarms()
+  const now = useNow(30_000)
+  const [limit, setLimit] = useState(first)
+  const items = board(list.data)
+  const shown = items.slice(0, limit)
+  const hidden = items.slice(limit)
+  const heads = list.data?.heads ?? {}
+  const said = useDoing(shown.filter((swarm) => swarm.form === 'tree' && live(swarm, heads[swarm.id])))
+  const raised = items.reduce((sum, swarm) => sum + Number(swarm.balance), 0)
+  const working = items.filter((swarm) => live(swarm, heads[swarm.id])).length
+  const riders = list.data?.riders ?? items.reduce((sum, swarm) => sum + swarm.contributors, 0)
 
   return (
     <div className="home">
       <section className="hero">
-        <h1 className="hero-title">Make a breakthrough.</h1>
-        <Go />
+        <h1 className="hero-title">Put a few dollars into an AI swarm and watch it work.</h1>
+        <dl className="tally-site" data-ready={!!list.data}>
+          <div><dt>riders</dt><dd>{count(riders)}</dd></div>
+          <div><dt>raised</dt><dd>{cash(String(raised))}</dd></div>
+          <div data-live={working > 0}><dt>working now</dt><dd>{count(working)}</dd></div>
+        </dl>
       </section>
-      <section aria-label="Swarms at work" className="sky">
-        <Field hives={hives} />
-      </section>
-      <p className="hero-live" data-ready={!!list.data}>
-        {working > 0 && <><i className="live-dot" />{working} working now · </>}
-        {plural(ideas.length, 'swarm')}{balance > 0 && <> · {usd(String(balance))} to spend</>}
-      </p>
-      <section className="intro">
-        <p>A swarm is many AI agents working one hard problem, in the open. A rider points it: names the goal, puts in a few dollars of compute, and steers by what it finds.</p>
-      </section>
-      <section aria-labelledby="ideas-title" className="band">
-        <header className="band-head">
-          <h2 id="ideas-title">Swarms</h2>
-          <div aria-label="Show" className="chips" role="tablist">
-            {tabs.map(([key, label]) => <button aria-selected={view === key} className="chip" key={key} onClick={() => setView(key)} role="tab" type="button">{label}</button>)}
-          </div>
-        </header>
-        <div className="band-main">
-          {list.error && !list.data ? (
-            <button className="world-empty" onClick={() => location.reload()} type="button"><span>Can't reach Swarms.</span><b>Tap to try again ↻</b></button>
-          ) : (
-            <Grid ideas={shown} loading={!list.data && !list.error} />
-          )}
-          <Earlier ideas={earlier} />
-          <Link className="band-more" to="/ideas">All {list.data ? plural(ideas.length, 'swarm') : 'swarms'}</Link>
-        </div>
-      </section>
-      <section aria-labelledby="how-title" className="band">
-        <header className="band-head"><h2 id="how-title">How it works</h2></header>
-        <ol className="band-main steps">
-          <li><b>[1]</b><span>Pick a swarm, or start one with a problem of your own</span></li>
-          <li><b>[2]</b><span>Put in a few dollars and say where it should go</span></li>
-          <li><b>[3]</b><span>Read what it finds, and steer again</span></li>
-        </ol>
-      </section>
-      <section aria-labelledby="riders-title" className="band">
-        <header className="band-head"><h2 id="riders-title">Swarm riders</h2></header>
-        <div className="band-main creed">
-          <p>Commanding a swarm of agents to a productive end is a new skill. It is closer to running experiments than to writing software: say what counts as better, build the test, and let the swarm cook.</p>
-          <Link className="band-more" to="/about">Read the manifesto</Link>
-        </div>
-      </section>
-      <section className="own">
-        <Go />
+      <section aria-label="Swarms" className="site-board">
+        {list.error && !list.data ? (
+          <button className="world-empty" onClick={() => location.reload()} type="button"><span>Can't reach Swarms.</span><b>Tap to try again ↻</b></button>
+        ) : (
+          <ol className="limbs lots" data-loading={!list.data}>
+            {shown.map((swarm) => <Lot doing={said[swarm.id]} funders={list.data?.funders?.[swarm.id] ?? []} head={heads[swarm.id]} key={swarm.id} now={now} swarm={swarm} />)}
+            {hidden.length > 0 && (
+              <li className="limb limb-more">
+                <button onClick={() => setLimit(limit + step)} type="button">See {hidden.length} more<span>{cash(String(hidden.reduce((sum, swarm) => sum + Number(swarm.balance), 0)))}</span></button>
+              </li>
+            )}
+            <li className="limb limb-propose">
+              <Link to="/new"><i aria-hidden="true">+</i>Start a swarm<span>$1+</span></Link>
+            </li>
+          </ol>
+        )}
       </section>
     </div>
   )

@@ -127,12 +127,14 @@ const treeNode = object({
 
 const delta = object({ at: time, event: { enum: ['posted', 'funded', 'started', 'progress', 'checking', 'proven', 'ended', 'steered', 'moved', 'doing'], type: 'string' }, node: treeNode, seq: integer, text: string })
 
+const headline = object({ deadEnds: integer, frontier: integer, inFlight: integer, lastProvenAt: nullable(time), pledged: dollars, perProven: nullable(dollars), proven: integer, spent: dollars })
+
 const schemas = {
   Check: check,
   TreeNode: treeNode,
   Delta: delta,
   TreeView: object({
-    headline: object({ deadEnds: integer, frontier: integer, inFlight: integer, lastProvenAt: nullable(time), pledged: dollars, perProven: nullable(dollars), proven: integer, spent: dollars }),
+    headline,
     nodes: { items: treeNode, type: 'array' },
     seq: { description: 'The newest delta seq: drop deltas at or below it.', type: 'integer' },
   }),
@@ -512,7 +514,18 @@ export function document(origin: string) {
           description: 'Funded swarms, most recently active first, at most 100.',
           operationId: 'listSwarms',
           parameters: [parameter('status', 'query', ref('Status'), 'Only swarms with this status.')],
-          responses: { ...ok(object({ swarms: { items: ref('Summary'), type: 'array' } }), 'Swarms.'), ...failures(400) },
+          responses: {
+            ...ok(
+              object({
+                funders: { additionalProperties: { items: funder, type: 'array' }, description: "Each listed swarm's top three riders by what they put in, by swarm id.", type: 'object' },
+                heads: { additionalProperties: headline, description: "Each open tree swarm's headline counts, as its tree read gives them, by swarm id. A swarm whose tree did not answer in time is left out.", type: 'object' },
+                riders: { ...integer, description: 'How many different people rode any swarm.' },
+                swarms: { items: ref('Summary'), type: 'array' },
+              }),
+              'Swarms.',
+            ),
+            ...failures(400),
+          },
           summary: 'List swarms',
         },
         post: {

@@ -523,7 +523,24 @@ export function config(): Promise<Config> {
 
 export function swarms() {
   for (const swarm of fixtures) tick(swarm)
-  return delay({ swarms: scene.has('empty') ? [] : scene.has('many') ? [...fixtures.map(summary), ...crowd()] : fixtures.map(summary) })
+  const swarms = scene.has('empty') ? [] : scene.has('many') ? [...fixtures.map(summary), ...crowd()] : fixtures.map(summary)
+  const gifts = new Map(fixtures.map((swarm) => [swarm.id, swarm.contributions]))
+  const funders = Object.fromEntries(swarms.map((swarm) => [swarm.id, riding(gifts.get(swarm.id.split('~')[0]!) ?? [])]))
+  const riders = new Set(swarms.flatMap((swarm) => (gifts.get(swarm.id.split('~')[0]!) ?? []).map((gift) => gift.contributor.toLowerCase()))).size
+  const heads = Object.fromEntries(swarms.filter((swarm) => swarm.id.split('~')[0] === treeId && !swarm.archivedAt).map((swarm) => [swarm.id, Tree.headline(Object.values(derive()))]))
+  return delay({ funders, heads, riders, swarms })
+}
+
+function riding(gifts: readonly Contribution[]): Tree.Funder[] {
+  const sums = new Map<string, { amount: bigint; since: number }>()
+  for (const gift of gifts) {
+    const kept = sums.get(gift.contributor.toLowerCase())
+    sums.set(gift.contributor.toLowerCase(), { amount: (kept?.amount ?? 0n) + units(gift.amount), since: Math.min(kept?.since ?? gift.at, gift.at) })
+  }
+  return [...sums]
+    .sort((a, b) => (b[1].amount > a[1].amount ? 1 : b[1].amount < a[1].amount ? -1 : a[1].since - b[1].since))
+    .slice(0, 3)
+    .map(([address, kept]) => ({ amount: decimal(kept.amount), since: kept.since, who: { address: address as `0x${string}`, agent: null, handle: called(address) } }))
 }
 
 function crowd() {

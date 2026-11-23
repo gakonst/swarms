@@ -57,6 +57,27 @@ test('the list and a swarm read their totals from the backing index, each contri
   assert.equal(await Store.steering(db.env, 'zz'), null)
 })
 
+test("the listing counts each rider once and names each swarm's top three riders by what they put in", async () => {
+  const db = open()
+  swarm(db, 'a')
+  swarm(db, 'b')
+  swarm(db, 'h', { hidden: 1 })
+  give(db, 'a', '0x0A', 10)
+  give(db, 'a', '0x0a', 30)
+  give(db, 'a', '0x0b', 25)
+  give(db, 'a', '0x0c', 5)
+  give(db, 'a', '0x0d', 1)
+  give(db, 'b', '0x0b', 2)
+  give(db, 'h', '0x0e', 100)
+  db.sqlite.prepare('insert into names (address, name, updated_at) values (?, ?, 1)').run('0x0b', 'mira')
+
+  const riding = await Store.riding(db.env)
+  assert.equal(riding.riders, 4)
+  assert.deepEqual(riding.funders['a']?.map((funder) => [funder.who.address, funder.who.handle, funder.amount]), [['0x0a', '0x0a…0x0a', '0.000040'], ['0x0b', 'mira', '0.000025'], ['0x0c', '0x0c…0x0c', '0.000005']])
+  assert.deepEqual(riding.funders['b']?.map((funder) => funder.who.handle), ['mira'])
+  assert.equal(riding.funders['h'], undefined)
+})
+
 test('what is left is the balance less what was spent, once 0030 counts what the old wallets and channels used as spent', async () => {
   const db = open()
   const cutover = 1794273600000
