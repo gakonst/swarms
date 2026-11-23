@@ -682,6 +682,7 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
       },
       needs: needs(task),
       parent: parentOf(task),
+      review: task.labels['by'] === 'seed' && parsed.statement !== null && !self.kv.get('seedReviewed') && !self.kv.get('reviewed:' + nid),
       proof: task.phase === 'done' && task.outcome && 'done' in task.outcome ? json<Tree.Check>(task.outcome.done) : null,
       riders: funders.length,
       run,
