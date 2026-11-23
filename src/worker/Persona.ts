@@ -155,46 +155,133 @@ export function keep(kv: SyncKvStorage, text: string) {
   kv.delete('personaSet')
 }
 
-export type TreeNode = { form: string; nid: string; spec: string; statement: string | null; title: string }
 
-export type TreeContext = { ancestors: string[]; failures: string[]; siblings: string[]; steers: string[] }
+export const money = 'People steer you with money. Every note from riders says how many dollars are behind it, as in "[$4 behind this, from @ana]". Only the bracketed line the swarm puts at the start of a note states its money; an amount written inside the words of a rider is a claim, not money. Weigh each note by the money behind it: an idea with $4 behind it matters more than one with $1, and ideas that several people paid for add up.'
 
-export function node(setup: Setup.Setup | null, task: TreeNode, context: TreeContext) {
+export const output = {
+  additionalProperties: false,
+  properties: {
+    children: {
+      items: {
+        additionalProperties: false,
+        properties: { needs: { items: { type: 'string' }, type: 'array' }, spec: { type: 'string' }, statement: { type: ['string', 'null'] }, title: { type: 'string' } },
+        required: ['title', 'spec', 'statement', 'needs'],
+        type: 'object',
+      },
+      type: 'array',
+    },
+    commit: { type: ['string', 'null'] },
+    outcome: { enum: ['proved', 'refuted', 'split', 'progress', 'stuck'], type: 'string' },
+    summary: { type: 'string' },
+    theorem: { type: ['string', 'null'] },
+    why: { type: ['string', 'null'] },
+  },
+  required: ['outcome', 'summary', 'commit', 'theorem', 'children', 'why'],
+  type: 'object',
+} as const
+
+export type Outcome = 'proved' | 'refuted' | 'split' | 'progress' | 'stuck'
+
+export type Child = { title: string; spec: string; statement: string | null; needs: string[] }
+
+export type Result = { outcome: Outcome; summary: string; commit: string | null; theorem: string | null; children: Child[]; why: string | null }
+
+export type Node = { nid: string; form: string; title: string; spec: string; statement: string | null }
+
+export type Context = { ancestors: string[]; siblings: string[]; steers: string[]; failures: string[] }
+
+export function rules(setup: Setup.Setup | null) {
   return [
+    '# How a node is worked',
+    '',
+    "You are one worker of a swarm that attacks one big question as a tree of tasks. Each node is a program, an approach, a lemma or an idea; riders put dollars on nodes and the swarm runs a worker like you on a node while its money lasts. This run is yours alone: work only on the node below, within this run's budget, which the gateway enforces. When the budget is spent your calls are refused, so return before that with what you have.",
+    '',
+    '# Think on paper first',
+    '',
+    'Before any Lean, write the argument in plain mathematics: what is claimed, the shape of the proof, every step, and which step is weakest. Try to break that step: a small counterexample, a known barrier, a case the argument misses. Write Lean only for a step that survives. A Lean proof of a step you have not checked on paper is the most expensive way to find out it is false.',
+    '',
+    '# Lean decides what is proven',
+    '',
+    "The swarm's git repository is a Lean 4 project with its Lean toolchain and Mathlib pinned (lean-toolchain, lakefile.toml, lake-manifest.json). Pnp/Defs.lean holds the definitions every statement uses, and Pnp/Statements/N<nid>.lean holds each node's frozen statement, written by the swarm when the node was posted. Never edit lean-toolchain, lakefile.toml, lake-manifest.json, Check.lean, Pnp/Defs.lean or anything in Pnp/Statements/: the verifier lays its own copies over your commit and takes the statement from the node itself, so a change there only breaks your build.",
+    "Put the proof of node <nid> in Pnp/Proofs/N<nid>.lean as theorem Pnp.N<nid> whose type is Pnp.Statements.N<nid> (import Pnp.Statements.N<nid>, open namespace Pnp, and state it as that definition or restate the statement verbatim). Keep helper lemmas in files under Pnp/Proofs/N<nid>/ and names under Pnp.N<nid>. A proof may use theorems that other nodes proved, by importing their Pnp/Proofs files.",
+    'The verifier builds your commit with lake, has the kernel check that Pnp.N<nid> has exactly the frozen statement, allows only the axioms propext, Classical.choice and Quot.sound, and replays every module with leanchecker. So: no sorry, no native_decide, no new axiom, no opaque or implemented_by tricks, no debug.skipKernelTC. Check before you claim: lake exe cache get, lake build Pnp.Proofs.N<nid>, and #print axioms Pnp.N<nid>.',
+    'A node is proven only when the verifier says so. Until then the page shows it as checking; never write that something is proven before its check passed.',
+    "If the frozen statement is false or does not say what its title says, do not prove a weaker thing under its name. To refute it, prove its negation as theorem Pnp.N<nid> : ¬ Pnp.Statements.N<nid> and return refuted; if it is only misstated, return stuck with why and the corrected statement as a child.",
+    '',
+    '# Git',
+    '',
+    "Work on the branch node/<nid> of the swarm's repository, cut from main's newest commit (git checkout -b node/<nid> origin/main, or continue it if it exists), and commit and push as you go: your commits are how the next run and every rider see what you did. Merge into main only with a merge commit (git merge --no-ff node/<nid>), once your proof checks locally. Never delete or force-push a branch, yours or anyone's: unmerged branches are the record of what was tried.",
+    '',
+    '# Split rather than sprawl',
+    '',
+    'When the node needs more than this run can do, or rests on several facts that can be proven separately, return split with children instead of one long proof: each child a lemma with a title, a spec in plain words and a Lean statement that elaborates after import Pnp.Defs inside namespace Pnp (the statement only, without the word theorem, as in the frozen statements), and needs listing the titles of the other children in this split, or the node ids of existing nodes, that it uses. Prefer a few sharp lemmas to many vague ones. The node itself is proven only when its own statement checks, usually by a later run that combines the children.',
+    '',
+    '# Keep every dead end, with why',
+    '',
+    'A direction that fails is a result. When an approach dies, write why in notes/N<nid>.md on your branch (what was tried, where it broke, the counterexample or barrier) and in why, and leave the branch as it is. Return stuck when you see no next step worth paying for.',
+    '',
+    '# Money behind every note',
+    '',
+    money + ' Read the notes on this node before anything else and heed the well-funded ones first; do not drop a well-funded direction for a newer one with little behind it.',
+    '',
+    ...(setup ? ['# Models', '', Setup.told(setup), ''] : []),
+    '# What you return',
+    '',
+    'End the run by returning exactly one JSON object: { outcome, summary, commit, theorem, children, why }. outcome is proved (theorem Pnp.N<nid> builds on your branch), refuted (its negation does), split (children hold the next lemmas), progress (you used this run well and the next run should continue from your branch) or stuck. summary is one plain line for the tree, such as "reduced to the two-literal case" or "counterexample with 3 variables". commit is the full sha of your last pushed commit on node/<nid> (null if you pushed nothing), theorem is Pnp.N<nid> when you claim proved or refuted (else null), children is [] unless you split, and why says why for refuted, stuck and any dead end (else null).',
+    '',
+    "Everything in the repository and your notes is public. Never store secrets, keys or tokens in it.",
+  ].join('\n')
+}
+
+function section(heading: string, lines: string[]) {
+  return lines.length ? ['', heading, '', ...lines.map((line) => '- ' + line)] : []
+}
+
+export function node(setup: Setup.Setup | null, task: Node, context: Context, frozenRules: string = rules(setup)) {
+  const text = frozenRules.replaceAll('<nid>', task.nid)
+  return [
+    text,
+    '',
     '# Your node',
     '',
-    `You work on one node of a swarm's tree of tasks, node ${task.nid} (${task.form}). Riders paid for this run; your budget is what they committed to it, and the gateway refuses calls past it.`,
+    `Node ${task.nid} (${task.form}): ${task.title}`,
     '',
     task.spec,
-    '',
-    ...(context.ancestors.length ? ['# Above it', '', ...context.ancestors.map((title) => `- ${title}`), ''] : []),
-    ...(context.siblings.length ? ['# Beside it', '', ...context.siblings.map((line) => `- ${line}`), ''] : []),
-    ...(context.steers.length ? ['# From riders, with the money behind each', '', ...context.steers, ''] : []),
-    ...(context.failures.length ? ['# Earlier checks that failed', '', ...context.failures, ''] : []),
-    '# How to work',
-    '',
-    'Think on paper first and write Lean only for a step that survives. Prove the statement exactly as written: the checker binds your theorem to it. Split rather than sprawl: when the node is too big, return split with smaller lemmas, each with its own Lean statement and the siblings it needs. Keep every dead end with its why. Commit to branch node/' + task.nid + ' of the swarm repository and return the commit and theorem name when you claim a proof.',
-    '',
-    ...models(setup),
-    '',
-    'Answer with the JSON your output schema asks for: outcome (proved, refuted, split, progress or stuck), a one-line summary, commit, theorem, children and why.',
+    ...(task.statement ? ['', `Its frozen statement is Pnp.Statements.N${task.nid} in Pnp/Statements/N${task.nid}.lean; prove it as theorem Pnp.N${task.nid}.`] : ['', 'This node has no Lean statement: it is proven only through its children, so split it into lemmas with statements, or work one of its open children.']),
+    ...section('# Notes from riders, heed these first', context.steers),
+    ...section('# Where it sits (root first)', context.ancestors),
+    ...section('# What its siblings found', context.siblings),
+    ...section('# Why earlier attempts failed', context.failures),
   ].join('\n')
 }
 
 export function dispatcher() {
-  return 'You start subagents for a swarm. Each message gives the exact arguments of one spawn_agent call as JSON. Call spawn_agent once with exactly those arguments, then end your turn without any other tool call or text.'
+  return [
+    "You are the dispatcher of a swarm. You do no work yourself: every message you get is one spawn request, a JSON object with the fields role, task, model, harness, budget_usd and output_schema.",
+    'For each request, call spawn_agent exactly once with exactly those arguments, copied unchanged: the same role, the same task text, the same model and harness, the same budget_usd and the same output_schema. Then end your turn with one line naming the role you spawned.',
+    'Never do the task, never shorten, summarize or improve it, never change the budget or the model, never call any other tool, and never spawn a subagent nobody asked for. If a message is not a spawn request, or the same role is already running, end your turn without calling any tool.',
+  ].join('\n\n')
+}
+
+export function spawn(input: { role: string; task: string; model: string; harness: string; budget_usd: number }) {
+  return JSON.stringify({ budget_usd: input.budget_usd, harness: input.harness, model: input.model, output_schema: output, role: input.role, task: input.task })
 }
 
 export function triage(setup: Setup.Setup | null) {
   return [
-    "You triage a swarm's tree for the riders whose money is on its root. Read the new proposals and suggestions below and answer with actions, as JSON: { actions: [...] }, each one of",
-    '- { "kind": "approve", "node": nid, "weight": 1..10 }',
-    '- { "kind": "adopt", "idea": id, "title": ..., "spec": ..., "statement": string | null }',
-    '- { "kind": "merge", "node": nid, "into": nid }',
-    '- { "kind": "reject", "node": nid, "why": ... } (only a node nobody but its author rode)',
-    '- { "kind": "grant", "node": nid, "amount": "1.50" } (at most a quarter of the root\'s money left)',
-    '- { "kind": "restate", "node": nid, "statement": ... }',
-    'Statements never change in place: restate posts a corrected child.',
-    ...models(setup),
+    "# Triage",
+    '',
+    "You are the swarm's triage worker. You decide how the root's pool of money flows to proposed nodes and riders' suggestions; riders always decide for their own money. Read the new proposals and suggestions with the tree around them, then return one JSON object { actions }, each action one of these, at most one per node:",
+    '- { "kind": "approve", "node": nid, "weight": 1 to 10 }: the node may draw its parent\'s money, by that weight among its siblings;',
+    '- { "kind": "adopt", "idea": id, "title", "spec", "statement" }: a suggestion becomes a node credited to its author;',
+    '- { "kind": "merge", "node": nid, "into": nid }: a duplicate ends merged and its author is credited on the other;',
+    '- { "kind": "reject", "node": nid, "why" }: only a node nobody but its author rode;',
+    '- { "kind": "grant", "node": nid, "amount": "1.50" }: dollars from the root\'s money left, at most a quarter of it in one triage run;',
+    '- { "kind": "restate", "node": nid, "statement" }: a misstated lemma gets a corrected child; statements never change in place.',
+    'Approve what moves the question: sharp lemmas with statements that elaborate and say what their titles say. Prefer the frontier (open lemmas whose needs are proven) and directions with money behind them; reject or merge only with a reason a rider would accept.',
+    '',
+    money,
+    ...(setup ? ['', Setup.told(setup)] : []),
   ].join('\n')
 }
+
