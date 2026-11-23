@@ -15,6 +15,13 @@ test('a branch reads its JSON result as a title, one line and its metric', () =>
   assert.equal(member.state, 'done')
 })
 
+test('a summary skips sentences that only file commits and paths', () => {
+  const result = (summary: string) => Crew.member(branch({ result: JSON.stringify({ summary }) })).summary
+  assert.equal(result('Best remains commit e8c16f50c2ffbb32cc44f0ac88f6d27143eba7ec. Merge only /w/moe2_best/moe.py. Replacing Marlin lost 30%.'), 'Replacing Marlin lost 30%.')
+  assert.equal(result('Best commit 655bf9f; exported logs to /w/attention6_best/.'), 'Best commit 655bf9f; exported logs to /w/attention6_best/.')
+  assert.equal(result('Unknown model: configure max_tokens explicitly.'), 'Unknown model: configure max_tokens explicitly.')
+})
+
 test('a branch without JSON shows its first plain line, its error or its task', () => {
   assert.equal(Crew.member(branch({ result: '**Seven** of nine allow commercial use.\nDetails in licenses.md.' })).summary, 'Seven of nine allow commercial use.')
   assert.equal(Crew.member(branch({ error: 'subagent 4 could not resume after a runtime restart\n\nTool calls observed', result: '', state: 'failed' })).summary, 'could not resume after a runtime restart')

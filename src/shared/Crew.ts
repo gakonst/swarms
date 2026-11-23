@@ -9,7 +9,8 @@ const words = ['summary', 'result', 'outcome', 'finding', 'findings', 'conclusio
 function clean(text: string) {
   return text
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/[*_`#>]/g, '')
+    .replace(/[*`#>]/g, '')
+    .replace(/(^|\s)_([^_]+)_(?=[\s.,;:]|$)/g, '$1$2')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -29,10 +30,9 @@ function parsed(text: string) {
 }
 
 function sentence(text: string) {
-  const parts = clean(text)
-    .split(/(?<=[.!?])\s+(?=[A-Z0-9"'(])/)
-    .filter((part) => !/^best (commit|source)\b/i.test(part) && !/^[0-9a-f]{7,40}\.?$/i.test(part))
-  return parts[0] ?? null
+  const parts = clean(text).split(/(?<=[.!?])\s+(?=[A-Z0-9"'(])/)
+  const ledger = (part: string) => /\bcommit [0-9a-f]{7,40}\b/i.test(part) || /(^|\s)\/\w[\w.-]*\//.test(part)
+  return parts.find((part) => !ledger(part)) ?? parts[0] ?? null
 }
 
 function number(value: number) {
