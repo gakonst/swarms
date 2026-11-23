@@ -19,6 +19,8 @@ type Live = Omit<Detail, 'answer' | 'reason' | 'updates' | 'why' | 'working'> & 
 
 const minute = 60_000
 
+export const treeId = 'p-vs-np'
+
 const models: Setup.Price[] = [
   { cached: 0.19, id: '@cf/moonshotai/kimi-k2.7-code', input: 0.95, output: 4 },
   { cached: 0.14, id: '@cf/zai-org/glm-5.3', input: 1.12, output: 3.52 },
@@ -1412,7 +1414,6 @@ export async function move(key: string, branch: number, input: { amount: string;
   return delay([after.find((found) => found.id === branch) as Branch, after.find((found) => found.id === input.to) as Branch], 300)
 }
 
-export const treeId = 'p-vs-np'
 
 const handles = ['ada', 'mira', 'kofi', 'lena', 'tomas', 'yuki', 'devi', 'sam'] as const
 
