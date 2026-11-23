@@ -19,6 +19,8 @@ const New = page('new', () => import('./New.tsx').then((module) => module.New))
 
 const Docs = page('docs', () => import('./Docs.tsx').then((module) => module.Docs))
 
+const Faq = page('faq', () => import('./Faq.tsx').then((module) => module.Faq))
+
 const Swarm = page('swarm', () => import('./Swarm.tsx').then((module) => module.Swarm))
 
 const TreePage = page('tree', () => import('./TreePage.tsx').then((module) => module.TreePage))
@@ -41,6 +43,7 @@ if (typeof window !== 'undefined') {
     if (route === '/new') void import('./New.tsx').then((module) => preload('new', module.New))
     if (route === '/about') void import('./About.tsx').then((module) => preload('about', module.About))
     if (route === '/docs') void import('./Docs.tsx').then((module) => preload('docs', module.Docs))
+    if (route === '/faq') void import('./Faq.tsx').then((module) => preload('faq', module.Faq))
     const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results|\/n\/[^/?#]+)?\/?(?:[?#]|$)/.exec(path)?.[1]
     const named = Nickname.parse(route)
     if (named) void warmSwarm().then(() => Names.warm(named.name)).then((found) => found && warmDetail(found.swarm), () => {})
@@ -148,6 +151,7 @@ function Header(props: { config: Config | undefined; free: boolean; path: string
       <Link className={props.path === '/ideas' || props.path.startsWith('/s/') || (!props.free && Nickname.parse(props.path) !== undefined) ? 'game-nav game-nav-on' : 'game-nav'} to="/ideas">All swarms</Link>
       <Link className={(props.path === '/new' && !here().searchParams.has('q')) || props.free ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start a swarm</Link>
       <Link className={props.path === '/about' ? 'game-nav game-nav-on' : 'game-nav'} to="/about">Swarm riders</Link>
+      <Link className={props.path === '/faq' ? 'game-nav game-nav-on' : 'game-nav'} to="/faq">FAQ</Link>
     </>
   )
   return (
@@ -238,7 +242,7 @@ export function App() {
     if (free) {
       const problem = problems.find((each) => each.id === named?.name)
       document.title = `${problem ? problem.title : `Start a swarm on ${Nickname.topic(named?.name ?? '')}`} · Swarms`
-    } else if (!swarm && !named && path !== '/board') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
+    } else if (!swarm && !named && path !== '/board') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/faq' ? 'Questions · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
   }, [path, swarm, free])
 
   useEffect(() => {
@@ -275,6 +279,8 @@ export function App() {
           <About />
         ) : path === '/docs' ? (
           <Docs config={config} />
+        ) : path === '/faq' ? (
+          <Faq />
         ) : swarm ? (
           <Picked base={named ? `/${named.name}` : `/s/${encodeURIComponent(swarm)}`} config={config} id={swarm} key={swarm} nid={node && decodeURIComponent(node)} tail={tail} view={view} />
         ) : named && found === undefined ? (

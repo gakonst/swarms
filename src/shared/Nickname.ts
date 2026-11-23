@@ -14,6 +14,7 @@ export const reserved: ReadonlySet<string> = new Set([
   'chat',
   'code',
   'docs',
+  'faq',
   'favicon',
   'favicon-96x96',
   'feedback',

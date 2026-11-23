@@ -81,6 +81,8 @@ export function listing(kind: 'home' | 'ideas' | 'new', swarms: readonly Summary
   return { field: field(swarms), kind }
 }
 
+export const faq = 'What a swarm is, where your dollars go, who picks the models and how Lean checks a proof.'
+
 export function plain(kind: 'about' | 'docs'): Subject {
   return { kind }
 }

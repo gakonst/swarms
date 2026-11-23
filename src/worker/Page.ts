@@ -19,7 +19,7 @@ globalThis.__swarmsServer = { boot: () => store.getStore() }
 
 const firstChat = 30
 
-const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/board'])
+const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/faq', '/board'])
 
 const swarmed = /^\/s\/([^/]+)(\/chat|\/code|\/results|\/n\/[0-9a-z]+)?\/?$/
 
@@ -132,6 +132,7 @@ async function gather(env: Cloudflare.Env, url: URL, calling: Calling): Promise<
     return { data, head: Share.share(site, subject), status: 200, whole: !!list?.ok }
   }
   if (path === '/about' || path === '/docs') return { data, head: Share.share(site, Share.plain(path === '/about' ? 'about' : 'docs')), status: 200, whole: true }
+  if (path === '/faq') return { data, head: Share.share(site, Share.plain('about'), { description: Share.faq, path: '/faq', title: 'Questions · Swarms' }), status: 200, whole: true }
   if (!rendered(path)) return { data, head: lost, status: 404, whole: false }
   const named = Nickname.parse(path)
   const found = named && (await calling)
