@@ -175,6 +175,15 @@ async function pay(context: Context, usd: number, ms: number) {
   }
 }
 
+export function pick(question: string): string | undefined {
+  if (!question.startsWith('Pick the model for')) return undefined
+  const listed = [...question.slice(question.indexOf('Models you may pick')).matchAll(/^- (\S+)/gm)].map((found) => found[1] ?? '')
+  const asked = /mock:model=(\S+)/.exec(question)?.[1]
+  const model = asked && listed.includes(asked) ? asked : listed[0]
+  if (!model) return 'No model is listed.'
+  return JSON.stringify({ harness: model.includes('/anthropic/') ? 'claude' : 'codex', model, why: asked ? 'A rider asked for it.' : 'The first one listed.' })
+}
+
 export function spawned(prompt: string): Spawn | undefined {
   for (let start = prompt.indexOf('{'); start !== -1; start = prompt.indexOf('{', start + 1)) {
     let depth = 0

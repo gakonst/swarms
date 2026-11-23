@@ -6,6 +6,7 @@ import { after, before, test } from 'node:test'
 import * as Credit from '../../src/shared/Credit.ts'
 import type * as Tree from '../../src/shared/Tree.ts'
 import * as Chain from '../mock/chain.ts'
+import * as Gateway from '../mock/gateway.ts'
 import * as GitHub from '../mock/github.ts'
 import * as Model from '../mock/model.ts'
 import * as Chrome from './chrome.ts'
@@ -142,7 +143,10 @@ test('runs spend within bounds', async (t) => {
   nids['over'] = await s.propose(bob, { form: 'lemma', parent: nids['program']!, spec: 'A run that tries to spend without end.\n\nmock:overspend', statement: 'theorem e2e_over : True', title: 'An overspending lemma (e2e)' }, '2')
   const run = await s.until('the overspending run to start', async () => (await s.node(nids['over']!)).run ?? undefined)
   const found = await s.until('its subagent', async () => s.subagents().find((each) => each.role === role(nids['over']!, run.k)))
-  await s.until('the gateway to set its bound to the commitment', async () => (s.subagents().find((each) => each.agent_id === found.agent_id)?.budget_usd === Number(run.budget) ? true : undefined))
+  await s.until('the gateway to set its bound to the commitment less its model pick', async () => {
+    const bound = s.subagents().find((each) => each.agent_id === found.agent_id)?.budget_usd
+    return bound !== undefined && bound <= Number(run.budget) && bound >= Number(run.budget) - 0.02 ? true : undefined
+  })
   const refused = await s.until('the gateway to refuse it past its bound', async () => {
     s.bounded()
     const now = s.subagents().find((each) => each.agent_id === found.agent_id)
@@ -155,10 +159,34 @@ test('runs spend within bounds', async (t) => {
     return units(view.money.spent) >= units(refused.spent_usd) ? view : undefined
   })
   const runs = s.subagents().filter((each) => each.role.startsWith('n:' + nids['over'] + '#'))
-  assert.ok(units(node.money.spent) <= runs.reduce((sum, each) => sum + units(each.budget_usd ?? 0), 0n), 'a node spends no more than its runs were bound to')
+  assert.ok(runs.length >= 1)
+  assert.ok(units(node.money.spent) <= (node.runs ?? []).reduce((sum, each) => sum + units(each.budget), 0n), 'a node spends no more than was committed to its runs, model picks included')
   assert.ok(units(node.money.spent) <= units(node.money.pledged) + units(node.money.inherited), 'a node spends no more than reached it')
   s.bounded()
   await s.balanced('bounded')
+})
+
+test("an orchestrator on Fable 5.2 picks each run's model, as its rider asked", async (t) => {
+  if (!needs(t)) return
+  const orchestrator = dev.gateway.agents(s.app).find((agent) => agent.name === 'orchestrator')
+  assert.ok(orchestrator, 'the tree runs under an orchestrator')
+  assert.deepEqual([orchestrator.model, orchestrator.harness], ['vercel/anthropic/claude-fable-5.2', 'claude'])
+  const offer = orchestrator.offer as { harnesses: string[]; models: string[] }
+  const listed = Gateway.models.filter((model) => model.kind === 'generate' && /^vercel\/(anthropic|google|openai)\//.test(model.id)).map((model) => model.id).sort()
+  assert.deepEqual(offer, { harnesses: ['claude', 'codex'], models: listed })
+  const google = 'vercel/google/gemini-3.8-flash'
+  dev.gateway.script('e2e-pick-marker', [{ spend: 0.3 }, { result: { outcome: 'progress', summary: 'Ran on the model its rider asked for.' } }])
+  nids['pick'] = await s.propose(ana, { form: 'lemma', parent: nids['program']!, spec: 'Run this on a Google model, mock:model=' + google + ' e2e-pick-marker', statement: 'theorem e2e_pick : True', title: 'A lemma on the model its rider asked for (e2e)' }, '1')
+  const sub = await s.until('its run on the model its rider asked for', async () => s.subagents().find((each) => each.role === role(nids['pick']!)))
+  assert.deepEqual([sub.model, sub.harness], [google, 'codex'])
+  const read = await s.until('the node read to name the model', async () => ((await s.node(nids['pick']!)).run?.model === google ? true : undefined))
+  assert.ok(read)
+  assert.ok(deltas.some((delta) => delta.event === 'started' && delta.node.id === nids['pick'] && delta.text === 'Run 1 started on Gemini 3.8 Flash'), 'the started delta names the model')
+  const runs = s.subagents().filter((each) => each.parent_agent_id === null && each.role.startsWith('n:'))
+  assert.ok(runs.length >= 3)
+  assert.deepEqual(runs.filter((each) => !listed.includes(String(each.model))).map((each) => each.role + ' on ' + each.model), [], 'every run is on a listed OpenAI, Anthropic or Google model')
+  assert.ok(orchestrator.turns.some((turn) => turn.prompt.startsWith('Pick the model for')), 'the first pick was a turn, which opened the conversation')
+  await s.balanced('picked')
 })
 
 test('a proof is verified and the node proven', async (t) => {
