@@ -12,7 +12,27 @@ button.swarm-home { border:0; background:none; cursor:pointer; }
 .go a:hover span { text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:.2em; }
 .sky { position:relative; isolation:isolate; width:calc(100% - var(--margin) * 2); max-width:calc(1752px - var(--margin) * 2); margin:0 auto; aspect-ratio:1 / 1; max-height:70svh; overflow:hidden; background:var(--wash); }
 @media (min-width:600px) { .sky { aspect-ratio:1368 / 560; } }
-.sky[data-lit='true'] { cursor:pointer; }
+@keyframes hive-spin { to { transform:rotate(360deg); } }
+@keyframes hive-blink { 50% { opacity:.15; } }
+.fields,.field { position:absolute; inset:0; width:100%; height:100%; }
+.field { display:block; }
+.field-wide { display:none; }
+@media (min-width:600px) { .field-wide { display:block; } .field-tall { display:none; } }
+.hive { cursor:pointer; outline:none; text-decoration:none; transition:opacity .2s; }
+.field:has(.hive:hover) .hive:not(:hover),.field:has(.hive:focus-visible) .hive:not(:focus-visible) { opacity:.35; }
+.hive[data-old='true'] .hive-spin { opacity:.6; }
+.hive-spin { transform-box:fill-box; transform-origin:center; }
+.hive[data-live='true'] .hive-spin { animation:hive-spin 80s linear infinite; }
+.mark { fill:none; }
+.mark-proven { stroke:#00e10a; }
+.mark-dead { stroke:var(--faint); }
+.mark-spent,.mark-flight { stroke:var(--fg); }
+.mark-open { stroke:var(--edge); }
+.hive[data-live='true'] .mark-flight { animation:hive-blink 1.4s steps(2,jump-none) infinite; }
+.hive-title { font-family:var(--serif); fill:var(--fg); text-decoration:none; }
+.hive-detail { font-family:var(--mono); letter-spacing:.02em; fill:var(--muted); text-decoration:none; }
+.hive:hover .hive-title,.hive:focus-visible .hive-title { text-decoration:underline; text-decoration-thickness:1px; }
+@media (prefers-reduced-motion:reduce) { .hive-spin,.mark-flight { animation:none !important; } }
 .hero-live { min-height:1.6em; margin-top:var(--space-2); font:12px/1.6 var(--mono); letter-spacing:.02em; color:var(--muted); visibility:hidden; }
 .hero-live[data-ready='true'] { visibility:visible; }
 .intro { margin-top:var(--space-8); margin-bottom:var(--space-9); }

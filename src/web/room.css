@@ -1,14 +1,3 @@
-@keyframes sky-tag-in { from { opacity:0; } }
-.sky-field { position:absolute; inset:0; z-index:0; display:block; width:100%; height:100%; pointer-events:none; opacity:0; transition:opacity 1.6s var(--ease); }
-.sky-field[data-ready='true'] { opacity:1; }
-.sky-label { position:absolute; left:0; top:0; z-index:3; display:flex; flex-direction:column; gap:3px; max-width:280px; padding:7px 10px 8px; border:1px solid var(--rule); border-radius:10px; background:var(--bg); color:var(--fg); pointer-events:none; opacity:0; transition:opacity .18s; will-change:transform; }
-.sky-label[data-shown='true'] { opacity:1; }
-.sky-label b { overflow:hidden; font-size:14px; font-weight:400; line-height:1.2; white-space:nowrap; text-overflow:ellipsis; }
-.sky-label small { overflow:hidden; font:10px/1.3 var(--mono); letter-spacing:.02em; color:var(--muted); white-space:nowrap; text-overflow:ellipsis; }
-.sky-label [data-part='about'] { display:-webkit-box; margin-top:2px; overflow:hidden; font-size:13px; line-height:1.35; color:var(--soft); -webkit-box-orient:vertical; -webkit-line-clamp:3; }
-.sky-label [data-part]:empty,.sky-label[data-tagged='true'] [data-part='title'],.sky-label[data-tagged='true'] [data-part='detail'] { display:none; }
-.sky-label[data-tagged='true'] [data-part='about'] { margin-top:0; }
-@media (prefers-reduced-motion:reduce) { .sky-field { transition:none; animation:none; } }
 .start { max-width:1240px; padding-top:max(44px,12vh); padding-bottom:48px; }
 main { display:flex; flex-direction:column; }
 .world { width:100%; max-width:760px; margin:8px auto 0; }
