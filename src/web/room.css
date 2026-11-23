@@ -274,7 +274,8 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 .wallet-drop { position:absolute; top:100%; right:0; z-index:2; display:none; min-width:100%; padding-top:6px; }
 .wallet-menu[data-open='true'] > .wallet-drop,.wallet-menu:focus-within > .wallet-drop { display:block; }
 @media (hover:hover) { .wallet-menu:hover > .wallet-drop { display:block; } }
-.wallet-out { width:100%; padding:10px 16px; border:1px solid var(--rule); border-radius:12px; background:var(--bg);  color:var(--fg); font:12px var(--mono); white-space:nowrap; text-align:left; cursor:pointer; }
+.wallet-list { display:grid; min-width:160px; padding:4px; border:1px solid var(--rule); border-radius:12px; background:var(--bg); }
+.wallet-out { display:block; width:100%; padding:10px 12px; border:0; border-radius:8px; background:none; color:var(--fg); font:12px var(--mono); white-space:nowrap; text-align:left; text-decoration:none; cursor:pointer; }
 .wallet-out:hover { background:var(--wash); }
 .wallet-out:focus-visible { outline:2px solid var(--muted); outline-offset:2px; }
 @media (max-width:799px) { .wallet-out { min-height:44px; } }

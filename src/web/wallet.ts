@@ -21,6 +21,8 @@ export type State = {
 
 let instance: ReturnType<typeof load> | undefined
 
+let ready: Awaited<ReturnType<typeof load>> | undefined
+
 async function load(config: Config) {
   verifyUrl = new URL(Site.at(config.auth), location.href).href
   const [{ Accounts }, { dialog, siwe }] = await Promise.all([import('accounts'), import('accounts/plugins')])
@@ -165,7 +167,7 @@ Api.authorize(state.session?.token)
 const listeners = new Set<() => void>()
 
 function wallet(config: Config) {
-  instance ??= load(config)
+  instance ??= load(config).then((accounts) => (ready = accounts))
   return instance
 }
 
@@ -334,6 +336,29 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
   if (typeof issued === 'string') void identify()
   void refresh(config).catch(() => {})
   return paid.transaction
+}
+
+const hint = (config: Config) => (config.chainId === 4217 ? { amount: '25', token: 'MACH' } : {})
+
+export function primeFunds(config: Config) {
+  const address = state.session?.address ?? state.address
+  if (fixture || server || !address) return
+  void wallet(config).then((accounts) => accounts.funding.preload({ address, ...hint(config) })).catch(() => {})
+}
+
+export async function fund(config: Config) {
+  const address = state.session?.address ?? state.address
+  if (!address) throw new Error('Sign in with Tempo ID first.')
+  if (fixture) {
+    const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])
+    fixtures.balances.mach += 25_000_000n
+    await refresh(config)
+    return 'received'
+  }
+  const accounts = ready ?? (await wallet(config))
+  const result = await accounts.funding.open({ address, ...hint(config) }).catch(declined)
+  void refresh(config).catch(() => {})
+  return result?.status
 }
 
 export async function refresh(config: Config) {

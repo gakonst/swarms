@@ -1,4 +1,4 @@
-import { Component, lazy, type MouseEvent, type ReactNode, Suspense, useEffect, useRef, useState } from 'react'
+import { Component, lazy, type ReactNode, Suspense, useEffect, useRef, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import * as Nickname from '../shared/Nickname.ts'
@@ -59,10 +59,15 @@ const About = page('about', () => import('./About.tsx').then((module) => module.
 
 const Board = lazy(() => import('./Board.tsx').then((module) => ({ default: module.Board })))
 
+function profile(account: { name: string | null } | undefined, address: string) {
+  return `/u/${account?.name ?? address}`
+}
+
 function WalletButton(props: { config: Config | undefined }) {
   const wallet = useWallet()
   const [error, setError] = useState<string>()
   const [open, setOpen] = useState(false)
+  const [funding, setFunding] = useState(false)
   const menu = useRef<HTMLDivElement>(null)
   const token = wallet.session?.token
   const known = !!wallet.account
@@ -94,37 +99,33 @@ function WalletButton(props: { config: Config | undefined }) {
     if (props.config) Wallet.prime(props.config)
   }
 
-  const tap = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (open || !matchMedia('(hover: none)').matches) return event.currentTarget.blur()
-    event.preventDefault()
-    setOpen(true)
+  const close = () => {
+    setOpen(false)
+    if (document.activeElement instanceof HTMLElement && menu.current?.contains(document.activeElement)) document.activeElement.blur()
+  }
+
+  const fund = () => {
+    if (!props.config) return
+    setFunding(true)
+    Wallet.fund(props.config).then(
+      () => setError(undefined),
+      (reason: unknown) => setError(message(reason)),
+    ).finally(() => setFunding(false))
   }
 
   if (wallet.address)
     return (
-      <div className="wallet-menu" data-open={open} ref={menu}>
-        {wallet.pending ? (
-          <span aria-busy="true" className="btn btn-medium wallet" onClick={() => setOpen(!open)}>
-            <span>{signed(wallet.account, wallet.address, wallet.email)}</span>
-            {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
-          </span>
-        ) : (
-          <a className="btn btn-medium wallet" href={props.config ? `${props.config.explorer}/address/${wallet.address}` : undefined} onClick={tap} rel="noreferrer" target="_blank" title={wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : wallet.email ? `${wallet.email} · ${wallet.address}` : 'Your Tempo ID'}>
-            <span>{signed(wallet.account, wallet.address, wallet.email)}</span>
-            {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
-          </a>
-        )}
+      <div className="wallet-menu" data-open={open} onPointerEnter={() => props.config && Wallet.primeFunds(props.config)} ref={menu}>
+        <button aria-busy={wallet.pending || funding || undefined} aria-expanded={open} aria-haspopup="menu" className="btn btn-medium wallet" onClick={() => setOpen(!open)} title={error ?? (wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : wallet.email ? `${wallet.email} · ${wallet.address}` : 'Your Tempo ID')} type="button">
+          <span>{signed(wallet.account, wallet.address, wallet.email)}</span>
+          {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
+        </button>
         <div className="wallet-drop">
-          <button
-            className="wallet-out"
-            onClick={() => {
-              setOpen(false)
-              Wallet.disconnect()
-            }}
-            type="button"
-          >
-            Disconnect
-          </button>
+          <div className="wallet-list" onClick={close} role="menu">
+            <button className="wallet-out" onClick={fund} role="menuitem" type="button">Add funds</button>
+            <Link className="wallet-out" to={profile(wallet.account, wallet.address)}>Your profile</Link>
+            <button className="wallet-out" onClick={() => Wallet.disconnect()} role="menuitem" type="button">Sign out</button>
+          </div>
         </div>
       </div>
     )
