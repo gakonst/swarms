@@ -15,6 +15,16 @@ const made = (id: string, rest = '') => `/s/${id}/results?fixture${rest}`
 
 const code = (id: string, rest = '') => `/s/${id}/code?fixture${rest}`
 
+const grove = (path = '', rest = '') => `/s/p-vs-np${path}?fixture${rest}`
+
+const razb = '1583a1546a'
+
+const refuted = '397998eb13'
+
+const mono = 'd5d7313e5a'
+
+const sun = '5a4868cdff'
+
 const flows: readonly Flow[] = [
   {
     frames: [
@@ -77,39 +87,43 @@ const flows: readonly Flow[] = [
       { name: 'Signed out', url: chat('bench-coders') },
       { name: 'Rider', url: chat('bench-coders', '&scene=in') },
       { name: 'Telling the AI', steps: [{ click: '.chat-ai' }, { type: ['.chat-bar textarea', 'Try a second pass at temperature 0'] }], url: chat('bench-coders', '&scene=in') },
-      { name: 'Ride it from the chat', steps: [{ click: '.chat-back-it' }], url: chat('bench-coders', '&scene=in') },
       { name: 'Quiet', url: chat('rust-book-el', '&scene=in') },
     ],
     id: 'chat',
     title: 'Chat',
   },
+
   {
     frames: [
-      { name: 'Steered by someone else', url: idea('json-terabyte', '&scene=in') },
-      { name: 'Chatting, not steering', url: chat('json-terabyte', '&scene=in') },
-      { name: 'Who steers, as a rider', steps: [{ click: '.reins' }], url: idea('json-terabyte', '&scene=in') },
-      { name: 'Who steers, as its admin', steps: [{ click: '.reins' }], url: idea('bench-coders', '&scene=in') },
-      { name: 'Steering it alone', steps: [{ click: '.reins' }], url: idea('bench-coders', '&scene=in,helm') },
-      { name: 'Letting someone steer', steps: [{ click: '.reins' }, { type: ['.reins-add input', '@mira'] }, { click: '.reins-add button' }, { wait: 800 }], url: idea('bench-coders', '&scene=in,helm') },
-      { name: 'Steering it from the chat', steps: [{ click: '.chat-ai' }, { type: ['.chat-bar textarea', 'Try a second pass at temperature 0'] }], url: chat('bench-coders', '&scene=in,helm') },
+      { name: 'Busy', url: grove() },
+      { name: 'Seeded, statements under review', url: grove('', '&scene=seeded') },
+      { name: 'Empty', url: grove('', '&scene=empty') },
+      { name: 'A proof landing', note: 'live', steps: [{ wait: 5000 }], url: grove(`/n/${razb}`, '&scene=landing') },
+      { name: 'A dead end, refuted', url: grove(`/n/${refuted}`) },
+      { name: 'Since your last visit', url: grove('', '&scene=visit') },
+      { name: 'Needs money', url: grove('', '&filter=money') },
+      { name: 'Dead ends', url: grove('', '&filter=dead') },
+      { name: 'One level, on a phone', note: 'phone', url: grove('', `&in=${mono}`) },
+      { name: 'A lemma as a full panel', note: 'phone', url: grove(`/n/${sun}`) },
+      { name: 'Offline', url: grove('', '&scene=down') },
     ],
-    id: 'steers',
-    title: 'Who steers',
+    id: 'tree',
+    title: 'The tree',
   },
   {
     frames: [
-      { name: 'Ride it open', steps: [{ click: '.box .fuel-go' }], url: idea('bench-coders', '&scene=in') },
-      { name: 'With a direction', url: idea('bench-coders', '&scene=in&fund&note=Try%20a%20second%20pass%20at%20temperature%200') },
-      { name: 'Steering a direction', steps: [{ click: '.asked button' }], url: made('bench-coders', '&scene=in') },
-      { name: 'Check prompt', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }], url: idea('dex-guide', '&scene=hang,in') },
-      { name: 'Declined', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 1600 }], url: idea('dex-guide', '&scene=deny,in') },
-      { name: 'Not enough money', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 2600 }], url: idea('dex-guide', '&scene=broke,in') },
-      { name: 'Sent, not counted yet', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 2600 }], url: idea('dex-guide', '&scene=uncounted,in') },
-      { name: 'Riding', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }, { wait: 3000 }], url: idea('bench-coders', '&scene=in') },
+      { name: 'Ride this lemma', steps: [{ click: '.node-ride' }], url: grove(`/n/${razb}`, '&scene=in') },
+      { name: 'Ride the whole swarm', steps: [{ click: '.node-ride' }], url: grove('', '&scene=in') },
+      { name: 'Check prompt', steps: [{ click: '.node-ride' }, { click: '.ride .fuel-go' }], url: grove(`/n/${razb}`, '&scene=hang,in') },
+      { name: 'Riding', steps: [{ click: '.node-ride' }, { click: '.ride .fuel-go' }, { wait: 3000 }], url: grove(`/n/${razb}`, '&scene=in') },
+      { name: 'Sent, not counted yet', steps: [{ click: '.node-ride' }, { click: '.ride .fuel-go' }, { wait: 2600 }], url: grove(`/n/${razb}`, '&scene=uncounted,in') },
+      { name: 'Propose a lemma', steps: [{ click: '.node-form summary' }], url: grove(`/n/${mono}`, '&scene=in') },
+      { name: 'An archived swarm', url: idea('dex-guide') },
     ],
-    id: 'back',
-    title: 'Ride it',
+    id: 'ride',
+    title: 'Ride and propose',
   },
+
   {
     frames: [
       { name: 'Code', url: code('bench-coders') },
