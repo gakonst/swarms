@@ -796,3 +796,8 @@ The rebuild of DESIGN (design/DESIGN.md in the lead's workspace): one task tree 
   - The dispatcher turn itself couldn't run offline. On production it is at least one DeepSeek V4.1 Flash call (0.57 to 1.68 s each, about 1.2 s for a Codex-sized prompt, from the gateway's own measurements), plus the session's wake, the tool call and up to one 2 s listing interval: about 1.5 to 4 s before a run starts (an estimate, not measured on production).
 - Checked with `pnpm check`, `pnpm build`, `pnpm check:e2e` and `node --test --experimental-strip-types test/*.test.ts` (313 pass) on Node 24.
 - A running task shows what it is doing (2026-11-23, Georgios: "I want it to show what it's doing"). A run carries an optional doing ({ text, at }, shared/Tree.ts), its worker's latest step in one line; the tree row shows it beside the title with a pulsing dot (under the title on a phone), and the node panel under its status. Nothing renders while the run is checking or when the Worker sends no doing. The fixture world gives every in-flight run one. Checked under pnpm dev on the fixture world at 1440x900 and 390x844: the line truncates on one row on a desktop and wraps under the title on a phone, with no sideways overflow.
+
+## Paradigm's favicon (2026-11-23)
+
+- The site's icons are paradigm.xyz's own files, byte for byte (`favicon.svg`, `favicon.ico`, `favicon-96x96.png`, `apple-touch-icon.png`), and `index.html` links the same four as paradigm.xyz does. The hrefs stay bare like the font preloads: the build's `renderBuiltUrl` prefixes public assets with `/swarms`, and the dev server serves them under it.
+- `favicon-96x96` joins the reserved nicknames, since `public/` now answers it at the top level of the site.

@@ -20,7 +20,7 @@ function swarm(db: ReturnType<typeof open>, id: string) {
 
 test('a nickname is 3 to 40 lowercase letters, digits and inner hyphens, and never a route or a hex id', () => {
   for (const name of ['pequalsnp', 'pq-signatures', 'p-vs-np', 'abc', 'a1b', '2x4', 'x'.repeat(40)]) assert.equal(Nickname.invalid(name), undefined, name)
-  for (const name of ['ab', 'x'.repeat(41), 'PQ', 'Pq-signatures', '-abc', 'abc-', 'a_b', 'a.b', 'a b', 'añb', 'new', 'ideas', 'docs', 'api', 'v1', 'board', 'about', 'join', 'feedback', 'telegram', 'oembed', 'openapi', 'assets', 'fonts', 'favicon', 'deadbeef', '0123456789ab', 'abcdef012345678'])
+  for (const name of ['ab', 'x'.repeat(41), 'PQ', 'Pq-signatures', '-abc', 'abc-', 'a_b', 'a.b', 'a b', 'añb', 'new', 'ideas', 'docs', 'api', 'v1', 'board', 'about', 'join', 'feedback', 'telegram', 'oembed', 'openapi', 'assets', 'fonts', 'favicon', 'favicon-96x96', 'deadbeef', '0123456789ab', 'abcdef012345678'])
     assert.notEqual(Nickname.invalid(name), undefined, name)
   assert.equal(Nickname.usable('abcdef0'), true)
   assert.equal(Nickname.usable('abcdefg1'), true)
