@@ -118,8 +118,8 @@ function build(input: {
     who: who ?? null,
   }))
   return settle({
-    archivedAt: null,
-    form: 'agent',
+    archivedAt: input.id === treeId ? null : at(600),
+    form: input.id === treeId ? 'tree' : 'agent',
     balance: '0',
     chat: [],
     contributions,
@@ -477,8 +477,6 @@ function summary(swarm: Live): Summary {
     title: swarm.title,
     updatedAt: swarm.updatedAt,
     why: reason(swarm) ? why(swarm) : null,
-    form: swarm.id === treeId ? 'tree' : 'agent',
-    archivedAt: swarm.id === treeId ? null : at(600),
   }
 }
 
