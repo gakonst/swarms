@@ -32,10 +32,8 @@ export type Share = {
 
 export const card = { height: 630, width: 1200 }
 
-/** X's large image: twitter:image of a player card. */
 export const poster = { height: 675, width: 1200 }
 
-/** The og:video film. */
 export const video = { height: 720, width: 1280 }
 
 export const player = { height: 450, width: 800 }

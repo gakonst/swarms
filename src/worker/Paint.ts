@@ -64,7 +64,6 @@ export function segment(canvas: Canvas, ax: number, ay: number, bx: number, by: 
   )
 }
 
-/** A "+" mark: two strokes of the given width, size pixels long, crossing at x, y. */
 export function plus(canvas: Canvas, x: number, y: number, size: number, stroke: number, color: Color, alpha = 1) {
   const half = (size - 1) / 2
   segment(canvas, x - half, y, x + half, y, stroke, color, alpha)

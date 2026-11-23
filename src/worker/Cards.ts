@@ -15,24 +15,20 @@ export type Field = { balance: number; ideas: { id: string; title: string }[]; o
 
 export type Cell = 'dead' | 'flight' | 'open' | 'proven'
 
-/** One node of a task tree in depth-first order: its parent's index (-1 for the root) and how it stands. */
 export type Twig = { cell: Cell; up: number }
 
-/** One "+" mark of a card's drawing. ring circles the node a node card is about; sway is how far it drifts in a film. */
 export type Mark = { color: string; ring: boolean; size: number; sway: number; x: number; y: number }
 
 export type Hub = { r: number; x: number; y: number }
 
 export type Scene = { height: number; hub: Hub; marks: Mark[]; parts: string; width: number }
 
-// Paradigm's link card: a flat grey page, a black serif title and one black drawing of "+" marks.
 export const paper = '#F6F6F6'
 export const ink = '#000000'
 export const soft = '#333333'
 export const quiet = '#666666'
 export const faint = '#999999'
 
-/** The only colours a mark takes: proven is the one accent. */
 export const shades: Record<Cell, string> = { dead: '#999999', flight: '#000000', open: '#CCCCCC', proven: '#00E10A' }
 
 export function item(swarm: Summary): Swarm {
@@ -60,7 +56,6 @@ function hash(text: string, seed: number) {
   return ((value >>> 0) % 100000) / 100000
 }
 
-/** Where things sit on a card of any size, measured from Paradigm's 1200x630 card. */
 function frame(width: number, height: number) {
   const k = Math.min(width / 1200, height / 630)
   const kx = width / 1200
@@ -69,11 +64,9 @@ function frame(width: number, height: number) {
   return { hub, k, left, room: hub.x - hub.r - 64 * k - left }
 }
 
-// ---------------------------------------------------------------- the drawing
 
 type Point = { r: number; x: number; y: number }
 
-/** A path from the right of the hub, up and round, curling inward: one sweep for a small tree, more turns for a big one. */
 function path(hub: Hub, turns: number, inner: number, bend: number, start: number) {
   const sweep = turns * Math.PI * 2
   const step = 0.004
@@ -103,10 +96,6 @@ function along(points: readonly (Point & { at: number })[], at: number): Point {
   return found ?? { r: 0, x: 0, y: 0 }
 }
 
-/**
- * Lays a task tree out as one airy spiral of marks: the leaves in tree order along the spiral, and every node with
- * children inside it, toward its leaves, nearer the middle the closer it is to the root. Returns one point per twig.
- */
 export function layout(twigs: readonly Twig[], hub: Hub, k: number, seed = ''): { size: number; x: number; y: number }[] {
   const count = twigs.length
   if (!count) return []
@@ -125,7 +114,6 @@ export function layout(twigs: readonly Twig[], hub: Hub, k: number, seed = ''): 
   let spacing = Math.min(oneLong / leaves.length, 40 * k)
   let size = 9 * k
   if (leaves.length * 9.2 * k > oneLong) {
-    // More turns, each further in, until every leaf has room: the rings stay wide apart for a mid-size tree.
     const floor = hub.r * 0.3
     for (let turns = 1.25; ; turns += 0.25) {
       points = path(hub, turns, floor, 1.3, start)
@@ -189,12 +177,10 @@ export function layout(twigs: readonly Twig[], hub: Hub, k: number, seed = ''): 
   return at.map((point) => ({ size: point.size, x: point.x + dx, y: point.y + dy }))
 }
 
-/** Marks for a task tree: one per node, coloured by how it stands. */
 export function draw(twigs: readonly Twig[], hub: Hub, k: number, seed = '', ring = -1, sway = 0): Mark[] {
   return layout(twigs, hub, k, seed).map((point, index) => ({ color: shades[twigs[index]?.cell ?? 'open'], ring: index === ring, size: point.size, sway, x: point.x, y: point.y }))
 }
 
-/** A made-up swarm drawn in black, for pages that are not one swarm: a spiral of runs with a trail of programs inside it. */
 export function flock(seed: string) {
   const twigs: Twig[] = [{ cell: 'flight', up: -1 }]
   let up = 0
@@ -209,11 +195,9 @@ export function flock(seed: string) {
   return twigs
 }
 
-// ---------------------------------------------------------------- the words
 
 type Row = { cell?: Cell; fill?: string; text: string }
 
-/** Wraps a small line onto at most two, breaking between " · " parts when it has them. */
 function pack(face: Face, text: string, size: number, room: number) {
   const parts = text.split(' · ')
   if (parts.length < 2 || Glyphs.width(face, text, size) <= room) return Glyphs.wrap(face, text, size, room, 2)
@@ -226,7 +210,6 @@ function pack(face: Face, text: string, size: number, room: number) {
   return lines.length <= 2 ? lines.flatMap((line) => Glyphs.wrap(face, line, size, room, 1)) : Glyphs.wrap(face, text, size, room, 2)
 }
 
-/** The left half: an optional small kicker, the serif title and a few small mono lines, centred on the card's height. */
 function column(fonts: Fonts, width: number, height: number, kicker: string, title: string, rows: readonly Row[], biggest = 52) {
   const { k, left, room } = frame(width, height)
   const sizes = [biggest, 46, 40, 34].filter((size) => size <= biggest).map((size) => size * k)
@@ -283,7 +266,6 @@ function riders(count: number) {
   return plural(count, 'rider')
 }
 
-/** An earlier swarm, one agent in one thread, or an idea nobody started: its title and where its money stands. */
 export function swarm(fonts: Fonts, item: Swarm, width: number, height: number): Scene {
   const money = item.balance > 0 ? `${Answer.cash(item.balance)} ridden · ${riders(item.backers)}` : 'No riders yet'
   const left = item.balance > 0 ? `${Answer.cash(Math.max(0, item.left))} left` : ''
@@ -320,7 +302,6 @@ export function docs(fonts: Fonts, width: number, height: number): Scene {
   return card(fonts, width, height, { kicker: 'Swarms', rows, title: 'Use swarms from code' }, (hub, k) => draw(flock('docs'), hub, k, 'docs'))
 }
 
-// ---------------------------------------------------------------- the tree
 
 export type Grove = { cells: Cell[]; deadEnds: number; frontier: number; id: string; inFlight: number; perProven: number | null; proven: number; ridden: number; spent: number; title: string; twigs: Twig[] }
 
@@ -354,7 +335,6 @@ export function cell(status: Tree.Status): Cell {
 
 type View = { headline: Tree.Headline; nodes: readonly Tree.Node[] }
 
-/** The tree in depth-first order from its root, then anything the read did not reach from it. */
 export function order(nodes: readonly Tree.Node[]) {
   const byId = new Map(nodes.map((node) => [node.id, node]))
   const found: Tree.Node[] = []
@@ -402,7 +382,6 @@ export function grove(swarm: string, view: View): Grove {
   }
 }
 
-/** A node alone, without its tree: itself with what is under it, one mark per node its counts name. */
 function alone(node: Tree.Node, counts: Record<Tree.Status, number>): Twig[] {
   const out: Twig[] = [{ cell: cell(node.status), up: -1 }]
   for (const status of ['proven', 'in flight', 'dead end', 'funded', 'proposed'] as const) for (let index = 0; index < Math.min(counts[status], 400); index++) out.push({ cell: cell(status), up: 0 })
@@ -451,7 +430,6 @@ function spent(value: number) {
   return value > 0 ? `${Answer.cash(value)} spent` : 'Nothing spent yet'
 }
 
-/** A swarm's card: its title, what is proven, in flight and dead, what it cost, and its whole tree as one spiral of marks. */
 export function tree(fonts: Fonts, item: Grove, width: number, height: number): Scene {
   const rows: Row[] = [
     { cell: 'proven', text: `${item.proven.toLocaleString('en-US')} proven` },
@@ -462,7 +440,6 @@ export function tree(fonts: Fonts, item: Grove, width: number, height: number): 
   return card(fonts, width, height, { kicker: 'Swarms', rows, title: item.title }, (hub, k) => draw(item.twigs, hub, k, item.id))
 }
 
-/** A node's card: the swarm, the node's title, how it stands and why, what is under it, what it cost, and the tree with this node circled. */
 export function node(fonts: Fonts, item: Leaf, width: number, height: number): Scene {
   const status = item.checked ? `Proven · checked by Lean · ${item.checked}` : words[item.status]
   const under = below(item.counts)

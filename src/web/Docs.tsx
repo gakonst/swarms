@@ -63,6 +63,7 @@ const codes = [
   ['403', 'not_member', "Only the swarm's riders post in its room."],
   ['404', 'not_found', 'No swarm, node or route has this id, or Tempo has no receipt for the transaction yet.'],
   ['409', 'conflict', 'The transaction is already counted.'],
+  ['410', 'gone', 'An archived swarm is read-only and takes no rides. Tree swarms have no branch, hand or swarm-wide steering routes: steer a node instead.'],
   ['409', 'insufficient_balance', 'A note or a move asks for more of your money than is free on that node.'],
   ['429', 'rate_limited', 'Too many suggestions or room messages in a short time.'],
   ['502', 'upstream_failed', 'The Tempo gateway failed.'],

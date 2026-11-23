@@ -17,7 +17,6 @@ export function svg(scene: Scene) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}">${scene.parts}</svg>`
 }
 
-/** Where a mark is at t seconds: still at t = 0, then turning a little about the hub and back, more toward the middle. */
 export function where(scene: Scene, mark: Mark, t: number) {
   if (!t || !mark.sway) return { x: Math.floor(mark.x) + 0.5, y: Math.floor(mark.y) + 0.5 }
   const dx = mark.x - scene.hub.x

@@ -54,23 +54,13 @@ export function parse(path: string): { key: string; name: Name } | undefined {
   return { key, name: name as Name }
 }
 
-type View = { headline: Tree.Headline; nodes: Tree.Node[] }
-
-type Reads = {
-  node?: (env: Cloudflare.Env, input: { node: string; swarm: string }) => Promise<Problem.Result<Tree.Node & { review?: boolean }>>
-  tree?: (env: Cloudflare.Env, input: { depth?: number; swarm: string }) => Promise<Problem.Result<View>>
-}
-
-const reads = Operations as unknown as Reads
-
 export async function grove(env: Cloudflare.Env, swarm: string) {
-  const found = await reads.tree?.(env, { depth: 64, swarm })
+  const found = await Operations.tree(env, { depth: 64, swarm }).catch(() => undefined)
   return found?.ok ? found.value : undefined
 }
 
 export async function leaf(env: Cloudflare.Env, swarm: string, nid: string) {
-  if (!reads.node) return undefined
-  const [found, root, view] = await Promise.all([reads.node(env, { node: nid, swarm }), nid === 'root' ? undefined : reads.node(env, { node: 'root', swarm }), grove(env, swarm).catch(() => undefined)])
+  const [found, root, view] = await Promise.all([Operations.node(env, { node: nid, swarm }), nid === 'root' ? undefined : Operations.node(env, { node: 'root', swarm }), grove(env, swarm)])
   if (!found.ok) return undefined
   return { node: found.value, title: nid === 'root' ? found.value.title : root?.ok ? root.value.title : 'Swarm', view }
 }

@@ -1,6 +1,5 @@
 import { Go } from './Home.tsx'
 
-/** Paradigm's essay on riding swarms. */
 const essay = 'https://www.paradigm.xyz/writing/swarms'
 
 const steps = [
