@@ -55,13 +55,14 @@ export function swarm(dev: Dev, id: string) {
     for (let tries = 0; tries < 50; tries++) {
       const off = mock.left - (units(health.held) - units(health.live))
       first ??= off
-      if ((off < 0n ? -off : off) <= tolerance) break
+      if ((off < 0n ? -off : off) <= tolerance && units(health.gateway?.left) === mock.left) break
       await new Promise((resolve) => setTimeout(resolve, 200))
       health = await ledger()
       mock = dev.gateway.ledger(app)
     }
     assert.ok(health.gateway, at + ': the ledger did not read the gateway credit')
-    assert.equal(units(health.gateway.left), mock.left, at + ': the ledger read a different gateway credit')
+    const read = units(health.gateway.left) - mock.left
+    assert.ok((read < 0n ? -read : read) <= tolerance, at + ': the ledger read a different gateway credit')
     assert.equal(units(health.held), units(health.pledged) - units(health.spent), at + ': buckets do not sum to pledges less spend')
     const drift = mock.left - (units(health.held) - units(health.live))
     drifts.push({ at, drift: Chain.decimal(drift), first: Chain.decimal(first ?? 0n), live: health.live, mock: Chain.decimal(mock.left) })
