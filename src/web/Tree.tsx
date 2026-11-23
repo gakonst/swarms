@@ -42,6 +42,7 @@ export const Row = memo(function Row(props: { blocked: number; landed: number | 
         <span className="tree-row-fold" aria-hidden="true">{node.children.length ? (props.row.open ? '▾' : '▸') : ''}</span>
         <Mark checking={node.run?.checking} status={node.status} />
         <span className="tree-row-title">{node.title}</span>
+        {node.status === 'in flight' && !node.run?.checking && node.run?.doing && <span className="tree-row-doing" title={node.run.doing.text}>{node.run.doing.text}</span>}
         {props.row.frontier && <span className="tree-row-tag">frontier</span>}
         {props.blocked > 0 && <span className="tree-row-tag" data-tone="wait" title="Waits on lemmas that are not proven yet">needs {props.blocked}</span>}
         <span className="tree-row-proven" title="Proven in this subtree">{node.counts.proven > 0 ? `${node.counts.proven} ✓` : ''}</span>

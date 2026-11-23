@@ -40,6 +40,8 @@
 .tree-row-fold { flex:none; width:10px; font-size:10px; color:var(--muted); }
 .tree-row-title { flex:1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .tree-row-tag { flex:none; font:11px var(--mono); color:var(--blue); }
+.tree-row-doing { flex:0 1 auto; max-width:42%; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font:11px var(--mono); color:var(--muted); }
+.tree-row-doing::before { content:''; display:inline-block; width:5px; height:5px; margin-right:6px; border-radius:50%; background:var(--green); vertical-align:1px; animation:broadcast-dot 1.4s ease-in-out infinite; }
 .tree-row-tag[data-tone='wait'] { color:var(--muted); }
 .tree-row-proven { flex:none; width:40px; font:12px var(--mono); text-align:right; font-feature-settings:'tnum'; }
 .tree-row-bar { flex:none; position:relative; width:56px; height:3px; overflow:hidden; background:var(--line); }
@@ -74,6 +76,9 @@
 .node-status { font-size:14px; line-height:1.35; color:var(--soft); }
 .node-status .mark { margin-right:7px; vertical-align:-1px; }
 .node-status b { margin-right:4px; font-weight:400; color:var(--fg); }
+.node-doing { display:flex; align-items:baseline; gap:8px; margin-top:6px; font:12px/1.4 var(--mono); color:var(--soft); }
+.node-doing i { flex:none; width:6px; height:6px; border-radius:50%; background:var(--green); animation:broadcast-dot 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .tree-row-doing::before, .node-doing i { animation:none; } }
 .node-money { font:12px var(--mono); line-height:1.5; color:var(--muted); }
 .node-money b { font-weight:400; color:var(--fg); }
 .node-ride { justify-self:start; height:36px; padding:0 18px; }
@@ -144,6 +149,8 @@
   .tree-row > a { min-height:48px; padding:0 2px; }
   .tree-row-fold { display:none; }
   .tree-row-tag[data-tone='wait'] { display:none; }
+  .tree-row > a:has(.tree-row-doing) { flex-wrap:wrap; row-gap:2px; padding-block:6px; }
+  .tree-row-doing { order:9; flex-basis:100%; max-width:none; padding-left:18px; }
   .tree-row-proven { width:32px; }
   .tree-row-bar { width:32px; }
   .tree-row-by { width:56px; }
