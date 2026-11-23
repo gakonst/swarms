@@ -365,7 +365,7 @@ export async function start(self: Swarm, found: State, nid: string, weighed = we
   const set = units(self)
   const want = set.runStep < set.runCap ? set.runStep : set.runCap
   const short = want - left(found, nid)
-  if (short > 0n) {
+  if (short > 0n && !self.kv.get<number>('bounded:' + nid)) {
     const could = reach(self, found, weighed, nid)
     if (left(found, nid) + (could < short ? could : short) < set.runMin) return false
     await pull(self, found, nid, short, weighed)
