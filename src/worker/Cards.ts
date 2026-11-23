@@ -2,43 +2,34 @@ import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
 import type { Mood } from '../shared/Status.ts'
+import type * as Tree from '../shared/Tree.ts'
 import * as Status from '../shared/Status.ts'
 import * as Glyphs from './Glyphs.ts'
 import type { Face } from './Glyphs.ts'
 
 export type Fonts = { mono: Face; serif: Face }
 
-export type Kind = 'cover' | 'burst' | 'smudge' | 'seed'
-
-export type Hive = { kind: Kind; mood: Mood; reach: number; seed: string; x: number; y: number }
-
-export type Line = { high: number; left: number; top: number; wide: number }
-
-export type Gauge = { color: string; fill: number; high: number; left: number; top: number; wide: number }
-
-export type Pulse = { color: string; radius: number; x: number; y: number }
-
-export type Link = { ax: number; ay: number; bx: number; by: number }
-
-export type Scene = { gauge: Gauge | null; height: number; hives: Hive[]; lines: Line[]; links: Link[]; parts: string; pulse: Pulse | null; typed: string; width: number }
-
 export type Swarm = { backers: number; balance: number; id: string; left: number; mood: Mood; pitch: string; title: string; word: Status.Word }
 
 export type Field = { balance: number; ideas: { id: string; title: string }[]; open: number; swarms: Swarm[]; working: number }
 
+export type Cell = 'dead' | 'flight' | 'open' | 'proven'
+
+export type Twig = { cell: Cell; up: number }
+
+export type Mark = { color: string; ring: boolean; size: number; sway: number; x: number; y: number }
+
+export type Hub = { r: number; x: number; y: number }
+
+export type Scene = { height: number; hub: Hub; marks: Mark[]; parts: string; width: number }
+
+export const paper = '#F6F6F6'
 export const ink = '#000000'
-export const soft = '#3d5232'
-export const quiet = '#5c7350'
-export const deep = '#1a3d2c'
-export const line = '#e3e9dd'
+export const soft = '#333333'
+export const quiet = '#666666'
+export const faint = '#999999'
 
-export const tones: Record<Mood, readonly [string, string, string]> = {
-  live: ['#e6f3df', '#bfe0ad', '#1a7a3c'],
-  money: ['#fbf3e1', '#f1d9a6', '#b8801a'],
-  new: ['#f3f6ee', '#e1e9d6', '#6d8e52'],
-}
-
-export const dots: Record<Mood, string> = { live: '#2fae5a', money: '#e0a43c', new: '#6d8e52' }
+export const shades: Record<Cell, string> = { dead: '#999999', flight: '#000000', open: '#CCCCCC', proven: '#00E10A' }
 
 export function item(swarm: Summary): Swarm {
   const stood = Status.standing(swarm)
@@ -54,22 +45,9 @@ function escape(value: string) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-type Say = { anchor?: 'start' | 'middle' | 'end'; fill?: string; opacity?: number; spacing?: number }
-
-function say(face: Face, x: number, y: number, content: string, size: number, options: Say = {}) {
-  const spacing = options.spacing ? ` letter-spacing="${options.spacing.toFixed(2)}"` : ''
-  const anchor = options.anchor && options.anchor !== 'start' ? ` text-anchor="${options.anchor}"` : ''
-  const opacity = options.opacity !== undefined ? ` fill-opacity="${options.opacity}"` : ''
-  return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-family="${face.family}" font-size="${size.toFixed(1)}"${spacing}${anchor}${opacity} fill="${options.fill ?? ink}">${escape(content)}</text>`
-}
-
-function box(x: number, y: number, wide: number, high: number, radius: number, fill: string, extra = '') {
-  return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${wide.toFixed(1)}" height="${high.toFixed(1)}" rx="${radius.toFixed(1)}" fill="${fill}"${extra}/>`
-}
-
-function gradient(id: string, mood: Mood) {
-  const [from, to] = tones[mood]
-  return `<linearGradient id="${id}" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient>`
+function say(face: Face, x: number, y: number, content: string, size: number, fill = ink, spacing = 0) {
+  const space = spacing ? ` letter-spacing="${spacing.toFixed(2)}"` : ''
+  return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-family="${face.family}" font-size="${size.toFixed(1)}"${space} fill="${fill}">${escape(content)}</text>`
 }
 
 function hash(text: string, seed: number) {
@@ -78,319 +56,399 @@ function hash(text: string, seed: number) {
   return ((value >>> 0) % 100000) / 100000
 }
 
-function scale(width: number, height: number) {
+function frame(width: number, height: number) {
   const k = Math.min(width / 1200, height / 630)
-  return { k, margin: Math.round(56 * k) }
+  const kx = width / 1200
+  const hub = { r: 158 * k, x: 895 * kx, y: height / 2 }
+  const left = 152 * kx
+  return { hub, k, left, room: hub.x - hub.r - 64 * k - left }
 }
 
-function brand(fonts: Fonts, x: number, y: number, k: number) {
-  return say(fonts.serif, x, y, 'Swarms', 34 * k, { spacing: -0.6 * k })
-}
 
-function block(fonts: Fonts, face: Face, text: string, size: number, room: number, most: number, spacing = 0) {
-  return Glyphs.wrap(face, text, size, room, most, spacing)
-}
+type Point = { r: number; x: number; y: number }
 
-function stack(face: Face, lines: string[], x: number, first: number, size: number, leading: number, options: Say) {
-  return lines.map((row, index) => say(face, x, first + index * size * leading, row, size, options)).join('')
-}
-
-function far(hive: Hive, panel: { h: number; w: number; x: number; y: number }, color: string) {
-  return Array.from({ length: 3 }, (_, index) => {
-    const x = panel.x + 30 + hash(hive.seed, 200 + index) * (panel.w - 60)
-    const y = panel.y + 30 + hash(hive.seed, 210 + index) * (panel.h - 60)
-    return `<line x1="${hive.x.toFixed(1)}" y1="${hive.y.toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${color}" stroke-opacity=".25" stroke-width="1.4" stroke-dasharray="3 7"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="none" stroke="${color}" stroke-opacity=".4" stroke-width="1.6"/>`
-  }).join('')
-}
-
-function chip(fonts: Fonts, x: number, y: number, word: Status.Word, mood: Mood, k: number, fill = '#ffffff') {
-  const size = 17 * k
-  const label = Status.pill(word)
-  const wide = Glyphs.width(fonts.mono, label, size) + 52 * k
-  const high = 40 * k
-  const dot = { color: dots[mood], radius: 5.5 * k, x: x + 22 * k, y: y + high / 2 }
-  const mark =
-    mood === 'money'
-      ? `<rect x="${(dot.x - 4.5 * k).toFixed(1)}" y="${(dot.y - 4.5 * k).toFixed(1)}" width="${(9 * k).toFixed(1)}" height="${(9 * k).toFixed(1)}" rx="${k.toFixed(1)}" fill="${dot.color}" transform="rotate(45 ${dot.x.toFixed(1)} ${dot.y.toFixed(1)})"/>`
-      : mood === 'new'
-        ? `<circle cx="${dot.x.toFixed(1)}" cy="${dot.y.toFixed(1)}" r="${(4.6 * k).toFixed(1)}" fill="none" stroke="${dot.color}" stroke-width="${(1.8 * k).toFixed(1)}"/>`
-        : ''
-  return {
-    pulse: mood === 'live' ? dot : null,
-    svg: box(x, y, wide, high, high / 2, fill, fill === '#ffffff' ? ' fill-opacity=".94"' : '') + mark + say(fonts.mono, x + 38 * k, y + high / 2 + size * 0.36, label, size, { fill: '#26391e', spacing: 0.3 * k }),
-    wide,
+function path(hub: Hub, turns: number, inner: number, bend: number, start: number) {
+  const sweep = turns * Math.PI * 2
+  const step = 0.004
+  const points: (Point & { at: number })[] = []
+  let at = 0
+  let last: Point | undefined
+  for (let phi = 0; phi <= sweep + 1e-9; phi += step) {
+    const r = hub.r - (hub.r - inner) * (phi / sweep) ** bend
+    const angle = start - phi
+    const point = { r, x: hub.x + r * Math.cos(angle), y: hub.y + r * Math.sin(angle) }
+    if (last) at += Math.hypot(point.x - last.x, point.y - last.y)
+    points.push({ ...point, at })
+    last = point
   }
+  return points
 }
 
-export function swarm(fonts: Fonts, item: Swarm, width: number, height: number, cta = 'Ride it'): Scene {
-  const { k, margin } = scale(width, height)
-  const inset = Math.round(margin / 2)
-  const panel = { h: height - inset * 2, w: Math.round(width * 0.4), x: 0, y: inset }
-  panel.x = width - inset - panel.w
-  const right = panel.x - margin * 0.85
-  const room = right - margin
-  const hive: Hive = { kind: 'cover', mood: item.mood, reach: Math.min(panel.w, panel.h) * 0.3, seed: item.id, x: panel.x + panel.w * (0.42 + hash(item.id, 1) * 0.16), y: panel.y + panel.h * (0.44 + hash(item.id, 2) * 0.14) }
-  const tag = chip(fonts, panel.x + 24 * k, panel.y + 24 * k, item.word, item.mood, k)
-  const sizes = [64, 56, 48].map((size) => size * k)
-  let size = sizes[0] ?? 64
-  let title = block(fonts, fonts.serif, item.title, size, room, 3, -0.035 * size)
-  for (const next of sizes) {
-    size = next
-    title = block(fonts, fonts.serif, item.title, size, room, next === sizes.at(-1) ? 4 : 3, -0.035 * size)
-    if (Glyphs.wrap(fonts.serif, item.title, size, room, 9, -0.035 * size).length <= (next === sizes.at(-1) ? 4 : 3)) break
+function along(points: readonly (Point & { at: number })[], at: number): Point {
+  let lo = 0
+  let hi = points.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if ((points[mid]?.at ?? 0) < at) lo = mid + 1
+    else hi = mid
   }
-  const top = margin + 36 * k
-  const first = top + 58 * k + size * 0.8
-  const leading = 1.06
-  const after = first + (title.length - 1) * size * leading + size * 0.28
-  const foot = height - margin
-  const gaugeTop = foot - 92 * k
-  const pitchSize = 25 * k
-  const pitchLeading = 1.42
-  const pitchFirst = after + 22 * k + pitchSize
-  const fit = Math.max(0, Math.floor((gaugeTop - 30 * k - pitchFirst) / (pitchSize * pitchLeading)) + 1)
-  const pitch = item.pitch ? block(fonts, fonts.serif, item.pitch, pitchSize, room, Math.min(4, fit)) : []
-  const lines = pitch.map((row, index) => ({
-    high: pitchSize * 1.32,
-    left: margin - 2,
-    top: pitchFirst + index * pitchSize * pitchLeading - pitchSize * 0.98,
-    wide: Glyphs.width(fonts.serif, row, pitchSize) + 6,
-  }))
-  const fill = item.balance > 0 ? Math.min(1, Math.max(0, item.left / item.balance)) : 0
-  const leftLabel = item.balance > 0 ? `${Answer.cash(item.left)} left` : ''
-  const labelWide = leftLabel ? Glyphs.width(fonts.mono, leftLabel, 17 * k) + 16 * k : 0
-  const gauge = { color: fill < 0.15 ? '#e0a43c' : '#3f8a4e', fill, high: 8 * k, left: margin, top: gaugeTop, wide: room - labelWide }
-  const track =
-    item.balance > 0
-      ? box(gauge.left, gauge.top, gauge.wide, gauge.high, gauge.high / 2, '#eef2ea')
-      : `<line x1="${gauge.left}" y1="${(gauge.top + gauge.high / 2).toFixed(1)}" x2="${gauge.left + room}" y2="${(gauge.top + gauge.high / 2).toFixed(1)}" stroke="#d9e2cf" stroke-width="${gauge.high.toFixed(1)}" stroke-dasharray="${(9 * k).toFixed(1)} ${(7 * k).toFixed(1)}"/>`
-  const button = Glyphs.width(fonts.mono, `${cta} →`, 19 * k) + 56 * k
-  const money =
-    item.balance > 0
-      ? say(fonts.serif, margin, foot, Answer.cash(item.balance), 52 * k, { spacing: -1.8 * k }) +
-        say(fonts.mono, margin + Glyphs.width(fonts.serif, Answer.cash(item.balance), 52 * k, -1.8 * k) + 14 * k, foot - 2 * k, `balance · ${item.backers} rider${item.backers === 1 ? '' : 's'}`, 18 * k, { fill: quiet })
-      : say(fonts.serif, margin, foot - 4 * k, 'Be the first rider', 36 * k, { spacing: -0.8 * k })
-  const parts = [
-    `<defs>${gradient('cover', item.mood)}</defs>`,
-    box(0, 0, width, height, 0, '#ffffff'),
-    box(panel.x, panel.y, panel.w, panel.h, 30 * k, 'url(#cover)'),
-    far(hive, panel, tones[item.mood][2]),
-    tag.svg,
-    brand(fonts, margin, top, k),
-    stack(fonts.serif, title, margin, first, size, leading, { spacing: -0.035 * size }),
-    track,
-    leftLabel ? say(fonts.mono, right, gauge.top + gauge.high / 2 + 6 * k, leftLabel, 17 * k, { anchor: 'end', fill: quiet }) : '',
-    money,
-    box(right - button, foot - 40 * k, button, 54 * k, 27 * k, deep),
-    say(fonts.mono, right - button / 2, foot - 40 * k + 27 * k + 7 * k, `${cta} →`, 19 * k, { anchor: 'middle', fill: '#ffffff' }),
-  ].join('')
-  const typed = stack(fonts.serif, pitch, margin, pitchFirst, pitchSize, pitchLeading, { fill: soft })
-  return { gauge: item.balance > 0 ? gauge : null, height, hives: [hive], lines, links: [], parts, pulse: tag.pulse, typed, width }
+  const found = points[lo] ?? points[points.length - 1]
+  return found ?? { r: 0, x: 0, y: 0 }
 }
 
-function place(spots: { r: number; x: number; y: number }[], avoid: { h: number; w: number; x: number; y: number }[], area: { h: number; w: number; x: number; y: number }, radius: number, seed: string) {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    const x = area.x + radius + hash(seed, 1000 + attempt * 2) * (area.w - radius * 2)
-    const y = area.y + radius + hash(seed, 1001 + attempt * 2) * (area.h - radius * 2)
-    const clear = avoid.every((zone) => x + radius < zone.x || x - radius > zone.x + zone.w || y + radius < zone.y || y - radius > zone.y + zone.h)
-    const apart = spots.every((spot) => Math.hypot(spot.x - x, spot.y - y) > spot.r + radius + 12)
-    if (clear && apart) {
-      const spot = { r: radius, x, y }
-      spots.push(spot)
-      return spot
+export function layout(twigs: readonly Twig[], hub: Hub, k: number, seed = ''): { size: number; x: number; y: number }[] {
+  const count = twigs.length
+  if (!count) return []
+  if (count === 1) return [{ size: 9 * k, x: hub.x, y: hub.y }]
+  const kids: number[][] = twigs.map(() => [])
+  twigs.forEach((twig, index) => {
+    if (twig.up >= 0 && twig.up < index) kids[twig.up]?.push(index)
+  })
+  const leaves = twigs.map((_, index) => index).filter((index) => !kids[index]?.length)
+  const start = -0.1 - hash(seed, 1) * 0.35
+  const gap = 10.5 * k
+  hub = { ...hub, r: hub.r * Math.min(1.28, Math.max(1, (leaves.length / 90) ** 0.14)) }
+  const one = path(hub, 0.92, hub.r * 0.56, 2.2, start)
+  const oneLong = one.at(-1)?.at ?? 0
+  let points = one
+  let spacing = Math.min(oneLong / leaves.length, 40 * k)
+  let size = 9 * k
+  if (leaves.length * 9.2 * k > oneLong) {
+    const floor = hub.r * 0.3
+    for (let turns = 1.25; ; turns += 0.25) {
+      points = path(hub, turns, floor, 1.3, start)
+      const long = points.at(-1)?.at ?? 0
+      if (long >= leaves.length * gap || (hub.r - floor) / turns <= 10 * k) {
+        spacing = long / leaves.length
+        size = Math.max(5 * k, Math.min(9 * k, spacing - 1.5 * k))
+        break
+      }
     }
   }
-  return undefined
+  const at: { size: number; x: number; y: number }[] = twigs.map(() => ({ size, x: hub.x, y: hub.y }))
+  leaves.forEach((index, order) => {
+    const point = along(points, order * spacing)
+    at[index] = { size, x: point.x, y: point.y }
+  })
+  const inner = Math.min(...leaves.map((index) => Math.hypot((at[index]?.x ?? 0) - hub.x, (at[index]?.y ?? 0) - hub.y)))
+  const depth = twigs.map(() => 0)
+  for (let index = 1; index < count; index++) depth[index] = (depth[twigs[index]?.up ?? 0] ?? 0) + 1
+  const sum = twigs.map(() => ({ n: 0, x: 0, y: 0 }))
+  for (let index = count - 1; index >= 0; index--) {
+    const own = sum[index]
+    if (!own) continue
+    if (!kids[index]?.length) {
+      own.n += 1
+      own.x += at[index]?.x ?? 0
+      own.y += at[index]?.y ?? 0
+    }
+    const up = sum[twigs[index]?.up ?? -1]
+    if (up) {
+      up.n += own.n
+      up.x += own.x
+      up.y += own.y
+    }
+  }
+  const forks = twigs.map((_, index) => index).filter((index) => kids[index]?.length)
+  const deepest = Math.max(0, ...forks.map((index) => depth[index] ?? 0))
+  const placed: { x: number; y: number }[] = leaves.map((index) => at[index] ?? { x: 0, y: 0 })
+  for (const index of forks) {
+    const own = sum[index] ?? { n: 1, x: hub.x, y: hub.y }
+    const first = leaves.find((leaf) => leaf > index) ?? index
+    const cx = own.x / Math.max(1, own.n) - hub.x
+    const cy = own.y / Math.max(1, own.n) - hub.y
+    let angle = Math.hypot(cx, cy) > hub.r * 0.12 ? Math.atan2(cy, cx) : Math.atan2((at[first]?.y ?? hub.y) - hub.y, (at[first]?.x ?? hub.x) - hub.x)
+    const rim = Math.min(inner * 1.6, Math.hypot((at[first]?.x ?? hub.x) - hub.x, (at[first]?.y ?? hub.y) - hub.y))
+    const reach = rim * 0.8 * ((depth[index] ?? 0) + 0.3) / (deepest + 0.3)
+    let x = hub.x + reach * Math.cos(angle)
+    let y = hub.y + reach * Math.sin(angle)
+    for (let tries = 0; tries < 24 && placed.some((spot) => Math.hypot(spot.x - x, spot.y - y) < 12 * k); tries++) {
+      angle += (13 * k) / Math.max(reach, 13 * k)
+      x = hub.x + reach * Math.cos(angle)
+      y = hub.y + reach * Math.sin(angle)
+    }
+    placed.push({ x, y })
+    at[index] = { size, x, y }
+  }
+  const xs = at.map((point) => point.x)
+  const ys = at.map((point) => point.y)
+  const dx = hub.x - (Math.min(...xs) + Math.max(...xs)) / 2
+  const dy = hub.y - (Math.min(...ys) + Math.max(...ys)) / 2
+  return at.map((point) => ({ size: point.size, x: point.x + dx, y: point.y + dy }))
 }
 
-function sky(field: Field, width: number, height: number, k: number, avoid: { h: number; w: number; x: number; y: number }[], area: { h: number; w: number; x: number; y: number }) {
-  const spots: { r: number; x: number; y: number }[] = []
-  const hives: Hive[] = []
-  for (const item of field.swarms.slice(0, 12)) {
-    const reach = (item.mood === 'live' ? 74 : item.mood === 'money' ? 34 + Math.min(34, Math.log10(1 + item.balance) * 22) : 22) * k
-    const spot = place(spots, avoid, area, reach * (item.mood === 'money' ? 1.25 : 1), item.id)
-    if (spot) hives.push({ kind: item.mood === 'live' ? 'burst' : item.mood === 'money' ? 'smudge' : 'seed', mood: item.mood, reach, seed: item.id, x: spot.x, y: spot.y })
+export function draw(twigs: readonly Twig[], hub: Hub, k: number, seed = '', ring = -1, sway = 0): Mark[] {
+  return layout(twigs, hub, k, seed).map((point, index) => ({ color: shades[twigs[index]?.cell ?? 'open'], ring: index === ring, size: point.size, sway, x: point.x, y: point.y }))
+}
+
+export function flock(seed: string) {
+  const twigs: Twig[] = [{ cell: 'flight', up: -1 }]
+  let up = 0
+  const programs = 6 + Math.floor(hash(seed, 2) * 3)
+  for (let program = 0; program < programs; program++) {
+    const leaves = 7 + Math.floor(hash(seed, 10 + program) * 4)
+    for (let leaf = 0; leaf < leaves; leaf++) twigs.push({ cell: 'flight', up })
+    twigs.push({ cell: 'flight', up })
+    up = twigs.length - 1
   }
-  for (const idea of field.ideas.slice(0, 8)) {
-    const spot = place(spots, avoid, area, 16 * k, idea.id)
-    if (spot) hives.push({ kind: 'seed', mood: 'new', reach: 11 * k, seed: idea.id, x: spot.x, y: spot.y })
+  for (let leaf = 0; leaf < 6; leaf++) twigs.push({ cell: 'flight', up })
+  return twigs
+}
+
+
+type Row = { cell?: Cell; fill?: string; text: string }
+
+function pack(face: Face, text: string, size: number, room: number) {
+  const parts = text.split(' · ')
+  if (parts.length < 2 || Glyphs.width(face, text, size) <= room) return Glyphs.wrap(face, text, size, room, 2)
+  const lines: string[] = []
+  for (const part of parts) {
+    const last = lines.at(-1)
+    if (last !== undefined && Glyphs.width(face, `${last} · ${part}`, size) <= room) lines[lines.length - 1] = `${last} · ${part}`
+    else lines.push(part)
   }
-  const links = hives.flatMap((hive, index) => {
-    const near = hives.filter((_, other) => other !== index).sort((a, b) => Math.hypot(a.x - hive.x, a.y - hive.y) - Math.hypot(b.x - hive.x, b.y - hive.y))[0]
-    if (!near || Math.hypot(near.x - hive.x, near.y - hive.y) > width * 0.3 || hash(hive.seed, 7) > 0.7) return []
-    return [{ ax: hive.x, ay: hive.y, bx: near.x, by: near.y }]
+  return lines.length <= 2 ? lines.flatMap((line) => Glyphs.wrap(face, line, size, room, 1)) : Glyphs.wrap(face, text, size, room, 2)
+}
+
+function column(fonts: Fonts, width: number, height: number, kicker: string, title: string, rows: readonly Row[], biggest = 52) {
+  const { k, left, room } = frame(width, height)
+  const sizes = [biggest, 46, 40, 34].filter((size) => size <= biggest).map((size) => size * k)
+  let size = sizes[0] ?? 52 * k
+  let lines = [title]
+  for (const next of sizes) {
+    size = next
+    const most = next === sizes.at(-1) ? 3 : next >= 46 * k ? 2 : 3
+    lines = Glyphs.wrap(fonts.serif, title, size, room, most, -0.01 * size)
+    const all = Glyphs.wrap(fonts.serif, title, size, room, 9, -0.01 * size)
+    const orphan = all.length > 1 && Glyphs.width(fonts.serif, all.at(-1) ?? '', size) < room * 0.3
+    if (all.length <= most && !orphan) break
+  }
+  const mono = 17 * k
+  const lead = 29 * k
+  const marked = rows.some((row) => row.cell)
+  const indent = marked ? 22 * k : 0
+  const shown = rows.flatMap((row) => pack(fonts.mono, row.text, mono, room - indent).map((text, index) => ({ ...row, cell: index ? undefined : row.cell, text })))
+  const kickHigh = kicker ? 12 * k + 26 * k : 0
+  const titleHigh = size * 0.72 + (lines.length - 1) * size * 1.12 + size * 0.2
+  const rowsHigh = shown.length ? 34 * k + 12 * k + (shown.length - 1) * lead : 0
+  let y = height / 2 - (kickHigh + titleHigh + rowsHigh) / 2
+  const parts: string[] = []
+  if (kicker) {
+    parts.push(say(fonts.mono, left, y + 12 * k, Glyphs.wrap(fonts.mono, kicker, 15 * k, room, 1)[0] ?? '', 15 * k, faint))
+    y += kickHigh
+  }
+  lines.forEach((line, index) => parts.push(say(fonts.serif, left - 2 * k, y + size * 0.72 + index * size * 1.12, line, size, ink, -0.01 * size)))
+  y += titleHigh + 34 * k + 12 * k
+  const marks: Mark[] = []
+  shown.forEach((row, index) => {
+    const base = y + index * lead
+    if (row.cell) marks.push({ color: shades[row.cell], ring: false, size: 9 * k, sway: 0, x: left + 4.5 * k, y: base - 5.5 * k })
+    parts.push(say(fonts.mono, left + indent, base, row.text, mono, row.fill ?? soft))
   })
-  return { hives, links }
+  return { marks, parts: parts.join('') }
+}
+
+function page(width: number, height: number) {
+  return `<rect width="${width}" height="${height}" fill="${paper}"/>`
+}
+
+function card(fonts: Fonts, width: number, height: number, words: { biggest?: number; kicker: string; rows: readonly Row[]; title: string }, drawing: (hub: Hub, k: number) => Mark[]): Scene {
+  const { hub, k } = frame(width, height)
+  const text = column(fonts, width, height, words.kicker, words.title, words.rows, words.biggest)
+  return { height, hub, marks: [...drawing(hub, k), ...text.marks], parts: page(width, height) + text.parts, width }
+}
+
+function plural(count: number, one: string, many = `${one}s`) {
+  return `${count.toLocaleString('en-US')} ${count === 1 ? one : many}`
+}
+
+function riders(count: number) {
+  return plural(count, 'rider')
+}
+
+export function swarm(fonts: Fonts, item: Swarm, width: number, height: number): Scene {
+  const money = item.balance > 0 ? `${Answer.cash(item.balance)} ridden · ${riders(item.backers)}` : 'No riders yet'
+  const left = item.balance > 0 ? `${Answer.cash(Math.max(0, item.left))} left` : ''
+  return card(fonts, width, height, { kicker: 'Swarms', rows: [{ text: Status.pill(item.word) }, ...(money === Status.pill(item.word) ? [] : [{ text: money }]), ...(left ? [{ fill: quiet, text: left }] : [])], title: item.title }, (hub, k) =>
+    draw(flock(item.id), hub, k, item.id, -1, item.mood === 'live' ? 1 : 0.4),
+  )
 }
 
 export function home(fonts: Fonts, field: Field, width: number, height: number): Scene {
-  const { k, margin } = scale(width, height)
-  const top = margin + 36 * k
-  const size = 104 * k
-  const heroFirst = height * 0.5 - size * 0.62
-  const hero = ['Make a breakthrough.', 'Ride a swarm.']
-  const heroWide = Math.max(...hero.map((row) => Glyphs.width(fonts.serif, row, size, -0.05 * size)))
-  const subSize = 28 * k
-  const sub = Glyphs.wrap(fonts.serif, 'Chip in a few dollars. AI agents get to work, in public.', subSize, 520 * k, 2)
-  const subFirst = heroFirst + size * 0.94 + 30 * k + subSize
-  const liveY = subFirst + (sub.length - 1) * subSize * 1.36 + 50 * k
   const count = field.open + field.ideas.length
-  const facts = [field.working ? `${field.working} working now` : '', `${count} idea${count === 1 ? '' : 's'}`, field.balance > 0 ? `${Answer.cash(field.balance)} to spend` : ''].filter(Boolean).join(' · ')
-  const dot = field.working ? { color: dots.live, radius: 5.5 * k, x: margin + 5.5 * k, y: liveY - 6.5 * k } : null
-  const avoid = [
-    { h: 40 * k, w: 160 * k, x: margin, y: top - 32 * k },
-    { h: liveY - heroFirst + size * 0.8 + 16 * k, w: Math.max(heroWide, 540 * k) + 30 * k, x: margin - 10 * k, y: heroFirst - size * 0.8 },
-  ]
-  const { hives, links } = sky(field, width, height, k, avoid, { h: height - margin, w: width - margin, x: margin / 2, y: margin / 2 })
-  const parts = [
-    box(0, 0, width, height, 0, '#ffffff'),
-    brand(fonts, margin, top, k),
-    stack(fonts.serif, hero, margin - 4 * k, heroFirst, size, 0.94, { spacing: -0.05 * size }),
-    stack(fonts.serif, sub, margin, subFirst, subSize, 1.36, { fill: soft }),
-    say(fonts.mono, margin + (dot ? 20 * k : 0), liveY, facts, 19 * k, { fill: quiet, spacing: 0.4 * k }),
-  ].join('')
-  return { gauge: null, height, hives, lines: [], links, parts, pulse: dot, typed: '', width }
+  const facts = [field.working ? `${field.working} working now` : '', plural(count, 'idea'), field.balance > 0 ? `${Answer.cash(field.balance)} to spend` : ''].filter(Boolean).join(' · ')
+  return card(fonts, width, height, { biggest: 46, kicker: '', rows: [{ text: 'Make a breakthrough. Ride a swarm.' }, { fill: quiet, text: facts }], title: 'Swarms' }, (hub, k) => draw(flock('home'), hub, k, 'home', -1, 1))
 }
 
-function mini(fonts: Fonts, item: Swarm, x: number, y: number, wide: number, high: number, k: number, index: number) {
-  const coverHigh = Math.round(high * 0.46)
-  const hive: Hive = { kind: 'cover', mood: item.mood, reach: coverHigh * 0.3, seed: item.id, x: x + wide * (0.36 + hash(item.id, 1) * 0.28), y: y + coverHigh * (0.4 + hash(item.id, 2) * 0.24) }
-  const size = 23 * k
-  const title = Glyphs.wrap(fonts.serif, item.title, size, wide - 36 * k, 2)
-  const tag = chip(fonts, x + 14 * k, y + 14 * k, item.word, item.mood, k * 0.82)
-  const stats = item.balance > 0 ? `${Answer.cash(item.balance)} · ${item.backers} rider${item.backers === 1 ? '' : 's'}` : 'Be the first rider'
-  const svg = [
-    `<defs>${gradient(`mini${index}`, item.mood)}<clipPath id="clip${index}">${box(x, y, wide, high, 18 * k, '#fff')}</clipPath></defs>`,
-    `<g clip-path="url(#clip${index})">`,
-    box(x, y, wide, high, 0, '#ffffff'),
-    box(x, y, wide, coverHigh, 0, `url(#mini${index})`),
-    far(hive, { h: coverHigh, w: wide, x, y }, tones[item.mood][2]),
-    '</g>',
-    box(x + 0.75, y + 0.75, wide - 1.5, high - 1.5, 18 * k, 'none', ` stroke="${line}" stroke-width="1.5"`),
-    tag.svg,
-    stack(fonts.serif, title, x + 18 * k, y + coverHigh + 22 * k + size * 0.8, size, 1.2, { spacing: -0.3 * k }),
-    say(fonts.mono, x + 18 * k, y + high - 20 * k, stats, 15 * k, { fill: quiet }),
-    say(fonts.mono, x + wide - 18 * k, y + high - 20 * k, 'Ride it →', 15 * k, { anchor: 'end', fill: deep }),
-  ].join('')
-  return { hive, pulse: tag.pulse, svg }
-}
-
-function shelf(fonts: Fonts, heading: string, note: string, items: Swarm[], width: number, height: number): Scene {
-  const { k, margin } = scale(width, height)
-  const top = margin + 36 * k
-  const size = 60 * k
-  const headY = top + 34 * k + size
-  const gap = 22 * k
-  const count = Math.max(1, Math.min(3, items.length))
-  const wide = (width - margin * 2 - gap * (count - 1)) / count
-  const cardTop = headY + 42 * k
-  const high = height - margin * 0.8 - cardTop
-  const cards = items.slice(0, count).map((item, index) => mini(fonts, item, margin + index * (wide + gap), cardTop, wide, high, k, index))
-  const parts = [
-    box(0, 0, width, height, 0, '#ffffff'),
-    brand(fonts, margin, top, k),
-    say(fonts.serif, margin - 2 * k, headY, heading, size, { spacing: -0.04 * size }),
-    say(fonts.mono, width - margin, headY - 6 * k, note, 18 * k, { anchor: 'end', fill: quiet }),
-    ...cards.map((card) => card.svg),
-  ].join('')
-  return { gauge: null, height, hives: cards.map((card) => card.hive), lines: [], links: [], parts, pulse: cards.find((card) => card.pulse)?.pulse ?? null, typed: '', width }
-}
-
-export function ideas(fonts: Fonts, field: Field, width: number, height: number) {
+export function ideas(fonts: Fonts, field: Field, width: number, height: number): Scene {
   const count = field.open + field.ideas.length
-  const note = [field.working ? `${field.working} working now` : '', `${count} idea${count === 1 ? '' : 's'}`].filter(Boolean).join(' · ')
-  return shelf(fonts, 'All ideas', note, field.swarms, width, height)
+  const rows = [field.working ? { text: `${field.working} working now` } : undefined, { text: plural(count, 'idea') }, field.balance > 0 ? { text: `${Answer.cash(field.balance)} to spend` } : undefined].filter((row): row is Row => !!row)
+  return card(fonts, width, height, { kicker: 'Swarms', rows, title: 'All swarms' }, (hub, k) => draw(flock('ideas'), hub, k, 'ideas', -1, 1))
 }
 
 export function start(fonts: Fonts, field: Field, width: number, height: number): Scene {
-  const { k, margin } = scale(width, height)
-  const top = margin + 36 * k
-  const size = 60 * k
-  const ask = Glyphs.wrap(fonts.serif, 'What should AI figure out or build?', size, width - margin * 2, 2, -0.04 * size)
-  const askFirst = top + 62 * k + size * 0.8
-  const fieldTop = askFirst + (ask.length - 1) * size * 1.04 + 36 * k
-  const boxHigh = 92 * k
-  const example = 'e.g. Find the cheapest way to make clean drinking water at home'
-  const ideas = field.ideas.slice(0, 3)
-  const listTop = fieldTop + boxHigh + 62 * k
-  const rowHigh = Math.min(64 * k, (height - margin * 0.7 - listTop) / Math.max(1, ideas.length))
-  const hives: Hive[] = []
-  const rows = ideas
-    .map((idea, index) => {
-      const y = listTop + index * rowHigh
-      hives.push({ kind: 'seed', mood: 'new', reach: 12 * k, seed: `idea:${idea.id}`, x: margin + 18 * k, y: y + rowHigh / 2 })
-      return [
-        index ? `<line x1="${margin}" y1="${y.toFixed(1)}" x2="${width - margin}" y2="${y.toFixed(1)}" stroke="${line}" stroke-width="1.5"/>` : '',
-        say(fonts.serif, margin + 48 * k, y + rowHigh / 2 + 9 * k, Glyphs.wrap(fonts.serif, idea.title, 26 * k, width - margin * 2 - 260 * k, 1)[0] ?? '', 26 * k),
-        say(fonts.mono, width - margin, y + rowHigh / 2 + 6 * k, 'Ride it →', 17 * k, { anchor: 'end', fill: deep }),
-      ].join('')
-    })
-    .join('')
-  const parts = [
-    box(0, 0, width, height, 0, '#ffffff'),
-    brand(fonts, margin, top, k),
-    stack(fonts.serif, ask, margin - 2 * k, askFirst, size, 1.04, { spacing: -0.04 * size }),
-    box(margin, fieldTop, width - margin * 2, boxHigh, 18 * k, '#fbfcf9', ` stroke="#cfd9c6" stroke-width="1.5"`),
-    ideas.length ? say(fonts.mono, margin, listTop - 14 * k, 'Or back one of these', 16 * k, { fill: quiet, spacing: 0.4 * k }) : '',
-    rows,
-  ].join('')
-  const asked = Glyphs.wrap(fonts.serif, example, 26 * k, width - margin * 2 - 60 * k, 1)[0] ?? ''
-  const typed = say(fonts.serif, margin + 26 * k, fieldTop + boxHigh / 2 + 9 * k, asked, 26 * k, { fill: '#8a9a80' })
-  const lines = [{ high: 26 * k * 1.32, left: margin + 24 * k, top: fieldTop + boxHigh / 2 + 9 * k - 26 * k * 0.98, wide: Glyphs.width(fonts.serif, asked, 26 * k) + 6 }]
-  return { gauge: null, height, hives, lines, links: [], parts, pulse: null, typed, width }
+  const rows = [{ text: 'What should AI figure out or build?' }, { fill: quiet, text: 'Chip in a few dollars. Agents work on it in public.' }]
+  void field
+  return card(fonts, width, height, { kicker: 'Swarms', rows, title: 'Start a swarm' }, (hub, k) => draw(flock('new'), hub, k, 'new', -1, 1))
 }
 
 export function about(fonts: Fonts, width: number, height: number): Scene {
-  const { k, margin } = scale(width, height)
-  const top = margin + 36 * k
-  const size = 72 * k
-  const headY = top + 52 * k + size * 0.8
-  const steps = ['Pick a swarm, or start one', 'Put in a few dollars and say where it should go', 'AI agents work on it until the money runs out', 'Read what they find and steer again']
-  const rowTop = headY + 52 * k
-  const rowHigh = (height - margin - rowTop) / steps.length
-  const rows = steps
-    .map((step, index) => {
-      const y = rowTop + index * rowHigh + rowHigh / 2
-      return [
-        `<circle cx="${(margin + 26 * k).toFixed(1)}" cy="${y.toFixed(1)}" r="${(26 * k).toFixed(1)}" fill="${deep}"/>`,
-        say(fonts.mono, margin + 26 * k, y + 7 * k, String(index + 1), 20 * k, { anchor: 'middle', fill: '#ffffff' }),
-        say(fonts.serif, margin + 76 * k, y + 11 * k, Glyphs.wrap(fonts.serif, step, 32 * k, width - margin * 2 - 90 * k, 1)[0] ?? '', 32 * k, { spacing: -0.4 * k }),
-      ].join('')
-    })
-    .join('')
-  const parts = [box(0, 0, width, height, 0, '#ffffff'), brand(fonts, margin, top, k), say(fonts.serif, margin - 3 * k, headY, 'How it works', size, { spacing: -0.045 * size }), rows].join('')
-  return { gauge: null, height, hives: [], lines: [], links: [], parts, pulse: null, typed: '', width }
+  const rows = ['Ride a lemma, a program or the whole swarm', 'Money flows down to work that can start now', 'Lean decides what is proven', 'Every dead end is kept, with why'].map((text) => ({ text }))
+  return card(fonts, width, height, { kicker: 'Swarms', rows, title: 'How it works' }, (hub, k) => draw(flock('about'), hub, k, 'about'))
 }
 
 export function docs(fonts: Fonts, width: number, height: number): Scene {
-  const { k, margin } = scale(width, height)
-  const top = margin + 36 * k
-  const size = 68 * k
-  const headY = top + 52 * k + size * 0.8
-  const lead = Glyphs.wrap(fonts.serif, 'Everything on this site is a public REST API and an MCP server. Reading is free and needs no account.', 27 * k, width - margin * 2, 2)
-  const leadFirst = headY + 34 * k + 27 * k
-  const codeTop = leadFirst + (lead.length - 1) * 27 * k * 1.38 + 36 * k
-  const code = [
-    ['GET', '/v1/swarms'],
-    ['GET', '/v1/swarms/:id/updates'],
-    ['POST', '/v1/swarms/:id/contributions'],
-    ['POST', '/mcp  swarms_list · swarm_get · swarm_contribute'],
+  const rows = [{ text: 'GET /v1/swarms/:id/tree' }, { text: 'POST /v1/swarms/:id/contributions' }, { text: 'MCP swarm_tree · swarm_node' }, { fill: quiet, text: 'Reading is free and needs no account' }]
+  return card(fonts, width, height, { kicker: 'Swarms', rows, title: 'Use swarms from code' }, (hub, k) => draw(flock('docs'), hub, k, 'docs'))
+}
+
+
+export type Grove = { cells: Cell[]; deadEnds: number; frontier: number; id: string; inFlight: number; perProven: number | null; proven: number; ridden: number; spent: number; title: string; twigs: Twig[] }
+
+export type Leaf = { at: number; checked: string | null; counts: Record<Tree.Status, number>; form: Tree.Form; id: string; review: boolean; ridden: number; riders: number; spent: number; status: Tree.Status; swarm: string; title: string; twigs: Twig[]; why: string; working: boolean }
+
+const ends: Record<Tree.End['kind'], string> = {
+  barrier: 'Stopped by a known barrier',
+  exhausted: 'Ran out of ideas',
+  merged: 'Merged into another node',
+  refuted: 'Refuted',
+  rejected: 'Rejected in triage',
+  withdrawn: 'Withdrawn by its riders',
+}
+
+export const words: Record<Tree.Status, string> = { 'dead end': 'Dead end', funded: 'Ridden', 'in flight': 'In flight', proposed: 'Proposed', proven: 'Proven' }
+
+export function why(node: Tree.Node) {
+  if (node.status === 'proven') return node.proof ? `Lean checked ${node.proof.theorem} against its frozen statement.` : 'Lean checked it against its frozen statement.'
+  if (node.status === 'dead end') {
+    const kind = node.end ? (node.end.kind === 'refuted' && node.end.check ? 'Refuted, checked by Lean' : ends[node.end.kind]) : 'Ended'
+    return node.end?.why ? `${kind}: ${node.end.why}` : `${kind}.`
+  }
+  if (node.status === 'in flight') return node.run?.checking ? 'A proof is in, and Lean is checking it.' : 'A worker is on it now.'
+  if (node.status === 'funded') return node.needs.length ? 'Ridden, and waiting for what it needs to be proven.' : 'Ridden, and waiting for a free worker.'
+  return Number(node.money.spent) > 0 ? 'Out of money. Ride it to start it again.' : 'Waiting for its first rider.'
+}
+
+export function cell(status: Tree.Status): Cell {
+  return status === 'proven' ? 'proven' : status === 'dead end' ? 'dead' : status === 'in flight' ? 'flight' : 'open'
+}
+
+type View = { headline: Tree.Headline; nodes: readonly Tree.Node[] }
+
+export function order(nodes: readonly Tree.Node[]) {
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const found: Tree.Node[] = []
+  const seen = new Set<string>()
+  const walk = (id: string) => {
+    const node = byId.get(id)
+    if (!node || seen.has(id)) return
+    seen.add(id)
+    found.push(node)
+    for (const child of node.children) walk(child)
+  }
+  walk('root')
+  for (const node of nodes) walk(node.id)
+  return found
+}
+
+export function twigs(nodes: readonly Tree.Node[]): Twig[] {
+  const found = order(nodes)
+  const index = new Map(found.map((node, at) => [node.id, at]))
+  const above = new Map<string, number>()
+  found.forEach((node, at) => {
+    for (const child of node.children) if (!above.has(child) && (index.get(child) ?? -1) > at) above.set(child, at)
+  })
+  return found.map((node, at) => {
+    const up = above.get(node.id) ?? (node.parent === null ? -1 : (index.get(node.parent) ?? (at ? 0 : -1)))
+    return { cell: cell(node.status), up: up < at ? up : at ? 0 : -1 }
+  })
+}
+
+export function grove(swarm: string, view: View): Grove {
+  const found = order(view.nodes)
+  const head = view.headline
+  return {
+    cells: found.filter((node) => node.form === 'lemma').map((node) => cell(node.status)),
+    deadEnds: head.deadEnds,
+    frontier: head.frontier,
+    id: swarm,
+    inFlight: head.inFlight,
+    perProven: head.perProven === null ? null : Number(head.perProven),
+    proven: head.proven,
+    ridden: Number(head.pledged),
+    spent: Number(head.spent),
+    title: found.find((node) => node.id === 'root')?.title ?? 'Swarm',
+    twigs: twigs(view.nodes),
+  }
+}
+
+function alone(node: Tree.Node, counts: Record<Tree.Status, number>): Twig[] {
+  const out: Twig[] = [{ cell: cell(node.status), up: -1 }]
+  for (const status of ['proven', 'in flight', 'dead end', 'funded', 'proposed'] as const) for (let index = 0; index < Math.min(counts[status], 400); index++) out.push({ cell: cell(status), up: 0 })
+  return out
+}
+
+export function leaf(swarm: string, title: string, node: Tree.Node & { review?: boolean }, view?: { nodes: readonly Tree.Node[] }): Leaf {
+  const counts = { ...node.counts }
+  counts[node.status] = Math.max(0, counts[node.status] - 1)
+  const known = view ? order(view.nodes).findIndex((other) => other.id === node.id) : -1
+  return {
+    at: known >= 0 ? known : 0,
+    checked: node.status === 'proven' && node.proof ? node.proof.commit.slice(0, 7) : null,
+    counts,
+    form: node.form,
+    id: node.id,
+    review: node.review === true,
+    ridden: Number(node.money.subtree.pledged) + Number(node.money.inherited),
+    riders: node.riders,
+    spent: Number(node.money.subtree.spent),
+    status: node.status,
+    swarm: title,
+    title: node.title,
+    twigs: view && known >= 0 ? twigs(view.nodes) : alone(node, counts),
+    why: why(node),
+    working: node.status === 'in flight',
+  }
+}
+
+export function below(counts: Record<Tree.Status, number>) {
+  const parts = [counts.proven ? `${counts.proven.toLocaleString('en-US')} proven` : '', counts['in flight'] ? `${counts['in flight'].toLocaleString('en-US')} in flight` : '', counts['dead end'] ? plural(counts['dead end'], 'dead end') : '', counts.funded + counts.proposed ? `${(counts.funded + counts.proposed).toLocaleString('en-US')} open` : '']
+  return parts.filter(Boolean).join(' · ')
+}
+
+export function tally(item: Grove) {
+  return [`${item.frontier.toLocaleString('en-US')} on the frontier`, `${item.inFlight.toLocaleString('en-US')} in flight`, plural(item.deadEnds, 'dead end')]
+}
+
+const kinds: Record<Tree.Form, string> = { approach: 'approach', goal: 'whole swarm', idea: 'idea', lemma: 'lemma', program: 'program', triage: 'triage' }
+
+export function ask(form: Tree.Form) {
+  return `Ride this ${kinds[form]}`.replace('this whole', 'the whole')
+}
+
+function spent(value: number) {
+  return value > 0 ? `${Answer.cash(value)} spent` : 'Nothing spent yet'
+}
+
+export function tree(fonts: Fonts, item: Grove, width: number, height: number): Scene {
+  const rows: Row[] = [
+    { cell: 'proven', text: `${item.proven.toLocaleString('en-US')} proven` },
+    { cell: 'flight', text: `${item.inFlight.toLocaleString('en-US')} in flight` },
+    { cell: 'dead', text: plural(item.deadEnds, 'dead end') },
+    { text: spent(item.spent) },
   ]
-  const codeHigh = height - margin * 0.8 - codeTop
-  const step = (codeHigh - 40 * k) / code.length
-  const column = margin + 30 * k + Glyphs.width(fonts.mono, 'POST', 20 * k) + 22 * k
-  const parts = [
-    box(0, 0, width, height, 0, '#ffffff'),
-    brand(fonts, margin, top, k),
-    say(fonts.serif, margin - 3 * k, headY, 'Use swarms from code', size, { spacing: -0.04 * size }),
-    stack(fonts.serif, lead, margin, leadFirst, 27 * k, 1.38, { fill: soft }),
-    box(margin, codeTop, width - margin * 2, codeHigh, 18 * k, '#161616'),
-    code
-      .map(([method = '', path = ''], index) => {
-        const y = codeTop + 20 * k + step * (index + 0.5) + 7 * k
-        return say(fonts.mono, margin + 30 * k, y, method, 20 * k, { fill: '#9fe6a0' }) + say(fonts.mono, column, y, path, 20 * k, { fill: '#f3f6ee' })
-      })
-      .join(''),
-  ].join('')
-  return { gauge: null, height, hives: [], lines: [], links: [], parts, pulse: null, typed: '', width }
+  return card(fonts, width, height, { kicker: 'Swarms', rows, title: item.title }, (hub, k) => draw(item.twigs, hub, k, item.id))
+}
+
+export function node(fonts: Fonts, item: Leaf, width: number, height: number): Scene {
+  const status = item.checked ? `Proven · checked by Lean · ${item.checked}` : words[item.status]
+  const under = below(item.counts)
+  const rows: Row[] = [
+    { cell: cell(item.status), text: status },
+    ...(item.review ? [{ fill: ink, text: 'Statement under review' }] : []),
+    ...(item.status === 'dead end' ? [{ fill: quiet, text: item.why }] : []),
+    ...(under ? [{ text: `Under it: ${under}` }] : []),
+    { text: spent(item.spent) },
+  ]
+  return card(fonts, width, height, { biggest: 48, kicker: item.swarm, rows, title: item.title }, (hub, k) => draw(item.twigs, hub, k, item.swarm, item.at))
 }

@@ -38,3 +38,45 @@ test('the webhook refuses a request without the secret', async () => {
   assert.equal(ok.status, 200)
   assert.equal(((await ok.json()) as { method: string }).method, 'sendMessage')
 })
+
+test('a start parameter can name a node of a swarm', () => {
+  assert.equal(Telegram.started(new URL('https://swarms.example/tg?tgWebAppStartParam=pnp__3fa91c2b0d')), 'pnp')
+  assert.equal(Telegram.node(new URL('https://swarms.example/tg?tgWebAppStartParam=pnp__3fa91c2b0d')), '3fa91c2b0d')
+  assert.equal(Telegram.node(new URL('https://swarms.example/tg?tgWebAppStartParam=pnp')), undefined)
+  const chat = { id: 7, type: 'private' }
+  const leaf = Telegram.answer({ message: { chat, text: '/start pnp__root' } }, 'https://swarms.example')
+  assert.deepEqual(leaf?.reply_markup.inline_keyboard[0]?.[0], { text: 'Open this node', web_app: { url: 'https://swarms.example/tg/s/pnp/n/root' } })
+  assert.doesNotMatch(leaf?.text ?? '', /fund/i)
+})
+
+const node = (status: 'proven' | 'in flight') => ({
+  by: { address: null, agent: null, handle: 'ana' },
+  children: [],
+  counts: { 'dead end': 0, funded: 0, 'in flight': 0, proposed: 0, proven: 1 },
+  createdAt: 1,
+  end: null,
+  form: 'lemma' as const,
+  funders: [],
+  id: '3fa91c2b0d',
+  money: { committed: '0.000000', granted: '0.000000', inherited: '0.000000', left: '0.000000', pledged: '0.000000', spent: '1.000000', subtree: { left: '0.000000', pledged: '0.000000', spent: '1.000000' } },
+  needs: [],
+  parent: 'root',
+  proof: { at: 5, axioms: [], checker: 'lean4checker', command: 'lake build', commit: 'abc1234def', contentHash: 'x', durationMs: 1, exitCode: 0, mathlib: 'm', repo: 'r', run: '1', statement: 's', theorem: 't', toolchain: 'l', url: 'https://github.com/example/proofs/actions/runs/1' },
+  riders: 0,
+  run: null,
+  spec: '',
+  statement: null,
+  status,
+  title: 'Parity is not in AC0',
+  updatedAt: 1,
+})
+
+test('a proof is announced to the channel with a button that opens its node', async () => {
+  const message = Telegram.notice('https://swarms.example', 'TempoSwarmsBot', 'pnp', 'Does P = NP?', { at: 1, event: 'proven', node: node('proven'), seq: 1, text: '' })
+  assert.equal(message?.text, 'Does P = NP?\nProven, checked by Lean at abc1234: Parity is not in AC0\nhttps://swarms.example/s/pnp/n/3fa91c2b0d')
+  assert.deepEqual(message?.reply_markup.inline_keyboard[0]?.[0], { text: 'See the proof', url: 'https://t.me/TempoSwarmsBot?startapp=pnp__3fa91c2b0d' })
+  assert.equal(Telegram.notice('https://swarms.example', undefined, 'pnp', 'Does P = NP?', { at: 1, event: 'progress', node: node('in flight'), seq: 2, text: '' }), undefined)
+  const env = { SWARMS_URL: 'https://swarms.example' } as unknown as Cloudflare.Env
+  assert.equal(await Telegram.announce(env, 'pnp', 'Does P = NP?', { at: 1, event: 'proven', node: node('proven'), seq: 1, text: '' }), false)
+})
+
