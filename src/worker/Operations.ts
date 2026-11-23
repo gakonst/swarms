@@ -1731,9 +1731,13 @@ export async function ledger(env: Cloudflare.Env, input: Input<'swarm'>): Promis
   return Problem.ok(await stub(env, row.value.id).treeHealth(row.value.id))
 }
 
+const ledgerSeconds = 10
+
 export async function ledgers(env: Cloudflare.Env): Promise<Ledgered[]> {
-  const { results } = await env.DB.prepare("select id from swarms where form = 'tree' and archived_at is null limit 20").all<{ id: string }>()
-  return Promise.all(results.map((row) => stub(env, row.id).treeHealth(row.id)))
+  return Edge.cached(env, 'ledgers', ledgerSeconds, async () => {
+    const { results } = await env.DB.prepare("select id from swarms where form = 'tree' and archived_at is null limit 20").all<{ id: string }>()
+    return Promise.all(results.map((row) => stub(env, row.id).treeHealth(row.id)))
+  })
 }
 
 async function plant(env: Cloudflare.Env, row: Store.Row, request: z.output<typeof schema.create>, setup: Setup.Setup) {
