@@ -273,10 +273,9 @@ export async function end(self: Swarm, input: { admin: boolean; contributor: str
   if (!task || input.nid === Nodes.root || input.nid === Nodes.triage) return fail(404, 'No node you can end has this id.')
   if (Work.terminal(task.phase)) return fail(409, 'This node has ended already.')
   if (!input.admin) {
-    const behind = new Map<string, bigint>()
-    for (const row of found.rows) if (row.node === input.nid) behind.set(row.contributor, (behind.get(row.contributor) ?? 0n) + row.amount)
-    const total = Flow.sum([...behind.values()].filter((value) => value > 0n))
-    const mine = input.contributor ? (behind.get(input.contributor.toLowerCase()) ?? 0n) : 0n
+    const behind = found.ledger.funders.get(input.nid) ?? new Map<string, { amount: bigint; since: number }>()
+    const total = Flow.sum([...behind.values()].map((held) => held.amount))
+    const mine = input.contributor ? (behind.get(input.contributor.toLowerCase())?.amount ?? 0n) : 0n
     if (total === 0n || mine * 2n <= total) return fail(403, 'Only whoever holds more than half of what is behind a node, or an admin, can end it.')
   }
   await Nodes.end(self, input.nid, { at: Date.now(), check: null, into: null, kind: 'withdrawn', why: input.why }, Runner.halt)

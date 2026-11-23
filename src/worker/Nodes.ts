@@ -246,7 +246,7 @@ export function budgeting<T>(self: Swarm, work: () => Promise<T>) {
 }
 
 export async function once<T>(self: Swarm, id: string, parent: string, work: () => Promise<T>): Promise<{ ran: true; value: T } | { ran: false }> {
-  await Work.ensure(self.board, { id, labels: { kind: 'settle' }, parent, spec: 'settle ' + parent })
+  await Work.ensure(self.board, { id, labels: { kind: 'settle', of: parent }, spec: 'settle ' + parent })
   const held = await self.board.claim(id, { leaseMs: lockMs })
   if (!held.ok) return { ran: false }
   try {
@@ -344,7 +344,8 @@ export async function postRun(self: Swarm, found: State, nid: string, run: strin
 export async function start(self: Swarm, found: State, nid: string, weighed = weights(self)) {
   const task = found.nodes.get(nid)
   if (!task || terminal(task) || nid === triage || waiting(self, nid) || !needsMet(found, task) || openRun(found, nid)) return false
-  if (children(found, nid).some((child) => !terminal(found.nodes.get(child)))) return false
+  if ((found.verifies.get(nid) ?? []).some((one) => !terminal(one))) return false
+  if (children(found, nid).some((child) => child !== triage && !terminal(found.nodes.get(child)))) return false
   const set = units(self)
   const want = set.runStep < set.runCap ? set.runStep : set.runCap
   if (left(found, nid) < want) await pull(self, found, nid, want - left(found, nid), weighed)
@@ -386,7 +387,7 @@ export async function topUp(self: Swarm, run: string, spent: bigint) {
     if (terminal(task)) return null
     const set = units(self)
     const total = bucketTotal(found, run)
-    if (total >= set.runCap || spent < total - set.runStep) return null
+    if (total >= set.runCap || total - spent > set.runStep / 2n) return null
     const room = set.runCap - total
     const want = set.runStep < room ? set.runStep : room
     if (left(found, nid) < want) await pull(self, found, nid, want - left(found, nid))
