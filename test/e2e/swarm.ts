@@ -37,9 +37,9 @@ export function swarm(dev: Dev, id: string) {
 
   const ledger = async (): Promise<Ledgered> => {
     for (const candidate of ledgerPath ? [ledgerPath] : [`/v1/swarms/${id}/health`, `/v1/swarms/${id}/ledger`, `/v1/health?swarm=${id}`]) {
-      const answered = await dev.call<Ledgered | { swarms?: Ledgered[] }>('GET', candidate)
-      const body = answered.body as Ledgered & { swarms?: Ledgered[]; tree?: Ledgered[] }
-      const found = body && typeof body === 'object' ? ('drift' in body ? body : (body.swarms ?? body.tree ?? []).find((each) => each.swarm === id)) : undefined
+      const answered = await dev.call<unknown>('GET', candidate)
+      const body = answered.body as Partial<Ledgered> & { swarms?: Ledgered[]; tree?: Ledgered[] }
+      const found = body && typeof body === 'object' ? (typeof body.drift === 'string' ? (body as Ledgered) : (body.swarms ?? body.tree ?? []).find((each) => each.swarm === id)) : undefined
       if (answered.status === 200 && found) {
         ledgerPath = candidate
         return found
