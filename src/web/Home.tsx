@@ -1,14 +1,15 @@
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
-import * as Answer from '../shared/Answer.ts'
+import { useEffect, useMemo, useState } from 'react'
 import type { Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Status from '../shared/Status.ts'
+import type * as Tree from '../shared/Tree.ts'
+import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { Card, fromProblem, fromSwarm, type Idea } from './Card.tsx'
-import { Field, type Hive } from './Field.tsx'
-import { ago, usd } from './format.ts'
+import { type Cell, Field, type Hive } from './Field.tsx'
+import { usd } from './format.ts'
 import { open as openProblems, problems } from './research.ts'
-import { href, Link, navigate } from './router.tsx'
+import { href, Link } from './router.tsx'
 import * as Wire from './wire.ts'
 
 const order = { running: 0, paused: 1, funding: 2 } as const
@@ -78,11 +79,38 @@ function keep(filter: Filter) {
   history.replaceState(history.state, '', href(`/ideas${filter === 'open' ? '' : `?filter=${filter}`}`))
 }
 
-function follow(event: MouseEvent, path: string | undefined) {
-  if (!path || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-  event.preventDefault()
-  event.stopPropagation()
-  navigate(path)
+function grown(swarm: Summary, head: Record<Tree.Status, number> | undefined): Record<Cell, number> {
+  if (head) {
+    const raw = { dead: head['dead end'], flight: head['in flight'], open: head.funded + head.proposed + 1, proven: head.proven, spent: 0 }
+    const sum = raw.dead + raw.flight + raw.open + raw.proven
+    const scale = sum > 220 ? 220 / sum : 1
+    const out = { dead: Math.round(raw.dead * scale), flight: Math.round(raw.flight * scale), open: Math.round(raw.open * scale), proven: Math.round(raw.proven * scale), spent: 0 }
+    return { ...out, open: out.open + Math.max(0, 8 - sum) }
+  }
+  const balance = Math.max(0, Number(swarm.balance))
+  const count = Math.min(200, Math.round(12 + 14 * Math.sqrt(balance)))
+  const spent = balance > 0 ? Math.round(count * Math.min(1, Math.max(0, Number(swarm.spent)) / balance)) : 0
+  const flight = swarm.status === 'running' ? Math.min(count - spent, Math.max(1, Math.min(5, swarm.machines))) : 0
+  return { dead: 0, flight, open: count - spent - flight, proven: 0, spent }
+}
+
+function useHeads(ids: readonly string[]) {
+  const [heads, setHeads] = useState<Readonly<Record<string, Record<Tree.Status, number>>>>({})
+  const key = ids.join()
+  useEffect(() => {
+    let alive = true
+    for (const id of ids)
+      Api.tree(id, { depth: 0 })
+        .then((view) => {
+          const root = view.nodes.find((node) => node.parent === null)
+          if (alive && root) setHeads((kept) => ({ ...kept, [id]: root.counts }))
+        })
+        .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [key])
+  return heads
 }
 
 function plural(count: number, word: string) {
@@ -90,39 +118,27 @@ function plural(count: number, word: string) {
 }
 
 export function Home() {
-  const { earlier, free, ideas, latest, list, open, ranked } = useIdeas()
-  const sky = useRef<HTMLElement>(null)
-  const [lit, setLit] = useState<string>()
+  const { earlier, free, ideas, list, open, ranked } = useIdeas()
   const [view, setView] = useState<'popular' | 'live' | 'new'>('popular')
-  const [now, setNow] = useState<number>()
-  useEffect(() => {
-    setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 60_000)
-    return () => clearInterval(timer)
-  }, [])
+  const heads = useHeads(ranked.filter((item) => item.form === 'tree' && !item.archivedAt).slice(0, 6).map((item) => item.id))
   const hives = useMemo<Hive[]>(() => {
-    const clock = now ?? latest
-    const joins = ranked.slice(0, 40).map(
+    const joins = [...ranked].sort((a, b) => Number(!!a.archivedAt) - Number(!!b.archivedAt)).slice(0, 14).map(
       (item): Hive => ({
-        about: (item.answer && Answer.gist(item.answer.text)) || item.goal,
-        detail: `${Status.word(item)} · ${usd(item.balance)}`,
-        facts: [plural(item.contributors, 'rider'), now ? `updated ${ago(item.updatedAt, now)}` : ''].filter(Boolean).join(' · '),
-        fresh: item.status === 'running' ? 1 : 1 / (1 + Math.max(0, clock - item.updatedAt) / 86_400_000),
-        home: 'join',
+        cells: grown(item, heads[item.id]),
+        detail: `${item.archivedAt ? 'Earlier' : Status.pill(Status.word(item))} · ${usd(item.balance)}`,
         id: item.id,
-        mood: Status.standing(item).mood,
+        live: item.status === 'running' && !item.archivedAt,
+        old: !!item.archivedAt,
+        path: Nickname.path(item),
         title: item.title,
-        updated: item.updatedAt,
-        weight: Number(item.balance),
       }),
     )
-    const seeds = free.slice(0, 10).map((item): Hive => ({ about: item.hint, detail: 'No riders yet', facts: 'Be the first rider', fresh: 0.35, home: 'start', id: `idea:${item.id}`, mood: 'new', title: item.label, updated: 0, weight: 0 }))
+    const seeds = free.slice(0, 4).map((item): Hive => ({ cells: { dead: 0, flight: 0, open: 8, proven: 0, spent: 0 }, detail: 'No riders yet', id: `idea:${item.id}`, live: false, old: false, path: Nickname.usable(item.id) ? `/${item.id}` : `/new?q=${item.id}`, title: item.label }))
     return joins.concat(seeds)
-  }, [ranked.map((item) => [item.id, item.status, item.why, item.balance, item.contributors, item.updatedAt, item.answer?.text.length].join()).join('|'), free.map((item) => item.id).join(), now])
+  }, [ranked.map((item) => [item.id, item.status, item.balance, item.spent, item.machines, item.archivedAt].join()).join('|'), free.map((item) => item.id).join(), heads])
   const working = open.filter((swarm) => swarm.status === 'running').length
   const balance = open.reduce((sum, swarm) => sum + Math.max(0, Number(swarm.remaining)), 0)
   const shown = ideas.filter((idea) => (view === 'live' ? fits.running(idea) : view === 'new' ? fits.waiting(idea) : true)).slice(0, 12)
-  const path = (id: string) => (id.startsWith('idea:') ? (Nickname.usable(id.slice(5)) ? `/${id.slice(5)}` : `/new?q=${id.slice(5)}`) : Nickname.path(ranked.find((swarm) => swarm.id === id) ?? { id }))
   const tabs = [['popular', 'Popular'], ['live', 'Working now'], ['new', 'No riders yet']] as const
 
   return (
@@ -131,8 +147,8 @@ export function Home() {
         <h1 className="hero-title">Make a breakthrough.</h1>
         <Go />
       </section>
-      <section aria-label="Swarms at work" className="sky" data-lit={!!lit} onClickCapture={(event) => follow(event, lit && path(lit))} ref={sky}>
-        <Field hives={hives} homes={{}} onPick={setLit} surface={sky} />
+      <section aria-label="Swarms at work" className="sky">
+        <Field hives={hives} />
       </section>
       <p className="hero-live" data-ready={!!list.data}>
         {working > 0 && <><i className="live-dot" />{working} working now · </>}
