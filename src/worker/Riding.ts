@@ -17,6 +17,7 @@ import * as Work from './Work.ts'
 export type Plant = {
   dispatcher: string
   rules: string
+  reviewed: boolean
   root: { statement: string | null; title: string; words: string }
   seed: Nodes.Posting[]
   settings: Nodes.Settings
@@ -42,6 +43,7 @@ export async function plant(self: Swarm, input: Plant) {
   self.kv.put('treeSetup', input.setup)
   self.kv.put('dispatcherText', input.dispatcher)
   self.kv.put('nodeRules', input.rules)
+  if (input.reviewed) self.kv.put('seedReviewed', Date.now())
   await Nodes.post(self, { by: 'seed', form: 'goal', needs: [], nid: Nodes.root, parent: null, ...input.root })
   await Nodes.post(self, { by: 'seed', form: 'triage', needs: [], nid: Nodes.triage, parent: Nodes.root, statement: null, title: 'Triage', words: "Weighs riders' proposals and suggestions for the root's money." })
   for (const node of input.seed) {
@@ -112,9 +114,7 @@ export async function node(self: Swarm, nid: string): Promise<Answer<NodeView>> 
     .all<{ author: string; created_at: number; id: string; text: string }>()
   const authors = await Store.handles(self.env, results.map((idea) => idea.author as Address))
   const suggestions: Suggestion[] = results.map((idea) => ({ at: idea.created_at, id: idea.id, text: redact(idea.text), who: Nodes.who(idea.author, authors) }))
-  const task = found.nodes.get(nid)
-  const review = !!task && task.labels['by'] === 'seed' && !self.kv.get('reviewed:' + nid) && Nodes.parse(task.spec).statement !== null
-  return { ok: true, value: { ...shown, funders: Nodes.allFunders(found, nid, names), review, runs, steers, suggestions } }
+  return { ok: true, value: { ...shown, funders: Nodes.allFunders(found, nid, names), runs, steers, suggestions } }
 }
 
 export async function deltas(self: Swarm, input: { after: number; limit: number; nid: string | null }): Promise<Answer<NodeUpdates>> {

@@ -114,6 +114,7 @@ const treeNode = object({
   needs: { items: string, type: 'array' },
   parent: nullable(string),
   proof: nullable(check),
+  review: { description: 'The statement is seeded and still under human review.', type: 'boolean' },
   riders: integer,
   run: nullable(object({ agent: nullable(integer), attempt: integer, budget: dollars, checking: { type: 'boolean' }, k: integer, since: time, spent: dollars, task: string, until: time })),
   spec: string,
@@ -139,7 +140,6 @@ const schemas = {
       treeNode,
       object({
         funders: { items: funder, type: 'array' },
-        review: { description: 'The statement is seeded and still under human review.', type: 'boolean' },
         runs: { items: object({ budget: dollars, commit: nullable(string), k: integer, outcome: nullable(string), since: time, spent: dollars, summary: string, task: string, until: nullable(time) }), type: 'array' },
         steers: { items: object({ amount: dollars, at: time, note: string, who }), type: 'array' },
         suggestions: { items: object({ at: time, id: string, text: string, who }), type: 'array' },

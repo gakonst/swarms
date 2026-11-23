@@ -302,7 +302,7 @@ export type NodeSteer = { amount: string; at: number; note: string; who: Tree.Wh
 
 export type Suggestion = { at: number; id: string; text: string; who: Tree.Who }
 
-export type NodeView = Tree.Node & { funders: Tree.Funder[]; review: boolean; runs: NodeRun[]; steers: NodeSteer[]; suggestions: Suggestion[] }
+export type NodeView = Tree.Node & { funders: Tree.Funder[]; runs: NodeRun[]; steers: NodeSteer[]; suggestions: Suggestion[] }
 
 export type NodeUpdates = { deltas: Tree.Delta[]; next: number }
 

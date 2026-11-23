@@ -1610,6 +1610,7 @@ function derive(): Record<string, Tree.Node> {
       needs: twig.needs,
       parent: twig.parent,
       proof: twig.proof,
+      review: twig.statement !== null && (scene.has('seeded') || twig.status === 'proposed'),
       riders: twig.funders.length,
       run: twig.run,
       spec: `# ${twig.title}\n\n${twig.words}${twig.statement ? `\n\n\`\`\`lean\n${twig.statement}\n\`\`\`` : ''}`,
@@ -1665,7 +1666,7 @@ export function nodeView(key: string, nidGiven: string): Promise<NodeView> {
   try {
     const found = twig(key, nidGiven)
     const node = derive()[found.id]!
-    return delay({ ...node, funders: found.funders, review: scene.has('seeded') || found.status === 'proposed', runs: [...found.runs].reverse(), steers: found.steers, suggestions: found.suggestions })
+    return delay({ ...node, funders: found.funders, runs: [...found.runs].reverse(), steers: found.steers, suggestions: found.suggestions })
   } catch (error) {
     return Promise.reject(error)
   }

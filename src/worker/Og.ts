@@ -1,7 +1,6 @@
 import { waitUntil } from 'cloudflare:workers'
 import { initWasm, Resvg } from '@resvg/resvg-wasm'
 import resvg from '@resvg/resvg-wasm/index_bg.wasm'
-import type * as Tree from '../shared/Tree.ts'
 import * as Cards from './Cards.ts'
 import type * as Edge from './Edge.ts'
 import * as Film from './Film.ts'
