@@ -220,6 +220,8 @@ app.post('/v1/swarms/:id/archive', async (c) =>
 
 app.get('/v1/swarms/:id/ledger', async (c) => Problem.respond(await Operations.ledger(c.env, { swarm: c.req.param('id') })))
 
+app.get('/v1/riders/:who', async (c) => Problem.respond(await Operations.rider(c.env, { who: c.req.param('who') })))
+
 app.get('/v1/me/swarms/:id', async (c) => Problem.respond(await Operations.standing(c.env, { swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
 
 app.post('/v1/hooks/github', async (c) => Problem.respond(await Operations.verified(c.env, c.req.raw)))

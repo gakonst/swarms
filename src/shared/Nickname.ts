@@ -50,6 +50,7 @@ export const reserved: ReadonlySet<string> = new Set([
   'swarms',
   'telegram',
   'tg',
+  'u',
   'v1',
   'x',
 ])

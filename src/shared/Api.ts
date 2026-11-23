@@ -326,3 +326,9 @@ export type Standing = { buckets: Bucket[]; committed: string; free: string; ref
 export type Ledgered = { drift: string; gateway: { deposited: string; left: string; spent: string } | null; held: string; live: string; ok: boolean; pledged: string; spent: string; swarm: string }
 
 export type Lobby = { swarm: Summary; type: 'swarm' } | { type: 'welcome' }
+
+export type Rode = { balance: string; form: SwarmForm; id: string; nickname: string | null; ridden: string; riders: number; since: number; started: boolean; title: string }
+
+export type RodeItem = { created: boolean; node: string; ridden: string; status: Tree.Status; swarm: string; title: string }
+
+export type Profile = { items: RodeItem[]; rider: Account; ridden: string; swarms: Rode[] }

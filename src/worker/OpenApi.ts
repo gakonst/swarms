@@ -691,6 +691,9 @@ export function document(origin: string) {
       '/v1/swarms/{id}/ledger': {
         get: { description: "A tree swarm's books: everything riders put in, what runs spent, what the buckets hold, live spend of runs in flight, the gateway credit and the drift between them (ok within one metered call).", operationId: 'ledger', parameters: [swarm], responses: { ...ok(object({ drift: dollars, gateway: nullable(object({ deposited: string, left: string, spent: string })), held: dollars, live: dollars, ok: { type: 'boolean' }, pledged: dollars, spent: dollars, swarm: string }), 'The books.'), ...failures(404) }, summary: 'Ledger' },
       },
+      '/v1/riders/{who}': {
+        get: { description: "A rider's profile, by username or 0x address: every swarm they rode or started with the dollars they put in, the board items they created or rode with their dollars, and the total.", operationId: 'rider', parameters: [parameter('who', 'path', string, 'A username, with or without @, or a 0x address.')], responses: { ...ok(object({ items: { items: object({ created: { type: 'boolean' }, node: string, ridden: dollars, status: string, swarm: string, title: string }), type: 'array' }, rider: { type: 'object' }, ridden: dollars, swarms: { items: object({ balance: dollars, form: string, id: string, nickname: nullable(string), ridden: dollars, riders: integer, since: integer, started: { type: 'boolean' }, title: string }), type: 'array' } }), 'The profile.'), ...failures(404) }, summary: 'A rider' },
+      },
       '/v1/me/swarms/{id}': {
         get: { description: "Signed in: your money in a tree swarm: each node's share that is yours, your free money (yours to move), what your rides spent and what is refundable.", operationId: 'standing', parameters: [swarm], responses: { ...ok(ref('Standing'), 'Your standing.'), ...failures(401, 404) }, summary: 'Your standing' },
       },

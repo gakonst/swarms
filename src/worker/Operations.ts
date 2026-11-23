@@ -41,6 +41,7 @@ import type {
   ProgressView,
   ProofsView,
   Proposed,
+  Profile,
   Standing as Rider,
   Suggested,
   TreeView,
@@ -68,6 +69,7 @@ import * as Hands from './Hands.ts'
 import * as Persona from './Persona.ts'
 import * as Progress from '../shared/Progress.ts'
 import * as Phase from './Phase.ts'
+import { within } from './Clock.ts'
 import * as Problem from './Problem.ts'
 import * as Search from './Search.ts'
 import * as Sessions from './Sessions.ts'
@@ -342,6 +344,7 @@ export const schema = {
   swarm: z.object({ swarm: id }),
   nickname: z.object({ nickname: alias.nullable().describe('The new nickname, or null to drop it. The old one keeps sending its visitors to the new page until another swarm takes it.'), swarm: id }),
   named: z.object({ name: z.string().trim().toLowerCase().max(64) }),
+  rider: z.object({ who: z.string().trim().toLowerCase().max(64).describe('A rider\'s username, with or without @, or their 0x address.') }),
   tree: z.object({
     depth: z.coerce.number().int().min(0).max(64).default(3).describe('How many levels under root to include; deeper nodes appear only as ids in children.'),
     root: nid.default('root').describe('The node to start from; root is the whole swarm.'),
@@ -1755,6 +1758,41 @@ export async function nickname(env: Cloudflare.Env, input: Input<'nickname'>, ad
   }
   const updated = await Store.find(env, row.id)
   return Problem.ok(Store.summary(updated ?? { ...row, nickname: name }))
+}
+
+export async function rider(env: Cloudflare.Env, input: Input<'rider'>): Promise<Problem.Result<Profile>> {
+  const parsed = parse(schema.rider, input)
+  if (!parsed.ok) return parsed
+  const who = parsed.value.who.replace(/^@/, '')
+  const address = isAddress(who) ? (who as Address) : await Store.holder(env, who)
+  if (!address) return Problem.fail(404, 'not_found', 'No rider has this name.')
+  const lower = address.toLowerCase()
+  const [account, found] = await Promise.all([Store.account(env, address), Store.ridden(env, address)])
+  const rows = await Promise.all(found.swarms.map((one) => Store.find(env, one.swarm)))
+  const trees = await Promise.all(rows.map((row) => (row?.form === 'tree' ? within(tree(env, { depth: 64, swarm: row.id }), 2500) : undefined)))
+  const swarms: Profile['swarms'] = []
+  const items: Profile['items'] = []
+  rows.forEach((row, index) => {
+    const one = found.swarms[index]
+    if (!row || !one) return
+    const summary = Store.summary(row)
+    swarms.push({ balance: summary.balance, form: summary.form, id: row.id, nickname: summary.nickname, ridden: Memo.decimal(BigInt(one.ridden)), riders: summary.contributors, since: one.since, started: !!one.started, title: row.title })
+    const read = trees[index]
+    const nodes = read?.ok ? read.value.nodes : []
+    const mine = (node: Tree.Node) => node.by.agent === null && node.by.address?.toLowerCase() === lower
+    const amounts = new Map(found.nodes.filter((each) => each.swarm === row.id).map((each) => [each.node, BigInt(each.ridden)]))
+    for (const node of nodes) {
+      if (node.form === 'goal' || node.form === 'triage') continue
+      const amount = amounts.get(node.id)
+      if (amount === undefined && !mine(node)) continue
+      items.push({ created: mine(node), node: node.id, ridden: Memo.decimal(amount ?? 0n), status: node.status, swarm: row.id, title: node.title })
+    }
+  })
+  const order = (a: { ridden: string }, b: { ridden: string }) => Number(Memo.units(b.ridden) - Memo.units(a.ridden))
+  swarms.sort((a, b) => order(a, b) || b.since - a.since)
+  items.sort(order)
+  const total = found.swarms.reduce((sum, one) => sum + BigInt(one.ridden), 0n)
+  return Problem.ok({ items, rider: account, ridden: Memo.decimal(total), swarms })
 }
 
 export async function named(env: Cloudflare.Env, input: Input<'named'>): Promise<Problem.Result<Named>> {

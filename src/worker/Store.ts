@@ -717,3 +717,24 @@ export async function settle(env: Cloudflare.Env, input: Settlement) {
   ]).finally(() => wrote(input.swarm))
   return (returned?.results ?? []).map((row) => ({ amount: -BigInt(row.amount), budget: row.budget, contributor: row.contributor }))
 }
+
+export async function holder(env: Cloudflare.Env, name: string) {
+  const row = await env.DB.prepare('select address from names where name = ?').bind(name.toLowerCase()).first<{ address: `0x${string}` }>()
+  return row?.address
+}
+
+export async function ridden(env: Cloudflare.Env, address: `0x${string}`) {
+  const lower = address.toLowerCase()
+  const [swarms, nodes] = await env.DB.batch<Record<string, unknown>>([
+    env.DB.prepare(
+      `select s.id as swarm, coalesce(c.ridden, 0) as ridden, coalesce(c.since, s.created_at) as since, lower(coalesce(s.creator, '')) = ?1 as started
+      from swarms s left join (select swarm, sum(cast(amount as integer)) as ridden, min(created_at) as since from contributions where contributor = ?1 group by swarm) c on c.swarm = s.id
+      where s.hidden = 0 and (c.swarm is not null or lower(coalesce(s.creator, '')) = ?1 or s.id in (select swarm from ideas where lower(author) = ?1))`,
+    ).bind(lower),
+    env.DB.prepare("select swarm, node, sum(amount) as ridden from flows where contributor = ?1 and kind = 'pledge' and node != '' group by swarm, node").bind(lower),
+  ])
+  return {
+    nodes: (nodes?.results ?? []) as { node: string; ridden: number; swarm: string }[],
+    swarms: (swarms?.results ?? []) as { ridden: number; since: number; started: number; swarm: string }[],
+  }
+}
