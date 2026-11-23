@@ -131,6 +131,7 @@ export async function start(options: Options = {}) {
   const artifacts = new Map<number, { name: string; run: number; zip: Buffer }>()
   const deliveries: { body: string; status: number; url: string }[] = []
   const errors: string[] = []
+  const calls: { method: string; path: string; status: number }[] = []
   const settings = { delayMs: options.delayMs === undefined ? 200 : options.delayMs, hook: options.hook ?? null }
   let next = 9_000_000_000
   let url = ''
@@ -293,6 +294,7 @@ export async function start(options: Options = {}) {
       const authorized = request.headers['authorization'] === 'Bearer ' + token || request.headers['authorization'] === 'token ' + token
       answer(request.method ?? 'GET', parsed.pathname, parsed.searchParams, body, authorized).then(
         (found) => {
+          calls.push({ method: request.method ?? 'GET', path: parsed.pathname, status: found.status })
           if (found.bytes) {
             response.writeHead(found.status, { 'content-type': found.type ?? 'application/octet-stream' })
             return response.end(found.bytes)
@@ -318,6 +320,7 @@ export async function start(options: Options = {}) {
       server.closeAllConnections()
       await new Promise<void>((resolve) => server.close(() => resolve()))
     },
+    calls,
     complete,
     deliveries,
     errors,

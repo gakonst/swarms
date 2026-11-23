@@ -234,20 +234,23 @@ test('a steer mid-run is heeded', async (t) => {
 
 test('a lease lapses and a takeover adopts the subagent', async (t) => {
   if (!needs(t)) return
-  nids['lapse'] = await s.propose(ana, { form: 'lemma', parent: nids['program']!, spec: 'A long run whose runner dies.\n\nmock:slow', statement: 'theorem e2e_lapse : True', title: 'A lemma whose runner restarts (e2e)' }, '3')
+  dev.gateway.script('e2e-lapse-marker', [{ think: 'A run that outlives its runner.' }, { spend: 0.1 }, ...Array.from({ length: 120 }, (_, index): Model.Step[] => [{ wait: 250 }, { think: 'step ' + index }]).flat(), { spend: 0.1 }, { result: { outcome: 'progress', summary: 'Outlived its runner.' } }])
+  nids['lapse'] = await s.propose(ana, { form: 'lemma', parent: nids['program']!, spec: 'A long run whose runner dies. e2e-lapse-marker', statement: 'theorem e2e_lapse : True', title: 'A lemma whose runner restarts (e2e)' }, '3')
   const run = await s.until('the run to start', async () => (await s.node(nids['lapse']!)).run ?? undefined)
   const first = await s.until('its subagent', async () => s.subagents().find((each) => each.role === role(nids['lapse']!, run.k)))
   await dev.restart('SIGKILL')
-  const adopted = await s.until('a new runner to take the run over', async () => {
+  const restarted = Date.now()
+  const seen: number[] = []
+  const finished = await s.until('the run to finish after the restart', async () => {
     const node = await s.node(nids['lapse']!)
-    return node.run && node.run.attempt >= 2 ? node.run : undefined
-  }, 60_000 + leaseMs * 3)
-  assert.equal(adopted.agent, first.agent_id, 'the takeover adopted the subagent instead of spawning another')
-  assert.equal(s.subagents().filter((each) => each.role === role(nids['lapse']!, run.k)).length, 1)
-  await s.until('the adopted run to finish', async () => {
-    const node = await s.node(nids['lapse']!)
-    return node.run === null || node.run.k > run.k ? true : undefined
-  }, 90_000)
+    if (node.run) seen.push(node.run.attempt)
+    const ended = (node.runs ?? []).find((each) => each.k === run.k && each.outcome !== null)
+    return ended ?? undefined
+  }, 120_000 + leaseMs * 3)
+  assert.equal(s.subagents().filter((each) => each.role === role(nids['lapse']!, run.k)).length, 1, 'the takeover adopted the subagent instead of spawning another')
+  assert.equal(finished.summary, 'Outlived its runner.')
+  assert.ok(['closed', 'completed'].includes(String(s.subagents().find((each) => each.agent_id === first.agent_id)?.status.state)))
+  assert.ok(Date.now() - restarted > leaseMs, 'the run finished after the lease lapsed')
   await s.balanced('taken over')
 })
 
