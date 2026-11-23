@@ -135,17 +135,6 @@ export function rows(nodes: Readonly<Record<string, Tree.Node>>, root: string, o
   return out
 }
 
-export function level(nodes: Readonly<Record<string, Tree.Node>>, at: string, filter: Filter) {
-  const node = nodes[at]
-  if (!node) return []
-  return node.children.flatMap((id) => {
-    const child = nodes[id]
-    if (!child) return []
-    if (filter !== 'all' && !rows(nodes, id, new Set(), filter).length) return []
-    return [{ depth: 0, frontier: frontier(child, nodes), hit: fits(filter, child), node: child, open: false } satisfies Row]
-  })
-}
-
 export function trail(nodes: Readonly<Record<string, Tree.Node>>, id: string) {
   const path: Tree.Node[] = []
   for (let at: string | null = id, guard = 0; at && guard < 64; guard++) {
@@ -161,12 +150,6 @@ export function missing(nodes: Readonly<Record<string, Tree.Node>>, id: string) 
   return nodes[id]?.children.some((child) => !nodes[child]) ?? false
 }
 
-export function share(node: Tree.Node) {
-  const spent = Number(node.money.subtree.spent)
-  const whole = spent + Number(node.money.subtree.left)
-  return whole > 0 ? Math.min(1, spent / whole) : 0
-}
-
 export function since(nodes: Readonly<Record<string, Tree.Node>>, at: number) {
   const all = Object.values(nodes)
   const proven = all.filter((node) => node.status === 'proven' && (node.proof?.at ?? 0) > at)
@@ -175,32 +158,19 @@ export function since(nodes: Readonly<Record<string, Tree.Node>>, at: number) {
   return { dead, posted, proven }
 }
 
-function below(nodes: Readonly<Record<string, Tree.Node>>, id: string) {
-  const out: Tree.Node[] = []
-  const walk = (at: string, depth: number) => {
-    for (const child of nodes[at]?.children ?? []) {
-      const node = nodes[child]
-      if (!node || depth > 64) continue
-      out.push(node)
-      walk(child, depth + 1)
-    }
-  }
-  walk(id, 0)
-  return out
+
+export function pledged(node: Tree.Node) {
+  return units(node.money.subtree.pledged)
 }
 
-export type State = { blocker: string | null; last: { at: number; node: Tree.Node; word: 'Proven' | 'Dead end' } | null; next: string | null; working: Tree.Node | null }
+export function ranked(nodes: Readonly<Record<string, Tree.Node>>, id: string, filter: Filter) {
+  const kids = (nodes[id]?.children ?? []).flatMap((child) => {
+    const node = nodes[child]
+    return node && node.form !== 'triage' && (filter === 'all' || rows(nodes, child, new Set(), filter).length) ? [node] : []
+  })
+  return kids.sort((a, b) => Number(a.status === 'dead end') - Number(b.status === 'dead end') || (pledged(b) > pledged(a) ? 1 : pledged(b) < pledged(a) ? -1 : 0) || a.createdAt - b.createdAt)
+}
 
-export function state(nodes: Readonly<Record<string, Tree.Node>>, id: string): State {
-  const under = below(nodes, id)
-  const ends = under.flatMap((node): NonNullable<State['last']>[] => (node.status === 'proven' && node.proof ? [{ at: node.proof.at, node, word: 'Proven' }] : node.status === 'dead end' && node.end ? [{ at: node.end.at, node, word: 'Dead end' }] : []))
-  const last = ends.sort((a, b) => b.at - a.at)[0] ?? null
-  const working = under.find((node) => node.status === 'in flight') ?? null
-  const open = under.filter((node) => node.form === 'lemma' && !closed(node))
-  const poor = open.find((node) => frontier(node, nodes) && needsMoney(node))
-  const waits = open.find((node) => !frontier(node, nodes))
-  const waitsOn = waits?.needs.map((need) => nodes[need]).find((need) => need && need.status !== 'proven')
-  const blocker = poor ? `${poor.title} needs money` : waits && waitsOn ? `${waits.title} waits on ${waitsOn.title}` : null
-  const ready = open.find((node) => frontier(node, nodes) && node.status !== 'in flight')
-  return { blocker, last, next: ready ? ready.title : null, working }
+export function sum(nodes: readonly Tree.Node[]) {
+  return decimal(nodes.reduce((total, node) => total + pledged(node), 0n))
 }

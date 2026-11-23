@@ -17,17 +17,25 @@ function dollars(value: string) {
   return number >= 100 ? `$${Math.round(number).toLocaleString('en-US')}` : usd(value)
 }
 
-export function Spark(props: { burn: Tree.Burn | undefined; proven: number; now: number }) {
+export function Growth(props: { burn: Tree.Burn | undefined; headline: Tree.Headline; now: number }) {
+  const head = props.headline
   const points = [...(props.burn ?? [])]
   const tail = points.at(-1)
-  if (!tail || props.proven > tail.proven) points.push({ at: Math.max(props.now, (tail?.at ?? 0) + 1), deadEnds: tail?.deadEnds ?? 0, proven: props.proven, spent: tail?.spent ?? '0' })
+  if (!tail || head.proven !== tail.proven || head.deadEnds !== tail.deadEnds) points.push({ at: Math.max(props.now, (tail?.at ?? 0) + 1), deadEnds: head.deadEnds, proven: head.proven, spent: tail?.spent ?? '0' })
   const first = points[0]?.at ?? 0
   const span = Math.max(1, (points.at(-1)?.at ?? 1) - first)
-  const top = Math.max(1, ...points.map((point) => point.proven))
-  const line = points.map((point) => `${((point.at - first) / span) * 116 + 2},${26 - (point.proven / top) * 22}`).join(' ')
+  const unit = Math.min(22 / Math.max(1, ...points.map((point) => point.proven)), 10 / Math.max(1, ...points.map((point) => point.deadEnds)))
+  const x = (at: number) => 2 + ((at - first) / span) * 196
+  const steps = (value: (point: Tree.Burn[number]) => number, sign: number) => points.map((point, index) => `${index ? 'H' : 'M'}${x(point.at).toFixed(1)}${index ? '' : ',24'}V${(24 - sign * value(point) * unit).toFixed(1)}`).join('') + 'H200'
+  const up = steps((point) => point.proven, 1)
+  const down = steps((point) => point.deadEnds, -1)
   return (
-    <svg aria-label={`${props.proven} proven over time`} className="spark" role="img" viewBox="0 0 120 28">
-      <polyline points={points.length > 1 ? line : '2,26 118,26'} />
+    <svg aria-label={`${head.proven} proven and ${head.deadEnds} dead ends over time, ${head.inFlight} in flight now`} className="growth" role="img" viewBox="0 0 208 36">
+      <path className="growth-up" d={`${up}V24H2Z`} />
+      <path className="growth-down" d={`${down}V24H2Z`} />
+      <path className="growth-line" d={up} />
+      <line className="growth-base" x1="2" x2="200" y1="24" y2="24" />
+      {head.inFlight > 0 && <circle className="growth-now" cx="203" cy="24" r="3" />}
     </svg>
   )
 }
@@ -45,7 +53,7 @@ export function Headline(props: { burn: Tree.Burn | undefined; headline: Tree.He
           <span><b>{count(head.deadEnds)}</b> dead ends</span>
           <span><b>{dollars(head.spent)}</b> spent{head.perProven && <>, {dollars(head.perProven)} a proof</>}</span>
         </p>
-        <Spark burn={props.burn} now={props.now} proven={head.proven} />
+        <Growth burn={props.burn} headline={head} now={props.now} />
       </div>
       <p className="headline-last">
         {props.last ? (
@@ -55,34 +63,6 @@ export function Headline(props: { burn: Tree.Burn | undefined; headline: Tree.He
         ) : head.proven > 0 ? 'Checked by Lean' : 'Nothing proven yet. Lean decides what is proven.'}
       </p>
     </header>
-  )
-}
-
-export function Program(props: { id: string; node: Tree.Node; nodes: Readonly<Record<string, Tree.Node>>; now: number; selected: boolean }) {
-  const node = props.node
-  const base = useBase(props.id)
-  const state = Grove.state(props.nodes, node.id)
-  return (
-    <Link className="program" data={{ 'data-selected': String(props.selected) }} keep to={`${base}/n/${node.id}`}>
-      <b className="program-title">{node.title}</b>
-      <span className="program-counts">{node.counts.proven} proven · {node.counts['in flight']} in flight · {node.counts['dead end']} dead ends</span>
-      <span className="program-line" title={state.last ? state.last.node.title : undefined}><i>Last</i>{state.last ? `${state.last.word}: ${state.last.node.title}, ${ago(state.last.at, props.now)}` : 'Nothing settled yet'}</span>
-      <span className="program-line" title={state.blocker ?? undefined}><i>Blocker</i>{state.blocker ?? 'None'}</span>
-      <span className="program-line"><i>{state.working ? 'Working' : 'Next'}</i>{state.working?.title ?? state.next ?? 'Propose a lemma'}</span>
-    </Link>
-  )
-}
-
-export function Programs(props: { id: string; nodes: Readonly<Record<string, Tree.Node>>; now: number; selected: string }) {
-  const programs = (props.nodes['root']?.children ?? []).flatMap((child) => {
-    const node = props.nodes[child]
-    return node && node.form === 'program' ? [node] : []
-  })
-  if (!programs.length) return null
-  return (
-    <nav aria-label="Programs" className="programs">
-      {programs.map((node) => <Program id={props.id} key={node.id} node={node} nodes={props.nodes} now={props.now} selected={props.selected === node.id} />)}
-    </nav>
   )
 }
 

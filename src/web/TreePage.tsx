@@ -4,12 +4,14 @@ import type * as Tree from '../shared/Tree.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import * as Grove from './grove.ts'
-import { Headline, Program, Programs, Since } from './Headline.tsx'
+import { Branches, Peek } from './Branches.tsx'
+import { Headline, Since } from './Headline.tsx'
 import { useMedia, useNow, usePoll } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { NodePanel } from './Node.tsx'
 import { Link, navigate, useBase, useQuery } from './router.tsx'
-import { Filters, Level, Outline } from './Tree.tsx'
+import { scene } from './stage.ts'
+import { Filters } from './Tree.tsx'
 import * as Wire from './wire.ts'
 
 const downMs = 15_000
@@ -34,6 +36,13 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const [burn, reburn] = usePoll(() => Api.burn(id), null, `burn:${id}`)
   const [proofs, reproof, setProofs] = usePoll(() => Api.proofs(id), null, `proofs:${id}`)
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(['root', ...(tree.data?.nodes.find((node) => node.id === 'root')?.children ?? [])]))
+  const [more, setMore] = useState<Readonly<Record<string, number>>>({})
+  const [peek, setPeek] = useState<string | undefined>(() => (at === 'root' ? undefined : at))
+  const focus = phone ? (peek ?? 'root') : selected
+
+  useEffect(() => {
+    if (at !== 'root') setPeek(at)
+  }, [at])
 
   const wired = Wire.useWire(id, 'room', (signal) => {
     if (signal.type === 'delta') {
@@ -73,9 +82,9 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
 
   useEffect(() => {
     if (!grove) return
-    const trail = Grove.trail(grove.nodes, selected).map((node) => node.id)
-    if (trail.some((nid) => !open.has(nid) && nid !== selected)) setOpen((current) => new Set([...current, ...trail.slice(0, -1)]))
-  }, [selected, !!grove])
+    const trail = Grove.trail(grove.nodes, focus).map((node) => node.id)
+    if (trail.some((nid) => !open.has(nid) && nid !== focus)) setOpen((current) => new Set([...current, ...trail.slice(0, -1)]))
+  }, [focus, !!grove])
 
   useEffect(() => {
     if (!grove || !view.data || grove.nodes[selected]) return
@@ -110,23 +119,20 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   }
 
   const pick = (node: Tree.Node) => {
-    if (phone) {
-      if (node.children.length) {
-        unfold(node)
-        navigate(`${base}?in=${node.id}`, { keep: true })
-      } else navigate(path(node.id), { keep: true })
-      return
-    }
-    const again = node.id === selected
-    setOpen((current) => {
-      const next = new Set(current)
-      if (again && next.has(node.id)) next.delete(node.id)
-      else next.add(node.id)
-      return next
-    })
+    const again = node.id === focus
+    if (node.form !== 'goal')
+      setOpen((current) => {
+        const next = new Set(current)
+        if (again && next.has(node.id)) next.delete(node.id)
+        else next.add(node.id)
+        return next
+      })
     unfold(node)
-    if (!again) navigate(path(node.id), { keep: true, replace: true })
+    if (phone) setPeek(node.id)
+    else if (!again) navigate(path(node.id), { keep: true, replace: true })
   }
+
+  const propose = (nid: string) => `${path(nid)}?propose`
 
   if (!grove)
     return tree.error ? (
@@ -140,28 +146,36 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
 
   const last = proofs.data?.proofs[0]
   const nodeShown = !phone || props.nid !== undefined
-  const levelAt = nodes[at] ? at : 'root'
   return (
     <article className="grove" data-node={phone && props.nid !== undefined ? 'open' : undefined} data-wire={wired}>
       <Headline burn={burn.data?.burn} headline={grove.headline} id={id} last={last} now={now} />
       <div className="grove-body">
         <section aria-label="The tree" className="grove-tree">
-          {!phone && <Programs id={id} nodes={nodes} now={now} selected={selected} />}
           <Filters filter={filter} nodes={nodes} onFilter={filtered} />
           <div className="grove-scroll">
-            {phone && nodes[levelAt]?.form === 'program' && <Program id={id} node={nodes[levelAt]!} nodes={nodes} now={now} selected={false} />}
-            {phone ? (
-              <Level at={levelAt} filter={filter} landed={grove.landed} level={(nid) => (nid === 'root' ? base : `${base}?in=${nid}`)} nodes={nodes} onPick={pick} path={path} />
-            ) : (
-              <Outline filter={filter} landed={grove.landed} nodes={nodes} onPick={pick} open={open} path={path} selected={selected} />
-            )}
+            <Branches
+              filter={filter}
+              landed={grove.landed}
+              more={more}
+              nodes={nodes}
+              now={now}
+              onMore={(nid, count) => setMore((current) => ({ ...current, [nid]: count }))}
+              onPick={pick}
+              onPropose={(node) => navigate(propose(node.id), { keep: true, replace: !phone })}
+              open={open}
+              path={path}
+              propose={propose}
+              selected={phone ? (peek ?? '') : selected}
+              shape={scene.has('spine') ? 'spine' : 'tree'}
+            />
           </div>
+          {phone && peek && nodes[peek] && <Peek node={nodes[peek]!} nodes={nodes} to={path(peek)} />}
           <Since id={id} nodes={nodes} now={now} />
         </section>
         {nodeShown && (
           <section aria-label="The selected node" className="grove-node">
             <NodePanel
-              back={phone ? (nodes[selected]?.parent && nodes[selected]?.parent !== 'root' ? `${base}?in=${nodes[selected]?.parent}` : base) : undefined}
+              back={phone ? (selected === 'root' ? base : `${base}?in=${selected}`) : undefined}
               config={props.config}
               error={view.error}
               nid={selected}
