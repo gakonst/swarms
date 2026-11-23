@@ -1,0 +1,385 @@
+{
+  "problem": "pnp",
+  "title": "Does P = NP?",
+  "toolchain": "leanprover/lean4:v4.36.0",
+  "mathlib": "fc4f59e577feb1a4956671bc04ac18aaaf8cd842",
+  "header": "import Pnp.Defs\n\nnamespace Pnp",
+  "reviewed": false,
+  "nodes": [
+    {
+      "id": "root",
+      "parent": null,
+      "form": "goal",
+      "title": "Does P = NP?",
+      "spec": "Does P = NP?\n\nDecide whether every problem whose solutions can be checked in polynomial time can also be solved in polynomial time. Lean decides what is proven: a node is proven only when its frozen statement checks against the pinned Mathlib.",
+      "statement": null,
+      "stmt": "none",
+      "needs": []
+    },
+    {
+      "id": "23a8aa7a3f",
+      "parent": "root",
+      "form": "program",
+      "title": "Foundations: machines, P, NP and Cook-Levin",
+      "spec": "Foundations: machines, P, NP and Cook-Levin\n\nFix the ground every other program stands on: P and NP over binary words on Mathlib's TM2 machines, polynomial-time reductions, SAT, and Cook-Levin, which makes SAT the one problem the whole question turns on.",
+      "statement": null,
+      "stmt": "none",
+      "needs": []
+    },
+    {
+      "id": "d11c640642",
+      "parent": "root",
+      "form": "program",
+      "title": "Lower bounds: toward P ≠ NP",
+      "spec": "Lower bounds: toward P ≠ NP\n\nAim at P ≠ NP from below with circuit lower bounds. A superpolynomial circuit lower bound for an NP problem separates P from NP; the known bounds are for restricted circuits (monotone, constant depth), and the barriers program says why their methods stop there.",
+      "statement": null,
+      "stmt": "none",
+      "needs": []
+    },
+    {
+      "id": "02f879c716",
+      "parent": "root",
+      "form": "program",
+      "title": "Barriers: relativization, natural proofs, algebrization",
+      "spec": "Barriers: relativization, natural proofs, algebrization\n\nTheorems about proofs: no argument that relativizes, is natural, or algebrizes can settle P vs NP. Formalize them, and use them to end lines of attack as dead ends with the reason.",
+      "statement": null,
+      "stmt": "none",
+      "needs": []
+    },
+    {
+      "id": "315af74bc7",
+      "parent": "root",
+      "form": "program",
+      "title": "Upper bounds: toward P = NP",
+      "spec": "Upper bounds: toward P = NP\n\nAim at P = NP from above: polynomial algorithms for restricted SAT, Schaefer's dichotomy for which Boolean constraint problems are easy, and claimed algorithms for SAT refuted by checked counterexamples.",
+      "statement": null,
+      "stmt": "none",
+      "needs": []
+    },
+    {
+      "id": "ae3213ebe6",
+      "parent": "23a8aa7a3f",
+      "form": "lemma",
+      "title": "Polynomial-time functions compose",
+      "spec": "Polynomial-time functions compose\n\nA polynomial-time function followed by another is polynomial time.\n\n```lean\n∀ f g : Word → Word, PolyTime f → PolyTime g → PolyTime (g ∘ f)\n```",
+      "statement": "∀ f g : Word → Word, PolyTime f → PolyTime g → PolyTime (g ∘ f)",
+      "stmt": "32bc45c51130a6e5",
+      "needs": []
+    },
+    {
+      "id": "35f4b9585d",
+      "parent": "23a8aa7a3f",
+      "form": "lemma",
+      "title": "P is contained in NP",
+      "spec": "P is contained in NP\n\nEvery language decided in polynomial time has polynomial-time checkable certificates (the empty one).\n\n```lean\n∀ L : Lang, InP L → InNP L\n```",
+      "statement": "∀ L : Lang, InP L → InNP L",
+      "stmt": "a822d83c3bc5fadf",
+      "needs": []
+    },
+    {
+      "id": "fa40748031",
+      "parent": "23a8aa7a3f",
+      "form": "lemma",
+      "title": "Reductions are transitive",
+      "spec": "Reductions are transitive\n\nIf A reduces to B and B to C in polynomial time, then A reduces to C.\n\n```lean\n∀ A B C : Lang, PolyReduces A B → PolyReduces B C → PolyReduces A C\n```",
+      "statement": "∀ A B C : Lang, PolyReduces A B → PolyReduces B C → PolyReduces A C",
+      "stmt": "59b4c5b0b1568fb3",
+      "needs": [
+        "ae3213ebe6"
+      ]
+    },
+    {
+      "id": "4b388ede84",
+      "parent": "23a8aa7a3f",
+      "form": "lemma",
+      "title": "P is closed under reductions",
+      "spec": "P is closed under reductions\n\nA language that reduces to one in P is in P.\n\n```lean\n∀ A B : Lang, PolyReduces A B → InP B → InP A\n```",
+      "statement": "∀ A B : Lang, PolyReduces A B → InP B → InP A",
+      "stmt": "39085a851401dff8",
+      "needs": [
+        "ae3213ebe6"
+      ]
+    },
+    {
+      "id": "9eb0df13dc",
+      "parent": "23a8aa7a3f",
+      "form": "lemma",
+      "title": "NP is closed under reductions",
+      "spec": "NP is closed under reductions\n\nA language that reduces to one in NP is in NP.\n\n```lean\n∀ A B : Lang, PolyReduces A B → InNP B → InNP A\n```",
+      "statement": "∀ A B : Lang, PolyReduces A B → InNP B → InNP A",
+      "stmt": "9a982abb925cebfe",
+      "needs": [
+        "ae3213ebe6"
+      ]
+    },
+    {
+      "id": "dbbb55ee8d",
+      "parent": "23a8aa7a3f",
+      "form": "lemma",
+      "title": "SAT is in NP",
+      "spec": "SAT is in NP\n\nA satisfying assignment is a certificate that a CNF formula is satisfiable, checkable in polynomial time.\n\n```lean\nInNP SAT\n```",
+      "statement": "InNP SAT",
+      "stmt": "d7246ada4f3055ca",
+      "needs": []
+    },
+    {
+      "id": "ca0fc7256b",
+      "parent": "23a8aa7a3f",
+      "form": "lemma",
+      "title": "Cook-Levin: SAT is NP-complete",
+      "spec": "Cook-Levin: SAT is NP-complete\n\nEvery NP language reduces to SAT in polynomial time, by encoding an accepting run of its verifier as a CNF formula.\n\n```lean\nNPComplete SAT\n```",
+      "statement": "NPComplete SAT",
+      "stmt": "a36c6f525a6c3c8e",
+      "needs": [
+        "dbbb55ee8d"
+      ]
+    },
+    {
+      "id": "9c37ac506c",
+      "parent": "23a8aa7a3f",
+      "form": "lemma",
+      "title": "P = NP exactly when SAT is in P",
+      "spec": "P = NP exactly when SAT is in P\n\nWith Cook-Levin, the whole question is whether one problem, SAT, has a polynomial algorithm.\n\n```lean\nPEqNP ↔ InP SAT\n```",
+      "statement": "PEqNP ↔ InP SAT",
+      "stmt": "66a215faab8c0645",
+      "needs": [
+        "ca0fc7256b",
+        "4b388ede84"
+      ]
+    },
+    {
+      "id": "8daffbfbe1",
+      "parent": "23a8aa7a3f",
+      "form": "lemma",
+      "title": "3-SAT is NP-complete",
+      "spec": "3-SAT is NP-complete\n\nClauses of at most three literals are already as hard as SAT.\n\n```lean\nNPComplete ThreeSAT\n```",
+      "statement": "NPComplete ThreeSAT",
+      "stmt": "22664f0f97cf803f",
+      "needs": [
+        "ca0fc7256b",
+        "fa40748031"
+      ]
+    },
+    {
+      "id": "93c4d31c35",
+      "parent": "23a8aa7a3f",
+      "form": "lemma",
+      "title": "Oracle machines with no oracle decide exactly P",
+      "spec": "Oracle machines with no oracle decide exactly P\n\nThe oracle machine model the barriers program uses agrees with Mathlib's TM2 model when the oracle is empty.\n\n```lean\n∀ L : Lang, InP L ↔ InPO ∅ L\n```",
+      "statement": "∀ L : Lang, InP L ↔ InPO ∅ L",
+      "stmt": "cf929edeccd9f8d3",
+      "needs": []
+    },
+    {
+      "id": "c7bea4e90e",
+      "parent": "d11c640642",
+      "form": "lemma",
+      "title": "Most Boolean functions need large circuits (Shannon)",
+      "spec": "Most Boolean functions need large circuits (Shannon)\n\nCounting circuits against functions: for large n some function of n inputs needs fan-in-two circuits of size about 2^n / n.\n\n```lean\n∃ n₀ : ℕ, ∀ n ≥ n₀, ∃ f : BoolFn n, 2 ^ n ≤ 10 * n * circuitSize n f\n```",
+      "statement": "∃ n₀ : ℕ, ∀ n ≥ n₀, ∃ f : BoolFn n, 2 ^ n ≤ 10 * n * circuitSize n f",
+      "stmt": "303208b52040a135",
+      "needs": []
+    },
+    {
+      "id": "d658fca714",
+      "parent": "d11c640642",
+      "form": "lemma",
+      "title": "Monotone circuits compute monotone functions",
+      "spec": "Monotone circuits compute monotone functions\n\nA circuit with no negations computes a monotone function: turning inputs on never turns the output off.\n\n```lean\n∀ (c : Circuit) (n : ℕ), c.Monotone → Monotone fun x : Fin n → Bool => c.eval (extend x)\n```",
+      "statement": "∀ (c : Circuit) (n : ℕ), c.Monotone → Monotone fun x : Fin n → Bool => c.eval (extend x)",
+      "stmt": "ce1fa8ec70402678",
+      "needs": []
+    },
+    {
+      "id": "8b0c6e4163",
+      "parent": "d11c640642",
+      "form": "lemma",
+      "title": "Switching lemma (Håstad, in counting form)",
+      "spec": "Switching lemma (Håstad, in counting form)\n\nA random restriction leaving ℓ of n variables free collapses a width-w DNF to a shallow decision tree, except for a (10ℓw/n)^t fraction of restrictions.\n\n```lean\n∀ (n w t ℓ : ℕ) (F : DNF n), F.width ≤ w → ((badRestrictions F ℓ t).card : ℝ) ≤ ((10 * ℓ * w : ℝ) / n) ^ t * (restrictions n ℓ).card\n```",
+      "statement": "∀ (n w t ℓ : ℕ) (F : DNF n), F.width ≤ w → ((badRestrictions F ℓ t).card : ℝ) ≤ ((10 * ℓ * w : ℝ) / n) ^ t * (restrictions n ℓ).card",
+      "stmt": "e8e42bc2989d8cf5",
+      "needs": []
+    },
+    {
+      "id": "4c4401c81d",
+      "parent": "d11c640642",
+      "form": "lemma",
+      "title": "Håstad's bound: parity needs exponential size at constant depth",
+      "spec": "Håstad's bound: parity needs exponential size at constant depth\n\nDepth-d unbounded fan-in circuits for parity on n inputs have size at least 2^(n^(1/(d-1))/10) for large n.\n\n```lean\n∀ d : ℕ, 2 ≤ d → ∃ n₀ : ℕ, ∀ n ≥ n₀, ∀ c : Circuit, c.depth ≤ d → Computes c n (parity n) → (2 : ℝ) ^ ((n : ℝ) ^ ((1 : ℝ) / ((d : ℝ) - 1)) / 10) ≤ c.size\n```",
+      "statement": "∀ d : ℕ, 2 ≤ d → ∃ n₀ : ℕ, ∀ n ≥ n₀, ∀ c : Circuit, c.depth ≤ d → Computes c n (parity n) → (2 : ℝ) ^ ((n : ℝ) ^ ((1 : ℝ) / ((d : ℝ) - 1)) / 10) ≤ c.size",
+      "stmt": "a377ade69dcc196e",
+      "needs": [
+        "8b0c6e4163"
+      ]
+    },
+    {
+      "id": "c9e51a643d",
+      "parent": "d11c640642",
+      "form": "lemma",
+      "title": "Parity is not in AC0",
+      "spec": "Parity is not in AC0\n\nNo family of constant-depth, polynomial-size circuits computes parity.\n\n```lean\n¬ InAC0 parity\n```",
+      "statement": "¬ InAC0 parity",
+      "stmt": "a2e2e08fe976191b",
+      "needs": [
+        "4c4401c81d"
+      ]
+    },
+    {
+      "id": "c0b9a05514",
+      "parent": "d11c640642",
+      "form": "lemma",
+      "title": "Monotone circuits for clique need exponential size (Razborov, Alon-Boppana)",
+      "spec": "Monotone circuits for clique need exponential size (Razborov, Alon-Boppana)\n\nMonotone fan-in-two circuits that detect a clique of size about m^(1/4) in an m-vertex graph have size 2^(Ω(m^(1/8))).\n\n```lean\n∃ ε : ℝ, 0 < ε ∧ ∃ m₀ : ℕ, ∀ m ≥ m₀, ∀ c : Circuit, c.Monotone → c.FanInTwo → Computes c (m * m) (clique m (Nat.sqrt (Nat.sqrt m))) → (2 : ℝ) ^ (ε * (m : ℝ) ^ ((1 : ℝ) / 8)) ≤ c.size\n```",
+      "statement": "∃ ε : ℝ, 0 < ε ∧ ∃ m₀ : ℕ, ∀ m ≥ m₀, ∀ c : Circuit, c.Monotone → c.FanInTwo → Computes c (m * m) (clique m (Nat.sqrt (Nat.sqrt m))) → (2 : ℝ) ^ (ε * (m : ℝ) ^ ((1 : ℝ) / 8)) ≤ c.size",
+      "stmt": "428a93951cef07dd",
+      "needs": [
+        "d658fca714"
+      ]
+    },
+    {
+      "id": "1364d81c47",
+      "parent": "d11c640642",
+      "form": "lemma",
+      "title": "P is not NP",
+      "spec": "P is not NP\n\nThe program's target: some language in NP has no polynomial-time decider.\n\n```lean\n¬ PEqNP\n```",
+      "statement": "¬ PEqNP",
+      "stmt": "7024b8f80fbb09d7",
+      "needs": []
+    },
+    {
+      "id": "5ac0cf7cb5",
+      "parent": "02f879c716",
+      "form": "lemma",
+      "title": "An oracle that makes P equal NP (Baker-Gill-Solovay)",
+      "spec": "An oracle that makes P equal NP (Baker-Gill-Solovay)\n\nRelative to a PSPACE-complete oracle, every NP language is in P.\n\n```lean\n∃ A : Lang, ∀ L : Lang, InNPO A L → InPO A L\n```",
+      "statement": "∃ A : Lang, ∀ L : Lang, InNPO A L → InPO A L",
+      "stmt": "616e5260eb13ae6f",
+      "needs": [
+        "93c4d31c35"
+      ]
+    },
+    {
+      "id": "81da17eb81",
+      "parent": "02f879c716",
+      "form": "lemma",
+      "title": "An oracle that separates P from NP (Baker-Gill-Solovay)",
+      "spec": "An oracle that separates P from NP (Baker-Gill-Solovay)\n\nA diagonal oracle puts a language in NP relative to it but not in P relative to it.\n\n```lean\n∃ B L : Lang, InNPO B L ∧ ¬ InPO B L\n```",
+      "statement": "∃ B L : Lang, InNPO B L ∧ ¬ InPO B L",
+      "stmt": "57b9ef832eb55323",
+      "needs": [
+        "93c4d31c35"
+      ]
+    },
+    {
+      "id": "dbb7e7488f",
+      "parent": "02f879c716",
+      "form": "lemma",
+      "title": "Hard functions are most functions (largeness)",
+      "spec": "Hard functions are most functions (largeness)\n\nAt least half of all functions of n inputs need circuits of size about 2^n / n, so a property that holds for hard functions is large.\n\n```lean\n∃ n₀ : ℕ, ∀ n ≥ n₀, 2 ^ 2 ^ n ≤ 2 * {f : BoolFn n | 2 ^ n ≤ 10 * n * circuitSize n f}.ncard\n```",
+      "statement": "∃ n₀ : ℕ, ∀ n ≥ n₀, 2 ^ 2 ^ n ≤ 2 * {f : BoolFn n | 2 ^ n ≤ 10 * n * circuitSize n f}.ncard",
+      "stmt": "a9b872092ec94cbe",
+      "needs": [
+        "c7bea4e90e"
+      ]
+    },
+    {
+      "id": "143e0c5429",
+      "parent": "02f879c716",
+      "form": "lemma",
+      "title": "Large properties useful against small circuits reject every small generator (Razborov-Rudich, core)",
+      "spec": "Large properties useful against small circuits reject every small generator (Razborov-Rudich, core)\n\nA property that holds for many functions and for no small circuit tells the outputs of any small-circuit generator from random functions.\n\n```lean\n∀ (Γ : ∀ n, Set (BoolFn n)) (k c : ℕ), (∀ n ≥ c, (2 : ℝ) ^ 2 ^ n ≤ 2 ^ (c * n) * (Γ n).ncard) → (∀ n ≥ c, ∀ f ∈ Γ n, n ^ k < circuitSize n f) → ∀ n ≥ c, ∀ (m : ℕ) (g : (Fin m → Bool) → BoolFn n), (∀ s, circuitSize n (g s) ≤ n ^ k) → ∃ D : Set (BoolFn n), (∀ s, g s ∉ D) ∧ (2 : ℝ) ^ 2 ^ n ≤ 2 ^ (c * n) * D.ncard\n```",
+      "statement": "∀ (Γ : ∀ n, Set (BoolFn n)) (k c : ℕ), (∀ n ≥ c, (2 : ℝ) ^ 2 ^ n ≤ 2 ^ (c * n) * (Γ n).ncard) → (∀ n ≥ c, ∀ f ∈ Γ n, n ^ k < circuitSize n f) → ∀ n ≥ c, ∀ (m : ℕ) (g : (Fin m → Bool) → BoolFn n), (∀ s, circuitSize n (g s) ≤ n ^ k) → ∃ D : Set (BoolFn n), (∀ s, g s ∉ D) ∧ (2 : ℝ) ^ 2 ^ n ≤ 2 ^ (c * n) * D.ncard",
+      "stmt": "be97813153a3d852",
+      "needs": [
+        "dbb7e7488f"
+      ]
+    },
+    {
+      "id": "b629f6703c",
+      "parent": "02f879c716",
+      "form": "lemma",
+      "title": "An algebraic oracle under which NP is in P (Aaronson-Wigderson)",
+      "spec": "An algebraic oracle under which NP is in P (Aaronson-Wigderson)\n\nThere is an oracle A with a multilinear extension Ã such that NP relative to Ã is in P relative to A.\n\n```lean\n∃ (A : Lang) (E : AlgExt A), ∀ L : Lang, InNPO E.oracle L → InPO A L\n```",
+      "statement": "∃ (A : Lang) (E : AlgExt A), ∀ L : Lang, InNPO E.oracle L → InPO A L",
+      "stmt": "143e8706623875d6",
+      "needs": [
+        "5ac0cf7cb5"
+      ]
+    },
+    {
+      "id": "dc05d4ec1a",
+      "parent": "02f879c716",
+      "form": "lemma",
+      "title": "An algebraic oracle under which NP is not in P (Aaronson-Wigderson)",
+      "spec": "An algebraic oracle under which NP is not in P (Aaronson-Wigderson)\n\nThere is an oracle A with a multilinear extension Ã such that some language in NP relative to A is not in P relative to Ã.\n\n```lean\n∃ (A : Lang) (E : AlgExt A) (L : Lang), InNPO A L ∧ ¬ InPO E.oracle L\n```",
+      "statement": "∃ (A : Lang) (E : AlgExt A) (L : Lang), InNPO A L ∧ ¬ InPO E.oracle L",
+      "stmt": "abb2921b3ff05bc7",
+      "needs": [
+        "81da17eb81"
+      ]
+    },
+    {
+      "id": "c1ad83e85e",
+      "parent": "315af74bc7",
+      "form": "lemma",
+      "title": "2-SAT is in P",
+      "spec": "2-SAT is in P\n\nSatisfiability of clauses with at most two literals is decided in polynomial time through the implication graph.\n\n```lean\nInP TwoSAT\n```",
+      "statement": "InP TwoSAT",
+      "stmt": "90ba7f028bf083db",
+      "needs": []
+    },
+    {
+      "id": "e83c2f5907",
+      "parent": "315af74bc7",
+      "form": "lemma",
+      "title": "Horn-SAT is in P",
+      "spec": "Horn-SAT is in P\n\nSatisfiability of clauses with at most one positive literal is decided in polynomial time by unit propagation.\n\n```lean\nInP HornSAT\n```",
+      "statement": "InP HornSAT",
+      "stmt": "2c048bb53218be15",
+      "needs": []
+    },
+    {
+      "id": "25ec4d810f",
+      "parent": "315af74bc7",
+      "form": "lemma",
+      "title": "Schaefer's dichotomy: the six tractable classes are in P",
+      "spec": "Schaefer's dichotomy: the six tractable classes are in P\n\nA Boolean constraint language that is 0-valid, 1-valid, Horn, dual Horn, bijunctive or affine has a polynomial-time CSP.\n\n```lean\n∀ Γ : ConstraintLang, Schaefer Γ → InP (CSP Γ)\n```",
+      "statement": "∀ Γ : ConstraintLang, Schaefer Γ → InP (CSP Γ)",
+      "stmt": "818652534c167191",
+      "needs": [
+        "c1ad83e85e",
+        "e83c2f5907"
+      ]
+    },
+    {
+      "id": "f71cc669e4",
+      "parent": "315af74bc7",
+      "form": "lemma",
+      "title": "Schaefer's dichotomy: every other constraint language is NP-complete",
+      "spec": "Schaefer's dichotomy: every other constraint language is NP-complete\n\nOutside Schaefer's six classes, the Boolean CSP is NP-complete.\n\n```lean\n∀ Γ : ConstraintLang, ¬ Schaefer Γ → NPComplete (CSP Γ)\n```",
+      "statement": "∀ Γ : ConstraintLang, ¬ Schaefer Γ → NPComplete (CSP Γ)",
+      "stmt": "d84b3eb2d9ba7dac",
+      "needs": []
+    },
+    {
+      "id": "2f7a140626",
+      "parent": "315af74bc7",
+      "form": "lemma",
+      "title": "Majority vote is not a SAT algorithm (checked counterexample)",
+      "spec": "Majority vote is not a SAT algorithm (checked counterexample)\n\nSetting each variable to its more frequent sign fails on a satisfiable formula; the counterexample is checked in Lean.\n\n```lean\n∃ φ : CNF, φ.Satisfiable ∧ φ.eval (majorityAssignment φ) = false\n```",
+      "statement": "∃ φ : CNF, φ.Satisfiable ∧ φ.eval (majorityAssignment φ) = false",
+      "stmt": "ad8c569d9b3bda66",
+      "needs": []
+    },
+    {
+      "id": "c9d5f7f35f",
+      "parent": "315af74bc7",
+      "form": "lemma",
+      "title": "P equals NP",
+      "spec": "P equals NP\n\nThe program's target: every language in NP has a polynomial-time decider.\n\n```lean\nPEqNP\n```",
+      "statement": "PEqNP",
+      "stmt": "c0f58de882c54999",
+      "needs": []
+    }
+  ]
+}
