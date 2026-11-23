@@ -15,6 +15,7 @@ export type Step =
   | { stall: number }
   | { crash: string }
   | { result: Partial<Result> & { outcome: Outcome } }
+  | { answer: Record<string, unknown> }
   | { overspend: number }
   | { join?: boolean; spawn: Spawn }
 
@@ -32,9 +33,9 @@ export type Context = {
   task: string
 }
 
-export type Ended = { output: Result; state: 'completed' } | { error: string; state: 'failed' } | { state: 'closed' }
+export type Ended = { output: Record<string, unknown>; state: 'completed' } | { error: string; state: 'failed' } | { state: 'closed' }
 
-export const presets = ['prove', 'split', 'refute', 'progress', 'stuck', 'overspend', 'stall', 'crash', 'helpers'] as const
+export const presets = ['prove', 'split', 'refute', 'progress', 'stuck', 'overspend', 'stall', 'crash', 'helpers', 'slow', 'triage'] as const
 
 export type Preset = (typeof presets)[number]
 
@@ -80,6 +81,8 @@ export function preset(name: Preset, role: string, task: string): Step[] {
     ]
   if (name === 'progress') return [{ think: 'Narrowed the search.' }, { spend: 0.5 }, { result: { ...base, outcome: 'progress', summary: 'Ruled out two approaches; one is left.' } }]
   if (name === 'stuck') return [{ think: 'No way in.' }, { spend: 0.3 }, { result: { ...base, outcome: 'stuck', summary: 'Stuck: every route needs a lemma we do not have.', why: 'Needs a stronger switching lemma.' } }]
+  if (name === 'slow') return [{ think: 'A long run.' }, { spend: 0.2 }, ...Array.from({ length: 40 }, (_, index): Step[] => [{ wait: 250 }, { think: 'Still working, step ' + index }]).flat(), { spend: 0.2 }, { result: { ...base, outcome: 'progress', summary: 'A long run ended.' } }]
+  if (name === 'triage') return [{ think: 'Reading proposals.' }, { spend: 0.05 }, { answer: { actions: [] } }]
   if (name === 'overspend') return [{ think: 'Trying everything at once.' }, { overspend: 1 }]
   if (name === 'stall') return [{ think: 'Starting.' }, { spend: 0.1 }, { stall: 86_400_000 }]
   if (name === 'crash') return [{ think: 'Starting.' }, { spend: 0.2 }, { crash: 'The session crashed mid-run.' }]
@@ -94,7 +97,7 @@ export function preset(name: Preset, role: string, task: string): Step[] {
 
 export function script(role: string, task: string, scripted?: Step[]): Step[] {
   if (scripted) return scripted
-  const named = directive(task) ?? directive(role)
+  const named = directive(task) ?? directive(role) ?? (/^n:triage#/.test(role) ? 'triage' : undefined)
   return preset(named ?? 'progress', role, task)
 }
 
@@ -136,6 +139,7 @@ export async function play(steps: readonly Step[], context: Context): Promise<En
       continue
     }
     if ('crash' in step) return { error: step.crash, state: 'failed' }
+    if ('answer' in step) return { output: step.answer, state: 'completed' }
     if ('spawn' in step) {
       context.emit('tool.call', { arguments: JSON.stringify({ budget_usd: step.spawn.budget_usd, role: step.spawn.role, task: step.spawn.task }), call_id: 'spawn:' + step.spawn.role, name: 'spawn_agent' })
       const id = await context.spawn(step.spawn)

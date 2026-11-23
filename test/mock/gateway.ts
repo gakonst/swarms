@@ -62,6 +62,7 @@ type App = {
   backings: Record<string, unknown>[]
   bucket: Map<string, Stored>
   charges: Charge[]
+  commits: { branch: string; date: string; message: string; parents: string[]; sha: string }[]
   deposits: Credited[]
   git: Map<string, Stored>
   hands: { cap?: number; connected: boolean; name: string }[]
@@ -130,7 +131,7 @@ export async function start(options: Options = {}) {
   const app = (name: string) => {
     let found = apps.get(name)
     if (!found) {
-      found = { agents: [], backings: [], bucket: new Map(), charges: [], deposits: [], git: new Map(), hands: [], kv: new Map(), moves: [], name, refunds: [], sandboxes: [] }
+      found = { agents: [], backings: [], bucket: new Map(), charges: [], commits: [], deposits: [], git: new Map(), hands: [], kv: new Map(), moves: [], name, refunds: [], sandboxes: [] }
       apps.set(name, found)
     }
     return found
@@ -225,6 +226,12 @@ export async function start(options: Options = {}) {
   const finish = (agent: Agent, sub: Sub, status: Status) => {
     if (['closed', 'completed', 'failed', 'interrupted'].includes(sub.status.state)) return
     sub.status = status
+    const commit = (status.output as { commit?: unknown } | undefined)?.commit
+    if (typeof commit === 'string') {
+      const found = app(agent.app)
+      found.git.set('swarm', { public: true })
+      found.commits.push({ branch: 'node/' + Model.nid(sub.role), date: new Date().toISOString(), message: sub.role + ': ' + String((status.output as { summary?: unknown }).summary ?? ''), parents: [], sha: commit })
+    }
     append(agent, { root_session_id: agent.id, source: 'subagent', update: { id: sub.id, status, type: status.state === 'completed' ? 'completion' : 'status' } })
   }
 
@@ -330,6 +337,8 @@ export async function start(options: Options = {}) {
 
   const credit = (name: string, hash: string) => {
     const transfer = chain.find(hash)
+    const moved = app(name).deposits.filter((each) => each.hash === hash.toLowerCase())
+    if (!transfer && moved.length && counted.get(hash.toLowerCase()) === name) return { created: false, credit: standing(name), deposits: moved.map(({ amount, from, log, tag, token }) => ({ amount, from, log, tag, token })) }
     if (!transfer) throw new Problem(404, 'not_found', `No transfer ${hash} on chain ${Chain.chainId}.`)
     const prefix = Chain.prefix(wallet, name)
     const logs = transfer.logs.flatMap((log, index) => (log.to === Chain.recipient && log.memo.startsWith(prefix) ? [{ index, log }] : []))
@@ -441,7 +450,14 @@ export async function start(options: Options = {}) {
       const parts = path.split('/')
       const found = apps.get(parts[3] ?? '')
       if (!found) throw new Problem(404, 'not_found', 'No such app.')
-      return { repos: [...found.git].filter(([, stored]) => stored.public).map(([repo]) => ({ name: repo, public: true })) }
+      if (parts[4] === 'kv' || parts[4] === 'bucket') return { entries: [...(parts[4] === 'kv' ? found.kv : found.bucket)].filter(([, stored]) => stored.public).map(([stored]) => ({ key: stored })), objects: [] }
+      if (parts.length <= 5) return { repos: [...found.git].filter(([, stored]) => stored.public).map(([repo]) => ({ name: repo, public: true })) }
+      const ref = url.searchParams.get('ref')
+      const view = parts[6] ?? ''
+      if (view === 'branches') return { branches: [...new Set(found.commits.map((each) => each.branch))].map((branch) => ({ name: branch, sha: found.commits.filter((each) => each.branch === branch).at(-1)?.sha ?? null })) }
+      if (view === 'log') return { commits: found.commits.filter((each) => !ref || ref === 'main' || each.sha === ref || each.branch === ref).reverse() }
+      if (view === 'files' || view === 'diff') return { files: [] }
+      throw new Problem(404, 'not_found', 'No such file.')
     }
 
     if (headers['authorization'] !== 'Bearer ' + key) throw new Problem(401, 'invalid_api_key', 'The sk-tempo- key in Authorization is unknown.')

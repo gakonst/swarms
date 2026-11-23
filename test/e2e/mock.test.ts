@@ -266,23 +266,26 @@ test('the mock GitHub runs the verify workflow, signs its webhook and serves che
       fetch(github.url + path, { ...(body ? { body: JSON.stringify(body) } : {}), headers: { accept: 'application/vnd.github+json', authorization: 'Bearer ' + github.token }, method })
     const sha = 'a'.repeat(40)
     assert.equal((await call('POST', '/repos/gakonst/swarms-proofs/git/refs', { ref: 'refs/heads/verify/abc/' + sha, sha })).status, 201)
-    const inputs = { nid: 'abc', problem: 'pnp', sha, statement: 'theorem x : 1 + 1 = 2', theorem: 'Pnp.Nabc' }
+    const inputs = { claim: 'proof', nid: 'abc', problem: 'pnp', sha, source: 'gateway', statement: 'theorem x : 1 + 1 = 2', swarm: 's1', theorem: 'Pnp.Nabc' }
     assert.equal((await call('POST', '/repos/gakonst/swarms-proofs/actions/workflows/verify.yml/dispatches', { inputs, ref: 'main' })).status, 204)
     assert.equal((await call('POST', '/repos/gakonst/swarms-proofs/actions/workflows/verify.yml/dispatches', { inputs: { ...inputs, nid: 'bad', theorem: 'Pnp.Nbad', statement: 'sorry' }, ref: 'main' })).status, 204)
     await eventually(() => (heard.length === 2 ? true : undefined))
     const [good, bad] = heard.map((each) => ({ ...each, parsed: JSON.parse(each.body) as { workflow_run: { conclusion: string; display_title: string; id: number; path: string } } }))
     for (const each of [good!, bad!]) assert.equal(each.signature, GitHub.sign(github.secret, each.body))
     assert.equal(good!.parsed.workflow_run.conclusion, 'success')
-    assert.equal(good!.parsed.workflow_run.display_title, 'verify abc ' + sha)
+    assert.equal(good!.parsed.workflow_run.display_title, 'verify s1 abc ' + sha)
     assert.equal(good!.parsed.workflow_run.path, '.github/workflows/verify.yml')
     assert.equal(bad!.parsed.workflow_run.conclusion, 'failure')
     const listed = (await (await call('GET', `/repos/gakonst/swarms-proofs/actions/runs/${good!.parsed.workflow_run.id}/artifacts`)).json()) as { artifacts: { archive_download_url: string; name: string }[] }
     assert.equal(listed.artifacts[0]?.name, 'check')
     const archive = Buffer.from(await (await fetch(listed.artifacts[0]!.archive_download_url, { headers: { authorization: 'Bearer ' + github.token } })).arrayBuffer())
     const check = JSON.parse(GitHub.unzip(archive)['check.json']!) as Record<string, unknown>
-    assert.deepEqual([check['sha'], check['theorem'], check['statement'], check['exitCode'], check['axioms']], [sha, 'Pnp.Nabc', GitHub.hash(inputs.statement), 0, GitHub.axioms])
-    const none = (await (await call('GET', `/repos/gakonst/swarms-proofs/actions/runs/${bad!.parsed.workflow_run.id}/artifacts`)).json()) as { artifacts: unknown[] }
-    assert.equal(none.artifacts.length, 0)
+    assert.deepEqual([check['version'], check['ok'], check['swarm'], check['commit'], check['theorem'], check['statement'], check['exitCode'], check['axioms'], check['error']], [1, true, 's1', sha, 'Pnp.Nabc', GitHub.hash(inputs.statement), 0, GitHub.axioms, null])
+    const failed = (await (await call('GET', `/repos/gakonst/swarms-proofs/actions/runs/${bad!.parsed.workflow_run.id}/artifacts`)).json()) as { artifacts: { archive_download_url: string }[] }
+    const files = GitHub.unzip(Buffer.from(await (await fetch(failed.artifacts[0]!.archive_download_url, { headers: { authorization: 'Bearer ' + github.token } })).arrayBuffer()))
+    const refused = JSON.parse(files['check.json']!) as Record<string, unknown>
+    assert.deepEqual([refused['ok'], refused['exitCode'], refused['error']], [false, 5, 'axioms outside the allowlist: [sorryAx]'])
+    assert.match(files['check.tail']!, /sorryAx/)
     assert.match(await (await call('GET', `/repos/gakonst/swarms-proofs/actions/runs/${bad!.parsed.workflow_run.id}/logs`)).text(), /sorryAx/)
     assert.equal((await fetch(github.url + '/repos/gakonst/swarms-proofs/actions/runs/1')).status, 401)
   } finally {
