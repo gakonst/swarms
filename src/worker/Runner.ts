@@ -27,6 +27,7 @@ export type Runtime = {
   aborts: Map<string, AbortController>
   first: boolean
   follow: { agent: string; stop: AbortController; up: boolean } | undefined
+  heard: number
   lating?: Promise<void> | undefined
   listing: { agent: string; at: number; value: Promise<Gateway.Result<Gateway.Subagent[]>> } | undefined
   pools: { runs?: Board.Pool; verifies?: Board.Pool }
@@ -36,7 +37,7 @@ export type Runtime = {
 export type Dispatcher = { at: number; id: string; runs: number }
 
 export function runtime(self: Swarm): Runtime {
-  return (self.runtime ??= { aborts: new Map(), first: true, follow: undefined, listing: undefined, pools: {}, waiters: new Set() })
+  return (self.runtime ??= { aborts: new Map(), first: true, follow: undefined, heard: 0, listing: undefined, pools: {}, waiters: new Set() })
 }
 
 export function wake(self: Swarm) {
@@ -242,9 +243,11 @@ async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promis
   const triaging = nid === Nodes.triage
   const k = Nodes.kOf(task.id)
   const role = 'n:' + nid + '#' + k
+  const folded = self.kv.get<string>('folded:' + task.id)
+  if (folded) return { done: folded }
   const found = await Nodes.state(self)
   const budget = found.ledger.runs.get(task.id) ?? 0n
-  if (budget <= 0n) return { failed: 'No money is committed to this run.' }
+  if (budget <= 0n && !self.kv.get<Nodes.Spawned>('run:' + task.id)) return { failed: 'No money is committed to this run.' }
   const rt = runtime(self)
   const abort = new AbortController()
   rt.aborts.set(task.id, abort)
@@ -291,11 +294,13 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   let spent = -1n
   let sub: Gateway.Subagent | undefined
   let relayed = 0
+  let topped: { spent: bigint; version: number } | undefined
   for (;;) {
     if (signal.aborted) {
       await halt(self, task.id)
       throw new Board.LeaseLost(task.id)
     }
+    const heard = runtime(self).heard
     const listed = await list(self, swarm, spawned.agent)
     sub = listed.ok ? listed.value.find((one) => one.agent_id === spawned.sub) : sub
     if (listed.ok && !sub) break
@@ -308,8 +313,11 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
         Nodes.changed(self)
       }
       if (finished.has(sub.status.state)) break
-      const total = await Nodes.topUp(self, task.id, now)
-      if (total !== null) await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(total))
+      if (topped?.spent !== now || topped.version !== self.treeVersion) {
+        const total = await Nodes.topUp(self, task.id, now)
+        if (total !== null) await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(total))
+        topped = { spent: now, version: self.treeVersion }
+      }
     }
     for (const steer of (await lease.steers()).filter((one) => one.seq > relayed)) {
       const told = await Gateway.tell(self.env, swarm, spawned.agent, spawned.sub, steer.body, priority(self, steer.body))
@@ -319,7 +327,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
       Nodes.emit(self, nid, 'steered', clip(steer.body, 280))
     }
     if (Date.now() - seen > Math.max(leased(self), timing.leaseMs)) break
-    await wait(self, runtime(self).follow?.up ? timing.streamUpMs : timing.streamDownMs, signal)
+    if (runtime(self).heard === heard) await wait(self, runtime(self).follow?.up ? timing.streamUpMs : timing.streamDownMs, signal)
   }
   const state = sub?.status.state ?? 'gone'
   const ended = sub ? finished.has(state) : true
@@ -336,13 +344,16 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   if (nid === Nodes.triage) {
     const actions = Triage.parse(sub?.result)
     const applied = await Triage.apply(self, actions, 'agent:n:triage', task.id, halt)
+    const done = JSON.stringify({ actions: applied })
+    self.kv.put('folded:' + task.id, done)
     await Nodes.consider(self)
-    return { done: JSON.stringify({ actions: applied }) }
+    return { done }
   }
   const outcome = state === 'completed' ? result(sub?.result, why) : { ...result(sub?.result, why), outcome: 'stuck' as const, summary: clip(why, 200) }
   if (state === 'failed' && /over_limit/.test(sub?.status.error ?? '')) self.kv.put('bounded:' + nid, Date.now())
   else self.kv.delete('bounded:' + nid)
   await Nodes.ran(self, task.id, outcome, (node, sha, theorem, refutes) => postVerify(self, node, sha, theorem, refutes))
+  self.kv.put('folded:' + task.id, JSON.stringify(outcome))
   await Nodes.consider(self)
   return { done: JSON.stringify(outcome) }
 }
@@ -535,6 +546,10 @@ export function follow(self: Swarm, swarm: string, agent: string) {
           const read = await reader.read()
           if (read.done) break
           for (const found of read.value.matchAll(/"seq":\s*(\d+)/g)) after = Math.max(after, Number(found[1]))
+          if (/"type":\s*"(?:status|completion)"/.test(read.value)) {
+            rt.heard += 1
+            rt.listing = undefined
+          }
           quiet = Date.now()
           wake(self)
           if (rt.aborts.size === 0 && Date.now() - quiet > timing.idleMs) break
