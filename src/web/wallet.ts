@@ -23,7 +23,33 @@ let instance: ReturnType<typeof load> | undefined
 
 async function load(config: Config) {
   const [{ Accounts }, { dialog, siwe }] = await Promise.all([import('accounts'), import('accounts/plugins')])
-  return Accounts.create({ chain: config.chainId, plugins: [dialog(), siwe({ auth: Site.at(config.auth) })] })
+  return Accounts.create({ chain: config.chainId, fetch: primed, plugins: [dialog(), siwe({ auth: Site.at(config.auth) })] })
+}
+
+let primer: { at: number; response: Promise<Response>; url: string } | undefined
+
+function challengeUrl(config: Config) {
+  return new URL(`${Site.at(config.auth).replace(/\/+$/, '')}/challenge`, location.href).href
+}
+
+export function prime(config: Config) {
+  if (fixture || server || state.session) return
+  if (primer && Date.now() - primer.at < 60_000) return
+  const url = challengeUrl(config)
+  const response = fetch(url, { body: JSON.stringify({ chainId: config.chainId }), credentials: 'same-origin', headers: { 'content-type': 'application/json' }, method: 'POST', redirect: 'manual' })
+  response.catch(() => {})
+  primer = { at: Date.now(), response, url }
+}
+
+async function primed(input: RequestInfo | URL, init?: RequestInit) {
+  const held = primer
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+  if (held && held.url === url && init?.method === 'POST' && Date.now() - held.at < 60_000) {
+    primer = undefined
+    const response = await held.response.catch(() => undefined)
+    if (response?.ok) return response
+  }
+  return fetch(input, init)
 }
 
 const chain = () => Promise.all([import('viem'), import('viem/tempo'), import('viem/tempo/chains')])
@@ -189,9 +215,10 @@ export async function signIn(config: Config) {
   const token = (signed.auth as { token?: unknown } | undefined)?.token
   if (!signed.address || typeof token !== 'string') throw new Error('Tempo ID returned no sign-in.')
   const session = { address: signed.address, token }
-  set({ account: undefined, address: signed.address, email: signed.user.email, pending: false, session })
-  void refresh(config).catch(() => {})
-  void identify()
+  Api.authorize(token)
+  const [account, held] = await Promise.all([Api.account().catch(() => undefined), holdings(config, lower(signed.address)).catch(() => undefined)])
+  set({ account, address: signed.address, ...held, email: signed.user.email, pending: false, session })
+  if (!account) void identify()
   return session
 }
 
@@ -278,6 +305,12 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
 export async function refresh(config: Config) {
   const address = state.address
   if (!address) return undefined
+  const { balance, balances } = await holdings(config, address)
+  if (state.address === address) set({ balance, balances })
+  return balance
+}
+
+async function holdings(config: Config, address: Address) {
   const [loaded, fixtures] = fixture ? [undefined, await import('./fixtures.ts')] : [await chain(), undefined]
   const client = loaded ? loaded[1].createClient({ chain: loaded[2].tempo, transport: loaded[1].http(config.rpc) }) : undefined
   const read = (token: Config['tokens'][number]) =>
@@ -287,6 +320,5 @@ export async function refresh(config: Config) {
   const entries = await Promise.all(config.tokens.map(async (token) => [token.id, await read(token).catch(() => undefined)] as const))
   const balances = Object.fromEntries(entries.filter((entry): entry is readonly [Currency, bigint] => entry[1] !== undefined)) as Partial<Record<Currency, bigint>>
   const balance = Object.values(balances).reduce((sum, value) => sum + value, 0n)
-  if (state.address === address) set({ balance, balances })
-  return balance
+  return { balance, balances }
 }
