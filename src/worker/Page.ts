@@ -97,7 +97,7 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   const [, raw = '', tail, picked] = /^\/s\/([^/]+)(\/chat|\/code|\/results|\/n\/([0-9a-z]+))?\/?$/.exec(path) ?? []
   const id = decodeURIComponent(raw)
   const row = await within(Store.find(env, id), 1500)
-  if (row?.form === 'tree' && !row.archived_at) return grove(env, site, id, picked ?? 'root', lost)
+  if (row?.form === 'tree' && !row.archived_at) return grove(env, site, url, id, picked ?? 'root', lost)
   const shelved = within(Operations.artifacts(env, { swarm: id }, site), 2500)
   const laid = shelved.then((read) => {
     const found = read?.ok ? read.value.artifacts.find(Surface.is) : undefined
@@ -136,15 +136,16 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   }
 }
 
-async function grove(env: Cloudflare.Env, site: string, id: string, nid: string, lost: Head): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
+async function grove(env: Cloudflare.Env, site: string, url: URL, id: string, nid: string, lost: Head): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
   const data: Record<string, unknown> = {}
-  const [detail, tree, node, burn, proofs, room] = await Promise.all([
+  const [detail, tree, node, burn, proofs, room, card] = await Promise.all([
     within(Operations.detail(env, { swarm: id }, false), 2500),
     within(Operations.tree(env, { depth: 2, swarm: id }), 2500),
     within(Operations.node(env, { node: nid, swarm: id }), 2500),
     within(Operations.burn(env, { every: 'hour', swarm: id }), 2500),
     within(Operations.proofs(env, { swarm: id }), 2500),
     within(Operations.room(env, { swarm: id }), 2500),
+    within(Og.head(env, site, url).catch(() => undefined), 2500),
   ])
   if (!detail) return { data, head: Share.share(site, Share.listing('home', [])), status: 200, whole: false }
   if (!detail.ok) {
@@ -158,7 +159,7 @@ async function grove(env: Cloudflare.Env, site: string, id: string, nid: string,
   if (burn?.ok) data['burn:' + id] = burn.value
   if (proofs?.ok) data['proofs:' + id] = proofs.value
   if (room?.ok) data['room:' + id] = { ...room.value, messages: room.value.messages.slice(-firstChat) }
-  return { data, head: Share.share(site, Share.swarm(detail.value)), status: node && !node.ok && node.status === 404 ? 404 : 200, whole: !!tree?.ok && !!node?.ok }
+  return { data, head: card ?? Share.share(site, Share.swarm(detail.value)), status: node && !node.ok && node.status === 404 ? 404 : 200, whole: !!tree?.ok && !!node?.ok }
 }
 
 export async function lost(request: Request, env: Cloudflare.Env) {

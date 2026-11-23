@@ -6,6 +6,7 @@ import * as Chat from './Chat.ts'
 import * as Flow from './Flow.ts'
 import * as Store from './Store.ts'
 import type { Swarm } from './Swarm.ts'
+import * as Telegram from './Telegram.ts'
 import * as Work from './Work.ts'
 
 export const root = 'root'
@@ -204,13 +205,15 @@ export function emit(self: Swarm, nid: string, event: Event, text: string) {
   const at = Date.now()
   const seq = Number(self.ctx.storage.sql.exec<{ seq: number }>('INSERT INTO tree_deltas (at, node, event, text) VALUES (?, ?, ?, ?) RETURNING seq', at, nid, event, redact(text)).one().seq)
   changed(self)
-  if (!self.listened() && !self.treeWatchers.size) return
+  const announced = event === 'proven' || event === 'ended'
+  if (!announced && !self.listened() && !self.treeWatchers.size) return
   self.ctx.waitUntil(
     view(self)
       .then(async (shown) => {
         const node = shown.nodes.get(nid)
         if (!node) return
         const delta: Tree.Delta = { at, event, node, seq, text: redact(text) }
+        if (announced) self.ctx.waitUntil(Telegram.announce(self.env, swarm(self), shown.nodes.get(root)?.title ?? node.title, delta).catch(() => false))
         if (self.listened()) Chat.broadcast(self, { delta, type: 'delta' })
         const frame = new TextEncoder().encode('id: ' + seq + '\ndata: ' + JSON.stringify(delta) + '\n\n')
         for (const writer of [...self.treeWatchers]) await writer.write(frame).catch(() => self.treeWatchers.delete(writer))
@@ -677,6 +680,7 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
       },
       needs: needs(task),
       parent: parentOf(task),
+      review: task.labels['by'] === 'seed' && parsed.statement !== null && !self.kv.get('seedReviewed') && !self.kv.get('reviewed:' + nid),
       proof: task.phase === 'done' && task.outcome && 'done' in task.outcome ? json<Tree.Check>(task.outcome.done) : null,
       riders: funders.length,
       run,
