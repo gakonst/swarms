@@ -17,6 +17,7 @@ import { Results } from './Results.tsx'
 import { Room } from './Room.tsx'
 import { Reins, steerer, useRoster } from './Steering.tsx'
 import { Back, back, href, Link, navigate, useCanBack, useQuery } from './router.tsx'
+import { stamp } from './format.ts'
 import * as Wire from './wire.ts'
 
 const detailMs = 10_000
@@ -102,6 +103,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
   const heard = useCallback((_said: readonly Said[], _me: Me | null, list: readonly Member[]) => setMembers(list), [])
 
   const steer = (text: string) => {
+    if (detail.data?.archivedAt) return
     if (text && steers) setNote(text)
     setFocus(Date.now())
     if (view !== 'now') return setSheet(true)
@@ -120,6 +122,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
     )
 
   const swarm: Detail = detail.data
+  const archived = !!swarm.archivedAt
   const stood = Status.standing(swarm)
   const artifacts = shelf.data?.artifacts ?? []
   const viewing = opened ? artifacts.find((artifact) => artifact.slug === opened) : undefined
@@ -170,10 +173,10 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
       {tab('results', 'Results')}
       {tab('chat', 'Chat', unread > 0 && view !== 'chat' && <i className="idea-unread">{unread}</i>)}
       {tab('code', 'Code')}
-      <span className="idea-tabs-back" data-shown={view !== 'now'}>
+      {!archived && <span className="idea-tabs-back" data-shown={view !== 'now'}>
         <span><b>{usdShort(swarm.balance)}</b> balance</span>
         <button className="btn btn-high" onClick={() => steer('')} type="button">Ride it</button>
-      </span>
+      </span>}
     </nav>
   )
   const backing = sheet && (
@@ -191,7 +194,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
         <header className="chat-top">
           <Back className="chat-back" label="Back" to={base}>←</Back>
           <Back className="chat-title" to={base}><b>{swarm.title}</b><Pill mood={stood.mood} word={stood.word} /></Back>
-          <button className="btn btn-high chat-back-it" onClick={() => steer('')} type="button">Ride it</button>
+          {!archived && <button className="btn btn-high chat-back-it" onClick={() => steer('')} type="button">Ride it</button>}
         </header>
         <div className="chat-room">{room}</div>
         {backing}
@@ -205,16 +208,16 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
         <header className="idea-head">
           <div className="idea-info">
             <h1>{swarm.title}</h1>
-            <p className="idea-kind" data-mood={stood.mood}><i />{pill(stood.word)}{swarm.contributors > 0 && <> · {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'}</>}</p>
+            <p className="idea-kind" data-mood={archived ? 'new' : stood.mood}><i />{archived ? 'Archived' : pill(stood.word)}{swarm.contributors > 0 && <> · {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'}</>}</p>
             {pitch && <p className="idea-pitch">{pitch}</p>}
-            <Reins swarm={swarm} />
+            {archived ? <Archived swarm={swarm} /> : <Reins swarm={swarm} />}
           </div>
           <Tile className="idea-tile" cover={swarm.cover} id={swarm.id} mood={stood.mood} />
         </header>
         <div className="idea-mark" ref={mark} />
         {tabs}
         <div className="idea-now" hidden={view !== 'now'}>
-          {boxed(true)}
+          {!archived && boxed(true)}
           <div className="idea-main">
             <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'now'} />
           </div>
@@ -227,7 +230,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
         <div className="idea-chat" hidden={view !== 'chat'}>{room}</div>
         {coded && <div className="idea-code" hidden={view !== 'code'}><Code repo={swarm.code} swarm={swarm.id} /></div>}
       </div>
-      {view !== 'chat' && (
+      {view !== 'chat' && !archived && (
         <div className="idea-bar" data-shown={(view !== 'now' || past) && phone}>
           <span><b>{usdShort(swarm.balance)}</b> balance</span>
           <button className="btn btn-high" onClick={() => steer('')} type="button">Ride it</button>
@@ -236,6 +239,16 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
       {backing}
       {viewing && <Viewer artifact={viewing} onClose={() => back(at)} />}
     </article>
+  )
+}
+
+function Archived(props: { swarm: Detail }) {
+  const swarm = props.swarm
+  return (
+    <div className="archived" role="note">
+      <b>Archived{swarm.archivedAt ? ` ${stamp(swarm.archivedAt)}` : ''}.</b> Read-only: nothing here runs or takes rides.{' '}
+      {Number(swarm.remaining) >= 0.005 ? <>{usdShort(swarm.remaining)} is left of the {usdShort(swarm.balance)} {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'} put in. It stays in the swarm's gateway credit, still theirs; archiving never spends it.</> : <>Nothing was left of the {usdShort(swarm.balance)} riders put in.</>}
+    </div>
   )
 }
 

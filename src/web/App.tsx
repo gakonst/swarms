@@ -3,7 +3,7 @@ import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import * as Site from '../shared/Site.ts'
 import { signed, usd } from './format.ts'
-import { message, remember, remembered, useConfig, useWallet } from './hooks.ts'
+import { message, remember, remembered, useConfig, usePoll, useWallet } from './hooks.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { Home, Join } from './Home.tsx'
@@ -18,10 +18,12 @@ const Docs = page('docs', () => import('./Docs.tsx').then((module) => module.Doc
 
 const Swarm = page('swarm', () => import('./Swarm.tsx').then((module) => module.Swarm))
 
+const TreePage = page('tree', () => import('./TreePage.tsx').then((module) => module.TreePage))
+
 const fetching = new Map<string, number>()
 
 function warmSwarm() {
-  return import('./Swarm.tsx').then((module) => preload('swarm', module.Swarm))
+  return Promise.all([import('./Swarm.tsx').then((module) => preload('swarm', module.Swarm)), import('./TreePage.tsx').then((module) => preload('tree', module.TreePage))])
 }
 
 if (typeof window !== 'undefined') {
@@ -30,7 +32,7 @@ if (typeof window !== 'undefined') {
     if (route === '/new') void import('./New.tsx').then((module) => preload('new', module.New))
     if (route === '/about') void import('./About.tsx').then((module) => preload('about', module.About))
     if (route === '/docs') void import('./Docs.tsx').then((module) => preload('docs', module.Docs))
-    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results)?\/?(?:[?#]|$)/.exec(path)?.[1]
+    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results|\/n\/[^/?#]+)?\/?(?:[?#]|$)/.exec(path)?.[1]
     if (!id) return
     void warmSwarm()
     const swarm = decodeURIComponent(id)
@@ -161,11 +163,21 @@ class Caught extends Component<{ children: ReactNode; path: string }, { failed: 
   }
 }
 
+function Picked(props: { config: Config | undefined; id: string; nid: string | undefined; view: 'chat' | 'code' | 'now' | 'results' }) {
+  const [detail] = usePoll(() => Api.swarm(props.id, false), null, props.id)
+  const data = detail.data
+  if (data?.form === 'tree' && !data.archivedAt) return <TreePage config={props.config} detail={data} id={props.id} nid={props.nid} />
+  if (!data && !detail.error) return <section aria-busy="true" className="page lost"><span className="lost-orbit" aria-hidden="true"><i /><i /><i /></span></section>
+  if (props.nid && data) return <Lost title="This swarm has no tree."><Link className="lost-row" replace to={`/s/${encodeURIComponent(props.id)}`}>Open it <span aria-hidden="true">→</span></Link></Lost>
+  return <Swarm config={props.config} id={props.id} view={props.view} />
+}
+
 export function App() {
   const path = usePath()
   const config = useConfig()
-  const matched = /^\/s\/([^/]+)(\/chat|\/code|\/results)?\/?$/.exec(path)
+  const matched = /^\/s\/([^/]+)(?:(\/chat|\/code|\/results)|\/n\/([^/]+))?\/?$/.exec(path)
   const swarm = matched?.[1]
+  const node = matched?.[3]
   const view = matched?.[2] === '/chat' ? 'chat' : matched?.[2] === '/code' ? 'code' : matched?.[2] === '/results' ? 'results' : 'now'
 
   useEffect(() => {
@@ -211,7 +223,7 @@ export function App() {
         ) : path === '/docs' ? (
           <Docs config={config} />
         ) : swarm ? (
-          <Swarm config={config} id={decodeURIComponent(swarm)} key={swarm} view={view} />
+          <Picked config={config} id={decodeURIComponent(swarm)} key={swarm} nid={node && decodeURIComponent(node)} view={view} />
         ) : (
           <Lost title="Nothing out here.">
             <Link className="lost-row" to="/join">All swarms <span aria-hidden="true">→</span></Link>
