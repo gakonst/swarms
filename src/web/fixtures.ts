@@ -1418,10 +1418,11 @@ export async function move(key: string, branch: number, input: { amount: string;
 }
 
 
-const handles = ['ada', 'mira', 'kofi', 'lena', 'tomas', 'yuki', 'devi', 'sam'] as const
+const handles = ['ada', 'mira', 'kofi', 'lena', 'tomas', 'yuki', 'devi', 'sam', 'noor', 'ivan', 'zara', 'ben', 'olu', 'kai', 'rhea', 'tess', 'jun', 'pia', 'cal', 'eda', 'max', 'uma', 'leo'] as const
 
 function who(index: number): Tree.Who {
-  return { address: people[index % people.length] as `0x${string}`, agent: null, handle: handles[index % handles.length] ?? 'rider' }
+  const address = index < people.length ? people[index] : (`0x${hex(`rider:${index % handles.length}`, 40)}` as const)
+  return { address: address as `0x${string}`, agent: null, handle: handles[index % handles.length] ?? 'rider' }
 }
 
 const sown: Tree.Who = { address: null, agent: 'seed', handle: 'seed' }
@@ -1460,24 +1461,24 @@ type Twig = {
   words: string
 }
 
-type Sprig = readonly [key: string, parent: string | null, form: Tree.Form, title: string, status: Tree.Status, spent: number, left: number, extra?: { by?: number | 'agent'; end?: [Tree.End['kind'], string]; needs?: readonly string[]; statement?: string; summaries?: readonly string[] }]
+type Sprig = readonly [key: string, parent: string | null, form: Tree.Form, title: string, status: Tree.Status, spent: number, left: number, extra?: { by?: number | 'agent'; doing?: string; end?: [Tree.End['kind'], string]; needs?: readonly string[]; riders?: number; statement?: string; summaries?: readonly string[] }]
 
 const sprigs: readonly Sprig[] = [
-  ['root', null, 'goal', 'Does P = NP?', 'in flight', 0.42, 31.2, { by: 0 }],
+  ['root', null, 'goal', 'Does P = NP?', 'in flight', 0.42, 31.2, { by: 0, riders: 23 }],
   ['triage', 'root', 'triage', 'Triage', 'in flight', 0.31, 1.4, { by: 'agent', summaries: ['Approved 3 proposals, merged 1 duplicate, granted $4 to the switching lemma'] }],
-  ['found', 'root', 'program', 'Foundations: machines, P, NP and reductions', 'in flight', 1.2, 6.5, { by: 0 }],
+  ['found', 'root', 'program', 'Foundations: machines, P, NP and reductions', 'in flight', 1.2, 6.5, { by: 0, riders: 6 }],
   ['tm', 'found', 'lemma', 'A Turing machine model with time bounds', 'proven', 3.1, 0, { by: 'agent', statement: 'theorem tm_time_bounded (M : TM) (n : ℕ) : M.steps n ≤ M.bound n', summaries: ['Wrote the machine model on Mathlib.Computability.TuringMachine', 'Proved; sent to the verifier'] }],
   ['pclosed', 'found', 'lemma', 'P is closed under composition', 'proven', 2.4, 0, { by: 'agent', needs: ['tm'], statement: 'theorem p_comp {f g : ℕ → ℕ} (hf : InP f) (hg : InP g) : InP (f ∘ g)', summaries: ['Proved with a polynomial bound on the composed running time'] }],
   ['npver', 'found', 'lemma', 'NP has polynomial-time verifiers', 'proven', 2.9, 0, { by: 2, needs: ['tm'], statement: 'theorem np_iff_verifier (L : Lang) : L ∈ NP ↔ ∃ V, InP V ∧ PolyWitness V L', summaries: ['Split the equivalence into two directions', 'Proved both directions; sent to the verifier'] }],
-  ['red', 'found', 'lemma', 'Polynomial-time many-one reductions compose', 'in flight', 1.7, 3.3, { by: 'agent', needs: ['pclosed'], statement: 'theorem reduce_trans {A B C : Lang} : A ≤ₚ B → B ≤ₚ C → A ≤ₚ C', summaries: ['Stated the reduction and the bound; 3 of 5 steps compile'] }],
-  ['cook', 'found', 'lemma', 'Cook–Levin: SAT is NP-complete', 'funded', 0, 5, { by: 1, needs: ['npver', 'red'], statement: 'theorem cook_levin : NPComplete SAT' }],
-  ['lower', 'root', 'program', 'Lower bounds toward P ≠ NP', 'in flight', 0.8, 4.1, { by: 0 }],
-  ['mono', 'lower', 'approach', 'Monotone circuit lower bounds', 'in flight', 0.6, 2.2, { by: 3 }],
-  ['sun', 'mono', 'lemma', 'Sunflower lemma (Erdős–Rado)', 'proven', 4.2, 0, { by: 'agent', statement: 'theorem sunflower (F : Finset (Finset α)) (hk : ∀ s ∈ F, s.card = k) (h : F.card > k ! * (p - 1) ^ k) : HasSunflower F p', summaries: ['Proved on paper by induction on k', 'Formalized the induction; sent to the verifier'] }],
-  ['razb', 'mono', 'lemma', "Razborov's approximation method for CLIQUE", 'in flight', 5.6, 2.4, { by: 'agent', needs: ['sun'], statement: 'theorem approx_error (C : MonoCircuit) : ApproxError C ≤ C.size * errorPerGate', summaries: ['Set up approximators as unions of cliques', 'Bounded the error per OR gate; the AND gate case is open', 'Proved the AND gate bound for k ≤ 4'] }],
+  ['red', 'found', 'lemma', 'Polynomial-time many-one reductions compose', 'in flight', 1.7, 3.3, { by: 'agent', doing: 'Composing the two polynomial bounds', needs: ['pclosed'], riders: 3, statement: 'theorem reduce_trans {A B C : Lang} : A ≤ₚ B → B ≤ₚ C → A ≤ₚ C', summaries: ['Stated the reduction and the bound; 3 of 5 steps compile'] }],
+  ['cook', 'found', 'lemma', 'Cook–Levin: SAT is NP-complete', 'funded', 0, 5, { by: 1, needs: ['npver', 'red'], riders: 4, statement: 'theorem cook_levin : NPComplete SAT' }],
+  ['lower', 'root', 'program', 'Lower bounds toward P ≠ NP', 'in flight', 0.8, 4.1, { by: 0, riders: 9 }],
+  ['mono', 'lower', 'approach', 'Monotone circuit lower bounds', 'in flight', 0.6, 2.2, { by: 3, riders: 8 }],
+  ['sun', 'mono', 'lemma', 'Sunflower lemma (Erdős–Rado)', 'proven', 4.2, 0, { by: 'agent', riders: 6, statement: 'theorem sunflower (F : Finset (Finset α)) (hk : ∀ s ∈ F, s.card = k) (h : F.card > k ! * (p - 1) ^ k) : HasSunflower F p', summaries: ['Proved on paper by induction on k', 'Formalized the induction; sent to the verifier'] }],
+  ['razb', 'mono', 'lemma', "Razborov's approximation method for CLIQUE", 'in flight', 5.6, 2.4, { by: 'agent', doing: 'Bounding the AND gate error for k = 5', needs: ['sun'], riders: 12, statement: 'theorem approx_error (C : MonoCircuit) : ApproxError C ≤ C.size * errorPerGate', summaries: ['Set up approximators as unions of cliques', 'Bounded the error per OR gate; the AND gate case is open', 'Proved the AND gate bound for k ≤ 4'] }],
   ['clique', 'mono', 'lemma', 'Monotone circuits for CLIQUE need exponential size', 'proposed', 0, 0, { by: 4, needs: ['razb'], statement: 'theorem clique_mono_lower : ∃ ε > 0, ∀ n, monoSize (CLIQUE n) ≥ 2 ^ (n ^ ε)' }],
-  ['ac0', 'lower', 'approach', 'Parity is not in AC0', 'in flight', 0.4, 3.1, { by: 5 }],
-  ['switch', 'ac0', 'lemma', "Håstad's switching lemma", 'in flight', 3.3, 4.7, { by: 'agent', statement: 'theorem switching (f : DNF n w) (p : ℝ) : Pr[¬ DepthAtMost (restrict f ρ) t] ≤ (5 * p * w) ^ t', summaries: ['Chose the canonical decision tree argument', 'Encoded restrictions; the counting step compiles'] }],
+  ['ac0', 'lower', 'approach', 'Parity is not in AC0', 'in flight', 0.4, 3.1, { by: 5, riders: 5 }],
+  ['switch', 'ac0', 'lemma', "Håstad's switching lemma", 'in flight', 3.3, 4.7, { by: 'agent', doing: 'Counting restrictions that leave depth above t', riders: 9, statement: 'theorem switching (f : DNF n w) (p : ℝ) : Pr[¬ DepthAtMost (restrict f ρ) t] ≤ (5 * p * w) ^ t', summaries: ['Chose the canonical decision tree argument', 'Encoded restrictions; the counting step compiles'] }],
   ['depth', 'ac0', 'lemma', 'Depth reduction by random restrictions', 'proposed', 0, 0.2, { by: 'agent', needs: ['switch'], statement: 'theorem depth_reduce (C : AC0 d s) : ∃ ρ, Depth (C.restrict ρ) ≤ d - 1' }],
   ['gct', 'lower', 'idea', 'Separate permanent and determinant by orbit closures', 'dead end', 2.1, 0, { by: 6, end: ['exhausted', 'Three runs found no step a checked lemma could state; occurrence obstructions are known not to exist for this pair.'] }],
   ['barrier', 'root', 'program', 'Barriers: why whole lines of attack fail', 'in flight', 0.5, 2.6, { by: 0 }],
@@ -1488,8 +1489,19 @@ const sprigs: readonly Sprig[] = [
   ['upper', 'root', 'program', 'Upper bounds toward P = NP', 'in flight', 0.4, 3.3, { by: 0 }],
   ['twosat', 'upper', 'lemma', '2-SAT is in P', 'proven', 1.9, 0, { by: 'agent', statement: 'theorem two_sat_in_p : TwoSAT ∈ P', summaries: ['Proved via strongly connected components of the implication graph'] }],
   ['horn', 'upper', 'lemma', 'Horn-SAT is in P', 'proven', 1.6, 0, { by: 2, statement: 'theorem horn_sat_in_p : HornSAT ∈ P', summaries: ['Proved by unit propagation'] }],
-  ['schaefer', 'upper', 'lemma', "Schaefer's dichotomy theorem", 'funded', 0, 5, { by: 3, needs: ['twosat', 'horn'], statement: 'theorem schaefer (Γ : Constraints) : CSP Γ ∈ P ∨ NPComplete (CSP Γ)' }],
+  ['schaefer', 'upper', 'lemma', "Schaefer's dichotomy theorem", 'funded', 0, 5, { by: 3, needs: ['twosat', 'horn'], riders: 7, statement: 'theorem schaefer (Γ : Constraints) : CSP Γ ∈ P ∨ NPComplete (CSP Γ)' }],
   ['xor', 'upper', 'lemma', 'XOR-SAT is in P by Gaussian elimination', 'proposed', 0, 0.3, { by: 5, statement: 'theorem xor_sat_in_p : XorSAT ∈ P' }],
+  ['lp', 'upper', 'lemma', 'Linear programming is in P by the ellipsoid method', 'funded', 0, 5, { by: 9, riders: 5, statement: 'theorem lp_in_p : LinearProgramming ∈ P' }],
+  ['matching', 'upper', 'lemma', 'Bipartite matching is in P', 'proposed', 0, 2, { by: 10, riders: 2 }],
+  ['aks', 'upper', 'lemma', 'Primality is in P (AKS)', 'proposed', 0, 1.2, { by: 11 }],
+  ['parity', 'ac0', 'lemma', 'Parity needs depth-d circuits of size 2^(n^(1/d))', 'proposed', 0, 0.8, { by: 12, needs: ['depth'] }],
+  ['smol', 'ac0', 'lemma', 'Razborov–Smolensky: MOD3 is not in AC0[⊕]', 'proposed', 0, 1.6, { by: 13, riders: 3 }],
+  ['ppoly', 'ac0', 'lemma', 'Random restrictions kill small DNFs', 'proposed', 0, 0.4, { by: 14 }],
+  ['algebrize', 'barrier', 'lemma', 'Algebrization barrier (Aaronson–Wigderson)', 'proposed', 0, 3, { by: 15, riders: 4 }],
+  ['space', 'found', 'lemma', 'The space hierarchy theorem', 'proposed', 0, 2, { by: 16, riders: 2 }],
+  ['proof', 'root', 'program', 'Proof complexity: short proofs of tautologies', 'proposed', 0, 2.5, { by: 17, riders: 3 }],
+  ['php', 'proof', 'lemma', 'Resolution needs exponential size for the pigeonhole principle', 'proposed', 0, 1.5, { by: 18, riders: 2 }],
+  ['algebra', 'root', 'program', 'Algebraic complexity: VP versus VNP', 'proposed', 0, 1, { by: 19 }],
   ['claim', 'upper', 'idea', 'A claimed polynomial algorithm for 3-SAT', 'dead end', 1.2, 0, { by: 4, end: ['refuted', 'A checked counterexample: a 14-variable formula on which the algorithm answers unsatisfiable though it has a satisfying assignment.'] }],
 ]
 
@@ -1544,11 +1556,10 @@ function sprout(sprig: Sprig, index: number): Twig {
     const until = k === (extra.summaries?.length ?? 1) - 1 && status === 'in flight' ? null : at(minutes - 60 - k * 40)
     return { budget: decimal(share > 5_000_000n ? share : 5_000_000n), commit: until === null ? null : hex(`run:${key}:${k}`, 40), k: k + 1, outcome: until === null ? null : status === 'proven' && k === (extra.summaries?.length ?? 1) - 1 ? 'proved' : /Split/.test(summary) ? 'split' : 'progress', since: at(minutes - 50 - k * 40), spent: decimal(share), summary, task: `r:${node}:${k + 1}`, until }
   })
-  const backers = key === 'root' ? [0, 1, 2, 3, 4] : form === 'program' ? [index % 8] : spent > 0n || left > 0n ? [index % 8, (index + 3) % 8] : []
+  const backers = extra.riders ? Array.from({ length: extra.riders }, (_, rank) => (index + rank * 5) % handles.length) : key === 'root' ? [0, 1, 2, 3, 4] : form === 'program' ? [index % 8] : spent > 0n || left > 0n ? [index % 8, (index + 3) % 8] : []
   const pledged = left + (spent * 2n) / 3n
   const funders = backers.map((person, rank): Tree.Funder => ({ amount: decimal(backers.length ? pledged / BigInt(backers.length) + BigInt(rank) * 10_000n : 0n), since: at(minutes - rank * 30), who: who(person) }))
-  const doings = ['lake build: 2 goals left in the main induction', 'Searching Mathlib for a matching counting bound', 'Trying the case n = 4 by hand', 'Writing the Lean statement and the first two steps', 'Asked a helper to check the base case']
-  const run: Tree.Run | null = status === 'in flight' && form !== 'goal' && form !== 'program' && form !== 'approach' ? { agent: 3 + index, attempt: 1, budget: '5.000000', checking: false, doing: { at: at(1), text: doings[(index * 3 + node.length) % doings.length]! }, k: runs.length, since: at(25), spent: decimal(spent % 5_000_000n), task: `r:${node}:${runs.length}`, until: at(-5) } : null
+  const run: Tree.Run | null = status === 'in flight' && form !== 'goal' && form !== 'program' && form !== 'approach' ? ({ agent: 3 + index, attempt: 1, budget: '5.000000', checking: false, k: runs.length, since: at(25), spent: decimal(spent % 5_000_000n), task: `r:${node}:${runs.length}`, until: at(-5), ...(extra.doing ? { doing: { at: at(3 + (index % 7)), text: extra.doing } } : {}) } as Tree.Run) : null
   return {
     by,
     createdAt: at(minutes),

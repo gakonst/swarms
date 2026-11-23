@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Config, NodeView } from '../shared/Api.ts'
 import { maxNote } from '../shared/Memo.ts'
 import type * as Tree from '../shared/Tree.ts'
@@ -11,7 +11,7 @@ import * as Grove from './grove.ts'
 import { message, useWallet } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
 import * as Pay from './pay.ts'
-import { Back, Link, navigate, useBase } from './router.tsx'
+import { Back, Link, navigate, useBase, useQuery } from './router.tsx'
 import { Mark, word } from './Tree.tsx'
 import * as Wallet from './wallet.ts'
 
@@ -76,7 +76,12 @@ function Ride(props: { config: Config | undefined; node: Tree.Node; onClose: () 
   )
 }
 
-function Propose(props: { config: Config | undefined; parent: Tree.Node; swarm: string }) {
+function Propose(props: { asked: boolean; config: Config | undefined; parent: Tree.Node; swarm: string }) {
+  const [shown, setShown] = useState(props.asked)
+  const part = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    if (props.asked) part.current?.scrollIntoView({ block: 'start' })
+  }, [props.asked])
   const [title, setTitle] = useState('')
   const [spec, setSpec] = useState('')
   const [statement, setStatement] = useState('')
@@ -86,7 +91,7 @@ function Propose(props: { config: Config | undefined; parent: Tree.Node; swarm: 
   const slot = `${props.swarm}/propose/${props.parent.id}`
   const base = useBase(props.swarm)
   return (
-    <details className="node-part node-form">
+    <details className="node-part node-form" onToggle={(event) => setShown(event.currentTarget.open)} open={shown} ref={part}>
       <summary>Propose a lemma: $1 or more makes it a node</summary>
       <label className="node-field"><span>Title</span><input maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="Parity needs depth d circuits of size 2^n^(1/d)" value={title} /></label>
       <label className="node-field"><span>What and why</span><textarea maxLength={2000} onChange={(event) => setSpec(event.target.value)} rows={3} value={spec} /></label>
@@ -197,6 +202,7 @@ export function NodePanel(props: {
   view: NodeView | undefined
 }) {
   const [riding, setRiding] = useState(() => here().searchParams.has('ride'))
+  const asked = useQuery('propose') !== null
   const wallet = useWallet()
   const known = props.nodes[props.nid]
   const view = props.view
@@ -291,7 +297,7 @@ export function NodePanel(props: {
           </ol>
         </section>
       )}
-      {open && node.form !== 'triage' && <Propose config={props.config} parent={node} swarm={props.swarm} />}
+      {open && node.form !== 'triage' && <Propose asked={asked} config={props.config} key={`${node.id}:${asked}`} parent={node} swarm={props.swarm} />}
       {open && <Suggest config={props.config} onDone={props.onChanged} parent={node} swarm={props.swarm} />}
       {view && view.suggestions.length > 0 && (
         <section className="node-part">
