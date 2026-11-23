@@ -28,6 +28,7 @@ export type Runtime = {
   first: boolean
   follow: { agent: string; stop: AbortController; up: boolean } | undefined
   heard: number
+  kicks: Set<() => void>
   lating?: Promise<void> | undefined
   listing: { agent: string; at: number; value: Promise<Gateway.Result<Gateway.Subagent[]>> } | undefined
   pools: { runs?: Board.Pool; verifies?: Board.Pool }
@@ -37,7 +38,7 @@ export type Runtime = {
 export type Dispatcher = { at: number; id: string; runs: number }
 
 export function runtime(self: Swarm): Runtime {
-  return (self.runtime ??= { aborts: new Map(), first: true, follow: undefined, heard: 0, listing: undefined, pools: {}, waiters: new Set() })
+  return (self.runtime ??= { aborts: new Map(), first: true, follow: undefined, heard: 0, kicks: new Set(), listing: undefined, pools: {}, waiters: new Set() })
 }
 
 export function wake(self: Swarm) {
@@ -568,14 +569,23 @@ function resting(self: Swarm): Work.Board {
   return { ...board, ready: async (options) => (await board.ready(options)).filter((task) => (self.kv.get<number>('rest:' + task.id) ?? 0) <= Date.now()) }
 }
 
+function woken(rt: Runtime) {
+  return (notify: () => void) => {
+    rt.kicks.add(notify)
+    return () => void rt.kicks.delete(notify)
+  }
+}
+
 export function ensure(self: Swarm) {
   if (self.kv.get<number>('archivedAt')) return
   const rt = runtime(self)
   const board = resting(self)
+  const kicks = [...rt.kicks]
   if (!rt.pools.runs || rt.pools.runs.stats().state !== 'running')
-    rt.pools.runs = Board.pool(board, { concurrency: Nodes.units(self).slots, idleMs: timing.idleMs, label: ['kind', 'run'], leaseMs: leased(self), pollMs: timing.pollMs, run: (task, lease) => run(self, task, lease) })
+    rt.pools.runs = Board.pool(board, { concurrency: Nodes.units(self).slots, idleMs: timing.idleMs, label: ['kind', 'run'], leaseMs: leased(self), pollMs: timing.pollMs, run: (task, lease) => run(self, task, lease), wake: woken(rt) })
   if (!rt.pools.verifies || rt.pools.verifies.stats().state !== 'running')
-    rt.pools.verifies = Board.pool(board, { concurrency: verifiers, idleMs: timing.idleMs, label: ['kind', 'verify'], leaseMs: leased(self), pollMs: timing.pollMs, run: (task, lease) => check(self, task, lease) })
+    rt.pools.verifies = Board.pool(board, { concurrency: verifiers, idleMs: timing.idleMs, label: ['kind', 'verify'], leaseMs: leased(self), pollMs: timing.pollMs, run: (task, lease) => check(self, task, lease), wake: woken(rt) })
+  for (const kick of kicks) kick()
 }
 
 export async function stop(self: Swarm) {
@@ -584,6 +594,7 @@ export async function stop(self: Swarm) {
   for (const abort of rt.aborts.values()) abort.abort()
   await Promise.all([rt.pools.runs?.stop(), rt.pools.verifies?.stop()])
   rt.pools = {}
+  rt.follow?.stop.abort()
 }
 
 export async function tick(self: Swarm): Promise<number | null> {
