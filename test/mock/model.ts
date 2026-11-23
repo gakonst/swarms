@@ -64,7 +64,7 @@ export function preset(name: Preset, role: string, task: string): Step[] {
   if (name === 'prove')
     return [{ think: 'Writing the proof on paper first.' }, { spend: 0.4 }, { think: 'The Lean proof builds locally.' }, { spend: 0.3 }, { result: { ...base, commit: commit(role), outcome: 'proved', summary: 'Proved it; the commit is ready to check.', theorem: theorem(role) } }]
   if (name === 'refute')
-    return [{ think: 'Looking for a counterexample.' }, { spend: 0.5 }, { result: { ...base, commit: commit(role, 'not'), outcome: 'refuted', summary: 'The statement is false: a counterexample is on the branch.', theorem: theorem(role) + '.not', why: 'A checked counterexample.' } }]
+    return [{ think: 'Looking for a counterexample.' }, { spend: 0.5 }, { result: { ...base, commit: commit(role, 'not'), outcome: 'refuted', summary: 'The statement is false: a counterexample is on the branch.', theorem: theorem(role), why: 'A checked counterexample.' } }]
   if (name === 'split')
     return [
       { think: 'This is two steps; splitting.' },
