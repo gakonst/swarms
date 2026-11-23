@@ -1,4 +1,5 @@
 import type * as Setup from './Setup.ts'
+import type * as Tree from './Tree.ts'
 
 export type Status = 'funding' | 'running' | 'paused'
 
@@ -29,6 +30,8 @@ export type Summary = {
   title: string
   updatedAt: number
   why: Why | null
+  form?: 'agent' | 'tree'
+  archivedAt?: number | null
 }
 
 export type Steering = 'open' | 'team'
@@ -277,5 +280,26 @@ export type Chatter =
   | { parts: Part[]; type: 'changed'; version: string }
   | { artifacts: Artifact[]; type: 'artifacts' }
   | { roster: Roster; type: 'roster' }
+  | { delta: Tree.Delta; type: 'delta' }
 
 export type Lobby = { swarm: Summary; type: 'swarm' } | { type: 'welcome' }
+
+export type TreeView = { headline: Tree.Headline; nodes: Tree.Node[]; seq: number }
+
+export type NodeRun = { task: string; k: number; outcome: 'proved' | 'refuted' | 'split' | 'progress' | 'stuck' | null; summary: string; spent: Tree.Usd; budget: Tree.Usd; commit: string | null; since: number; until: number | null }
+
+export type NodeSteer = { who: Tree.Who; note: string; amount: Tree.Usd; at: number }
+
+export type Suggestion = { id: string; who: Tree.Who; text: string; at: number }
+
+export type NodeView = Tree.Node & { runs: NodeRun[]; steers: NodeSteer[]; suggestions: Suggestion[]; funders: Tree.Funder[]; review: boolean }
+
+export type NodeUpdates = { deltas: Tree.Delta[]; next: number }
+
+export type ProgressView = { burn: Tree.Burn }
+
+export type ProofsView = { proofs: { node: string; title: string; check: Tree.Check }[] }
+
+export type Proposed = { nid: string; transfer: Prepared }
+
+export type Suggested = { id: string }
