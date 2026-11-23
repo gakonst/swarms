@@ -6,6 +6,10 @@ import type { Dev } from './dev.ts'
 
 export type Rider = Awaited<ReturnType<typeof rider>>
 
+export function account(name: string) {
+  return privateKeyToAccount(keccak256(stringToHex('rider:' + name)))
+}
+
 export async function rider(dev: Dev, name: string) {
   const account = privateKeyToAccount(keccak256(stringToHex('rider:' + name)))
   const address = account.address.toLowerCase() as Chain.Address
