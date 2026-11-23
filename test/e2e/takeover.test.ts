@@ -3,6 +3,7 @@ import * as child from 'node:child_process'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import type { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { Board } from 'nanocode-ts'
 import { Sql } from 'nanocode-ts/node'
@@ -45,8 +46,8 @@ test('runner processes on one Board: a killed runner\'s lease lapses, another ta
     const exits = new Map<string, string>()
     const runner = path.join(import.meta.dirname, 'runner.ts')
     const spawn = (worker: string) => {
-      const proc = child.spawn(process.execPath, ['--no-warnings', '--experimental-strip-types', runner], {
-        env: { ...process.env, AGENT: agent, BOARD_DB: db, BOARD_SCOPE: 'swarm:' + swarm, GATEWAY_APP: name, GATEWAY_KEY: gateway.key, GATEWAY_URL: gateway.url, LEASE_MS: String(leaseMs), WORKER: worker },
+      const proc: child.ChildProcessByStdio<null, Readable, Readable> = child.spawn(process.execPath, ['--no-warnings', '--experimental-strip-types', runner], {
+        env: { ...process.env, AGENT: agent, BOARD_DB: db, BOARD_SCOPE: 'swarm:' + swarm, GATEWAY_APP: name, GATEWAY_KEY: gateway.key, GATEWAY_URL: gateway.url, LEASE_MS: String(leaseMs), WORKER: worker } as unknown as NodeJS.ProcessEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
       })
       let buffer = ''
@@ -78,7 +79,7 @@ test('runner processes on one Board: a killed runner\'s lease lapses, another ta
     const steered = await wait(() => lines.find((line) => line.event === 'spawned' && line.task === 'r:steer:1'))
     await board.refresh()
     assert.ok((await board.steer('r:steer:1', '[$4 behind this, from @ana] Try the switching lemma first.', { key: 'steer-1' })).ok)
-    const takeover = await wait(() => lines.find((line) => line.event === 'claimed' && line.task === 'r:slow:1' && line.tookOver === true))
+    const takeover = await wait(() => lines.find((line) => line.event === 'claimed' && line.task === 'r:slow:1' && line['tookOver'] === true))
     assert.notEqual(takeover.worker, first.worker)
     const adopted = await wait(() => lines.find((line) => line.event === 'adopted' && line.task === 'r:slow:1'))
     assert.equal(adopted.worker, takeover.worker)
@@ -92,7 +93,7 @@ test('runner processes on one Board: a killed runner\'s lease lapses, another ta
     assert.equal(tasks.get('r:fast:1')?.phase, 'done')
     assert.equal(tasks.get('r:steer:1')?.phase, 'done')
     assert.equal(tasks.get('r:over:1')?.phase, 'failed')
-    assert.ok(lines.some((line) => line.event === 'heeded' && line.task === 'r:steer:1' && line.ok === true && line.worker === steered.worker))
+    assert.ok(lines.some((line) => line.event === 'heeded' && line.task === 'r:steer:1' && line['ok'] === true && line.worker === steered.worker))
 
     const listing = gateway.agents(name)[0]!
     for (const nid of Object.keys(runs)) assert.equal(listing.subagents.filter((each) => each.role === `n:${nid}#1`).length, 1, nid)

@@ -148,7 +148,7 @@ export async function play(steps: readonly Step[], context: Context): Promise<En
       continue
     }
     listen()
-    const result: Result = { children: [], commit: null, theorem: null, why: null, ...step.result }
+    const result: Result = { children: [], commit: null, summary: '', theorem: null, why: null, ...step.result }
     return { output: heard.length ? { ...result, summary: `${result.summary} Heeded: ${heard.join('; ')}` } : result, state: 'completed' }
   }
   listen()

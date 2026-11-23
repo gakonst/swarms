@@ -52,13 +52,13 @@ export async function open() {
   if (!page) throw new Error('Chrome has no page')
   const socket = new WebSocket(page.webSocketDebuggerUrl)
   await new Promise<void>((resolve, reject) => {
-    socket.onopen = () => resolve()
-    socket.onerror = () => reject(new Error('could not reach Chrome'))
+    socket.addEventListener('open', () => resolve())
+    socket.addEventListener('error', () => reject(new Error('could not reach Chrome')))
   })
   const pending = new Map<number, Pending>()
   const listeners: ((method: string, params: Record<string, unknown>) => void)[] = []
   let next = 1
-  socket.onmessage = (message) => {
+  socket.addEventListener('message', (message: MessageEvent) => {
     const data = JSON.parse(String(message.data)) as { error?: { message: string }; id?: number; method?: string; params?: Record<string, unknown>; result?: Record<string, unknown> }
     if (data.id !== undefined) {
       const waiting = pending.get(data.id)
@@ -66,7 +66,7 @@ export async function open() {
       if (data.error) waiting?.reject(new Error(data.error.message))
       else waiting?.resolve(data.result ?? {})
     } else if (data.method) for (const listener of listeners) listener(data.method, data.params ?? {})
-  }
+  })
   const send = (method: string, params: Record<string, unknown> = {}) =>
     new Promise<Record<string, unknown>>((resolve, reject) => {
       const id = next++
