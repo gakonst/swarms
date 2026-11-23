@@ -2,8 +2,9 @@ import { Board } from 'nanocode-ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Setup from '../shared/Setup.ts'
 import type * as Tree from '../shared/Tree.ts'
-import { clip } from '../shared/Trail.ts'
+import { type Thinking, call, clip, gist, named, placed, redact } from '../shared/Trail.ts'
 import * as Flow from './Flow.ts'
+import * as Follow from './Follow.ts'
 import * as Gateway from './Gateway.ts'
 import * as Nodes from './Nodes.ts'
 import * as Persona from './Persona.ts'
@@ -13,7 +14,7 @@ import * as Triage from './Triage.ts'
 import * as Verify from './Verify.ts'
 import * as Work from './Work.ts'
 
-export const timing = { idleMs: 60_000, leaseMs: 30 * 60_000, listMs: 2_000, pollMs: 2_000, spawnMs: 120_000, streamDownMs: 20_000, streamUpMs: 120_000, verifyMs: 60_000 }
+export const timing = { doingMs: 2_000, idleMs: 60_000, leaseMs: 30 * 60_000, listMs: 2_000, pollMs: 2_000, spawnMs: 120_000, streamDownMs: 20_000, streamUpMs: 120_000, verifyMs: 60_000 }
 
 export const rotateAfter = 200
 
@@ -23,8 +24,11 @@ export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: 8 }
 
 const finished = new Set(['completed', 'failed', 'closed', 'interrupted'])
 
+export type Busy = { held: Thinking | undefined; nid: string; sent: number; task: string; timer: ReturnType<typeof setTimeout> | undefined }
+
 export type Runtime = {
   aborts: Map<string, AbortController>
+  doing: Map<string, Busy>
   first: boolean
   follow: { agent: string; stop: AbortController; up: boolean } | undefined
   heard: number
@@ -38,7 +42,7 @@ export type Runtime = {
 export type Dispatcher = { at: number; id: string; runs: number }
 
 export function runtime(self: Swarm): Runtime {
-  return (self.runtime ??= { aborts: new Map(), first: true, follow: undefined, heard: 0, kicks: new Set(), listing: undefined, pools: {}, waiters: new Set() })
+  return (self.runtime ??= { aborts: new Map(), doing: new Map(), first: true, follow: undefined, heard: 0, kicks: new Set(), listing: undefined, pools: {}, waiters: new Set() })
 }
 
 export function wake(self: Swarm) {
@@ -271,6 +275,7 @@ async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promis
   try {
     const agent = await dispatcher(self, swarm)
     if (!agent.ok) return await refusal(self, task, lease, agent)
+    follow(self, swarm, agent.value)
     let spawned = self.kv.get<Nodes.Spawned>('run:' + task.id)
     let budgeted = false
     if (!spawned) {
@@ -290,6 +295,7 @@ async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promis
         const last = steers.at(-1)
         if (last) await Nodes.heedNode(self, nid, last.seq)
       }
+      track(self, spawned, task)
       self.kv.put('run:' + task.id, spawned)
       if (!budgeted) {
         const set = await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(budget))
@@ -300,10 +306,65 @@ async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promis
     }
     self.kv.delete('paid:' + task.id)
     self.kv.delete('rest:' + task.id)
+    track(self, spawned, task)
     return await watch(self, swarm, task, lease, spawned, abort.signal)
   } finally {
     rt.aborts.delete(task.id)
+    idle(self, task.id)
   }
+}
+
+function track(self: Swarm, spawned: Nodes.Spawned, task: Work.Task) {
+  const key = spawned.agent + ':' + spawned.sub
+  const rt = runtime(self)
+  if (!rt.doing.has(key)) rt.doing.set(key, { held: undefined, nid: task.labels['node'] ?? '', sent: 0, task: task.id, timer: undefined })
+}
+
+function idle(self: Swarm, run: string) {
+  const rt = runtime(self)
+  for (const [key, held] of rt.doing)
+    if (held.task === run) {
+      clearTimeout(held.timer)
+      rt.doing.delete(key)
+    }
+  if (self.treeDoing.delete(run)) Nodes.doing(self, Flow.runNode(run))
+}
+
+function stepped(self: Swarm, agent: string, block: string) {
+  const rt = runtime(self)
+  if (!rt.doing.size) return
+  const found = Follow.frame(block)
+  if (!found) return
+  const event = json(found.data) as Gateway.Event | null
+  const outer = event?.event
+  const update = outer?.source === 'subagent' ? (outer.update as { event?: { payload?: Record<string, unknown>; type?: string }; id?: unknown; type?: string } | undefined) : undefined
+  const held = update?.type === 'event' ? rt.doing.get(agent + ':' + String(update.id)) : undefined
+  if (!event || !held) return
+  const type = update?.event?.type
+  const payload = update?.event?.payload ?? {}
+  let text: string | undefined
+  if (type === 'reasoning.summary.delta') {
+    const item = String(payload['item_id'] ?? payload['model_call_index'] ?? '')
+    const next = placed(held.held?.item === item ? held.held : undefined, item, typeof payload['offset'] === 'number' ? payload['offset'] : null, String(payload['text'] ?? ''))
+    held.held = typeof next === 'object' ? next : undefined
+    text = held.held ? gist(held.held.text) : undefined
+  } else if (type === 'tool.call') {
+    const step = call(payload)
+    text = step ? named(step) : undefined
+  }
+  if (!text) return
+  self.treeDoing.set(held.task, { at: event.created_at ?? Date.now(), text: clip(redact(text), 120) })
+  const due = held.sent + timing.doingMs - Date.now()
+  if (due <= 0) {
+    held.sent = Date.now()
+    Nodes.doing(self, held.nid)
+  } else
+    held.timer ??= setTimeout(() => {
+      held.timer = undefined
+      if (!self.treeDoing.has(held.task)) return
+      held.sent = Date.now()
+      Nodes.doing(self, held.nid)
+    }, due)
 }
 
 async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.PoolLease, spawned: Nodes.Spawned, signal: AbortSignal): Promise<Board.Outcome> {
@@ -348,6 +409,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
     if (Date.now() - seen > Math.max(leased(self), timing.leaseMs)) break
     if (runtime(self).heard === heard) await wait(self, runtime(self).follow?.up ? timing.streamUpMs : timing.streamDownMs, signal)
   }
+  idle(self, task.id)
   const state = sub?.status.state ?? 'gone'
   const ended = sub ? finished.has(state) : true
   if (sub && (!ended || state === 'completed')) {
@@ -443,6 +505,7 @@ export async function verified(self: Swarm, nid: string, sha: string, outcome: T
 
 export async function halt(self: Swarm, run: string) {
   runtime(self).aborts.get(run)?.abort()
+  idle(self, run)
   const task = await self.board.task(run)
   if (task && !Work.terminal(task.phase)) await self.board.cancel(run, 'Its node ended.')
   const spawned = self.kv.get<Nodes.Spawned>('run:' + run)
@@ -561,13 +624,20 @@ export function follow(self: Swarm, swarm: string, agent: string) {
         following.up = true
         fails = 0
         const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+        let buffer = ''
         for (;;) {
           const read = await reader.read()
           if (read.done) break
-          for (const found of read.value.matchAll(/"seq":\s*(\d+)/g)) after = Math.max(after, Number(found[1]))
-          if (/"type":\s*"(?:status|completion)"/.test(read.value)) {
-            rt.heard += 1
-            rt.listing = undefined
+          buffer += read.value
+          const blocks = buffer.split('\n\n')
+          buffer = blocks.pop() ?? ''
+          for (const block of blocks) {
+            for (const found of block.matchAll(/"seq":\s*(\d+)/g)) after = Math.max(after, Number(found[1]))
+            if (/"type":\s*"(?:status|completion)"/.test(block)) {
+              rt.heard += 1
+              rt.listing = undefined
+            }
+            stepped(self, agent, block)
           }
           quiet = Date.now()
           wake(self)

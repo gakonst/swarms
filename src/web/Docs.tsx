@@ -27,7 +27,7 @@ const routes = [
   ['GET', '/v1/swarms/:id/tree', 'The headline and the nodes, to depth 3 by default; deeper nodes are listed by id under their parent.', '?root=<nid>&depth=<n>&status=<status>'],
   ['GET', '/v1/swarms/:id/nodes/:nid', 'One node with its runs (spend, summary, commit), notes, suggestions under it and every rider.', ''],
   ['GET', '/v1/swarms/:id/nodes/:nid/updates', "That node's changes, oldest first after the cursor.", '?after=<seq>'],
-  ['GET', '/v1/swarms/:id/live', 'Server-sent events: one delta each time a node is posted, ridden, started, checked, proven, ended, noted or moved, with the node as it now stands.', ''],
+  ['GET', '/v1/swarms/:id/live', 'Server-sent events: one delta each time a node is posted, ridden, started, checked, proven, ended, noted or moved, with the node as it now stands, and a doing delta (no id, not stored) at most every 2 s while a run works, its latest step in run.doing.', ''],
   ['GET', '/v1/swarms/:id/progress', 'Proven, dead ends and dollars spent over time.', '?every=hour'],
   ['GET', '/v1/swarms/:id/proofs', 'Every checked proof with its node, newest first.', ''],
   ['POST', '/v1/swarms/:id/nodes', 'Propose a node. Answers the transfer that makes it one, of at least $1; it joins the tree once that transfer is counted.', '{ parent, title, spec, form, statement? }'],

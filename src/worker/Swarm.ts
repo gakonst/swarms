@@ -184,6 +184,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   treeWatchers = new Set<WritableStreamDefaultWriter<Uint8Array>>()
 
+  treeDoing = new Map<string, Tree.Doing>()
+
   runtime: Runner.Runtime | undefined
 
   listing: { agent: string; at: number; pending: boolean; value: Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> } | undefined

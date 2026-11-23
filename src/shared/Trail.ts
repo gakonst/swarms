@@ -29,6 +29,12 @@ export function clip(text: string, length: number) {
   return text.length > length ? text.slice(0, length - 1) + '…' : text
 }
 
+export function gist(text: string) {
+  const headed = [...text.matchAll(/\*\*([^*\n]+)\*\*/g)].at(-1)?.[1]
+  const lines = text.split('\n').map((line) => line.replace(/^[#>\s]+/, '').replace(/[*`]+/g, '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+  return clip((headed ?? lines.at(-1) ?? '').trim(), 120)
+}
+
 export function redact(text: string) {
   return text
     .replace(/(https?:\/\/)[^\s/@:'"]+:[^\s/@'"]+@/g, '$1***@')

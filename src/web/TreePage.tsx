@@ -50,7 +50,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
       setGrove((current) => current && Grove.patch(current, delta))
       if (delta.node.id === selected) {
         setView((current: NodeView | undefined) => current && { ...current, ...delta.node, funders: current.funders, runs: current.runs })
-        setUpdates((current: NodeUpdates | undefined) => current && { deltas: [delta, ...current.deltas.filter((each) => each.seq !== delta.seq)], next: Math.max(current.next, delta.seq) })
+        if (delta.event !== 'doing') setUpdates((current: NodeUpdates | undefined) => current && { deltas: [delta, ...current.deltas.filter((each) => each.seq !== delta.seq)], next: Math.max(current.next, delta.seq) })
         if (delta.event === 'proven' || delta.event === 'ended' || delta.event === 'started' || delta.event === 'funded' || delta.event === 'moved' || delta.event === 'steered') review()
       }
       if (delta.event === 'proven' && delta.node.proof) {

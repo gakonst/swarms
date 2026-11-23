@@ -72,3 +72,15 @@ test('needs money is an unstarted node under the run minimum', () => {
   assert.equal(Grove.needsMoney(node('x', null, 'proposed')), true)
   assert.equal(Grove.needsMoney(node('x', null, 'funded')), false)
 })
+
+test('a doing delta carries the newest step without moving the cursor, and an older one is dropped', () => {
+  const grove = world()
+  const run: Tree.Run = { agent: 3, attempt: 1, budget: '1', checking: false, doing: { at: 7, text: 'Ran lake build' }, k: 1, since: 1, spent: '0', task: 'r', until: 0 }
+  const busy = node('b', 'root', 'in flight', { needs: ['a'], run })
+  const next = Grove.patch(grove, { at: 7, event: 'doing', node: busy, seq: 5, text: 'Ran lake build' })
+  assert.equal(next.nodes['b']?.run?.doing?.text, 'Ran lake build')
+  assert.equal(next.seq, 5)
+  assert.deepEqual([next.headline.inFlight, next.headline.frontier, next.headline.proven], [grove.headline.inFlight, grove.headline.frontier, grove.headline.proven])
+  assert.equal(Grove.patch(next, { at: 8, event: 'doing', node: busy, seq: 4, text: '' }), next)
+  assert.equal(Grove.patch(next, { at: 8, event: 'progress', node: busy, seq: 5, text: '' }), next)
+})

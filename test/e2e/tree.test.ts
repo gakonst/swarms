@@ -233,6 +233,47 @@ test('a steer mid-run is heeded', async (t) => {
   await s.balanced('steered')
 })
 
+test('a running task shows what it is doing', async (t) => {
+  if (!needs(t)) return
+  const burst = Array.from({ length: 10 }, (_, index) => 'Burst step ' + index)
+  dev.gateway.script('e2e-doing-marker', [
+    { spend: 0.05 },
+    { wait: 1_000 },
+    { think: '**Checking the base case**\n\nTrying n = 1 by hand first.' },
+    { wait: 3_000 },
+    ...burst.flatMap((think): Model.Step[] => [{ think }, { wait: 100 }]),
+    { wait: 3_000 },
+    { think: 'Writing it down in Lean.' },
+    { wait: 3_000 },
+    { spend: 0.05 },
+    { result: { outcome: 'progress', summary: 'Showed its steps.' } },
+  ])
+  nids['doing'] = await s.propose(ana, { form: 'lemma', parent: nids['program']!, spec: 'A run that thinks out loud. e2e-doing-marker', statement: 'theorem e2e_doing : True', title: 'A lemma that shows its work (e2e)' }, '2')
+  const nid = nids['doing']!
+  const pushed = await s.until('a doing delta with its first thought', async () => deltas.find((delta) => delta.event === 'doing' && delta.node.id === nid && delta.node.run?.doing?.text === 'Checking the base case'))
+  assert.equal(pushed.text, 'Checking the base case')
+  assert.equal(pushed.node.status, 'in flight')
+  const read = await s.until('the node read to show the last thought of the burst', async () => {
+    const node = await s.node(nid)
+    return node.run?.doing?.text === burst.at(-1) ? node : undefined
+  })
+  assert.ok(read.run?.doing && Date.now() - read.run.doing.at < 10_000)
+  const shown = await s.until('the tree read to show its last thought', async () => {
+    const node = by(await s.tree(), nid)
+    return node?.run?.doing?.text === 'Writing it down in Lean.' ? node : undefined
+  })
+  assert.equal(shown.status, 'in flight')
+  await s.until('the run to end', async () => ((await s.node(nid)).runs ?? []).find((each) => each.outcome !== null))
+  const after = await s.node(nid)
+  assert.ok(!after.run?.doing, 'what it was doing clears when the run ends: ' + JSON.stringify(after.run))
+  const pushes = deltas.filter((delta) => delta.event === 'doing' && delta.node.id === nid)
+  const bursts = pushes.filter((delta) => delta.text.startsWith('Burst step'))
+  assert.ok(bursts.length >= 1 && bursts.length <= 2, 'ten thoughts within a second push at most twice: ' + bursts.map((delta) => delta.text).join(', '))
+  assert.equal(bursts.at(-1)?.text, burst.at(-1), 'the held update carries the latest step')
+  assert.ok(pushes.some((delta) => !delta.node.run?.doing), 'a delta cleared it')
+  await s.balanced('doing')
+})
+
 test('a lease lapses and a takeover adopts the subagent', async (t) => {
   if (!needs(t)) return
   dev.gateway.script('e2e-lapse-marker', [{ think: 'A run that outlives its runner.' }, { spend: 0.1 }, ...Array.from({ length: 120 }, (_, index): Model.Step[] => [{ wait: 250 }, { think: 'step ' + index }]).flat(), { spend: 0.1 }, { result: { outcome: 'progress', summary: 'Outlived its runner.' } }])
@@ -316,7 +357,7 @@ test('the live stream carried every kind of change', async (t) => {
   if (!needs(t)) return
   const kinds = new Set(deltas.map((delta) => delta.event))
   for (const kind of ['posted', 'funded', 'started', 'proven', 'ended'] as const) assert.ok(kinds.has(kind), 'no ' + kind + ' delta; saw ' + [...kinds].join(', '))
-  const seqs = deltas.map((delta) => delta.seq)
+  const seqs = deltas.filter((delta) => delta.event !== 'doing').map((delta) => delta.seq)
   assert.deepEqual(seqs, [...seqs].sort((a, b) => a - b))
 })
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Entry } from '../src/shared/Api.ts'
-import { call, clip, crew, memory, merge, named, narrate, redact, step, subagent, thought, trouble } from '../src/shared/Trail.ts'
+import { call, clip, crew, gist, memory, merge, named, narrate, redact, step, subagent, thought, trouble } from '../src/shared/Trail.ts'
 
 function entry(input: Partial<Entry>): Entry {
   return { at: 1000, detail: null, event: null, kind: 'tool', seq: 0, text: '', who: null, ...input }
@@ -117,4 +117,12 @@ test('a tool result carries how long the call took, from the gateway event\'s du
   assert.equal(step('tool.result', { duration_ns: 1_499_600, result: '{"exitCode":0}', status: 'completed', tool: 'mcp__gateway__compute_exec' })?.ms, 1)
   assert.equal(step('tool.result', { duration_ns: 2_600_000_000, result: 'boom', status: 'failed', tool: 'mcp__gateway__compute_exec' })?.ms, 2600)
   assert.equal(step('tool.result', { result: 'x', status: 'completed', tool: 'mcp__gateway__compute_exec' })?.ms, undefined)
+})
+
+test('gist keeps the newest heading of a reasoning summary, else its last line', () => {
+  assert.equal(gist('**Checking the base case**\n\nTrying n = 1 first.'), 'Checking the base case')
+  assert.equal(gist('**One**\n\nfirst\n\n**Two**\n\nsecond'), 'Two')
+  assert.equal(gist('Reading the file.\n\n> Now the `kv_set` call'), 'Now the kv_set call')
+  assert.equal(gist('a'.repeat(300)).length, 120)
+  assert.equal(gist('  \n '), '')
 })
