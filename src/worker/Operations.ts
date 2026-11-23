@@ -206,7 +206,8 @@ export const schema = {
       )
       .max(2000)
       .default([])
-      .describe('tree only: reviewed nodes to post under the root at creation; parent and needs name other seed keys, or root.'),
+      .describe('tree only: nodes to post under the root at creation; parent and needs name other seed keys, or root.'),
+    reviewed: z.boolean().default(false).describe("tree only: whether a person has read the seed's Lean statements; false shows each as under review until an admin signs it off."),
   }),
   seat: z.object({
     budget: allowance.optional(),
@@ -1750,6 +1751,7 @@ async function plant(env: Cloudflare.Env, row: Store.Row, request: z.output<type
   }
   await stub(env, row.id).plant({
     dispatcher: Persona.dispatcher(),
+    reviewed: request.reviewed,
     root: { statement: request.statement ?? null, title: request.title, words: request.goal },
     seed,
     rules: Persona.rules(setup),

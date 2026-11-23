@@ -47,6 +47,7 @@ export type Node = {
   title: string
   spec: string
   statement: string | null
+  review: boolean
   by: Who
   status: Status
   end: End | null

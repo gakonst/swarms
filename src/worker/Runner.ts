@@ -430,7 +430,6 @@ export async function spentOf(self: Swarm, run: string, close = false): Promise<
 }
 
 export async function live(self: Swarm) {
-  const swarm = Nodes.swarm(self)
   let total = 0n
   for (const task of await self.board.tasks()) {
     if (task.labels['kind'] !== 'run' || Work.terminal(task.phase) || (await self.board.task(Nodes.settleId(task.id)))?.phase === 'done') continue
