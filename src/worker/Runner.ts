@@ -420,6 +420,10 @@ export async function halt(self: Swarm, run: string) {
   if (spent === null) return
   await Nodes.settleRun(self, run, spent)
   if (spawned) charged(self, run, spawned, spent - (await dispatched(self, Nodes.swarm(self), spawned)))
+  else {
+    const agent = self.kv.get<Dispatcher>('dispatcher')?.id
+    if (agent && self.kv.get<string>('prompted:' + run)) charged(self, run, { agent, at: 0, sub: 0 }, 0n)
+  }
 }
 
 export type Charged = { agent: string; at: number; spent: string; sub: number }
@@ -448,8 +452,10 @@ async function charge(self: Swarm) {
       continue
     }
     const listed = await list(self, swarm, held.agent, true)
-    const sub = listed.ok ? listed.value.find((one) => one.agent_id === held.sub) : undefined
+    const role = 'n:' + Flow.runNode(run) + '#' + Nodes.kOf(run)
+    const sub = listed.ok ? listed.value.find((one) => (held.sub ? one.agent_id === held.sub : one.parent_agent_id === null && one.role === role)) : undefined
     if (!sub) continue
+    if (!held.sub && !finished.has(sub.status.state)) await Gateway.close(self.env, swarm, held.agent, sub.agent_id)
     const now = Flow.micro(sub.spent_usd)
     const extra = now - Memo.units(held.spent)
     if (extra <= 0n) continue
@@ -466,7 +472,7 @@ async function charge(self: Swarm) {
         break
       }
     })
-    self.kv.put(key, { ...held, spent: Memo.decimal(now) })
+    self.kv.put(key, { ...held, spent: Memo.decimal(now), sub: sub.agent_id })
     Nodes.changed(self)
   }
 }
