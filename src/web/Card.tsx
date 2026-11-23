@@ -6,7 +6,7 @@ import { usd } from './format.ts'
 import { Tile } from './Cover.tsx'
 import { Link } from './router.tsx'
 
-export type Idea = { backers: number; balance: number; cover: Cover | null; href: string; id: string; left: number; mood: Status.Mood; pitch: string; title: string; word: Status.Word }
+export type Idea = { archived?: boolean; backers: number; balance: number; cover: Cover | null; href: string; id: string; left: number; mood: Status.Mood; pitch: string; title: string; word: Status.Word }
 
 export const pill = Status.pill
 
@@ -16,7 +16,7 @@ export const lead = Answer.opening
 
 export function fromSwarm(swarm: Summary): Idea {
   const stood = Status.standing(swarm)
-  return { backers: swarm.contributors, balance: Number(swarm.balance), cover: swarm.cover, href: `/s/${swarm.id}`, id: swarm.id, left: Number(swarm.remaining), mood: stood.mood, pitch: lead(swarm.goal, swarm.title), title: swarm.title, word: stood.word }
+  return { archived: !!swarm.archivedAt, backers: swarm.contributors, balance: Number(swarm.balance), cover: swarm.cover, href: `/s/${swarm.id}`, id: swarm.id, left: Number(swarm.remaining), mood: stood.mood, pitch: lead(swarm.goal, swarm.title), title: swarm.title, word: stood.word }
 }
 
 export function fromProblem(problem: Problem): Idea {
@@ -45,14 +45,14 @@ export function Card(props: { idea: Idea }) {
   const idea = props.idea
   return (
     <li>
-      <Link className="card" data={{ 'data-mood': idea.mood }} to={idea.href}>
+      <Link className="card" data={{ 'data-mood': idea.archived ? 'new' : idea.mood }} to={idea.href}>
         <Tile className="card-art" cover={idea.cover} id={idea.id} mood={idea.mood} />
         <span className="card-body">
           <b className="card-title">{idea.title}</b>
           {idea.pitch && <span className="card-pitch">{idea.pitch}</span>}
           <span className="card-stats">
             <i />
-            {pill(idea.word)}
+            {idea.archived ? 'Archived' : pill(idea.word)}
             {idea.balance > 0 && <> · {usd(String(idea.balance))} · {idea.backers} rider{idea.backers === 1 ? '' : 's'}</>}
           </span>
         </span>
