@@ -1,15 +1,12 @@
 import { useState } from 'react'
 import type { Config, Steering } from '../shared/Api.ts'
-import { decimal } from '../shared/Memo.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
-import * as Setup from '../shared/Setup.ts'
 import * as Api from './api.ts'
 import { here, site } from './boot.ts'
 import { Box } from './Box.tsx'
 import { Card, fromProblem, pill } from './Card.tsx'
 import type { Target } from './Contribute.tsx'
-import { usd } from './format.ts'
 import { remember } from './hooks.ts'
 import { launcher } from './launch.ts'
 import * as Names from './names.ts'
@@ -21,58 +18,14 @@ import * as Wire from './wire.ts'
 
 const prefill = { amount: '5', note: '', token: undefined } as const
 
-const offered = ['frontier-anthropic', 'frontier-openai', 'frontier-mix'] as const
-
-type Offered = (typeof offered)[number]
-
-function asked(): Offered {
-  const template = here().searchParams.get('template')
-  return offered.find((name) => name === template) ?? Setup.fallback
-}
-
-function least(config: Config | undefined, template: Offered) {
-  const resolved = Setup.resolve({ template })
-  if (typeof resolved === 'string' || !config?.models.length) return undefined
-  const priced = Setup.priced(resolved, new Map(config.models.map((model) => [model.id, model])))
-  return typeof priced === 'string' ? undefined : decimal(BigInt(priced.most))
-}
-
 function starter() {
   const asked = here().searchParams.get('q')
   return asked === null ? undefined : problems.find((problem) => problem.id === asked)
 }
 
-function Runs(props: { config: Config | undefined; disabled: boolean; onPick: (template: Offered) => void; template: Offered }) {
-  const prices = new Map((props.config?.models ?? []).map((model) => [model.id, model]))
-  return (
-    <div aria-label="Runs on" className="runs" role="radiogroup">
-      <p>Runs on</p>
-      {offered.map((name) => {
-        const preset = Setup.presets[name]
-        const resolved = Setup.resolve({ template: name })
-        const priced = typeof resolved === 'string' || !prices.size ? undefined : Setup.priced(resolved, prices)
-        return (
-          <label data-on={props.template === name} key={name}>
-            <input checked={props.template === name} disabled={props.disabled} name="runs" onChange={() => props.onPick(name)} type="radio" value={name} />
-            <i aria-hidden="true" />
-            <span><b>{preset.label}</b> <span>{Setup.name(preset.model)}</span></span>
-            <small>{priced && typeof priced !== 'string' ? `${usd(decimal(BigInt(priced.step)))} a step` : ''}</small>
-          </label>
-        )
-      })}
-      <label aria-disabled="true" data-soon="true">
-        <input disabled name="runs" type="radio" value="abliterated" />
-        <i aria-hidden="true" />
-        <span><b>Abliterated</b></span>
-        <small>Soon</small>
-      </label>
-    </div>
-  )
-}
-
-function useLaunch(slot: string, title: string, goal: string, problem: string | undefined, template: Offered, steering: Steering, nickname: string | undefined) {
+function useLaunch(slot: string, title: string, goal: string, problem: string | undefined, steering: Steering, nickname: string | undefined) {
   const [launch] = useState(() => launcher((input: Parameters<typeof Api.create>[0]) => Api.create(input).then((swarm): Target => ({ id: swarm.id }))))
-  const input = { steering, template, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}), ...(nickname ? { nickname } : {}) }
+  const input = { steering, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}), ...(nickname ? { nickname } : {}) }
   return {
     busy: Pay.useFlow(slot).at === 'busy',
     locked: !(input.title.length >= 1 && input.title.length <= 80 && input.goal.length >= 10 && input.goal.length <= 12_000),
@@ -102,10 +55,9 @@ export function New(props: { config: Config | undefined; name?: string }) {
 function Seed(props: { config: Config | undefined; name: string | undefined; problem: Problem }) {
   const problem = props.problem
   const [note, setNote] = useState('')
-  const [template, setTemplate] = useState(asked)
   const [steering, setSteering] = useState<Steering>('team')
   const id = `idea:${problem.id}`
-  const launch = useLaunch(id, problem.title, problem.goal, problem.id, template, steering, props.name)
+  const launch = useLaunch(id, problem.title, problem.goal, problem.id, steering, props.name)
   const backed = useCanBack()
 
   return (
@@ -122,10 +74,10 @@ function Seed(props: { config: Config | undefined; name: string | undefined; pro
           </header>
           <Box
             config={props.config}
-            extra={<><Runs config={props.config} disabled={launch.busy} onPick={setTemplate} template={template} /><Steered disabled={launch.busy} onPick={setSteering} steering={steering} /></>}
+            extra={<Steered disabled={launch.busy} onPick={setSteering} steering={steering} />}
             first
             focus={0}
-            least={least(props.config, template)}
+            least="1"
             locked={launch.locked}
             members={[]}
             note={note}
@@ -150,9 +102,8 @@ function Own(props: { config: Config | undefined; name: string | undefined }) {
   const [question, setQuestion] = useState(() => (props.name ? Nickname.topic(props.name) : ''))
   const [note, setNote] = useState('')
   const drafted = brief(question)
-  const [template, setTemplate] = useState(asked)
   const [steering, setSteering] = useState<Steering>('team')
-  const launch = useLaunch('own', drafted.title, drafted.goal, undefined, template, steering, props.name)
+  const launch = useLaunch('own', drafted.title, drafted.goal, undefined, steering, props.name)
   const free = (list.data ? open(list.data.swarms) : problems).slice(0, 3)
 
   return (
@@ -166,10 +117,10 @@ function Own(props: { config: Config | undefined; name: string | undefined }) {
       <div className="own-box">
         <Box
             config={props.config}
-            extra={<><Runs config={props.config} disabled={launch.busy} onPick={setTemplate} template={template} /><Steered disabled={launch.busy} onPick={setSteering} steering={steering} /></>}
+            extra={<Steered disabled={launch.busy} onPick={setSteering} steering={steering} />}
             first
             focus={0}
-            least={least(props.config, template)}
+            least="1"
             locked={launch.locked}
             members={[]}
             note={note}

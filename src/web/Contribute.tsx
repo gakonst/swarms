@@ -11,6 +11,13 @@ import * as Wallet from './wallet.ts'
 
 const stops = [1, 2, 3, 5, 8, 10, 15, 20, 25, 35, 50, 75, 100, 150, 250, 500] as const
 
+function grown(marks: readonly number[], amount: string) {
+  const next = [...marks]
+  const value = Number(amount)
+  while (next[next.length - 1]! <= (value > 0 ? value : 0)) next.push(next[next.length - 1]! * 2)
+  return next
+}
+
 function nearest(amount: string, marks: readonly number[]) {
   const value = Number(amount)
   if (!(value > 0)) return 0
@@ -112,7 +119,7 @@ export function Fuel(props: {
   const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && flow.at !== 'unrecorded'
   const text = props.note.trim()
   const least = Math.ceil(Number(floor) * 100) / 100
-  const marks = least > stops[0] ? [least, ...stops.filter((stop) => stop > least)] : stops
+  const marks = grown(least > stops[0] ? [least, ...stops.filter((stop) => stop > least)] : stops, amount)
   const at = nearest(amount, marks)
 
   const record = async (owed: Pay.Owed) => {
