@@ -74,20 +74,7 @@ app.get('*', async (c, next) => {
   return Page.page(c.req.raw, c.env)
 })
 
-function framed(env: Cloudflare.Env, id: string | undefined): Edge.Draw {
-  return async (request) => {
-    const url = new URL(request.url)
-    const site = Site.url(env, url)
-    if (id === undefined) {
-      const listed = await Operations.list(env, {}).catch(() => undefined)
-      return { response: XFrames.start(site, listed?.ok ? listed.value.swarms : [], url, env.TELEGRAM_BOT), whole: Promise.resolve(!!listed?.ok) }
-    }
-    const result = await Operations.get(env, { swarm: id })
-    return { response: result.ok ? XFrames.swarm(site, result.value, url, env.TELEGRAM_BOT) : result.status === 404 ? XFrames.lost(site, url, env.TELEGRAM_BOT) : Problem.json(result), whole: Promise.resolve(result.ok) }
-  }
-}
-
-app.get('/x', (c) => Edge.page(c.req.raw, '', framed(c.env, undefined)))
+app.get('/x', (c) => Edge.page(c.req.raw, '', Og.frame(c.env, undefined)))
 
 app.get('/x/card.svg', (c) => XFrames.card(c.req.query('title') ?? 'Fund a swarm'))
 
@@ -101,11 +88,18 @@ app.get('/oembed', async (c) => {
   return response
 })
 
-app.get('/x/s/:id', (c) => Edge.page(c.req.raw, '', framed(c.env, c.req.param('id'))))
+app.get('/x/s/:id', (c) => Edge.page(c.req.raw, '', Og.frame(c.env, c.req.param('id'))))
 
-app.get('/tg', (c) => Edge.page(c.req.raw, '', framed(c.env, Telegram.started(new URL(c.req.url)))))
+app.get('/x/s/:id/n/:nid', (c) => Edge.page(c.req.raw, '', Og.frame(c.env, c.req.param('id'), c.req.param('nid'))))
 
-app.get('/tg/s/:id', (c) => Edge.page(c.req.raw, '', framed(c.env, c.req.param('id'))))
+app.get('/tg', (c) => {
+  const url = new URL(c.req.url)
+  return Edge.page(c.req.raw, '', Og.frame(c.env, Telegram.started(url), Telegram.node(url)))
+})
+
+app.get('/tg/s/:id', (c) => Edge.page(c.req.raw, '', Og.frame(c.env, c.req.param('id'))))
+
+app.get('/tg/s/:id/n/:nid', (c) => Edge.page(c.req.raw, '', Og.frame(c.env, c.req.param('id'), c.req.param('nid'))))
 
 app.post('/telegram', (c) => Telegram.hook(c.env, c.req.raw))
 

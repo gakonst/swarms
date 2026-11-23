@@ -5,6 +5,7 @@ import { redact } from '../shared/Trail.ts'
 import * as Chat from './Chat.ts'
 import * as Flow from './Flow.ts'
 import * as Store from './Store.ts'
+import * as Telegram from './Telegram.ts'
 import type { Swarm } from './Swarm.ts'
 import * as Work from './Work.ts'
 
@@ -204,13 +205,15 @@ export function emit(self: Swarm, nid: string, event: Event, text: string) {
   const at = Date.now()
   const seq = Number(self.ctx.storage.sql.exec<{ seq: number }>('INSERT INTO tree_deltas (at, node, event, text) VALUES (?, ?, ?, ?) RETURNING seq', at, nid, event, redact(text)).one().seq)
   changed(self)
-  if (!self.listened() && !self.treeWatchers.size) return
+  const told = event === 'proven' || event === 'ended'
+  if (!told && !self.listened() && !self.treeWatchers.size) return
   self.ctx.waitUntil(
     view(self)
       .then(async (shown) => {
         const node = shown.nodes.get(nid)
         if (!node) return
         const delta: Tree.Delta = { at, event, node, seq, text: redact(text) }
+        if (told) await Telegram.announce(self.env, swarm(self), shown.nodes.get(root)?.title ?? '', delta).catch((error: unknown) => console.error('Announcing a delta failed', error))
         if (self.listened()) Chat.broadcast(self, { delta, type: 'delta' })
         const frame = new TextEncoder().encode('id: ' + seq + '\ndata: ' + JSON.stringify(delta) + '\n\n')
         for (const writer of [...self.treeWatchers]) await writer.write(frame).catch(() => self.treeWatchers.delete(writer))
