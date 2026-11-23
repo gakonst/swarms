@@ -9,6 +9,11 @@ const Nodes: typeof NodesModule = await import('../src/worker/Nodes.ts')
 const Runner: typeof RunnerModule = await import('../src/worker/Runner.ts')
 const Flow: typeof FlowModule = await import('../src/worker/Flow.ts')
 
+async function runKey(run: string) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(run)))
+  return 'run-' + [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 test('a ride commits a run, the dispatcher spawns it with the commitment as its bound, and its result splits the node', async (t) => {
   const g = gateway()
   const w = await planted(g.route)
@@ -20,7 +25,10 @@ test('a ride commits a run, the dispatcher spawns it with the commitment as its 
   await until(() => g.subs.length === 1)
   assert.equal(g.subs[0]?.role, 'n:root#1')
   assert.equal(g.subs[0]?.budget_usd, 5)
-  assert.deepEqual(g.budgets[0], [1, 5])
+  assert.equal(g.spawned[0]?.['key'], await runKey('r:root:1'))
+  assert.equal(g.spawned[0]?.['budget_usd'], 5)
+  assert.equal(g.prompts.length, 0)
+  assert.equal(g.budgets.length, 0)
   let view = await w.swarm.treeRead(id, { depth: 3, root: 'root', status: undefined })
   assert.ok(view.ok)
   const root = view.value.nodes.find((node) => node.id === 'root')
@@ -48,6 +56,52 @@ test('a ride commits a run, the dispatcher spawns it with the commitment as its 
   const totals = Flow.totals(await Flow.rows(w.env, id))
   assert.equal(totals.held, totals.pledged - totals.spent)
   assert.equal(totals.spent, 1_250_000n)
+})
+
+test('without the spawn route the dispatcher spawns the run, and its bound is set after', async (t) => {
+  const g = gateway()
+  g.state.spawnRoute = false
+  const w = await planted(g.route)
+  t.after(async () => {
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  await w.swarm.treePledge(id, { amount: '12', contributor: ana, hash: '0x' + '6'.repeat(64), nid: null })
+  await until(() => g.budgets.length === 1)
+  assert.equal(g.prompts.length, 1)
+  assert.equal(g.spawned.length, 0)
+  assert.equal(g.subs[0]?.role, 'n:root#1')
+  assert.deepEqual(g.budgets[0], [1, 5])
+})
+
+test('a spawn still starting under the same key is asked again and answers the one subagent', async (t) => {
+  const g = gateway()
+  g.state.starting = 2
+  const w = await planted(g.route)
+  t.after(async () => {
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  await w.swarm.treePledge(id, { amount: '12', contributor: ana, hash: '0x' + '7'.repeat(64), nid: null })
+  await until(() => g.subs.length === 1)
+  assert.equal(g.spawned.length, 3)
+  assert.equal(new Set(g.spawned.map((body) => body['key'])).size, 1)
+  assert.equal(g.prompts.length, 0)
+  assert.equal(g.budgets.length, 0)
+})
+
+test('a dispatcher with no conversation yet spawns through its turn', async (t) => {
+  const g = gateway()
+  g.state.fresh = true
+  const w = await planted(g.route)
+  t.after(async () => {
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  await w.swarm.treePledge(id, { amount: '12', contributor: ana, hash: '0x' + '8'.repeat(64), nid: null })
+  await until(() => g.budgets.length === 1)
+  assert.equal(g.prompts.length, 1)
+  assert.equal(g.subs[0]?.role, 'n:root#1')
 })
 
 test('a proved run is checked by Lean; the check proves the node and returns its money up the tree', async (t) => {
