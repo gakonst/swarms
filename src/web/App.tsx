@@ -12,6 +12,7 @@ import { Base, Link, navigate, usePath, warmer } from './router.tsx'
 import { Lost } from './Lost.tsx'
 import * as Names from './names.ts'
 import { Cheered, ShareSwarm } from './Share.tsx'
+import { Me, mine, Profile } from './Profile.tsx'
 import { page, preload } from './pages.ts'
 import { problems } from './research.ts'
 import * as Wallet from './wallet.ts'
@@ -59,10 +60,6 @@ if (typeof window !== 'undefined') {
 const About = page('about', () => import('./About.tsx').then((module) => module.About))
 
 const Board = lazy(() => import('./Board.tsx').then((module) => ({ default: module.Board })))
-
-function profile(account: { name: string | null } | undefined, address: string) {
-  return `/u/${account?.name ?? address}`
-}
 
 function WalletButton(props: { config: Config | undefined }) {
   const wallet = useWallet()
@@ -124,7 +121,7 @@ function WalletButton(props: { config: Config | undefined }) {
         <div className="wallet-drop">
           <div className="wallet-list" onClick={close} role="menu">
             <button className="wallet-out" onClick={fund} role="menuitem" type="button">Add funds</button>
-            <Link className="wallet-out" to={profile(wallet.account, wallet.address)}>Your profile</Link>
+            <Link className="wallet-out" to={mine(wallet.account, wallet.address)}>Your profile</Link>
             <button className="wallet-out" onClick={() => Wallet.disconnect()} role="menuitem" type="button">Sign out</button>
           </div>
         </div>
@@ -238,6 +235,7 @@ export function App() {
   const node = /^\/n\/([^/]+)$/.exec(tail)?.[1]
   const view: Tab = node || tail === '/board' ? 'board' : tail === '/code' ? 'code' : tail === '/results' ? 'results' : tail === '/about' ? 'about' : 'chat'
   const free = !!named && found === null
+  const rider = /^\/u\/([^/]+)\/?$/.exec(path)?.[1]
 
   useEffect(() => {
     if (path === '/join') navigate(`/ideas${location.search}`, { replace: true })
@@ -247,7 +245,7 @@ export function App() {
     if (free) {
       const problem = problems.find((each) => each.id === named?.name)
       document.title = `${problem ? problem.title : `Start a swarm on ${Nickname.topic(named?.name ?? '')}`} · Swarms`
-    } else if (!swarm && !named && path !== '/board') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/faq' ? 'Questions · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
+    } else if (!swarm && !named && path !== '/board' && !rider && path !== '/me') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/faq' ? 'Questions · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
   }, [path, swarm, free])
 
   useEffect(() => {
@@ -285,6 +283,10 @@ export function App() {
           <About />
         ) : path === '/docs' ? (
           <Docs config={config} />
+        ) : rider ? (
+          <Profile key={rider} who={rider} />
+        ) : path === '/me' ? (
+          <Me config={config} />
         ) : path === '/faq' ? (
           <Faq />
         ) : swarm ? (

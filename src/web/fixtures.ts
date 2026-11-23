@@ -1,6 +1,6 @@
 import * as Answer from '../shared/Answer.ts'
 import * as Shelf from '../shared/Artifact.ts'
-import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, ProgressView, ProofsView, Proposed, Pulse, Room, Roster, Said, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Room, Roster, Said, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -980,6 +980,22 @@ function mentions(swarm: Live, text: string) {
 export function account(who: `0x${string}` | undefined): Promise<Account> {
   if (!who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to read your account.'))
   return delay({ address: who, handle: called(who), name: names.get(who.toLowerCase()) ?? null })
+}
+
+export async function rider(who: string): Promise<Profile> {
+  const wanted = who.replace(/^@/, '').toLowerCase()
+  const address = (/^0x[0-9a-f]{40}$/.test(wanted) ? wanted : [...names].find(([, name]) => name === wanted)?.[0]) as `0x${string}` | undefined
+  if (!address) throw fail(404, 'not_found', 'No rider has this name.')
+  const handle = called(address)
+  const grown = await treeView(treeId, { depth: 64 })
+  const items = grown.nodes
+    .filter((node) => node.form !== 'goal' && node.form !== 'triage' && (node.by.handle === handle || node.funders.some((funder) => funder.who.handle === handle)))
+    .map((node) => ({ created: node.by.handle === handle && !node.by.agent, node: node.id, ridden: node.funders.find((funder) => funder.who.handle === handle)?.amount ?? '0.000000', status: node.status, swarm: treeId, title: node.title }))
+    .sort((a, b) => Number(units(b.ridden) - units(a.ridden)))
+  const shown = fixtures.map(summary).sort((a, b) => Number(b.id === treeId) - Number(a.id === treeId)).slice(0, 3)
+  const swarms = shown.map((one, index) => ({ balance: one.balance, form: one.form, id: one.id, nickname: one.nickname, ridden: decimal(BigInt(12 - index * 4) * 1_000_000n), riders: one.contributors, since: one.createdAt, started: index === 1, title: one.title }))
+  const ridden = decimal(swarms.reduce((sum, one) => sum + units(one.ridden), 0n))
+  return delay({ items, rider: { address, handle, name: names.get(address) ?? null }, ridden, swarms })
 }
 
 export function rename(who: `0x${string}` | undefined, name: string | null): Promise<Account> {

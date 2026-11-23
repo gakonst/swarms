@@ -21,10 +21,12 @@ const firstChat = 30
 
 const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/faq', '/board'])
 
+const ridered = /^\/(u\/[^/]+|me)\/?$/
+
 const swarmed = /^\/s\/([^/]+)(\/chat|\/code|\/results|\/board|\/about|\/n\/[0-9a-z]+)?\/?$/
 
 export function rendered(path: string) {
-  return listed.has(path) || swarmed.test(path) || Nickname.parse(path) !== undefined
+  return listed.has(path) || swarmed.test(path) || ridered.test(path) || Nickname.parse(path) !== undefined
 }
 
 export function moved(url: URL) {
@@ -134,6 +136,16 @@ async function gather(env: Cloudflare.Env, url: URL, calling: Calling): Promise<
   if (path === '/about' || path === '/docs') return { data, head: Share.share(site, Share.plain(path === '/about' ? 'about' : 'docs')), status: 200, whole: true }
   if (path === '/faq') return { data, head: Share.share(site, Share.plain('about'), { description: Share.faq, path: '/faq', title: 'Questions · Swarms' }), status: 200, whole: true }
   if (!rendered(path)) return { data, head: lost, status: 404, whole: false }
+  if (path === '/me') return { data, head: Share.share(site, Share.listing('home', []), { path, title: 'Your profile · Swarms' }), status: 200, whole: true }
+  const profiled = /^\/u\/([^/]+)$/.exec(path)?.[1]
+  if (profiled) {
+    const who = decodeURIComponent(profiled).trim().replace(/^@/, '').toLowerCase()
+    const read = await within(Operations.rider(env, { who }), 2500)
+    if (read?.ok) data[`rider:${who}`] = read.value
+    else if (read) data[`!rider:${who}`] = read.detail
+    const handle = read?.ok ? (read.value.rider.name ? `@${read.value.rider.name}` : read.value.rider.handle) : `@${who}`
+    return { data, head: Share.share(site, Share.listing('home', []), { description: read?.ok ? `Rode ${read.value.swarms.length} swarm${read.value.swarms.length === 1 ? '' : 's'} with $${Number(read.value.ridden).toFixed(2)}.` : 'A rider on Swarms.', path, title: `${handle} · Swarms` }), status: read && !read.ok && read.status === 404 ? 404 : 200, whole: false }
+  }
   const named = Nickname.parse(path)
   const found = named && (await calling)
   if (named && !found) return found === null && !named.tail ? unclaimed(env, site, named.name) : { data, head: lost, status: found === null ? 404 : 200, whole: false }
@@ -220,6 +232,8 @@ export async function lost(request: Request, env: Cloudflare.Env) {
 }
 
 export async function page(request: Request, env: Cloudflare.Env) {
+  const own = new URL(request.url).pathname.replace(/\/$/, '') === '/me' ? face(request.headers.get('cookie')) : undefined
+  if (own) return new Response(null, { headers: { 'cache-control': 'no-store', location: Site.at(`/u/${own.account?.name ?? own.address.toLowerCase()}`) }, status: 302 })
   if (Share.bot(request)) waitUntil(Og.warm(env, new URL(request.url)).catch((error: unknown) => console.error('Preview warm-up failed', error)))
   const cookie = request.headers.get('cookie')
   const build = await built(env, new URL(request.url).origin).catch(() => '')
