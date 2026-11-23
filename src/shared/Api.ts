@@ -1,4 +1,5 @@
 import type * as Setup from './Setup.ts'
+import type * as Tree from './Tree.ts'
 
 export type Status = 'funding' | 'running' | 'paused'
 
@@ -10,8 +11,12 @@ export type Answer = { at: number; done: boolean; text: string }
 
 export type Cover = { form: 'image' | 'page'; url: string }
 
+export type SwarmForm = 'agent' | 'tree'
+
 export type Summary = {
   answer: Answer | null
+  archivedAt: number | null
+  form: SwarmForm
   balance: string
   contributors: number
   cover: Cover | null
@@ -277,5 +282,42 @@ export type Chatter =
   | { parts: Part[]; type: 'changed'; version: string }
   | { artifacts: Artifact[]; type: 'artifacts' }
   | { roster: Roster; type: 'roster' }
+  | { delta: Tree.Delta; type: 'delta' }
+
+export type TreeView = { headline: Tree.Headline; nodes: Tree.Node[]; seq: number }
+
+export type NodeRun = {
+  budget: string
+  commit: string | null
+  k: number
+  outcome: 'proved' | 'refuted' | 'split' | 'progress' | 'stuck' | null
+  since: number
+  spent: string
+  summary: string
+  task: string
+  until: number | null
+}
+
+export type NodeSteer = { amount: string; at: number; note: string; who: Tree.Who }
+
+export type Suggestion = { at: number; id: string; text: string; who: Tree.Who }
+
+export type NodeView = Tree.Node & { funders: Tree.Funder[]; review: boolean; runs: NodeRun[]; steers: NodeSteer[]; suggestions: Suggestion[] }
+
+export type NodeUpdates = { deltas: Tree.Delta[]; next: number }
+
+export type ProgressView = { burn: Tree.Burn }
+
+export type ProofsView = { proofs: { check: Tree.Check; node: string; title: string }[] }
+
+export type Proposed = { nid: string; transfer: Prepared }
+
+export type Suggested = { id: string }
+
+export type Bucket = { amount: string; node: string; title: string }
+
+export type Standing = { buckets: Bucket[]; committed: string; free: string; refundable: string; spent: string; swarm: string }
+
+export type Ledgered = { drift: string; gateway: { deposited: string; left: string; spent: string } | null; held: string; live: string; ok: boolean; pledged: string; spent: string; swarm: string }
 
 export type Lobby = { swarm: Summary; type: 'swarm' } | { type: 'welcome' }

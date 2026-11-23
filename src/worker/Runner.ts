@@ -1,0 +1,500 @@
+import { Board } from 'nanocode-ts'
+import * as Memo from '../shared/Memo.ts'
+import * as Setup from '../shared/Setup.ts'
+import type * as Tree from '../shared/Tree.ts'
+import { clip } from '../shared/Trail.ts'
+import * as Flow from './Flow.ts'
+import * as Gateway from './Gateway.ts'
+import * as Nodes from './Nodes.ts'
+import * as Persona from './Persona.ts'
+import * as Phase from './Phase.ts'
+import type { Swarm } from './Swarm.ts'
+import * as Triage from './Triage.ts'
+import * as Verify from './Verify.ts'
+import * as Work from './Work.ts'
+
+export const timing = { idleMs: 60_000, leaseMs: 30 * 60_000, listMs: 2_000, pollMs: 2_000, spawnMs: 120_000, streamDownMs: 20_000, streamUpMs: 120_000, verifyMs: 60_000 }
+
+export const rotateAfter = 200
+
+export const verifiers = 4
+
+export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: 8 }
+
+const finished = new Set(['completed', 'failed', 'closed', 'interrupted'])
+
+export type Runtime = {
+  aborts: Map<string, AbortController>
+  first: boolean
+  follow: { agent: string; stop: AbortController; up: boolean } | undefined
+  listing: { agent: string; at: number; value: Promise<Gateway.Result<Gateway.Subagent[]>> } | undefined
+  pools: { runs?: Board.Pool; verifies?: Board.Pool }
+  waiters: Set<() => void>
+}
+
+export type Dispatcher = { at: number; id: string; runs: number }
+
+export function runtime(self: Swarm): Runtime {
+  return (self.runtime ??= { aborts: new Map(), first: true, follow: undefined, listing: undefined, pools: {}, waiters: new Set() })
+}
+
+export function wake(self: Swarm) {
+  const rt = runtime(self)
+  const woken = [...rt.waiters]
+  rt.waiters.clear()
+  for (const waiter of woken) waiter()
+}
+
+function wait(self: Swarm, ms: number, signal?: AbortSignal) {
+  const rt = runtime(self)
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(timer)
+      rt.waiters.delete(done)
+      signal?.removeEventListener('abort', done)
+      resolve()
+    }
+    const timer = setTimeout(done, ms)
+    rt.waiters.add(done)
+    signal?.addEventListener('abort', done, { once: true })
+  })
+}
+
+export const output = {
+  additionalProperties: false,
+  properties: {
+    children: {
+      items: {
+        additionalProperties: false,
+        properties: { needs: { items: { type: 'string' }, type: 'array' }, spec: { type: 'string' }, statement: { type: ['string', 'null'] }, title: { type: 'string' } },
+        required: ['title', 'spec', 'statement', 'needs'],
+        type: 'object',
+      },
+      type: 'array',
+    },
+    commit: { type: ['string', 'null'] },
+    outcome: { enum: ['proved', 'refuted', 'split', 'progress', 'stuck'], type: 'string' },
+    summary: { type: 'string' },
+    theorem: { type: ['string', 'null'] },
+    why: { type: ['string', 'null'] },
+  },
+  required: ['outcome', 'summary', 'commit', 'theorem', 'children', 'why'],
+  type: 'object',
+}
+
+export function json(text: string | undefined): Record<string, unknown> | null {
+  if (!text) return null
+  const tries = [text, text.match(/```(?:json)?\s*([\s\S]*?)```/)?.[1], text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)]
+  for (const candidate of tries) {
+    if (!candidate) continue
+    try {
+      const value: unknown = JSON.parse(candidate)
+      if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>
+    } catch {}
+  }
+  return null
+}
+
+const outcomes = new Set(['proved', 'refuted', 'split', 'progress', 'stuck'])
+
+function text(value: unknown, most = 4000) {
+  return typeof value === 'string' && value.trim() ? clip(value.trim(), most) : null
+}
+
+export function result(raw: string | undefined, fallback: string): Nodes.Result {
+  const value = json(raw)
+  if (!value) return { children: [], commit: null, outcome: raw?.trim() ? 'progress' : 'stuck', summary: clip(raw?.trim() || fallback, 200), theorem: null, why: null }
+  const outcome = typeof value['outcome'] === 'string' && outcomes.has(value['outcome']) ? (value['outcome'] as Nodes.Result['outcome']) : 'progress'
+  const children = Array.isArray(value['children'])
+    ? value['children'].flatMap((child: unknown) => {
+        if (!child || typeof child !== 'object') return []
+        const one = child as Record<string, unknown>
+        const title = text(one['title'], 200)
+        if (!title) return []
+        return [{ needs: Array.isArray(one['needs']) ? one['needs'].filter((need): need is string => typeof need === 'string').slice(0, 20) : [], spec: text(one['spec']) ?? '', statement: text(one['statement']), title }]
+      })
+    : []
+  const commit = text(value['commit'], 64)?.toLowerCase() ?? null
+  return { children, commit, outcome, summary: text(value['summary'], 200) ?? fallback, theorem: text(value['theorem'], 200), why: text(value['why']) }
+}
+
+function spawnApi(env: Cloudflare.Env) {
+  return (env as unknown as Record<string, unknown>)['SWARMS_SPAWN'] === 'api'
+}
+
+export function list(self: Swarm, swarm: string, agent: string, fresh = false) {
+  const rt = runtime(self)
+  const kept = rt.listing
+  if (!fresh && kept && kept.agent === agent && Date.now() - kept.at < timing.listMs) return kept.value
+  const value = Gateway.subagents(self.env, swarm, agent).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
+  rt.listing = { agent, at: Date.now(), value }
+  return value
+}
+
+function setup(self: Swarm): Setup.Setup | null {
+  return self.kv.get<Setup.Setup>('treeSetup') ?? null
+}
+
+function worker(self: Swarm) {
+  const chosen = setup(self)
+  return { harness: chosen?.harness ?? Setup.presets.cheap.harness, model: chosen?.model ?? Setup.presets.cheap.model }
+}
+
+export async function dispatcher(self: Swarm, swarm: string): Promise<Gateway.Result<string>> {
+  const kept = self.kv.get<Dispatcher>('dispatcher')
+  if (kept && kept.runs < rotateAfter) return { ok: true, value: kept.id }
+  if (kept && [...runtime(self).aborts.keys()].some((run) => self.kv.get<Nodes.Spawned>('run:' + run)?.agent === kept.id)) return { ok: true, value: kept.id }
+  const chosen = setup(self)
+  const made = await Gateway.agent(self.env, swarm, {
+    instructions: self.kv.get<string>('dispatcherText') ?? Persona.dispatcher(),
+    name: 'dispatcher',
+    setup: { ...(chosen ?? { most: '0', step: '0', steps: {}, template: 'cheap' as const }), harness: 'codex', model: Setup.flash, subagents: { harnesses: [worker(self).harness], models: [worker(self).model] } },
+  })
+  if (!made.ok) return made
+  self.kv.put('dispatcher', { at: Date.now(), id: made.value.id, runs: 0 } satisfies Dispatcher)
+  return { ok: true, value: made.value.id }
+}
+
+function counted(self: Swarm, agent: string) {
+  const kept = self.kv.get<Dispatcher>('dispatcher')
+  if (kept?.id === agent) self.kv.put('dispatcher', { ...kept, runs: kept.runs + 1 })
+}
+
+async function spawn(self: Swarm, swarm: string, agent: string, args: Gateway.Spawn, claim: string, signal: AbortSignal): Promise<Gateway.Result<number>> {
+  if (spawnApi(self.env)) {
+    const made = await Gateway.spawn(self.env, swarm, agent, args)
+    return made.ok ? { ok: true, value: made.value.agent_id } : made
+  }
+  const sent = await Gateway.prompt(self.env, swarm, agent, { id: claim, prompt: 'Spawn this subagent:\n' + JSON.stringify(args), steer: false })
+  if (!sent.ok && sent.status !== 409) return sent
+  follow(self, swarm, agent)
+  const until = Date.now() + timing.spawnMs
+  while (Date.now() < until && !signal.aborted) {
+    const listed = await list(self, swarm, agent, true)
+    const found = listed.ok ? listed.value.find((sub) => sub.role === args.role && sub.parent_agent_id === null) : undefined
+    if (found) return { ok: true, value: found.agent_id }
+    await wait(self, timing.listMs, signal)
+  }
+  return { detail: 'The dispatcher did not start the subagent in time.', ok: false, status: 504 }
+}
+
+async function strays(self: Swarm, swarm: string, agent: string) {
+  const listed = await list(self, swarm, agent, true)
+  if (!listed.ok) return
+  const open = new Set((await self.board.tasks()).filter((task) => task.labels['kind'] === 'run' && !Work.terminal(task.phase)).map((task) => 'n:' + (task.labels['node'] ?? '') + '#' + Nodes.kOf(task.id)))
+  for (const sub of listed.value) if (sub.parent_agent_id === null && !finished.has(sub.status.state) && !open.has(sub.role)) await Gateway.close(self.env, swarm, agent, sub.agent_id)
+}
+
+async function refusal(self: Swarm, task: Work.Task, lease: Board.PoolLease, failure: { detail: string; status: number }): Promise<never> {
+  if (failure.status !== 402) throw new Error(failure.detail)
+  const tries = (self.kv.get<number>('paid:' + task.id) ?? 0) + 1
+  const until = Date.now() + Work.delay(paying, tries)
+  self.kv.put('paid:' + task.id, tries)
+  self.kv.put('rest:' + task.id, until)
+  await self.board.release(task.id, lease.claim, 'The gateway refused payment: ' + failure.detail)
+  await arm(self, until)
+  throw new Board.LeaseLost(task.id)
+}
+
+async function arm(self: Swarm, at: number) {
+  const pending = await self.ctx.storage.getAlarm()
+  if (pending === null || pending > at) await self.ctx.storage.setAlarm(at)
+}
+
+function priority(self: Swarm, body: string): 'deferred' | 'urgent' {
+  const found = body.match(/\[\$([\d.]+) behind/)
+  return found?.[1] && Memo.units(found[1]) >= Nodes.units(self).runStep ? 'urgent' : 'deferred'
+}
+
+async function brief(self: Swarm, found: Nodes.State, nid: string, steers: string[]) {
+  const node = found.nodes.get(nid)
+  const parsed = Nodes.parse(node?.spec ?? '')
+  const ancestors: string[] = []
+  for (let at = node ? Nodes.parentOf(node) : null; at !== null; ) {
+    const up = found.nodes.get(at)
+    if (!up) break
+    ancestors.unshift(Nodes.parse(up.spec).title)
+    at = Nodes.parentOf(up)
+  }
+  const parent = node ? Nodes.parentOf(node) : null
+  const siblings = [...found.nodes.values()]
+    .filter((one) => one.id !== node?.id && parent !== null && Nodes.parentOf(one) === parent)
+    .slice(0, 30)
+    .map((one) => {
+      const last = self.ctx.storage.sql.exec<{ text: string }>("SELECT text FROM tree_deltas WHERE node = ? AND event IN ('progress', 'proven', 'ended') ORDER BY seq DESC LIMIT 1", Nodes.nidOf(one.id)).toArray()[0]
+      return Nodes.parse(one.spec).title + (last ? ': ' + last.text : '')
+    })
+  const failures = self.ctx.storage.sql
+    .exec<{ text: string }>("SELECT text FROM tree_deltas WHERE node = ? AND event = 'progress' AND text LIKE 'Lean check failed%' ORDER BY seq DESC LIMIT 3", nid)
+    .toArray()
+    .map((row) => row.text)
+  return Persona.node(setup(self), { form: node?.labels['form'] ?? 'idea', nid, spec: node?.spec ?? '', statement: parsed.statement, title: parsed.title }, { ancestors, failures, siblings, steers })
+}
+
+async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promise<Board.Outcome> {
+  const swarm = Nodes.swarm(self)
+  const nid = task.labels['node'] ?? ''
+  const triaging = nid === Nodes.triage
+  const k = Nodes.kOf(task.id)
+  const role = 'n:' + nid + '#' + k
+  const found = await Nodes.state(self)
+  const budget = found.ledger.runs.get(task.id) ?? 0n
+  if (budget <= 0n) return { failed: 'No money is committed to this run.' }
+  const rt = runtime(self)
+  const abort = new AbortController()
+  rt.aborts.set(task.id, abort)
+  lease.signal.addEventListener('abort', () => abort.abort(), { once: true })
+  try {
+    const agent = await dispatcher(self, swarm)
+    if (!agent.ok) return await refusal(self, task, lease, agent)
+    let spawned = self.kv.get<Nodes.Spawned>('run:' + task.id)
+    if (!spawned) {
+      const listed = await list(self, swarm, agent.value, true)
+      const adopted = listed.ok ? listed.value.find((sub) => sub.role === role && sub.parent_agent_id === null) : undefined
+      if (adopted) spawned = { agent: agent.value, at: Date.now(), sub: adopted.agent_id }
+      else {
+        const steers = triaging ? [] : await Nodes.unheeded(self, nid)
+        const words = triaging ? await Triage.task(self, found) : await brief(self, found, nid, steers.map((steer) => steer.body))
+        const args: Gateway.Spawn = { budget_usd: Flow.number(budget), ...worker(self), output_schema: triaging ? Triage.output : output, role, task: words }
+        const made = await spawn(self, swarm, agent.value, args, lease.claim, abort.signal)
+        if (!made.ok) return await refusal(self, task, lease, made)
+        spawned = { agent: agent.value, at: Date.now(), sub: made.value }
+        counted(self, agent.value)
+        const last = steers.at(-1)
+        if (last) await Nodes.heedNode(self, nid, last.seq)
+      }
+      self.kv.put('run:' + task.id, spawned)
+      const set = await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(budget))
+      if (!set.ok && set.status === 402) return await refusal(self, task, lease, set)
+      await strays(self, swarm, spawned.agent)
+      Nodes.emit(self, nid, 'started', 'Run ' + k + ' started')
+    }
+    self.kv.delete('paid:' + task.id)
+    self.kv.delete('rest:' + task.id)
+    return await watch(self, swarm, task, lease, spawned, abort.signal)
+  } finally {
+    rt.aborts.delete(task.id)
+  }
+}
+
+async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.PoolLease, spawned: Nodes.Spawned, signal: AbortSignal): Promise<Board.Outcome> {
+  const nid = task.labels['node'] ?? ''
+  follow(self, swarm, spawned.agent)
+  let seen = Date.now()
+  let spent = -1n
+  let sub: Gateway.Subagent | undefined
+  let relayed = 0
+  for (;;) {
+    if (signal.aborted) {
+      await halt(self, task.id)
+      throw new Board.LeaseLost(task.id)
+    }
+    const listed = await list(self, swarm, spawned.agent)
+    sub = listed.ok ? listed.value.find((one) => one.agent_id === spawned.sub) : sub
+    if (listed.ok && !sub) break
+    if (sub) {
+      const now = Flow.micro(sub.spent_usd)
+      if (now !== spent) {
+        spent = now
+        seen = Date.now()
+        self.kv.put('live:' + task.id, { budget: Flow.usd(Flow.micro(sub.budget_usd)), spent: Flow.usd(now) } satisfies Nodes.Live)
+        Nodes.changed(self)
+      }
+      if (finished.has(sub.status.state)) break
+      const total = await Nodes.topUp(self, task.id, now)
+      if (total !== null) await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(total))
+    }
+    for (const steer of (await lease.steers()).filter((one) => one.seq > relayed)) {
+      const told = await Gateway.tell(self.env, swarm, spawned.agent, spawned.sub, steer.body, priority(self, steer.body))
+      if (!told.ok) break
+      await lease.heed(steer.seq)
+      relayed = steer.seq
+      Nodes.emit(self, nid, 'steered', clip(steer.body, 280))
+    }
+    if (Date.now() - seen > timing.leaseMs) break
+    await wait(self, runtime(self).follow?.up ? timing.streamUpMs : timing.streamDownMs, signal)
+  }
+  const state = sub?.status.state ?? 'gone'
+  const ended = sub ? finished.has(state) : true
+  if (sub && !ended) await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
+  else if (sub && state === 'completed') await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
+  const used = sub ? Flow.micro(sub.spent_usd) : Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')
+  for (const steer of await lease.steers().catch(() => [])) if (steer.seq > relayed) await self.board.steer(Nodes.nodeId(nid), steer.body)
+  const why = !sub ? 'The run is gone from the gateway.' : !ended ? 'The run stalled and was stopped.' : (sub.status.error ?? 'The run ' + state + '.')
+  await Nodes.settleRun(self, task.id, used)
+  if (nid === Nodes.triage) {
+    const actions = Triage.parse(sub?.result)
+    const applied = await Triage.apply(self, actions, 'agent:n:triage', task.id, halt)
+    await Nodes.consider(self)
+    return { done: JSON.stringify({ actions: applied }) }
+  }
+  const outcome = state === 'completed' ? result(sub?.result, why) : { ...result(sub?.result, why), outcome: 'stuck' as const, summary: clip(why, 200) }
+  await Nodes.ran(self, task.id, outcome, (node, sha, theorem, refutes) => postVerify(self, node, sha, theorem, refutes))
+  await Nodes.consider(self)
+  return { done: JSON.stringify(outcome) }
+}
+
+export async function postVerify(self: Swarm, nid: string, sha: string, theorem: string, refutes: boolean) {
+  const posted = await self.board.post({
+    id: Nodes.verifyId(nid, sha) + (refutes ? ':neg' : ''),
+    labels: { kind: 'verify', node: nid, refutes: refutes ? '1' : '0', sha },
+    parent: Nodes.nodeId(nid),
+    spec: JSON.stringify({ commit: sha, theorem }),
+  })
+  if (!posted.ok && posted.rejection.kind !== 'Exists') throw new Error('Posting the check of ' + nid + ' was refused: ' + posted.rejection.kind)
+  Nodes.changed(self)
+  ensure(self)
+}
+
+function trusted(check: Tree.Check, sha: string, stmt: string | undefined) {
+  return check.commit === sha && check.exitCode === 0 && (stmt === undefined || stmt === 'none' || check.statement === stmt)
+}
+
+async function check(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promise<Board.Outcome> {
+  const swarm = Nodes.swarm(self)
+  const nid = task.labels['node'] ?? ''
+  const sha = task.labels['sha'] ?? ''
+  const refutes = task.labels['refutes'] === '1'
+  const key = 'verified:' + Nodes.verifyId(nid, sha)
+  const node = await self.board.task(Nodes.nodeId(nid))
+  if (!node || Work.terminal(node.phase)) return { failed: 'The node ended before its check.' }
+  let outcome = self.kv.get<Tree.Check | { failed: string }>(key)
+  if (!outcome) {
+    const statement = Nodes.parse(node.spec).statement
+    if (!statement) return { failed: 'The node has no Lean statement to check.' }
+    const theorem = String((json(task.spec) ?? {})['theorem'] ?? '')
+    let asked: Awaited<ReturnType<typeof Verify.request>> = { detail: 'not asked', ok: false }
+    for (let attempt = 1; attempt <= Nodes.retry.maxAttempts && !asked.ok; attempt++) {
+      asked = await Verify.request(self.env, { nid, sha, statement: refutes ? '¬ (' + statement + ')' : statement, swarm, theorem })
+      if (!asked.ok && attempt < Nodes.retry.maxAttempts) await wait(self, Work.delay(Nodes.retry, attempt), lease.signal)
+    }
+    if (!asked.ok) return { failed: 'The verifier did not take the check: ' + asked.detail }
+    while (!(outcome = self.kv.get<Tree.Check | { failed: string }>(key))) {
+      if (lease.signal.aborted) throw new Board.LeaseLost(task.id)
+      await wait(self, timing.verifyMs, lease.signal)
+    }
+  }
+  if ('failed' in outcome || !trusted(outcome, sha, refutes ? undefined : node.labels['stmt'])) {
+    const log = 'failed' in outcome ? outcome.failed : 'The check did not match the commit or the frozen statement.'
+    await self.board.steer(Nodes.nodeId(nid), 'The Lean check of ' + sha.slice(0, 7) + ' failed:\n' + log.slice(-2000))
+    Nodes.emit(self, nid, 'progress', 'Lean check failed for ' + sha.slice(0, 7))
+    await Nodes.consider(self)
+    return { failed: log.slice(-4096) }
+  }
+  if (refutes) await Nodes.end(self, nid, { at: outcome.at, check: outcome, into: null, kind: 'refuted', why: 'Its negation was checked in Lean.' }, halt)
+  else await Nodes.proven(self, nid, outcome, halt)
+  await Nodes.consider(self)
+  return { done: JSON.stringify(outcome) }
+}
+
+
+export async function verified(self: Swarm, nid: string, sha: string, outcome: Tree.Check | { failed: string }) {
+  const id = Nodes.verifyId(nid, sha)
+  self.kv.put('verified:' + id, outcome)
+  for (const vid of [id, id + ':neg']) {
+    const task = await self.board.task(vid)
+    if (task?.claim && !runtime(self).pools.verifies?.stats().running) await self.board.release(vid, task.claim, 'the check came back')
+  }
+  wake(self)
+  ensure(self)
+  await arm(self, Date.now())
+}
+
+export async function halt(self: Swarm, run: string) {
+  runtime(self).aborts.get(run)?.abort()
+  const task = await self.board.task(run)
+  if (task && !Work.terminal(task.phase)) await self.board.cancel(run, 'Its node ended.')
+  const spent = await spentOf(self, run, true)
+  if (spent !== null) await Nodes.settleRun(self, run, spent)
+}
+
+export async function spentOf(self: Swarm, run: string, close = false): Promise<bigint | null> {
+  const spawned = self.kv.get<Nodes.Spawned>('run:' + run)
+  if (!spawned) return 0n
+  const swarm = Nodes.swarm(self)
+  const listed = await list(self, swarm, spawned.agent, true)
+  if (!listed.ok) return null
+  const sub = listed.value.find((one) => one.agent_id === spawned.sub)
+  if (close && sub && !finished.has(sub.status.state)) await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
+  return Flow.micro(sub?.spent_usd)
+}
+
+export function follow(self: Swarm, swarm: string, agent: string) {
+  const rt = runtime(self)
+  if (rt.follow?.agent === agent && !rt.follow.stop.signal.aborted) return
+  rt.follow?.stop.abort()
+  const stop = new AbortController()
+  const following = { agent, stop, up: false }
+  rt.follow = following
+  void (async () => {
+    let after = 0
+    let fails = 0
+    let quiet = Date.now()
+    while (!stop.signal.aborted) {
+      if (rt.aborts.size === 0 && Date.now() - quiet > timing.idleMs) break
+      try {
+        const response = await Gateway.stream(self.env, swarm, agent, after, stop.signal)
+        if (!response.ok || !response.body) throw new Error('The event stream answered ' + response.status)
+        following.up = true
+        fails = 0
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+        for (;;) {
+          const read = await reader.read()
+          if (read.done) break
+          for (const found of read.value.matchAll(/"seq":\s*(\d+)/g)) after = Math.max(after, Number(found[1]))
+          quiet = Date.now()
+          wake(self)
+          if (rt.aborts.size === 0 && Date.now() - quiet > timing.idleMs) break
+        }
+      } catch {}
+      following.up = false
+      fails += 1
+      await new Promise((resolve) => setTimeout(resolve, Math.min(60_000, 1000 * 2 ** Math.min(fails, 6))))
+    }
+    if (rt.follow === following) rt.follow = undefined
+  })()
+}
+
+function resting(self: Swarm): Work.Board {
+  const board = self.board
+  return { ...board, ready: async (options) => (await board.ready(options)).filter((task) => (self.kv.get<number>('rest:' + task.id) ?? 0) <= Date.now()) }
+}
+
+export function ensure(self: Swarm) {
+  if (self.kv.get<number>('archivedAt')) return
+  const rt = runtime(self)
+  const board = resting(self)
+  if (!rt.pools.runs || rt.pools.runs.stats().state !== 'running')
+    rt.pools.runs = Board.pool(board, { concurrency: Nodes.units(self).slots, idleMs: timing.idleMs, label: ['kind', 'run'], leaseMs: timing.leaseMs, pollMs: timing.pollMs, run: (task, lease) => run(self, task, lease) })
+  if (!rt.pools.verifies || rt.pools.verifies.stats().state !== 'running')
+    rt.pools.verifies = Board.pool(board, { concurrency: verifiers, idleMs: timing.idleMs, label: ['kind', 'verify'], leaseMs: timing.leaseMs, pollMs: timing.pollMs, run: (task, lease) => check(self, task, lease) })
+}
+
+export async function stop(self: Swarm) {
+  const rt = runtime(self)
+  rt.follow?.stop.abort()
+  for (const abort of rt.aborts.values()) abort.abort()
+  await Promise.all([rt.pools.runs?.stop(), rt.pools.verifies?.stop()])
+  rt.pools = {}
+}
+
+export async function tick(self: Swarm): Promise<number | null> {
+  if (self.kv.get<number>('archivedAt')) return null
+  const rt = runtime(self)
+  if (rt.first) {
+    rt.first = false
+    for (const task of await self.board.held())
+      if ((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && task.claim && !rt.aborts.has(task.id)) await self.board.release(task.id, task.claim, 'its worker restarted')
+    await Nodes.reconcile(self, (run) => spentOf(self, run))
+  }
+  await Triage.schedule(self)
+  await Nodes.consider(self)
+  const tasks = await self.board.tasks()
+  const now = Date.now()
+  const open = tasks.filter((task) => (task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && !Work.terminal(task.phase))
+  if (open.length) ensure(self)
+  const rests = open.map((task) => self.kv.get<number>('rest:' + task.id) ?? 0).filter((at) => at > now)
+  const due = [...rests, Triage.due(self, now), open.length ? now + 5 * 60_000 : Infinity]
+  const next = Math.min(...due)
+  return Number.isFinite(next) ? next : null
+}

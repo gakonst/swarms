@@ -154,3 +154,47 @@ export function keep(kv: SyncKvStorage, text: string) {
   kv.put('instructions', text)
   kv.delete('personaSet')
 }
+
+export type TreeNode = { form: string; nid: string; spec: string; statement: string | null; title: string }
+
+export type TreeContext = { ancestors: string[]; failures: string[]; siblings: string[]; steers: string[] }
+
+export function node(setup: Setup.Setup | null, task: TreeNode, context: TreeContext) {
+  return [
+    '# Your node',
+    '',
+    `You work on one node of a swarm's tree of tasks, node ${task.nid} (${task.form}). Riders paid for this run; your budget is what they committed to it, and the gateway refuses calls past it.`,
+    '',
+    task.spec,
+    '',
+    ...(context.ancestors.length ? ['# Above it', '', ...context.ancestors.map((title) => `- ${title}`), ''] : []),
+    ...(context.siblings.length ? ['# Beside it', '', ...context.siblings.map((line) => `- ${line}`), ''] : []),
+    ...(context.steers.length ? ['# From riders, with the money behind each', '', ...context.steers, ''] : []),
+    ...(context.failures.length ? ['# Earlier checks that failed', '', ...context.failures, ''] : []),
+    '# How to work',
+    '',
+    'Think on paper first and write Lean only for a step that survives. Prove the statement exactly as written: the checker binds your theorem to it. Split rather than sprawl: when the node is too big, return split with smaller lemmas, each with its own Lean statement and the siblings it needs. Keep every dead end with its why. Commit to branch node/' + task.nid + ' of the swarm repository and return the commit and theorem name when you claim a proof.',
+    '',
+    ...models(setup),
+    '',
+    'Answer with the JSON your output schema asks for: outcome (proved, refuted, split, progress or stuck), a one-line summary, commit, theorem, children and why.',
+  ].join('\n')
+}
+
+export function dispatcher() {
+  return 'You start subagents for a swarm. Each message gives the exact arguments of one spawn_agent call as JSON. Call spawn_agent once with exactly those arguments, then end your turn without any other tool call or text.'
+}
+
+export function triage(setup: Setup.Setup | null) {
+  return [
+    "You triage a swarm's tree for the riders whose money is on its root. Read the new proposals and suggestions below and answer with actions, as JSON: { actions: [...] }, each one of",
+    '- { "kind": "approve", "node": nid, "weight": 1..10 }',
+    '- { "kind": "adopt", "idea": id, "title": ..., "spec": ..., "statement": string | null }',
+    '- { "kind": "merge", "node": nid, "into": nid }',
+    '- { "kind": "reject", "node": nid, "why": ... } (only a node nobody but its author rode)',
+    '- { "kind": "grant", "node": nid, "amount": "1.50" } (at most a quarter of the root\'s money left)',
+    '- { "kind": "restate", "node": nid, "statement": ... }',
+    'Statements never change in place: restate posts a corrected child.',
+    ...models(setup),
+  ].join('\n')
+}

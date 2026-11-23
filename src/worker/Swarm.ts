@@ -30,6 +30,11 @@ import * as Work from './Work.ts'
 import * as Host from './Host.ts'
 import * as Feed from './Feed.ts'
 import * as Runs from './Runs.ts'
+import * as Nodes from './Nodes.ts'
+import * as Riding from './Riding.ts'
+import * as Runner from './Runner.ts'
+import type * as Triage from './Triage.ts'
+import type * as Tree from '../shared/Tree.ts'
 
 export type Contributed = {
   amount: string
@@ -125,6 +130,7 @@ const schema = [
   "CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, author TEXT, text TEXT NOT NULL, mentions TEXT NOT NULL DEFAULT '[]', steer TEXT)",
   "CREATE VIRTUAL TABLE IF NOT EXISTS feed_search USING fts5(body, content='', contentless_delete=1, tokenize='porter unicode61 remove_diacritics 2')",
   ...Runs.schema,
+  ...Nodes.schema,
 ]
 
 const columns = [
@@ -171,6 +177,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   beating: ReturnType<typeof setInterval> | undefined
 
   boarded: { board: Work.Board; scope: string } | undefined
+
+  treeVersion = 0
+
+  treeView: { value: Nodes.View; version: number } | undefined
+
+  treeWatchers = new Set<WritableStreamDefaultWriter<Uint8Array>>()
+
+  runtime: Runner.Runtime | undefined
 
   listing: { agent: string; at: number; pending: boolean; value: Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> } | undefined
 
@@ -435,6 +449,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   async heal() {
+    if (this.kv.get<number>('archivedAt') || this.kv.get<string>('form') === 'tree') return
     const now = Date.now()
     const id = this.kv.get<string>('id')
     if (id && !this.kv.get<number>('published'))
@@ -599,6 +614,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   override async fetch(request: Request) {
     const url = new URL(request.url)
     if (url.pathname === '/chat') return this.socket(request)
+    if (url.pathname === '/tree') return this.treeLive(request, Number(url.searchParams.get('after') ?? 0) || 0)
     const after = url.searchParams.get('after')
     const follow = after !== null && /^\d{1,15}$/.test(after)
     const streaming = this.streaming()
@@ -627,8 +643,16 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   override async alarm() {
+    if (!this.kv.get<string>('id') || this.kv.get<number>('archivedAt')) return
+    if (this.kv.get<string>('form') === 'tree') {
+      const next = await Runner.tick(this).catch((error: unknown) => {
+        console.error('The tree step failed', error)
+        return Date.now() + Clock.minuteMs
+      })
+      if (next !== null) await this.ctx.storage.setAlarm(next)
+      return
+    }
     const indexing = Feed.indexed(this)
-    if (!this.kv.get<string>('id')) return
     const stepping = await Work.holding(this.board, 'stepping', stepLeaseMs, () => Turns.step(this).catch((error: unknown) => Turns.threw(this, error)))
     if (!('value' in stepping)) return
     const stepped = stepping.value
@@ -875,6 +899,121 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const sealed = 'answered:' + input.address.toLowerCase()
     this.kv.put(sealed, [...(this.kv.get<string[]>(sealed) ?? []), await Btw.seal({ answer, question: input.question })].slice(-200))
     return { ok: true, value: answer }
+  }
+
+  async plant(input: Riding.Plant) {
+    this.kv.put('id', input.swarm)
+    const planted = await Riding.plant(this, input)
+    await this.ctx.storage.setAlarm(Date.now())
+    return planted
+  }
+
+  async treeRead(swarm: string, query: { depth: number; root: string; status: Tree.Status | undefined }) {
+    this.kv.put('id', swarm)
+    return Riding.tree(this, query)
+  }
+
+  async nodeRead(swarm: string, nid: string) {
+    this.kv.put('id', swarm)
+    return Riding.node(this, nid)
+  }
+
+  async treeDeltas(swarm: string, input: { after: number; limit: number; nid: string | null }) {
+    this.kv.put('id', swarm)
+    return Riding.deltas(this, input)
+  }
+
+  async treeBurn(swarm: string) {
+    this.kv.put('id', swarm)
+    return Riding.burn(this)
+  }
+
+  async treeProofs(swarm: string) {
+    this.kv.put('id', swarm)
+    return Riding.proofs(this)
+  }
+
+  async treePropose(swarm: string, nid: string, proposal: Riding.Proposal) {
+    this.kv.put('id', swarm)
+    return Riding.propose(this, nid, proposal)
+  }
+
+  async treePledge(swarm: string, input: { amount: string; contributor: string; hash: string; nid: string | null }) {
+    this.kv.put('id', swarm)
+    this.marked += 1
+    return Riding.pledge(this, { ...input, amount: Memo.units(input.amount) })
+  }
+
+  async treeSteer(swarm: string, input: { amount: string; contributor: string; nid: string; note: string }) {
+    this.kv.put('id', swarm)
+    return Riding.steer(this, { ...input, amount: Memo.units(input.amount) })
+  }
+
+  async treeMove(swarm: string, input: { amount: string; contributor: string; from: string; to: string }) {
+    this.kv.put('id', swarm)
+    return Riding.move(this, { ...input, amount: Memo.units(input.amount) })
+  }
+
+  async treeEnd(swarm: string, input: { admin: boolean; contributor: string | null; nid: string; why: string }) {
+    this.kv.put('id', swarm)
+    return Riding.end(this, input)
+  }
+
+  async treeTriage(swarm: string, action: Triage.Action, by: string) {
+    this.kv.put('id', swarm)
+    return Riding.triage(this, action, by)
+  }
+
+  async treeStanding(swarm: string, contributor: string) {
+    this.kv.put('id', swarm)
+    return Riding.standing(this, contributor)
+  }
+
+  async treeHealth(swarm: string) {
+    this.kv.put('id', swarm)
+    return Riding.health(this)
+  }
+
+  async treeVerified(swarm: string, nid: string, sha: string, outcome: Tree.Check | { failed: string }) {
+    this.kv.put('id', swarm)
+    await Runner.verified(this, nid, sha, outcome)
+    return true
+  }
+
+  async archive(swarm: string, at: number) {
+    this.kv.put('id', swarm)
+    if (this.kv.get<number>('archivedAt')) return this.kv.get<number>('archivedAt') ?? at
+    if (this.kv.get<string>('form') === 'tree') {
+      await Riding.archive(this, at)
+      return at
+    }
+    const row = await this.found(swarm)
+    if (row) await Turns.sweep(this, row, ', which was still running when the swarm was archived')
+    await Branching.release(this, swarm, '')
+    this.kv.put('archivedAt', at)
+    await this.ctx.storage.deleteAlarm()
+    this.changed('detail', 'branches', 'members')
+    return at
+  }
+
+  treeLive(request: Request, after: number) {
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
+    const writer = writable.getWriter()
+    const encoder = new TextEncoder()
+    const drop = () => {
+      this.treeWatchers.delete(writer)
+      writer.close().catch(() => undefined)
+    }
+    request.signal.addEventListener('abort', drop, { once: true })
+    this.ctx.waitUntil(
+      Riding.deltas(this, { after, limit: 500, nid: null })
+        .then(async (backlog) => {
+          if (backlog.ok) for (const delta of backlog.value.deltas) await writer.write(encoder.encode('id: ' + delta.seq + '\ndata: ' + JSON.stringify(delta) + '\n\n'))
+          if (!request.signal.aborted) this.treeWatchers.add(writer)
+        })
+        .catch(drop),
+    )
+    return Relay.sse(readable)
   }
 
   socket(request: Request) {

@@ -117,6 +117,8 @@ function build(input: {
     who: who ?? null,
   }))
   return settle({
+    archivedAt: null,
+    form: 'agent',
     balance: '0',
     chat: [],
     contributions,
@@ -437,6 +439,8 @@ function summary(swarm: Live): Summary {
   const latest = swarm.updates.at(-1)
   return {
     answer: latest ? { at: latest.at, done: latest.done, text: latest.text } : null,
+    archivedAt: swarm.archivedAt,
+    form: swarm.form,
     balance: swarm.balance,
     contributors: swarm.contributors,
     cover: Shelf.cover(shelves[swarm.id] ?? []),

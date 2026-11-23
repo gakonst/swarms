@@ -9,6 +9,8 @@ const ways = ['transfer', 'machine'] as const satisfies readonly Way[]
 
 export type Row = {
   answer: string | null
+  archived_at?: number | null
+  form?: 'agent' | 'tree'
   balance: number
   contributors: number
   cover?: string | null
@@ -94,6 +96,8 @@ export function setup(row: Pick<Row, 'setup'>): Setup.Setup | null {
 export function summary(row: Row): Summary {
   return {
     answer: answer(row.answer),
+    archivedAt: row.archived_at ?? null,
+    form: row.form ?? 'agent',
     balance: Memo.decimal(BigInt(row.balance)),
     contributors: row.contributors,
     cover: cover(row),
@@ -116,9 +120,9 @@ export function summary(row: Row): Summary {
 
 export async function list(env: Cloudflare.Env, status?: Summary['status']) {
   const { results } = await env.DB.prepare(
-    `select s.*, c.balance, s.pool_spent + s.sponsor_spent + s.spent_before as spent, c.balance - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining, c.contributors
-    from swarms s join (select swarm, sum(cast(amount as integer)) as balance, count(distinct contributor) as contributors from contributions group by swarm) c on c.swarm = s.id
-    where s.hidden = 0 and c.balance > 0${status ? ' and s.status = ?' : ''} order by s.updated_at desc limit 100`,
+    `select s.*, coalesce(c.balance, 0) as balance, s.pool_spent + s.sponsor_spent + s.spent_before as spent, coalesce(c.balance, 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining, coalesce(c.contributors, 0) as contributors
+    from swarms s left join (select swarm, sum(cast(amount as integer)) as balance, count(distinct contributor) as contributors from contributions group by swarm) c on c.swarm = s.id
+    where s.hidden = 0 and (c.balance > 0 or s.form = 'tree')${status ? ' and s.status = ?' : ''} order by s.form = 'tree' desc, s.archived_at is not null, s.updated_at desc limit 100`,
   )
     .bind(...(status ? [status] : []))
     .all<Row>()
@@ -182,16 +186,21 @@ export async function repo(env: Cloudflare.Env, id: string) {
 
 export async function insert(
   env: Cloudflare.Env,
-  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'steering' | 'title'> & Partial<Pick<Row, 'setup'>>,
+  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'steering' | 'title'> & Partial<Pick<Row, 'setup' | 'form'>>,
 ) {
   const now = Date.now()
   const row = await env.DB.prepare(
-    'insert into swarms (id, title, goal, problem, creator, steering, created_at, updated_at, setup) values (?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as balance, pool_spent + sponsor_spent + spent_before as spent, 0 - (pool_spent + sponsor_spent + spent_before) as remaining, 0 as contributors',
+    'insert into swarms (id, title, goal, problem, creator, steering, created_at, updated_at, setup, form) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as balance, pool_spent + sponsor_spent + spent_before as spent, 0 - (pool_spent + sponsor_spent + spent_before) as remaining, 0 as contributors',
   )
-    .bind(input.id, input.title, input.goal, input.problem, input.creator, input.steering, now, now, input.setup ?? null)
+    .bind(input.id, input.title, input.goal, input.problem, input.creator, input.steering, now, now, input.setup ?? null, input.form ?? 'agent')
     .first<Row>().finally(() => wrote(input.id))
   if (row) known.add(row.id)
   return row
+}
+
+export async function archive(env: Cloudflare.Env, id: string, at: number) {
+  const row = await env.DB.prepare('update swarms set archived_at = coalesce(archived_at, ?1), updated_at = ?1 where id = ?2 returning archived_at').bind(at, id).first<{ archived_at: number }>().finally(() => wrote(id))
+  return row?.archived_at ?? null
 }
 
 export async function update(env: Cloudflare.Env, id: string, fields: Fields) {

@@ -282,6 +282,13 @@ function rendered(value: unknown): string | undefined {
   return JSON.stringify(value, null, 2)
 }
 
+export type Spawn = { budget_usd: number; harness: string; model: string; output_schema: unknown; role: string; task: string }
+
+export async function spawn(env: Cloudflare.Env, swarm: string, agent: string, input: Spawn): Promise<Result<Subagent>> {
+  const made = await send<{ agent: Raw; created: boolean }>(env, `/v1/agents/${agent}/subagents`, { app: app(swarm), body: input })
+  return made.ok ? { ok: true, value: subagent(made.value.agent) } : made
+}
+
 export function budget(env: Cloudflare.Env, swarm: string, agent: string, subagent: number, usd: number | null) {
   return send<{ agent: Raw }>(env, `/v1/agents/${agent}/subagents/${subagent}/budget`, { app: app(swarm), body: { budget_usd: usd } })
 }
