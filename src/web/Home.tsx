@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react'
 import type { Listing, Summary } from '../shared/Api.ts'
+import type { Problem } from '../shared/ResearchBrief.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Status from '../shared/Status.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { cash, doing, Faces } from './Branches.tsx'
-import { Card, fromProblem, fromSwarm, lead, type Idea } from './Card.tsx'
+import { lead } from './Card.tsx'
 import { type Cell, Spiral } from './Field.tsx'
 import { ago } from './format.ts'
 import { useNow } from './hooks.ts'
 import { open as openProblems, problems } from './research.ts'
 import { href, Link } from './router.tsx'
 import * as Wire from './wire.ts'
-
-const order = { running: 0, paused: 1, funding: 2 } as const
 
 const filters = [
   ['open', 'All'],
@@ -27,13 +26,6 @@ type Filter = (typeof filters)[number][0]
 
 const aliases: Record<string, Filter> = { fuel: 'money', live: 'running', new: 'waiting' }
 
-const fits: Record<Filter, (idea: Idea) => boolean> = {
-  money: (idea) => idea.word === 'Needs money',
-  open: () => true,
-  running: (idea) => idea.word === 'Running' || idea.word === 'Starting',
-  waiting: (idea) => idea.word === 'Not started',
-}
-
 const first = 6
 
 const step = 8
@@ -41,43 +33,6 @@ const step = 8
 const least = 1
 
 type Doing = { at: number; text: string }
-
-function sorted(swarms: readonly Summary[] | undefined) {
-  return [...(swarms ?? [])].filter((swarm) => !Status.test(swarm)).sort((a, b) => order[a.status] - order[b.status] || b.createdAt - a.createdAt)
-}
-
-function useIdeas() {
-  const list = Wire.useSwarms()
-  const open = sorted(list.data?.swarms)
-  const latest = Math.max(0, ...open.map((swarm) => swarm.updatedAt))
-  const ranked = Status.ranked(open, latest)
-  const free = list.data ? openProblems(open) : list.error ? [...problems] : []
-  const seeds = free.map(fromProblem)
-  const current = ranked.filter((swarm) => swarm.form === 'tree' && !swarm.archivedAt)
-  const earlier = ranked.filter((swarm) => !(swarm.form === 'tree' && !swarm.archivedAt)).map(fromSwarm)
-  const ideas = current.map(fromSwarm).flatMap((idea, index) => (index % 3 === 2 && seeds.length ? [idea, seeds.shift()!] : [idea])).concat(seeds)
-  return { earlier, ideas, list }
-}
-
-function Earlier(props: { ideas: readonly Idea[] }) {
-  if (!props.ideas.length) return null
-  return (
-    <details className="earlier">
-      <summary>Earlier swarms <span className="chip-count">{props.ideas.length}</span></summary>
-      <p className="fine">Archived and read-only: what each found stays, and so does any money left in it.</p>
-      <Grid ideas={props.ideas} loading={false} />
-    </details>
-  )
-}
-
-function Grid(props: { ideas: readonly Idea[]; loading: boolean }) {
-  return (
-    <ul className="cards" data-loading={props.loading}>
-      {props.ideas.map((idea) => <Card idea={idea} key={idea.id} />)}
-      {props.loading && Array.from({ length: 6 }, (_, index) => <li className="card-ghost" key={index} />)}
-    </ul>
-  )
-}
 
 function asked() {
   const query = here().searchParams
@@ -225,12 +180,32 @@ export function Go() {
   )
 }
 
+function Seed(props: { problem: Problem }) {
+  const problem = props.problem
+  return (
+    <li className="limb lot" data-idea="true">
+      <Link className="lot-link" to={Nickname.usable(problem.id) ? `/${problem.id}` : `/new?q=${problem.id}`}>
+        <Spiral cells={{ dead: 0, flight: 0, open: 8, proven: 0, spent: 0 }} id={problem.id} live={false} />
+        <span className="lot-title">{problem.label}</span>
+        <span className="lot-line"><span>{problem.hint}</span></span>
+      </Link>
+    </li>
+  )
+}
+
 export function Join() {
-  const { earlier, ideas, list } = useIdeas()
+  const list = Wire.useSwarms()
+  const now = useNow(30_000)
   const [filter, setFilter] = useState<Filter>(asked)
-  const fit = (key: Filter, idea: Idea) => fits[key](idea)
-  const shown = ideas.filter((idea) => fit(filter, idea))
-  const count = (key: Filter) => ideas.filter((idea) => fit(key, idea)).length
+  const heads = list.data?.heads ?? {}
+  const items = board(list.data)
+  const free = list.data ? openProblems(list.data.swarms) : list.error ? [...problems] : []
+  const fit = (key: Filter, swarm: Summary) =>
+    key === 'open' || (key === 'running' ? live(swarm, heads[swarm.id]) : key === 'money' && !swarm.archivedAt && !live(swarm, heads[swarm.id]) && Status.word(swarm) === 'Needs money')
+  const swarms = items.filter((swarm) => fit(filter, swarm))
+  const ideas = filter === 'open' || filter === 'waiting' ? free : []
+  const count = (key: Filter) => (key === 'waiting' ? 0 : items.filter((swarm) => fit(key, swarm)).length) + (key === 'open' || key === 'waiting' ? free.length : 0)
+  const said = useDoing(swarms.filter((swarm) => swarm.form === 'tree' && live(swarm, heads[swarm.id])))
   const choose = (next: Filter) => {
     setFilter(next)
     keep(next)
@@ -252,15 +227,20 @@ export function Join() {
       </header>
       {list.error && !list.data ? (
         <button className="world-empty" onClick={() => location.reload()} type="button"><span>Can't reach Swarms.</span><b>Tap to try again ↻</b></button>
-      ) : list.data && shown.length === 0 ? (
+      ) : list.data && swarms.length + ideas.length === 0 ? (
         <Link className="world-empty" to="/new">
           <span>{filter === 'running' ? 'Nothing is working right now.' : filter === 'money' ? 'Every swarm has money.' : 'Nothing here yet.'}</span>
           <b>Start a swarm →</b>
         </Link>
       ) : (
-        <Grid ideas={shown} loading={!list.data} />
+        <ol className="limbs lots" data-loading={!list.data}>
+          {swarms.map((swarm) => <Lot doing={said[swarm.id]} funders={list.data?.funders?.[swarm.id] ?? []} head={heads[swarm.id]} key={swarm.id} now={now} swarm={swarm} />)}
+          {ideas.map((problem) => <Seed key={problem.id} problem={problem} />)}
+          <li className="limb limb-propose">
+            <Link to="/new"><i aria-hidden="true">+</i>Start a swarm<span>$1+</span></Link>
+          </li>
+        </ol>
       )}
-      <Earlier ideas={earlier} />
     </div>
   )
 }
