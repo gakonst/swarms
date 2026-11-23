@@ -27,6 +27,7 @@ export type Runtime = {
   aborts: Map<string, AbortController>
   first: boolean
   follow: { agent: string; stop: AbortController; up: boolean } | undefined
+  lating?: Promise<void> | undefined
   listing: { agent: string; at: number; value: Promise<Gateway.Result<Gateway.Subagent[]>> } | undefined
   pools: { runs?: Board.Pool; verifies?: Board.Pool }
   waiters: Set<() => void>
@@ -322,12 +323,16 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   }
   const state = sub?.status.state ?? 'gone'
   const ended = sub ? finished.has(state) : true
-  if (sub && !ended) await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
-  else if (sub && state === 'completed') await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
+  if (sub && (!ended || state === 'completed')) {
+    await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
+    const after = await list(self, swarm, spawned.agent, true)
+    if (after.ok) sub = after.value.find((one) => one.agent_id === spawned.sub) ?? sub
+  }
   const used = (sub ? Flow.micro(sub.spent_usd) : Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')) + (await dispatched(self, swarm, spawned))
   for (const steer of await lease.steers().catch(() => [])) if (steer.seq > relayed) await self.board.steer(Nodes.nodeId(nid), steer.body)
   const why = !sub ? 'The run is gone from the gateway.' : !ended ? 'The run stalled and was stopped.' : (sub.status.error ?? 'The run ' + state + '.')
   await Nodes.settleRun(self, task.id, used)
+  if (sub) charged(self, task.id, spawned, Flow.micro(sub.spent_usd))
   if (nid === Nodes.triage) {
     const actions = Triage.parse(sub?.result)
     const applied = await Triage.apply(self, actions, 'agent:n:triage', task.id, halt)
@@ -408,8 +413,60 @@ export async function halt(self: Swarm, run: string) {
   runtime(self).aborts.get(run)?.abort()
   const task = await self.board.task(run)
   if (task && !Work.terminal(task.phase)) await self.board.cancel(run, 'Its node ended.')
+  const spawned = self.kv.get<Nodes.Spawned>('run:' + run)
   const spent = await spentOf(self, run, true)
-  if (spent !== null) await Nodes.settleRun(self, run, spent)
+  if (spent === null) return
+  await Nodes.settleRun(self, run, spent)
+  if (spawned) charged(self, run, spawned, spent - (await dispatched(self, Nodes.swarm(self), spawned)))
+}
+
+export type Charged = { agent: string; at: number; spent: string; sub: number }
+
+export const lateMs = 10 * 60_000
+
+function charged(self: Swarm, run: string, spawned: Nodes.Spawned, spent: bigint) {
+  self.kv.put('charged:' + run, { agent: spawned.agent, at: Date.now(), spent: Memo.decimal(spent), sub: spawned.sub } satisfies Charged)
+  setTimeout(() => void late(self).catch(() => undefined), 2_000)
+}
+
+export function late(self: Swarm): Promise<void> {
+  const rt = runtime(self)
+  rt.lating ??= charge(self).finally(() => {
+    rt.lating = undefined
+  })
+  return rt.lating
+}
+
+async function charge(self: Swarm) {
+  const swarm = Nodes.swarm(self)
+  for (const [key, held] of [...self.kv.list<Charged>({ prefix: 'charged:' })]) {
+    const run = key.slice('charged:'.length)
+    if (Date.now() - held.at > lateMs) {
+      self.kv.delete(key)
+      continue
+    }
+    const listed = await list(self, swarm, held.agent, true)
+    const sub = listed.ok ? listed.value.find((one) => one.agent_id === held.sub) : undefined
+    if (!sub) continue
+    const now = Flow.micro(sub.spent_usd)
+    const extra = now - Memo.units(held.spent)
+    if (extra <= 0n) continue
+    const nid = Flow.runNode(run)
+    await Nodes.budgeting(self, async () => {
+      const rows = await Flow.rows(self.env, swarm)
+      const funders = new Set(rows.filter((row) => row.run === run && row.kind === 'commit').map((row) => row.contributor))
+      const runs = [...new Set(rows.filter((row) => row.node === nid && row.run !== null && row.run !== run).map((row) => row.run as string))]
+      const buckets: Flow.Bucket[] = [{ node: nid, run: null }, ...runs.map((other) => ({ node: nid, run: other })), { node: Flow.free, run: null }]
+      for (const bucket of buckets) {
+        const held = new Map([...Flow.shares(rows, bucket)].filter(([contributor]) => bucket.node !== Flow.free || funders.has(contributor)))
+        if (Flow.sum(held.values()) < extra) continue
+        await Flow.write(self.env, { from: bucket, id: 'late:' + run + ':' + now, kind: 'spend', parts: Flow.split(held, extra), swarm, to: null })
+        break
+      }
+    })
+    self.kv.put(key, { ...held, spent: Memo.decimal(now) })
+    Nodes.changed(self)
+  }
 }
 
 export async function dispatched(self: Swarm, swarm: string, spawned: Nodes.Spawned) {
@@ -420,12 +477,20 @@ export async function dispatched(self: Swarm, swarm: string, spawned: Nodes.Spaw
 
 export async function spentOf(self: Swarm, run: string, close = false): Promise<bigint | null> {
   const spawned = self.kv.get<Nodes.Spawned>('run:' + run)
-  if (!spawned) return 0n
   const swarm = Nodes.swarm(self)
+  if (!spawned) {
+    const prompted = self.kv.get<string>('prompted:' + run)
+    const agent = self.kv.get<Dispatcher>('dispatcher')?.id
+    return prompted && agent ? dispatched(self, swarm, { agent, at: 0, sub: 0, turn: prompted }) : 0n
+  }
   const listed = await list(self, swarm, spawned.agent, true)
   if (!listed.ok) return null
-  const sub = listed.value.find((one) => one.agent_id === spawned.sub)
-  if (close && sub && !finished.has(sub.status.state)) await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
+  let sub = listed.value.find((one) => one.agent_id === spawned.sub)
+  if (close && sub && !finished.has(sub.status.state)) {
+    await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
+    const after = await list(self, swarm, spawned.agent, true)
+    if (after.ok) sub = after.value.find((one) => one.agent_id === spawned.sub) ?? sub
+  }
   return Flow.micro(sub?.spent_usd) + (await dispatched(self, swarm, spawned))
 }
 
@@ -508,6 +573,7 @@ export async function tick(self: Swarm): Promise<number | null> {
       if ((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && task.claim && !rt.aborts.has(task.id)) await self.board.release(task.id, task.claim, 'its worker restarted')
     await Nodes.reconcile(self, (run) => spentOf(self, run))
   }
+  await late(self).catch((error: unknown) => console.error('Charging late spend failed', error))
   await Triage.schedule(self)
   await Nodes.consider(self)
   const tasks = await self.board.tasks()

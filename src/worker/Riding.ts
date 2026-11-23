@@ -332,6 +332,7 @@ export const tolerance = 50_000n
 
 export async function health(self: Swarm): Promise<Ledgered> {
   const swarm = Nodes.swarm(self)
+  await Runner.late(self).catch((error: unknown) => console.error('Charging late spend failed', error))
   const rows = await Flow.rows(self.env, swarm)
   const totals = Flow.totals(rows)
   const live = await Runner.live(self)

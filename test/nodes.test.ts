@@ -119,3 +119,26 @@ test('the dispatcher is replaced after 200 runs', async (t) => {
   assert.equal(w.swarm.kv.get<{ id: string; runs: number }>('dispatcher')?.id, 'agt_d1')
   assert.equal(w.swarm.kv.get<{ id: string; runs: number }>('dispatcher')?.runs, 1)
 })
+
+test('a call still in flight when a run settles is charged afterwards from the same node', async (t) => {
+  const g = gateway()
+  const w = await planted(g.route)
+  t.after(async () => {
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  await w.swarm.treePledge(id, { amount: '6', contributor: ana, hash: '0x' + '7'.repeat(64), nid: null })
+  await until(() => g.subs.length === 1)
+  const run = g.subs[0]!
+  run.spent_usd = 1
+  run.status = { output: { children: [], commit: null, outcome: 'progress', summary: 'Some way in', theorem: null, why: null }, state: 'completed' }
+  Runner.wake(w.swarm)
+  await until(async () => (await w.swarm.board.task('s:r:root:1'))?.phase === 'done')
+  run.spent_usd = 1.02
+  await Runner.late(w.swarm)
+  const ledger = Flow.fold(await Flow.rows(w.env, id))
+  assert.equal(ledger.spent.get('root'), 1_020_000n)
+  await Runner.late(w.swarm)
+  assert.equal(Flow.fold(await Flow.rows(w.env, id)).spent.get('root'), 1_020_000n)
+})
+
