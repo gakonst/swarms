@@ -272,8 +272,7 @@ export async function statements(self: Swarm) {
         if (!(await Verify.statement(self.env, swarm(self), nid, text).catch(() => false))) continue
         self.kv.put(key, '')
       }
-      await charge(self, nid, 'git:statement:' + nid, Verify.cost.commit)
-      self.kv.delete(key)
+      if (await charge(self, nid, 'git:statement:' + nid, Verify.cost.commit)) self.kv.delete(key)
     }
   } finally {
     flushing.delete(self)
@@ -290,15 +289,14 @@ export async function seed(self: Swarm) {
       if (!made) return false
       self.kv.put('proofsRepo', made)
     }
-    if (self.kv.get<string>('proofsRepo') === 'created') await charge(self, root, 'git:create', Verify.cost.create)
-    let included: string[] = []
+    if (self.kv.get<string>('proofsRepo') === 'created' && !(await charge(self, root, 'git:create', Verify.cost.create))) return false
     if (!self.kv.get<number>('seedCommitted')) {
-      included = [...self.kv.list<string>({ prefix: 'statement:' })].map(([key]) => key)
+      const included = [...self.kv.list<string>({ prefix: 'statement:' })].map(([key]) => key)
       if (!(await Verify.commit(self.env, id, await project(self), Verify.seedMessage))) return false
       self.kv.put('seedCommitted', Date.now())
+      for (const key of included) self.kv.delete(key)
     }
-    await charge(self, root, 'git:seed', Verify.cost.commit)
-    for (const key of included) self.kv.delete(key)
+    if (!(await charge(self, root, 'git:seed', Verify.cost.commit))) return false
     self.kv.put('seeded', Date.now())
     self.kv.delete('seeding')
     return true
@@ -342,12 +340,13 @@ function lineage(found: State, nid: string) {
 export async function charge(self: Swarm, nid: string, key: string, amount: bigint) {
   return budgeting(self, async () => {
     const id = swarm(self)
-    if (await Flow.written(self.env, id, key)) return false
+    if (await Flow.written(self.env, id, key)) return true
     const found = await state(self)
     const chain = [...lineage(found, nid), Flow.free]
     const rest = [...found.ledger.left].filter(([node, value]) => value > 0n && !chain.includes(node)).sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0)).map(([node]) => node)
     const buckets = [...chain, ...rest].map((node) => ({ held: Flow.shares(found.rows, { node, run: null }), node }))
-    const from = buckets.find((one) => Flow.sum(one.held.values()) >= amount) ?? buckets.reduce((best, one) => (Flow.sum(one.held.values()) > Flow.sum(best.held.values()) ? one : best))
+    const from = buckets.find((one) => Flow.sum(one.held.values()) >= amount)
+    if (!from) return false
     const wrote = await Flow.write(self.env, { from: { node: from.node, run: null }, id: key, kind: 'spend', parts: Flow.split(from.held, amount), swarm: id, to: null })
     if (wrote) changed(self)
     return wrote
