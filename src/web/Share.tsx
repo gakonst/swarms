@@ -57,7 +57,7 @@ function subscribe(listener: () => void) {
 export function toBoard(swarm: Shown) {
   const board = document.querySelector<HTMLElement>('.branches')
   if (board && board.offsetParent !== null && !document.querySelector('.grove[data-node="open"]')) board.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  else navigate(Nickname.path({ id: swarm.id, nickname: swarm.nickname }))
+  else navigate(`${Nickname.path({ id: swarm.id, nickname: swarm.nickname })}/board`)
 }
 
 export function Cheered() {

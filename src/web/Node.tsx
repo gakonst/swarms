@@ -262,10 +262,10 @@ export function NodePanel(props: {
       )}
       <section className="node-part">
         <h3>People</h3>
-        <p>{node.by.agent === 'seed' ? "Seeded by the swarm's authors" : node.by.agent ? 'Split off by the worker on its parent' : <>Idea by <b>@{node.by.handle}</b></>}</p>
+        <p>{node.by.agent === 'seed' ? "Seeded by the swarm's authors" : node.by.agent ? 'Split off by the worker on its parent' : <>Idea by <Link className="node-who" to={`/u/${node.by.address ?? node.by.handle}`}>@{node.by.handle}</Link></>}</p>
         {(view?.funders ?? node.funders).length > 0 && (
           <ul className="node-list node-riders">
-            {(view?.funders ?? node.funders).map((funder) => <li key={`${funder.who.handle}:${funder.since}`}><span>@{funder.who.handle}</span><span>{usd(funder.amount)}</span></li>)}
+            {(view?.funders ?? node.funders).map((funder) => <li key={`${funder.who.handle}:${funder.since}`}><Link className="node-who" to={`/u/${funder.who.address ?? funder.who.handle}`}>@{funder.who.handle}</Link><span>{usd(funder.amount)}</span></li>)}
           </ul>
         )}
       </section>

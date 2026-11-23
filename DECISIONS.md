@@ -867,3 +867,6 @@ The rebuild of DESIGN (design/DESIGN.md in the lead's workspace): one task tree 
 - `Status.test` also hides "L3 reliability …", "e2e test …", "… setup check" and "asdasd" titles. On production's list on 2026-11-23 (100 rows), the board keeps 12: $286.23 raised, 1 working, Megakernel ($94.52) first; the 88 dropped were test titles or under $1 (most are $0.08 to $0.10 "L3 reliability" swarms).
 - Checked under `pnpm dev` on the fixture world (`?fixture`, `?fixture&scene=many`) and on a copy of Georgios's local state (the seeded P = NP tree swarm: 12 riders, $283, 69 proven and 5 in flight), at 1440×900 and 390×844: the server HTML carries the numbers and items, the phone page never scrolls (document 844 of 844, the board panel scrolls), no sideways overflow, no tap target under 24 px, "See 8 more" shows all 14 on `scene=many`. `test/store.test.ts` covers the riders count and the top three. `pnpm check`, the unit tests.
 
+
+- A node's riders and its "Idea by" link to each rider's page (`/u/<address>`), and the cheer's Ride another part opens the swarm's Board tab (`<swarm>/board`) when no board is on screen. Checked on the fixture world under `vite` at 1440×900: a ride from the swarm page's Ride it shows the centered sheet, Ride another part lands on `/s/p-vs-np/board`, and a rider row on `/n/root` opens their profile.
+

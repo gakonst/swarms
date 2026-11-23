@@ -319,3 +319,5 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 .rider-money { grid-column:2; grid-row:1 / span 2; align-self:center; font:400 16px var(--mono); }
 .rider-none { margin:0; font:14px var(--mono); color:var(--muted); }
 @media (max-width:799px) { .rider { gap:20px; padding-top:20px; } .rider-name h1 { font-size:28px; } .rider-stats { gap:20px; } .rider-stats dd { font-size:26px; } }
+.node-who { color:inherit; font-weight:inherit; text-decoration:none; }
+.node-who:hover { text-decoration:underline; }
