@@ -58,7 +58,12 @@ function WalletButton(props: { config: Config | undefined }) {
   const out = !wallet.address
 
   useEffect(() => {
-    if (props.config && out) Wallet.warm(props.config)
+    if (!props.config || !out) return
+    const config = props.config
+    const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 1))
+    const cancel = window.cancelIdleCallback ?? window.clearTimeout
+    const id = idle(() => Wallet.warm(config), { timeout: 1500 })
+    return () => cancel(id)
   }, [props.config, out])
 
   useEffect(() => {
