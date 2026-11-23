@@ -168,7 +168,7 @@ function Picked(props: { config: Config | undefined; id: string; nid: string | u
   const data = detail.data
   if (data?.form === 'tree' && !data.archivedAt) return <TreePage config={props.config} detail={data} id={props.id} nid={props.nid} />
   if (!data && !detail.error) return <section aria-busy="true" className="page lost"><span className="lost-orbit" aria-hidden="true"><i /><i /><i /></span></section>
-  if (props.nid) return <Lost title="This swarm has no tree."><Link className="lost-row" replace to={`/s/${encodeURIComponent(props.id)}`}>Open it <span aria-hidden="true">→</span></Link></Lost>
+  if (props.nid && data) return <Lost title="This swarm has no tree."><Link className="lost-row" replace to={`/s/${encodeURIComponent(props.id)}`}>Open it <span aria-hidden="true">→</span></Link></Lost>
   return <Swarm config={props.config} id={props.id} view={props.view} />
 }
 
