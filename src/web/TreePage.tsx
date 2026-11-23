@@ -8,7 +8,7 @@ import { Headline, Program, Programs, Since } from './Headline.tsx'
 import { useMedia, useNow, usePoll } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { NodePanel } from './Node.tsx'
-import { Link, navigate, useQuery } from './router.tsx'
+import { Link, navigate, useBase, useQuery } from './router.tsx'
 import { Filters, Level, Outline } from './Tree.tsx'
 import * as Wire from './wire.ts'
 
@@ -21,7 +21,7 @@ function chosen(raw: string | null): Grove.Filter {
 export function TreePage(props: { config: Config | undefined; detail: Detail; id: string; nid: string | undefined }) {
   const id = props.id
   const selected = props.nid ?? 'root'
-  const base = `/s/${encodeURIComponent(id)}`
+  const base = useBase(id)
   const path = useCallback((nid: string) => (nid === 'root' ? base : `${base}/n/${nid}`), [base])
   const phone = useMedia('(max-width: 899px)')
   const now = useNow(30_000)

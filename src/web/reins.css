@@ -17,3 +17,5 @@
 .reins-add input { flex:1; min-width:0; height:44px; padding:0; border:0; border-bottom:1px solid var(--edge); border-radius:0; background:none; color:var(--fg); font:16px var(--serif); outline:none; }
 .reins-add input::placeholder { color:var(--faint); }
 .reins-add input:focus { border-bottom-color:var(--fg); }
+.reins-name { margin-top:var(--space-3); }
+.reins-name span { font:12px var(--mono); letter-spacing:.02em; color:var(--muted); white-space:nowrap; }

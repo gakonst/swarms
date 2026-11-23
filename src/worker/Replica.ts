@@ -1,3 +1,5 @@
+import * as Nickname from '../shared/Nickname.ts'
+
 export const cookie = 'swarms_d1'
 
 export const header = 'x-d1-bookmark'
@@ -12,7 +14,7 @@ const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|tg|tg\/s\/[^/]+|s\/[^/]+|s
 
 export function readable(method: string, path: string) {
   if (method !== 'GET' && method !== 'HEAD') return false
-  return swarm.test(path) || pages.test(path) || /^\/(api|v1)\/me$/.test(path) || /^\/v1\/(search|problems|health)$/.test(path)
+  return swarm.test(path) || pages.test(path) || ['', '/code', '/results'].includes(Nickname.parse(path)?.tail ?? '/chat') || /^\/(api|v1)\/me$/.test(path) || /^\/v1\/(search|problems|health)$/.test(path)
 }
 
 export function writes(method: string, path: string) {

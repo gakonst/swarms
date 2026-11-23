@@ -11,7 +11,7 @@ import * as Grove from './grove.ts'
 import { message, useWallet } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
 import * as Pay from './pay.ts'
-import { Back, Link, navigate } from './router.tsx'
+import { Back, Link, navigate, useBase } from './router.tsx'
 import { Mark, word } from './Tree.tsx'
 import * as Wallet from './wallet.ts'
 
@@ -84,6 +84,7 @@ function Propose(props: { config: Config | undefined; parent: Tree.Node; swarm: 
   const [sent, setSent] = useState(false)
   const [prefill] = useState(() => ({ ...asked(), amount: '1' }))
   const slot = `${props.swarm}/propose/${props.parent.id}`
+  const base = useBase(props.swarm)
   return (
     <details className="node-part node-form">
       <summary>Propose a lemma: $1 or more makes it a node</summary>
@@ -105,7 +106,7 @@ function Propose(props: { config: Config | undefined; parent: Tree.Node; swarm: 
         note=""
         onDone={(target) => {
           setSent(false)
-          if (target.node) navigate(`/s/${encodeURIComponent(props.swarm)}/n/${target.node}`, { keep: true })
+          if (target.node) navigate(`${base}/n/${target.node}`, { keep: true })
         }}
         onNote={() => {}}
         onSent={() => setSent(true)}
@@ -200,7 +201,8 @@ export function NodePanel(props: {
   const known = props.nodes[props.nid]
   const view = props.view
   const node: Tree.Node | undefined = view ?? known
-  const path = (nid: string) => `/s/${encodeURIComponent(props.swarm)}/n/${nid}`
+  const base = useBase(props.swarm)
+  const path = (nid: string) => `${base}/n/${nid}`
   if (!node)
     return (
       <div className="node" aria-busy={!props.error}>

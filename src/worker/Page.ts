@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { waitUntil } from 'cloudflare:workers'
 import { render } from '#ssr'
 import type { Boot, Face } from '../shared/Boot.ts'
+import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
 import * as Surface from '../shared/Surface.ts'
 import * as Artifacts from './Artifacts.ts'
@@ -20,13 +21,49 @@ const firstChat = 30
 
 const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/board'])
 
+const swarmed = /^\/s\/([^/]+)(\/chat|\/code|\/results|\/n\/[0-9a-z]+)?\/?$/
+
 export function rendered(path: string) {
-  return listed.has(path) || /^\/s\/[^/]+(\/chat|\/code|\/results|\/n\/[0-9a-z]+)?\/?$/.test(path)
+  return listed.has(path) || swarmed.test(path) || Nickname.parse(path) !== undefined
 }
 
 export function moved(url: URL) {
   if (url.pathname === '/join' || url.pathname === '/join/') return `/ideas${url.search}`
   return undefined
+}
+
+const looked = new WeakMap<Request, Promise<Store.Called | null | undefined>>()
+
+function lookup(env: Cloudflare.Env, request: Request, name: string) {
+  const held = looked.get(request)
+  if (held) return held
+  const found = within(Store.called(env, name), 1500)
+  looked.set(request, found)
+  return found
+}
+
+export async function renamed(env: Cloudflare.Env, request: Request) {
+  const url = new URL(request.url)
+  const path = url.pathname
+  if ((path === '/new' || path === '/new/') && !url.searchParams.has('fixture') && !url.searchParams.has('scene')) {
+    const asked = url.searchParams.get('q')
+    const name = asked === null ? '' : Nickname.slug(asked)
+    if (!Nickname.usable(name)) return undefined
+    const search = new URLSearchParams(url.search)
+    search.delete('q')
+    const rest = search.toString()
+    return `/${name}${rest ? `?${rest}` : ''}`
+  }
+  const [, raw, tail = ''] = swarmed.exec(path) ?? []
+  if (raw) {
+    const name = await within(Store.nicknamed(env, decodeURIComponent(raw)), 1500)
+    return name ? `/${name}${tail}${url.search}` : undefined
+  }
+  const named = Nickname.parse(path)
+  if (!named) return undefined
+  const found = await lookup(env, request, named.name)
+  if (!found || found.current === named.name) return undefined
+  return `${Nickname.path({ id: found.swarm, nickname: found.current })}${named.tail}${url.search}`
 }
 
 let template: string | undefined
@@ -80,7 +117,9 @@ function zone(cookie: string | null) {
 
 type Head = Share.Share
 
-async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
+type Calling = Promise<Store.Called | null | undefined> | undefined
+
+async function gather(env: Cloudflare.Env, url: URL, calling: Calling): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
   const path = url.pathname.replace(/\/$/, '') || '/'
   const site = Site.url(env, url)
   const lost = Share.share(site, Share.listing('home', []), { title: 'Not found · Swarms' })
@@ -94,8 +133,13 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   }
   if (path === '/about' || path === '/docs') return { data, head: Share.share(site, Share.plain(path === '/about' ? 'about' : 'docs')), status: 200, whole: true }
   if (!rendered(path)) return { data, head: lost, status: 404, whole: false }
-  const [, raw = '', tail, picked] = /^\/s\/([^/]+)(\/chat|\/code|\/results|\/n\/([0-9a-z]+))?\/?$/.exec(path) ?? []
-  const id = decodeURIComponent(raw)
+  const named = Nickname.parse(path)
+  const found = named && (await calling)
+  if (named && !found) return found === null && !named.tail ? unclaimed(env, site, named.name) : { data, head: lost, status: found === null ? 404 : 200, whole: false }
+  const [, raw = '', tail] = named ? [path, '', named.tail] : (swarmed.exec(path) ?? [])
+  const picked = /^\/n\/([0-9a-z]+)$/.exec(tail ?? '')?.[1]
+  const id = found ? found.swarm : decodeURIComponent(raw)
+  if (named && found) data[`name:${named.name}`] = { name: named.name, nickname: found.current, swarm: id }
   const row = await within(Store.find(env, id), 1500)
   if (row?.form === 'tree' && !row.archived_at) return grove(env, site, url, id, picked ?? 'root', lost)
   const shelved = within(Operations.artifacts(env, { swarm: id }, site), 2500)
@@ -136,6 +180,15 @@ async function gather(env: Cloudflare.Env, url: URL): Promise<{ data: Record<str
   }
 }
 
+async function unclaimed(env: Cloudflare.Env, site: string, name: string): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
+  const data: Record<string, unknown> = { [`name:${name}`]: null }
+  const list = await within(Operations.list(env, {}), 1500)
+  if (list?.ok) data['swarms'] = Operations.listed(list.value)
+  const problem = Share.problem(name)
+  const subject = problem ? Share.idea(problem) : Share.listing('new', list?.ok ? list.value.swarms : [])
+  return { data, head: Share.share(site, subject, { path: `/${name}`, ...(problem ? {} : { title: `Start a swarm on ${Nickname.topic(name)} · Swarms` }) }), status: 200, whole: false }
+}
+
 async function grove(env: Cloudflare.Env, site: string, url: URL, id: string, nid: string, lost: Head): Promise<{ data: Record<string, unknown>; head: Head; status: number; whole: boolean }> {
   const data: Record<string, unknown> = {}
   const [detail, tree, node, burn, proofs, room, headed] = await Promise.all([
@@ -170,7 +223,9 @@ export async function page(request: Request, env: Cloudflare.Env) {
   if (Share.bot(request)) waitUntil(Og.warm(env, new URL(request.url)).catch((error: unknown) => console.error('Preview warm-up failed', error)))
   const cookie = request.headers.get('cookie')
   const build = await built(env, new URL(request.url).origin).catch(() => '')
-  return Edge.page(request, `${build}|${mobile(request) ? 'm' : 'd'}|${zone(cookie) ?? ''}`, (given) => draw(given, env))
+  const named = Nickname.parse(new URL(request.url).pathname)
+  const swarm = named ? ((await lookup(env, request, named.name))?.swarm ?? '') : ''
+  return Edge.page(request, `${build}|${mobile(request) ? 'm' : 'd'}|${zone(cookie) ?? ''}|${swarm}`, (given) => draw(given, env))
 }
 
 let build: { html: string; value: string } | undefined
@@ -196,7 +251,9 @@ async function draw(request: Request, env: Cloudflare.Env) {
   const encoder = new TextEncoder()
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
   const writer = writable.getWriter()
-  const gathering = gather(env, url)
+  const named = Nickname.parse(url.pathname)
+  const calling: Calling = named && lookup(env, request, named.name)
+  const gathering = gather(env, url, calling)
   const configuring = within(Operations.config(env), 2500)
   const top = before.replace(/<title>[^<]*<\/title>/, '').replace('</head>', '§HEAD§</head>')
   const [opening = '', closing = ''] = top.split('§HEAD§')
@@ -229,6 +286,6 @@ async function draw(request: Request, env: Cloudflare.Env) {
     return false
   })
   const id = /^\/s\/([^/]+)/.exec(url.pathname)?.[1]
-  const status = !rendered(url.pathname) ? 404 : id ? ((await Store.exists(env, decodeURIComponent(id)).catch(() => true)) ? 200 : 404) : 200
+  const status = !rendered(url.pathname) ? 404 : id ? ((await Store.exists(env, decodeURIComponent(id)).catch(() => true)) ? 200 : 404) : named?.tail && (await calling) === null ? 404 : 200
   return { response: new Response(readable, { headers: { 'cache-control': 'private, no-cache', 'content-type': 'text/html; charset=utf-8', link: `<${Site.base}/fonts/ParadigmSerif-BetaRegular.woff2>; rel=preload; as=font; crossorigin` }, status }), whole }
 }

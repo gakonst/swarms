@@ -128,6 +128,7 @@ function build(input: {
     contributors: 0,
     cover: null,
     createdAt: at(input.age),
+    nickname: null,
     code: input.code ?? null,
     cursor: 0,
     feed,
@@ -469,6 +470,7 @@ function summary(swarm: Live): Summary {
     goal: swarm.goal,
     id: swarm.id,
     machines: swarm.machines,
+    nickname: swarm.nickname,
     pool: swarm.pool,
     problem: swarm.problem,
     remaining: swarm.remaining,
@@ -629,11 +631,12 @@ export function live(key: string, after: number, listener: (event: LiveEvent | {
   }
 }
 
-export function create(input: { goal: string; problem?: string; steering?: Steering; title: string } & Partial<Setup.Choice>, who: `0x${string}` | undefined) {
+export function create(input: { goal: string; nickname?: string; problem?: string; steering?: Steering; title: string } & Partial<Setup.Choice>, who: `0x${string}` | undefined) {
   const steering = input.steering ?? (who ? 'team' : 'open')
   if (steering === 'team' && !who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to steer the swarm you start.'))
   const key = id(`${input.title}:${Date.now()}`)
   const swarm = build({ age: 0, goal: input.goal, id: key, problem: input.problem, owner: who ?? visitor, setup: setup({ ...input, template: input.template ?? Setup.fallback }), lines: [['status', 'Created. The first contribution starts its agent.']], spent: '0', status: 'funding', steering, title: input.title, updates: [] })
+  swarm.nickname = input.nickname ?? null
   fixtures.unshift(swarm)
   return delay(summary(swarm), 400)
 }

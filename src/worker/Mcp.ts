@@ -203,7 +203,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, addre
     'swarm_create',
     {
       annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false, readOnlyHint: false },
-      description: `Start a swarm with a title, a goal and a model template (frontier-anthropic by default, Fable 5.2 throughout; GET /v1/config lists every model's price). It costs nothing and waits in status funding until someone sends it money (swarm_contribute, or Fund on its page), and only funded swarms appear in swarms_list. Returns the swarm; its page is ${origin}/s/<id>.`,
+      description: `Start a swarm with a title, a goal and a model template (frontier-anthropic by default, Fable 5.2 throughout; GET /v1/config lists every model's price). It costs nothing and waits in status funding until someone sends it money (swarm_contribute, or Fund on its page), and only funded swarms appear in swarms_list. Returns the swarm; its page is ${origin}/<nickname> when given one, else ${origin}/s/<id>.`,
       inputSchema: Operations.schema.create.omit({ steering: true }).shape,
     },
     async (input) => reply(await Operations.create(env, input)),
@@ -284,6 +284,16 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, addre
       inputSchema: Operations.schema.nodeMove.shape,
     },
     async (input) => reply(await Operations.nodeMove(env, input, address)),
+  )
+
+  server.registerTool(
+    'swarm_nickname',
+    {
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false, readOnlyHint: false },
+      description: "Set a swarm's nickname (signed in as one of its admins or the operator), which makes its page /<nickname>; the old nickname keeps sending visitors to the new page until another swarm takes it, and null drops it. Call it only when the user asks.",
+      inputSchema: Operations.schema.nickname.shape,
+    },
+    async (input) => reply(await Operations.nickname(env, input, address)),
   )
 
   server.registerTool(

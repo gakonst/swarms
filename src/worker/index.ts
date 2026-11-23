@@ -67,7 +67,7 @@ app.use('*', async (c, next) => {
 app.get('*', async (c, next) => {
   const url = new URL(c.req.url)
   const path = url.pathname
-  const moved = Page.moved(url)
+  const moved = Page.moved(url) ?? (await Page.renamed(c.env, c.req.raw))
   if (moved) return c.redirect(Site.at(moved), 301)
   const accept = c.req.header('accept') ?? ''
   if (!Page.rendered(path) || (accept !== '' && !/text\/html|\*\/\*/.test(accept))) return next()
@@ -148,6 +148,10 @@ app.get('/api/swarms/:id', async (c) => {
   if (!shown.ok) return Problem.json(shown)
   return Edge.tagged(c.json(shown.value.detail), early || (shown.value.stamp.quiet ? Edge.tag('sd', c.req.raw, shown.value.stamp.version, salt) : undefined))
 })
+
+app.patch('/api/swarms/:id', async (c) => Problem.respond(await Operations.nickname(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
+
+app.get('/api/names/:name', async (c) => Problem.respond(await Operations.named(c.env, { name: c.req.param('name') })))
 
 app.get('/api/swarms/:id/git/:read', async (c) => {
   const read = c.req.param('read')

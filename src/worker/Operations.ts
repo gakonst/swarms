@@ -21,6 +21,7 @@ import type {
   Lent,
   Me,
   Member,
+  Named,
   Note,
   Overview,
   Page,
@@ -58,6 +59,7 @@ import * as Credit from '../shared/Credit.ts'
 import * as Door from '../shared/Door.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
+import * as Nickname from '../shared/Nickname.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Edge from './Edge.ts'
@@ -92,6 +94,16 @@ const id = z.string().trim().min(1).max(64).describe('The swarm id, the last par
 const nid = z.string().trim().regex(/^(root|triage|[0-9a-f]{10})$/, 'A node id is root, triage or 10 hex characters.').describe('A node id, as in /s/<id>/n/<nid>.')
 
 const free = z.union([nid, z.literal('')])
+
+const alias = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .superRefine((value, context) => {
+    const why = Nickname.invalid(value)
+    if (why) context.addIssue({ code: 'custom', message: why })
+  })
+  .describe(`The swarm's nickname, its page at /<nickname>: ${Nickname.least} to ${Nickname.most} lowercase letters, digits and hyphens, starting and ending with a letter or digit, unique across swarms. Route names (such as new, ideas, docs, api and v1) and hex strings of 8 or more characters are reserved.`)
 
 const lean = z.string().trim().min(1).max(8000)
 
@@ -173,6 +185,7 @@ export const schema = {
       .describe('What the swarm should find out or build, what done looks like and what its updates should report.'),
     problem: z.enum(ids).optional().describe('The id of the idea-bank problem this swarm works on, from GET /v1/problems. A problem with an open swarm is not offered again until that swarm finishes.'),
     title: z.string().trim().min(1).max(80).describe('A short name for the swarm.'),
+    nickname: alias.optional(),
     steering: steerings.optional().describe("Who steers the swarm. team, the default when signed in: only you and the people you add with POST /v1/swarms/:id/team/members; every other backer still funds it and chats in its room. open, the default otherwise: every backer, with their own money. A team swarm started without a session belongs to whoever sends its first ride."),
     template: z
       .enum(Setup.templates)
@@ -326,6 +339,8 @@ export const schema = {
     swarm: id.optional().describe('Search only this swarm, including its feed.'),
   }),
   swarm: z.object({ swarm: id }),
+  nickname: z.object({ nickname: alias.nullable().describe('The new nickname, or null to drop it. The old one keeps sending its visitors to the new page until another swarm takes it.'), swarm: id }),
+  named: z.object({ name: z.string().trim().toLowerCase().max(64) }),
   tree: z.object({
     depth: z.coerce.number().int().min(0).max(64).default(3).describe('How many levels under root to include; deeper nodes appear only as ids in children.'),
     root: nid.default('root').describe('The node to start from; root is the whole swarm.'),
@@ -483,7 +498,13 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
   const tree = parsed.value.form === 'tree'
   if (!tree && (parsed.value.seed.length || parsed.value.statement)) return Problem.fail(400, 'invalid_request', 'seed and statement go with form tree.')
-  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, form: parsed.value.form, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup), steering: policy })
+  const named = parsed.value.nickname
+  if (named && (await Store.called(env, named))?.current === named) return taken(named)
+  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, form: parsed.value.form, nickname: named, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup), steering: policy }).catch((error: unknown) => {
+    if (error instanceof Store.Taken) return 'taken' as const
+    throw error
+  })
+  if (row === 'taken') return taken(named ?? '')
   if (!row) return Problem.fail(502, 'unavailable', 'The swarm was not saved.')
   if (tree) {
     const planted = await plant(env, row, parsed.value, setup)
@@ -1386,7 +1407,7 @@ export async function transfer(env: Cloudflare.Env, input: Input<'transfer'>, or
   return Problem.ok({
     amount: amount === null ? null : Memo.decimal(amount),
     call: amount === null ? null : { data: encodeFunctionData({ abi: Abis.tip20, args: [Chain.recipient, amount, memo], functionName: 'transferWithMemo' }), to: token.address },
-    link: row.form === 'tree' && request.node ? `${origin}/s/${row.id}/n/${request.node}?${query}` : `${origin}/s/${row.id}?${query}`,
+    link: row.form === 'tree' && request.node ? `${origin}${Nickname.path(row)}/n/${request.node}?${query}` : `${origin}${Nickname.path(row)}?${query}`,
     memo,
     memoText: `bytes16(keccak256("gateway:credit:${Credit.chainId}:${owner}:${Credit.app(row.id)}")) ++ bytes16(keccak256("${note ? `note:${row.id}:${note}` : `swarm:${row.id}`}"))`,
     note,
@@ -1694,6 +1715,50 @@ export async function keyed(env: Cloudflare.Env, bearer: string | undefined) {
   if (!bearer || !env.SWARMS_GATEWAY_KEY) return false
   const [given, held] = await Promise.all([digest(bearer), digest(env.SWARMS_GATEWAY_KEY)])
   return given.every((byte, index) => byte === held[index])
+}
+
+function taken(name: string) {
+  return Problem.fail(409, 'conflict', `Another swarm is called ${name}.`)
+}
+
+async function owned(env: Cloudflare.Env, row: Store.Row, address: Address | undefined, operated: boolean): Promise<Problem.Result<null>> {
+  if (operated) return Problem.ok(null)
+  if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo ID as one of the swarm's admins or the operator, or send the operator's gateway key as the bearer token.")
+  const operator = await Gateway.wallet(env)
+  if (operator && address.toLowerCase() === operator.toLowerCase()) return Problem.ok(null)
+  const admin = await Team.admin(env, row, address).then(Problem.ok, Team.unlisted)
+  if (!admin.ok) return admin
+  return admin.value ? Problem.ok(null) : Problem.fail(403, 'access_denied', "Only the swarm's admins and the operator name it.")
+}
+
+export async function nickname(env: Cloudflare.Env, input: Input<'nickname'>, address?: Address, operated = false): Promise<Problem.Result<Summary>> {
+  const parsed = parse(schema.nickname, input)
+  if (!parsed.ok) return parsed
+  const row = await Store.find(env, parsed.value.swarm)
+  if (!row) return missing()
+  if (row.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived and read-only.')
+  const allowed = await owned(env, row, address, operated)
+  if (!allowed.ok) return allowed
+  const name = parsed.value.nickname
+  if (name === (row.nickname ?? null)) return Problem.ok(Store.summary(row))
+  if (name && (await Store.called(env, name))?.current === name) return taken(name)
+  try {
+    await Store.nickname(env, row.id, name)
+  } catch (error) {
+    if (error instanceof Store.Taken) return taken(name ?? '')
+    throw error
+  }
+  const updated = await Store.find(env, row.id)
+  return Problem.ok(Store.summary(updated ?? { ...row, nickname: name }))
+}
+
+export async function named(env: Cloudflare.Env, input: Input<'named'>): Promise<Problem.Result<Named>> {
+  const parsed = parse(schema.named, input)
+  if (!parsed.ok) return parsed
+  const name = parsed.value.name
+  const found = Nickname.usable(name) ? await Store.called(env, name) : null
+  if (!found) return Problem.fail(404, 'not_found', 'No swarm has this nickname.')
+  return Problem.ok({ name, nickname: found.current, swarm: found.swarm })
 }
 
 export async function archive(env: Cloudflare.Env, input: Input<'swarm'>, address?: Address, operated = false): Promise<Problem.Result<Summary>> {

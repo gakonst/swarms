@@ -1,6 +1,7 @@
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
+import * as Nickname from '../shared/Nickname.ts'
 import * as Status from '../shared/Status.ts'
 import { here } from './boot.ts'
 import { Card, fromProblem, fromSwarm, type Idea } from './Card.tsx'
@@ -121,7 +122,7 @@ export function Home() {
   const working = open.filter((swarm) => swarm.status === 'running').length
   const balance = open.reduce((sum, swarm) => sum + Math.max(0, Number(swarm.remaining)), 0)
   const shown = ideas.filter((idea) => (view === 'live' ? fits.running(idea) : view === 'new' ? fits.waiting(idea) : true)).slice(0, 12)
-  const path = (id: string) => (id.startsWith('idea:') ? `/new?q=${id.slice(5)}` : `/s/${id}`)
+  const path = (id: string) => (id.startsWith('idea:') ? (Nickname.usable(id.slice(5)) ? `/${id.slice(5)}` : `/new?q=${id.slice(5)}`) : Nickname.path(ranked.find((swarm) => swarm.id === id) ?? { id }))
   const tabs = [['popular', 'Popular'], ['live', 'Working now'], ['new', 'No riders yet']] as const
 
   return (

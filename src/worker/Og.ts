@@ -11,7 +11,9 @@ import encoder from './h264/encoder.wasm'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Share from './Share.ts'
+import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
+import * as Store from './Store.ts'
 import * as XFrames from './XFrames.ts'
 
 type Name = 'card.png' | 'poster.png' | 'video.mp4'
@@ -66,12 +68,23 @@ export async function leaf(env: Cloudflare.Env, swarm: string, nid: string) {
 
 async function tree(env: Cloudflare.Env, key: string): Promise<Share.Subject | undefined> {
   const [swarm = '', , nid] = key.slice(2).split('/')
+  const naming = Store.nicknamed(env, swarm).catch(() => null)
   if (nid) {
     const found = await leaf(env, swarm, nid)
-    return found && Share.node(swarm, found.title, found.node, found.view)
+    return found && Share.node(swarm, found.title, found.node, found.view, await naming)
   }
   const found = await grove(env, swarm)
-  return found && Share.tree(swarm, found)
+  return found && Share.tree(swarm, found, await naming)
+}
+
+export async function keyed(env: Cloudflare.Env, url: URL) {
+  const key = Share.page(url)
+  if (key) return key
+  const named = Nickname.parse(url.pathname)
+  if (!named) return undefined
+  const found = await Store.called(env, named.name).catch(() => undefined)
+  if (found) return `s/${found.swarm}${named.tail.startsWith('/n/') ? named.tail : ''}`
+  return found === null && !named.tail ? (Share.problem(named.name) ? `new/${named.name}` : 'new') : undefined
 }
 
 async function subject(env: Cloudflare.Env, key: string): Promise<Share.Subject | undefined> {
@@ -114,7 +127,7 @@ export async function embed(env: Cloudflare.Env, given: string, origin: string, 
     return Problem.fail(400, 'invalid_request', 'url must be a link to a Swarms page.')
   }
   if (url.origin !== new URL(origin).origin && url.origin !== self && url.origin !== new URL(env.SWARMS_URL).origin) return Problem.fail(404, 'not_found', 'url is not a Swarms page.')
-  const key = Share.page(new URL(`${Site.strip(url.pathname).replace(/^\/(x|tg)(?=\/|$)/, '') || '/'}${url.search}`, self))
+  const key = await keyed(env, new URL(`${Site.strip(url.pathname).replace(/^\/(x|tg)(?=\/|$)/, '') || '/'}${url.search}`, self))
   const found = key && (await subject(env, key))
   if (!found) return Problem.fail(404, 'not_found', 'url is not a Swarms page or no longer exists.')
   const title = Share.title(found)
@@ -237,7 +250,7 @@ export async function serve(env: Cloudflare.Env, request: Request) {
 }
 
 export async function head(env: Cloudflare.Env, site: string, url: URL): Promise<Share.Share | undefined> {
-  const key = Share.page(url)
+  const key = await keyed(env, url)
   if (!key?.startsWith('s/')) return undefined
   const found = await tree(env, key)
   return found && Share.share(site, found)
@@ -263,7 +276,7 @@ export function frame(env: Cloudflare.Env, id: string | undefined, nid?: string)
 }
 
 export async function warm(env: Cloudflare.Env, url: URL) {
-  const key = Share.page(url)
+  const key = await keyed(env, url)
   if (!key) return
   const found = await subject(env, key)
   if (!found) return

@@ -1,6 +1,7 @@
 import { forwardRef, type ReactNode, useState } from 'react'
 import * as Answer from '../shared/Answer.ts'
 import type { Config, Member, Summary } from '../shared/Api.ts'
+import * as Nickname from '../shared/Nickname.ts'
 import * as Status from '../shared/Status.ts'
 import { site } from './boot.ts'
 import { Gauge, line } from './Card.tsx'
@@ -26,7 +27,7 @@ export const Box = forwardRef<HTMLElement, {
   prefill: Prefill
   shared?: boolean
   steers?: boolean
-  swarm: Pick<Summary, 'balance' | 'contributors' | 'id' | 'remaining' | 'status' | 'title' | 'why'> & { reason?: string | null | undefined }
+  swarm: Pick<Summary, 'balance' | 'contributors' | 'id' | 'remaining' | 'status' | 'title' | 'why'> & { nickname?: string | null; reason?: string | null | undefined }
   target: (step: (step: 'create') => void) => Promise<Target>
 }>(function Box(props, ref) {
   const swarm = props.swarm
@@ -38,7 +39,7 @@ export const Box = forwardRef<HTMLElement, {
   const flow = Pay.useFlow(swarm.id)
 
   const share = async () => {
-    const url = `${site()}/s/${swarm.id}`
+    const url = `${site()}${Nickname.path(swarm)}`
     try {
       if (navigator.share && matchMedia('(pointer: coarse)').matches) await navigator.share({ title: swarm.title, url })
       else {

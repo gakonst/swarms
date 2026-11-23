@@ -22,6 +22,8 @@ const routes = [
   ['GET', '/v1/swarms', 'Swarms, most recently active first.', '?status=<status>'],
   ['GET', '/v1/swarms/live', 'A WebSocket of the list: welcome when it opens, then { type: swarm, swarm } each time a listed swarm changes.', ''],
   ['GET', '/v1/swarms/:id', "The swarm's summary: goal, money, where it stands.", ''],
+  ['PATCH', '/v1/swarms/:id', "As its admin or the operator, set the swarm's nickname, its page at /<nickname>. The old one keeps redirecting until another swarm takes it; null drops it.", '{ nickname }'],
+  ['GET', '/v1/names/:name', 'The swarm a nickname names, and its nickname now.', ''],
   ['GET', '/v1/swarms/:id/tree', 'The headline and the nodes, to depth 3 by default; deeper nodes are listed by id under their parent.', '?root=<nid>&depth=<n>&status=<status>'],
   ['GET', '/v1/swarms/:id/nodes/:nid', 'One node with its runs (spend, summary, commit), notes, suggestions under it and every rider.', ''],
   ['GET', '/v1/swarms/:id/nodes/:nid/updates', "That node's changes, oldest first after the cursor.", '?after=<seq>'],

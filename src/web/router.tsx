@@ -1,4 +1,4 @@
-import { type MouseEvent, type ReactNode, useSyncExternalStore } from 'react'
+import { createContext, type MouseEvent, type ReactNode, useContext, useSyncExternalStore } from 'react'
 import * as Site from '../shared/Site.ts'
 import { fixture } from './api.ts'
 import { here } from './boot.ts'
@@ -10,6 +10,14 @@ function subscribe(listener: () => void) {
 
 export function usePath() {
   return useSyncExternalStore(subscribe, () => Site.strip(location.pathname), () => here().pathname)
+}
+
+const based = createContext<string | undefined>(undefined)
+
+export const Base = based.Provider
+
+export function useBase(id: string) {
+  return useContext(based) ?? `/s/${encodeURIComponent(id)}`
 }
 
 export function useQuery(name: string) {

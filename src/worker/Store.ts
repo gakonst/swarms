@@ -19,6 +19,7 @@ export type Row = {
   goal: string
   id: string
   machines: number
+  nickname?: string | null
   pool_left: number
   pool_spent: number
   problem: string | null
@@ -65,7 +66,8 @@ const totals = `select s.*,
   coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) as balance,
   s.pool_spent + s.sponsor_spent + s.spent_before as spent,
   coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining,
-  (select count(distinct contributor) from contributions where swarm = s.id) as contributors
+  (select count(distinct contributor) from contributions where swarm = s.id) as contributors,
+  (select name from swarm_names where swarm = s.id and current = 1) as nickname
   from swarms s`
 
 function answer(text: string | null): Answer | null {
@@ -105,6 +107,7 @@ export function summary(row: Row): Summary {
     goal: row.goal,
     id: row.id,
     machines: row.machines,
+    nickname: row.nickname ?? null,
     pool: Memo.decimal(BigInt(row.pool_left)),
     problem: row.problem ?? null,
     remaining: Memo.decimal(BigInt(row.remaining)),
@@ -120,7 +123,7 @@ export function summary(row: Row): Summary {
 
 export async function list(env: Cloudflare.Env, status?: Summary['status']) {
   const { results } = await env.DB.prepare(
-    `select s.*, coalesce(c.balance, 0) as balance, s.pool_spent + s.sponsor_spent + s.spent_before as spent, coalesce(c.balance, 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining, coalesce(c.contributors, 0) as contributors
+    `select s.*, coalesce(c.balance, 0) as balance, s.pool_spent + s.sponsor_spent + s.spent_before as spent, coalesce(c.balance, 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining, coalesce(c.contributors, 0) as contributors, (select name from swarm_names where swarm = s.id and current = 1) as nickname
     from swarms s left join (select swarm, sum(cast(amount as integer)) as balance, count(distinct contributor) as contributors from contributions group by swarm) c on c.swarm = s.id
     where s.hidden = 0 and (c.balance > 0 or s.form = 'tree')${status ? ' and s.status = ?' : ''} order by s.form = 'tree' desc, s.archived_at is not null, s.updated_at desc limit 100`,
   )
@@ -186,16 +189,47 @@ export async function repo(env: Cloudflare.Env, id: string) {
 
 export async function insert(
   env: Cloudflare.Env,
-  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'steering' | 'title'> & Partial<Pick<Row, 'setup' | 'form'>>,
+  input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'steering' | 'title'> & Partial<Pick<Row, 'setup' | 'form'>> & { nickname?: string | undefined },
 ) {
   const now = Date.now()
-  const row = await env.DB.prepare(
-    'insert into swarms (id, title, goal, problem, creator, steering, created_at, updated_at, setup, form) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as balance, pool_spent + sponsor_spent + spent_before as spent, 0 - (pool_spent + sponsor_spent + spent_before) as remaining, 0 as contributors',
-  )
-    .bind(input.id, input.title, input.goal, input.problem, input.creator, input.steering, now, now, input.setup ?? null, input.form ?? 'agent')
-    .first<Row>().finally(() => wrote(input.id))
+  const swarm = env.DB.prepare(
+    'insert into swarms (id, title, goal, problem, creator, steering, created_at, updated_at, setup, form) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as balance, pool_spent + sponsor_spent + spent_before as spent, 0 - (pool_spent + sponsor_spent + spent_before) as remaining, 0 as contributors, ? as nickname',
+  ).bind(input.id, input.title, input.goal, input.problem, input.creator, input.steering, now, now, input.setup ?? null, input.form ?? 'agent', input.nickname ?? null)
+  const named = input.nickname
+  const row = await (named ? env.DB.batch<Row>([freeing(env, named), swarm, claiming(env, named, input.id, now)]).then((results) => results[1]?.results[0] ?? null, taken) : swarm.first<Row>()).finally(() => wrote(input.id))
   if (row) known.add(row.id)
   return row
+}
+
+export class Taken extends Error {}
+
+function taken(error: unknown): never {
+  throw /UNIQUE constraint failed/i.test(String(error instanceof Error ? error.message : error)) ? new Taken('The nickname is taken.') : error
+}
+
+function freeing(env: Cloudflare.Env, name: string) {
+  return env.DB.prepare('delete from swarm_names where name = ? and current = 0').bind(name)
+}
+
+function claiming(env: Cloudflare.Env, name: string, swarm: string, at: number) {
+  return env.DB.prepare('insert into swarm_names (name, swarm, current, created_at) values (?, ?, 1, ?)').bind(name, swarm, at)
+}
+
+export type Called = { current: string | null; swarm: string }
+
+export async function called(env: Cloudflare.Env, name: string) {
+  return fresh(env, (db) => db.prepare('select n.swarm, c.name as current from swarm_names n left join swarm_names c on c.swarm = n.swarm and c.current = 1 where n.name = ?').bind(name).first<Called>())
+}
+
+export async function nicknamed(env: Cloudflare.Env, swarm: string) {
+  const row = await env.DB.prepare('select name from swarm_names where swarm = ? and current = 1').bind(swarm).first<{ name: string }>()
+  return row?.name ?? null
+}
+
+export async function nickname(env: Cloudflare.Env, swarm: string, name: string | null) {
+  const at = Date.now()
+  const letting = env.DB.prepare('update swarm_names set current = 0 where swarm = ? and current = 1').bind(swarm)
+  await (name ? env.DB.batch([freeing(env, name), letting, claiming(env, name, swarm, at)]).catch(taken) : letting.run()).finally(() => wrote(swarm))
 }
 
 export async function archive(env: Cloudflare.Env, id: string, at: number) {
