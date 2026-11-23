@@ -4,7 +4,7 @@ import type * as Tree from '../shared/Tree.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import * as Grove from './grove.ts'
-import { Headline, Programs, Since } from './Headline.tsx'
+import { Headline, Program, Programs, Since } from './Headline.tsx'
 import { useMedia, useNow, usePoll } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { NodePanel } from './Node.tsx'
@@ -149,6 +149,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
           {!phone && <Programs id={id} nodes={nodes} now={now} selected={selected} />}
           <Filters filter={filter} nodes={nodes} onFilter={filtered} />
           <div className="grove-scroll">
+            {phone && nodes[levelAt]?.form === 'program' && <Program id={id} node={nodes[levelAt]!} nodes={nodes} now={now} selected={false} />}
             {phone ? (
               <Level at={levelAt} filter={filter} landed={grove.landed} level={(nid) => (nid === 'root' ? base : `${base}?in=${nid}`)} nodes={nodes} onPick={pick} path={path} />
             ) : (
