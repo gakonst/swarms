@@ -64,7 +64,8 @@ function zero(): Record<Tree.Status, number> {
 }
 
 export function patch(grove: Grove, delta: Tree.Delta): Grove {
-  if (delta.seq <= grove.seq) return grove
+  const doing = delta.event === 'doing'
+  if (delta.seq < grove.seq || (delta.seq === grove.seq && !doing)) return grove
   const next = delta.node
   const old = grove.nodes[next.id]
   const was = old?.status ?? (delta.event === 'posted' ? undefined : (before[delta.event] ?? next.status))
@@ -109,7 +110,7 @@ export function patch(grove: Grove, delta: Tree.Delta): Grove {
     spent: total,
   }
   const landed = delta.event === 'proven' && was !== 'proven' ? { ...grove.landed, [next.id]: delta.at } : grove.landed
-  return { headline, landed, nodes, seq: delta.seq }
+  return { headline, landed, nodes, seq: doing ? grove.seq : delta.seq }
 }
 
 export function rows(nodes: Readonly<Record<string, Tree.Node>>, root: string, open: ReadonlySet<string>, filter: Filter): Row[] {
