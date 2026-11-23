@@ -44,7 +44,7 @@ function setup() {
   return { deposits, w }
 }
 
-async function tree(w: ReturnType<typeof world>) {
+async function tree(w: ReturnType<typeof world>, reviewed = false) {
   const made = await Operations.create(
     w.env,
     {
@@ -56,6 +56,7 @@ async function tree(w: ReturnType<typeof world>) {
         { form: 'lemma', key: 'parity', needs: ['switch'], parent: 'lower', statement: 'True ∧ True', title: 'Parity is not in AC0' },
       ],
       statement: 'P = NP ∨ P ≠ NP',
+      reviewed,
       template: 'cheap',
       title: 'P vs NP',
     },
@@ -83,11 +84,24 @@ test('a tree swarm is created with its root, triage and reviewed seed, and lists
   const detail = await Operations.node(w.env, { node: lemma?.id, swarm: id })
   assert.ok(detail.ok)
   assert.equal(detail.value.review, true)
+  assert.deepEqual([lemma?.review, shown.value.nodes.find((node) => node.title === 'Lower bounds')?.review], [true, false])
   assert.equal(detail.value.statement, 'True')
   const listed = await Store.list(w.env)
   assert.deepEqual(listed.map((row) => [row.id, row.form]), [[id, 'tree']])
   const branches = await Operations.branches(w.env, { swarm: id })
   assert.deepEqual([branches.ok, !branches.ok && branches.status], [false, 410])
+})
+
+test('a seed created as reviewed shows no statement under review', async (t) => {
+  const { w } = setup()
+  t.after(async () => {
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  const id = await tree(w, true)
+  const shown = await Operations.tree(w.env, { swarm: id })
+  assert.ok(shown.ok, JSON.stringify(shown))
+  assert.deepEqual(shown.value.nodes.filter((node) => node.review), [])
 })
 
 test('a ride names its node by the memo tag; a wrong tag counts to the root; a proposal becomes a node once ridden', async (t) => {
