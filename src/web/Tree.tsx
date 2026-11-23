@@ -3,7 +3,7 @@ import type * as Tree from '../shared/Tree.ts'
 import * as Grove from './grove.ts'
 import { href, navigate } from './router.tsx'
 
-const words: Record<Tree.Status, string> = { 'dead end': 'Dead end', funded: 'Funded', 'in flight': 'In flight', proposed: 'Proposed', proven: 'Proven' }
+const words: Record<Tree.Status, string> = { 'dead end': 'Dead end', funded: 'Ridden', 'in flight': 'In flight', proposed: 'Proposed', proven: 'Proven' }
 
 export function word(status: Tree.Status) {
   return words[status]

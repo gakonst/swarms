@@ -4,6 +4,7 @@ import { maxNote } from '../shared/Memo.ts'
 import type * as Tree from '../shared/Tree.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
+import { here } from './boot.ts'
 import { asked, Fuel, valid } from './Contribute.tsx'
 import { ago, duration, short, stamp, usd } from './format.ts'
 import * as Grove from './grove.ts'
@@ -193,7 +194,7 @@ export function NodePanel(props: {
   updates: readonly Tree.Delta[] | undefined
   view: NodeView | undefined
 }) {
-  const [riding, setRiding] = useState(false)
+  const [riding, setRiding] = useState(() => here().searchParams.has('ride'))
   const wallet = useWallet()
   const known = props.nodes[props.nid]
   const view = props.view
