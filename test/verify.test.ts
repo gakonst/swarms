@@ -143,6 +143,14 @@ test('a record becomes a Check only for its own swarm, node, commit and claim, w
   assert.ok('failed' in Verify.judged(env, null, named, run))
 })
 
+test('a source must be https, or http on a local dev host', () => {
+  assert.ok(Verify.reachable('https://gateway.tempo-dev.workers.dev/p/0xabc/swarm-a/git/proofs.git'))
+  assert.ok(Verify.reachable('http://127.0.0.1:8787/p/0xabc/swarm-a/git/proofs.git'))
+  assert.ok(Verify.reachable('http://localhost:8787/x.git'))
+  assert.ok(!Verify.reachable('http://gateway.example/x.git'))
+  assert.ok(!Verify.reachable('git@github.com:x/y.git'))
+})
+
 test('the statement file Swarms writes is the one the verifier writes', async () => {
   assert.equal(Verify.statementFile(nid, 'True ∧\nTrue'), 'import Pnp.Defs\n\nnamespace Pnp\n\ndef Statements.N2f7a140626 : Prop :=\n  True ∧\n  True\n\nend Pnp\n')
   assert.equal(await Verify.hash(statement), 'ad8c569d9b3bda66')
