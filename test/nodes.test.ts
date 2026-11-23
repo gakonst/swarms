@@ -82,14 +82,13 @@ test('a payment refusal releases the run and rests it, then it runs once paid; a
   assert.equal(g.prompts.length, 0)
 })
 
-test('strays are closed, top-ups raise the bound a step at a time, and the API spawn path sends the output schema', async (t) => {
+test('strays are closed, top-ups raise the bound a step at a time, and the spawn route sends the output schema', async (t) => {
   const g = gateway()
   const w = await planted(g.route)
   t.after(async () => {
     await Runner.stop(w.swarm)
     w.restore()
   })
-  ;(w.env as unknown as Record<string, unknown>)['SWARMS_SPAWN'] = 'api'
   const stray = g.make({ budget_usd: 1, role: 'n:abcdefabcd#4', task: 'nobody asked' })
   await w.swarm.treePledge(id, { amount: '12', contributor: ana, hash: '0x' + '5'.repeat(64), nid: null })
   await until(() => g.spawned.length === 1)

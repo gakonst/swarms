@@ -125,10 +125,6 @@ function leased(self: Swarm) {
   return Number((self.env as unknown as Record<string, unknown>)['SWARMS_LEASE_MS']) || timing.leaseMs
 }
 
-function spawnApi(env: Cloudflare.Env) {
-  return (env as unknown as Record<string, unknown>)['SWARMS_SPAWN'] === 'api'
-}
-
 export function list(self: Swarm, swarm: string, agent: string, fresh = false) {
   const rt = runtime(self)
   const kept = rt.listing
@@ -167,19 +163,38 @@ function counted(self: Swarm, agent: string) {
   if (kept?.id === agent) self.kv.put('dispatcher', { ...kept, runs: kept.runs + 1 })
 }
 
-async function spawn(self: Swarm, swarm: string, agent: string, args: Gateway.Spawn, claim: string, signal: AbortSignal): Promise<Gateway.Result<number>> {
-  if (spawnApi(self.env)) {
-    const made = await Gateway.spawn(self.env, swarm, agent, args)
-    return made.ok ? { ok: true, value: made.value.agent_id } : made
+async function spawnKey(run: string) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(run)))
+  return 'run-' + [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function spawning(made: { detail: string; status: number }): 'dispatcher' | 'refused' | 'starting' {
+  if (made.status === 404 || made.status === 405) return 'dispatcher'
+  if (made.status !== 409) return 'refused'
+  if (made.detail.includes('no conversation to spawn from')) return 'dispatcher'
+  if (made.detail.includes('already starting')) return 'starting'
+  return 'refused'
+}
+
+async function spawn(self: Swarm, swarm: string, agent: string, args: Gateway.Spawn, run: string, claim: string, signal: AbortSignal): Promise<Gateway.Result<{ sub: number; turn?: string }>> {
+  const key = await spawnKey(run)
+  const until = Date.now() + timing.spawnMs
+  for (;;) {
+    const made = await Gateway.spawn(self.env, swarm, agent, { ...args, key })
+    if (made.ok) return { ok: true, value: { sub: made.value.agent_id } }
+    const next = spawning(made)
+    if (next === 'dispatcher') break
+    if (next === 'refused' || Date.now() >= until || signal.aborted) return made
+    await wait(self, timing.listMs, signal)
   }
+  self.kv.put('prompted:' + run, claim)
   const sent = await Gateway.prompt(self.env, swarm, agent, { id: claim, prompt: 'Spawn this subagent:\n' + JSON.stringify(args), steer: false })
   if (!sent.ok && sent.status !== 409) return sent
   follow(self, swarm, agent)
-  const until = Date.now() + timing.spawnMs
   while (Date.now() < until && !signal.aborted) {
     const listed = await list(self, swarm, agent, true)
     const found = listed.ok ? listed.value.find((sub) => sub.role === args.role && sub.parent_agent_id === null) : undefined
-    if (found) return { ok: true, value: found.agent_id }
+    if (found) return { ok: true, value: { sub: found.agent_id, turn: claim } }
     await wait(self, timing.listMs, signal)
   }
   return { detail: 'The dispatcher did not start the subagent in time.', ok: false, status: 504 }
@@ -257,6 +272,7 @@ async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promis
     const agent = await dispatcher(self, swarm)
     if (!agent.ok) return await refusal(self, task, lease, agent)
     let spawned = self.kv.get<Nodes.Spawned>('run:' + task.id)
+    let budgeted = false
     if (!spawned) {
       const listed = await list(self, swarm, agent.value, true)
       const adopted = listed.ok ? listed.value.find((sub) => sub.role === role && sub.parent_agent_id === null) : undefined
@@ -266,17 +282,19 @@ async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promis
         const steers = triaging ? [] : await Nodes.unheeded(self, nid)
         const words = triaging ? await Triage.task(self, found) : await brief(self, found, nid, steers.map((steer) => steer.body))
         const args: Gateway.Spawn = { budget_usd: Flow.number(budget), ...worker(self), output_schema: triaging ? Triage.output : output, role, task: words }
-        if (!spawnApi(self.env)) self.kv.put('prompted:' + task.id, lease.claim)
-        const made = await spawn(self, swarm, agent.value, args, lease.claim, abort.signal)
+        const made = await spawn(self, swarm, agent.value, args, task.id, lease.claim, abort.signal)
         if (!made.ok) return await refusal(self, task, lease, made)
-        spawned = { agent: agent.value, at: Date.now(), sub: made.value, ...(spawnApi(self.env) ? {} : { turn: lease.claim }) }
+        spawned = { agent: agent.value, at: Date.now(), sub: made.value.sub, ...(made.value.turn ? { turn: made.value.turn } : {}) }
+        budgeted = !made.value.turn
         counted(self, agent.value)
         const last = steers.at(-1)
         if (last) await Nodes.heedNode(self, nid, last.seq)
       }
       self.kv.put('run:' + task.id, spawned)
-      const set = await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(budget))
-      if (!set.ok && set.status === 402) return await refusal(self, task, lease, set)
+      if (!budgeted) {
+        const set = await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(budget))
+        if (!set.ok && set.status === 402) return await refusal(self, task, lease, set)
+      }
       await strays(self, swarm, spawned.agent)
       Nodes.emit(self, nid, 'started', 'Run ' + k + ' started')
     }

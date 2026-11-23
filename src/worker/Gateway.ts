@@ -284,7 +284,9 @@ function rendered(value: unknown): string | undefined {
 
 export type Spawn = { budget_usd: number; harness: string; model: string; output_schema: unknown; role: string; task: string }
 
-export async function spawn(env: Cloudflare.Env, swarm: string, agent: string, input: Spawn): Promise<Result<Subagent>> {
+export type Keyed = Spawn & { key: string }
+
+export async function spawn(env: Cloudflare.Env, swarm: string, agent: string, input: Keyed): Promise<Result<Subagent>> {
   const made = await send<{ agent: Raw; created: boolean }>(env, `/v1/agents/${agent}/subagents`, { app: app(swarm), body: input })
   return made.ok ? { ok: true, value: subagent(made.value.agent) } : made
 }

@@ -32,7 +32,7 @@ export function run(command: string, args: string[], env: Record<string, string 
   return done.stdout
 }
 
-export async function start(options: { gateway?: Mock.Options; leaseMs?: number; port?: number; spawn?: 'api' | 'dispatcher' } = {}) {
+export async function start(options: { gateway?: Mock.Options; leaseMs?: number; port?: number } = {}) {
   const state = fs.mkdtempSync(path.join(process.env['E2E_STATE'] ?? os.tmpdir(), 'swarms-e2e-'))
   const port = options.port ?? (await free())
   const url = `http://127.0.0.1:${port}/swarms`
@@ -51,7 +51,6 @@ export async function start(options: { gateway?: Mock.Options; leaseMs?: number;
     TEMPO_RPC: gateway.url + '/mock/rpc',
     SWARMS_PROOFS_REPO: github.repo,
     ...(options.leaseMs ? { SWARMS_LEASE_MS: String(options.leaseMs) } : {}),
-    ...(options.spawn === 'api' ? { SWARMS_SPAWN: 'api' } : {}),
   }
   run(bin('wrangler'), ['d1', 'migrations', 'apply', 'swarms', '--local', '--persist-to', state], env)
   const log: string[] = []

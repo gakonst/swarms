@@ -80,6 +80,7 @@ export type Options = {
   key?: string
   port?: number
   scripts?: { match: string; steps: Model.Step[] }[]
+  spawnRoute?: boolean
   unsolicited?: boolean
   wallet?: Chain.Address
 }
@@ -126,7 +127,8 @@ export async function start(options: Options = {}) {
   const scripts = [...(options.scripts ?? [])]
   const calls: { at: number; method: string; path: string; status: number }[] = []
   const errors: string[] = []
-  const settings = { dispatcherBudget: options.dispatcherBudget, dispatcherUsd: options.dispatcherUsd ?? 0.0005, unsolicited: options.unsolicited ?? false }
+  const settings = { dispatcherBudget: options.dispatcherBudget, dispatcherUsd: options.dispatcherUsd ?? 0.0005, spawnRoute: options.spawnRoute ?? true, unsolicited: options.unsolicited ?? false }
+  const keyed = new Map<string, number>()
   let agentCount = 0
   let closing = false
 
@@ -432,6 +434,7 @@ export async function start(options: Options = {}) {
     if (path === '/mock/settings' && method === 'POST') {
       if ('dispatcherBudget' in body) settings.dispatcherBudget = body['dispatcherBudget'] as number | null | undefined
       if (typeof body['unsolicited'] === 'boolean') settings.unsolicited = body['unsolicited']
+      if (typeof body['spawnRoute'] === 'boolean') settings.spawnRoute = body['spawnRoute']
       if (typeof body['dispatcherUsd'] === 'number') settings.dispatcherUsd = body['dispatcherUsd']
       return settings
     }
@@ -568,6 +571,10 @@ export async function start(options: Options = {}) {
       }
       if (rest === '/subagents' && method === 'GET') return { agents: [...agent.subs.values()].map((each) => raw(agent, each)) }
       if (rest === '/subagents' && method === 'POST') {
+        if (!settings.spawnRoute) throw new Problem(404, 'not_found', 'No route answers POST /v1/agents/' + agent.id + '/subagents.')
+        const key = typeof body['key'] === 'string' ? agent.id + ':' + body['key'] : undefined
+        const again = key === undefined ? undefined : keyed.get(key)
+        if (again !== undefined) return { agent: raw(agent, sub(agent, String(again))), created: false }
         if (typeof body['role'] !== 'string' || typeof body['task'] !== 'string') throw new Problem(400, 'invalid_request', 'Spawn takes role and task.')
         const budget = body['budget_usd']
         if (budget !== undefined && budget !== null && (typeof budget !== 'number' || !(budget > 0))) throw new Problem(400, 'invalid_request', 'budget_usd is a positive number or null.')
@@ -580,6 +587,7 @@ export async function start(options: Options = {}) {
           ...(typeof body['model'] === 'string' ? { model: body['model'] } : {}),
           ...(typeof body['harness'] === 'string' ? { harness: body['harness'] } : {}),
         })
+        if (key !== undefined) keyed.set(key, made.id)
         return { agent: raw(agent, made), created: true }
       }
       const subbed = /^\/subagents\/([^/]+)(\/[a-z_]+)?$/.exec(rest)

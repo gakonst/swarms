@@ -26,7 +26,8 @@ export function gateway() {
   const prompts: string[] = []
   const budgets: [number, number][] = []
   const spawned: Record<string, unknown>[] = []
-  const state = { agents: 0, refuse: false }
+  const state = { agents: 0, fresh: false, refuse: false, spawnRoute: true, starting: 0 }
+  const keyed = new Map<string, Sub>()
   const make = (args: { budget_usd: number; role: string; task: string }) => {
     const sub: Sub = { agent_id: subs.length + 1, budget_usd: args.budget_usd, messages: [], parent_agent_id: null, role: args.role, spent_usd: 0, status: { state: 'running' }, task: args.task }
     subs.push(sub)
@@ -43,9 +44,20 @@ export function gateway() {
       return Response.json({ request_id: 'x', status: 'queued' })
     }
     if (/^\/v1\/agents\/agt_d\d+\/subagents$/.test(url.pathname) && request.method === 'POST') {
-      const body = (await request.json()) as { budget_usd: number; role: string; task: string }
+      if (!state.spawnRoute) return Response.json({ code: 'not_found', detail: 'No route answers POST ' + url.pathname + '.' }, { status: 404 })
+      if (state.refuse) return Response.json({ error: 'over_limit' }, { status: 402 })
+      if (state.fresh) return Response.json({ code: 'conflict', detail: 'the session has no conversation to spawn from yet' }, { status: 409 })
+      const body = (await request.json()) as { budget_usd: number; key: string; role: string; task: string }
       spawned.push(body)
-      return Response.json({ agent: make(body), created: true })
+      if (state.starting > 0) {
+        state.starting -= 1
+        return Response.json({ code: 'conflict', detail: 'spawn host:' + body.key + ' is already starting in ' + url.pathname }, { status: 409 })
+      }
+      const known = keyed.get(body.key)
+      if (known) return Response.json({ agent: known, created: false })
+      const sub = make(body)
+      keyed.set(body.key, sub)
+      return Response.json({ agent: sub, created: true }, { status: 201 })
     }
     if (/^\/v1\/agents\/agt_d\d+\/subagents$/.test(url.pathname)) return Response.json({ agents: subs })
     const sub = url.pathname.match(/^\/v1\/agents\/agt_d\d+\/subagents\/(\d+)\/(budget|close|messages)$/)
