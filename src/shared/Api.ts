@@ -30,8 +30,8 @@ export type Summary = {
   title: string
   updatedAt: number
   why: Why | null
-  form?: 'agent' | 'tree'
-  archivedAt?: number | null
+  form?: 'agent' | 'tree' | undefined
+  archivedAt?: number | null | undefined
 }
 
 export type Steering = 'open' | 'team'

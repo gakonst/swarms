@@ -21,7 +21,7 @@ const firstChat = 30
 const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/board'])
 
 export function rendered(path: string) {
-  return listed.has(path) || /^\/s\/[^/]+(\/chat|\/code|\/results)?\/?$/.test(path)
+  return listed.has(path) || /^\/s\/[^/]+(\/chat|\/code|\/results|\/n\/[^/]+)?\/?$/.test(path)
 }
 
 export function moved(url: URL) {
