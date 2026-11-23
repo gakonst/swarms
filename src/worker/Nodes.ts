@@ -307,6 +307,17 @@ function grantKey(found: State, from: string, to: string) {
   return prefix + n + ':' + found.rows.length
 }
 
+function reach(self: Swarm, found: State, weighed: Map<string, number>, nid: string): bigint {
+  const task = found.nodes.get(nid)
+  const parent = task ? parentOf(task) : null
+  if (parent === null) return 0n
+  const siblings = children(found, parent).filter((child) => child === nid || eligible(self, found, weighed, child))
+  const total = siblings.reduce((sum, child) => sum + weight(self, found, weighed, child), 0)
+  if (total <= 0) return 0n
+  const above = parent === root ? 0n : reach(self, found, weighed, parent)
+  return ((left(found, parent) + above) * BigInt(weight(self, found, weighed, nid))) / BigInt(total)
+}
+
 export async function pull(self: Swarm, found: State, nid: string, want: bigint, weighed = weights(self)): Promise<bigint> {
   const task = found.nodes.get(nid)
   const parent = task ? parentOf(task) : null
@@ -348,7 +359,12 @@ export async function start(self: Swarm, found: State, nid: string, weighed = we
   if (children(found, nid).some((child) => child !== triage && !terminal(found.nodes.get(child)))) return false
   const set = units(self)
   const want = set.runStep < set.runCap ? set.runStep : set.runCap
-  if (left(found, nid) < want) await pull(self, found, nid, want - left(found, nid), weighed)
+  const short = want - left(found, nid)
+  if (short > 0n) {
+    const could = reach(self, found, weighed, nid)
+    if (left(found, nid) + (could < short ? could : short) < set.runMin) return false
+    await pull(self, found, nid, short, weighed)
+  }
   const have = left(found, nid)
   const amount = have < want ? have : want
   if (amount < set.runMin) return false
