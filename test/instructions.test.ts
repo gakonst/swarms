@@ -145,3 +145,66 @@ test('a lead whose instructions the gateway refuses to give tries again next tur
   assert.equal(sent.length, 2)
   assert.equal(kv.get('instructions'), undefined)
 })
+
+
+const lemma = { form: 'lemma', nid: '2f7a140626', spec: 'Majority vote is not a SAT algorithm\n\nA checked counterexample.', statement: '∃ φ : CNF, φ.Satisfiable ∧ φ.eval (majorityAssignment φ) = false', title: 'Majority vote is not a SAT algorithm' }
+
+const context = { ancestors: ['Does P = NP?', 'Upper bounds: toward P = NP'], failures: ['axioms outside the allowlist: [sorryAx]'], siblings: ['2-SAT is in P: progress, implication graph built'], steers: ['[$4 behind this, from @ana] Try three variables.'] }
+
+test("a node worker's task is the frozen rules, then the node's own words and context", () => {
+  const text = Persona.node(mix, lemma, context)
+  for (const heading of ['# How a node is worked', '# Think on paper first', '# Lean decides what is proven', '# Git', '# Split rather than sprawl', '# Keep every dead end, with why', '# Money behind every note', '# Models', '# What you return', '# Your node'])
+    assert.ok(text.includes(heading + '\n'), heading)
+  assert.ok(!text.includes('<nid>'))
+  assert.ok(text.includes('node/2f7a140626'))
+  assert.ok(text.includes('theorem Pnp.N2f7a140626'))
+  assert.ok(text.includes('Pnp/Proofs/N2f7a140626.lean'))
+  assert.ok(text.includes('git merge --no-ff node/2f7a140626'))
+  assert.ok(text.includes('Never delete or force-push a branch'))
+  assert.ok(text.includes('anything in Pnp/Statements/'))
+  assert.ok(text.includes('propext, Classical.choice and Quot.sound'))
+  assert.ok(text.includes('{ outcome, summary, commit, theorem, children, why }'))
+  assert.ok(text.includes('"[$4 behind this, from @ana]"'))
+  assert.ok(text.includes(Setup.told(mix)))
+  assert.ok(text.includes(lemma.spec))
+  const order = ['# Your node', '# Notes from riders, heed these first', '# Where it sits (root first)', '# What its siblings found', '# Why earlier attempts failed'].map((heading) => text.indexOf(heading))
+  assert.deepEqual([...order].sort((a, b) => a - b), order)
+  assert.ok(order.every((at) => at > 0))
+  assert.ok(text.includes('- [$4 behind this, from @ana] Try three variables.'))
+  assert.ok(text.length < 32_768)
+})
+
+test('a node worker gets the rules its swarm froze, and only the sections that have something in them', () => {
+  const text = Persona.node(null, { ...lemma, form: 'program', statement: null }, { ancestors: [], failures: [], siblings: [], steers: [] }, 'Frozen for <nid>.')
+  assert.ok(text.startsWith('Frozen for 2f7a140626.\n'))
+  assert.ok(text.includes('This node has no Lean statement'))
+  for (const heading of ['# Notes from riders', '# Where it sits', '# What its siblings found', '# Why earlier attempts failed']) assert.ok(!text.includes(heading), heading)
+  assert.ok(!Persona.rules(null).includes('# Models'))
+  assert.equal(Persona.node(mix, lemma, context, Persona.rules(mix)), Persona.node(mix, lemma, context))
+})
+
+test('a run returns the output schema of DESIGN 6.3', () => {
+  assert.deepEqual([...Persona.output.required], ['outcome', 'summary', 'commit', 'theorem', 'children', 'why'])
+  assert.deepEqual([...Persona.output.properties.outcome.enum], ['proved', 'refuted', 'split', 'progress', 'stuck'])
+  assert.deepEqual([...Persona.output.properties.children.items.required], ['title', 'spec', 'statement', 'needs'])
+})
+
+test('the dispatcher spawns exactly the subagent it is given and nothing else', () => {
+  const text = Persona.dispatcher()
+  assert.ok(text.includes('call spawn_agent exactly once with exactly those arguments, copied unchanged'))
+  assert.ok(text.includes('never spawn a subagent nobody asked for'))
+  assert.ok(text.includes('never change the budget or the model'))
+  assert.ok(!text.includes('Pnp'))
+  const request = JSON.parse(Persona.spawn({ budget_usd: 5, harness: 'claude', model: Setup.flash, role: 'n:2f7a140626#1', task: Persona.node(mix, lemma, context) })) as Record<string, unknown>
+  assert.deepEqual(Object.keys(request).sort(), ['budget_usd', 'harness', 'model', 'output_schema', 'role', 'task'])
+  assert.deepEqual(request['output_schema'], JSON.parse(JSON.stringify(Persona.output)))
+  assert.equal(request['budget_usd'], 5)
+})
+
+test('triage returns the bounded actions of DESIGN 7.2', () => {
+  const text = Persona.triage(mix)
+  for (const action of ['approve', 'adopt', 'merge', 'reject', 'grant', 'restate'].map((kind) => '"kind": "' + kind + '"')) assert.ok(text.includes(action), action)
+  assert.ok(text.includes('at most a quarter of it in one triage run'))
+  assert.ok(text.includes(Persona.money))
+})
+
