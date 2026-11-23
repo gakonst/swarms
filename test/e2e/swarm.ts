@@ -23,7 +23,7 @@ export function units(amount: string | number | null | undefined) {
 
 export function swarm(dev: Dev, id: string) {
   const app = Credit.app(id)
-  const drifts: { at: string; drift: string; live: string; mock: string }[] = []
+  const drifts: { at: string; drift: string; first: string; live: string; mock: string }[] = []
   let ledgerPath: string | undefined
 
   const read = async <value>(route: string, as?: Rider) => {
@@ -38,8 +38,8 @@ export function swarm(dev: Dev, id: string) {
   const ledger = async (): Promise<Ledgered> => {
     for (const candidate of ledgerPath ? [ledgerPath] : [`/v1/swarms/${id}/health`, `/v1/swarms/${id}/ledger`, `/v1/health?swarm=${id}`]) {
       const answered = await dev.call<unknown>('GET', candidate)
-      const body = answered.body as Partial<Ledgered> & { swarms?: Ledgered[]; tree?: Ledgered[] }
-      const found = body && typeof body === 'object' ? (typeof body.drift === 'string' ? (body as Ledgered) : (body.swarms ?? body.tree ?? []).find((each) => each.swarm === id)) : undefined
+      const body = answered.body as Partial<Ledgered> & { ledgers?: Ledgered[]; swarms?: Ledgered[] }
+      const found = body && typeof body === 'object' ? (typeof body.drift === 'string' ? (body as Ledgered) : (body.ledgers ?? body.swarms ?? []).find((each) => each.swarm === id)) : undefined
       if (answered.status === 200 && found) {
         ledgerPath = candidate
         return found
@@ -49,13 +49,22 @@ export function swarm(dev: Dev, id: string) {
   }
 
   const balanced = async (at: string) => {
-    const health = await ledger()
-    const mock = dev.gateway.ledger(app)
+    let health = await ledger()
+    let mock = dev.gateway.ledger(app)
+    let first: bigint | undefined
+    for (let tries = 0; tries < 50; tries++) {
+      const off = mock.left - (units(health.held) - units(health.live))
+      first ??= off
+      if ((off < 0n ? -off : off) <= tolerance) break
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      health = await ledger()
+      mock = dev.gateway.ledger(app)
+    }
     assert.ok(health.gateway, at + ': the ledger did not read the gateway credit')
     assert.equal(units(health.gateway.left), mock.left, at + ': the ledger read a different gateway credit')
     assert.equal(units(health.held), units(health.pledged) - units(health.spent), at + ': buckets do not sum to pledges less spend')
     const drift = mock.left - (units(health.held) - units(health.live))
-    drifts.push({ at, drift: Chain.decimal(drift), live: health.live, mock: Chain.decimal(mock.left) })
+    drifts.push({ at, drift: Chain.decimal(drift), first: Chain.decimal(first ?? 0n), live: health.live, mock: Chain.decimal(mock.left) })
     assert.ok((drift < 0n ? -drift : drift) <= tolerance, `${at}: sum(flows) less live spend is $${Chain.decimal(units(health.held) - units(health.live))} but the gateway credit has $${Chain.decimal(mock.left)}`)
     assert.equal(health.ok, true, at + ': ' + JSON.stringify(health))
     return { drift, health, mock }

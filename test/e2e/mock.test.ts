@@ -125,17 +125,23 @@ test('a subagent spawned by API spends within its bound: past it the gateway ans
   assert.equal(parent.spent_usd, 1)
 
   gateway.script('n:held#1', [
-    { spawn: { role: 'n:held#1/a', steps: [{ ms: 400, spend: 0.2 }, { result: { outcome: 'progress', summary: 'a' } }], task: 'a' } },
+    { spawn: { role: 'n:held#1/a', steps: [{ calls: 1, ms: 400, spend: 0.2 }, { result: { outcome: 'progress', summary: 'a' } }], task: 'a' } },
     { wait: 50 },
-    { join: true, spawn: { role: 'n:held#1/b', steps: [{ ms: 10, spend: 0.2 }, { result: { outcome: 'progress', summary: 'b' } }], task: 'b' } },
+    { join: true, spawn: { role: 'n:held#1/b', steps: [{ calls: 1, ms: 10, spend: 0.2 }, { result: { outcome: 'progress', summary: 'b' } }], task: 'b' } },
     { result: { outcome: 'progress', summary: 'held' } },
   ])
   const held = await spawn({ budget_usd: 0.3, role: 'n:held#1', task: 'Two at once.' })
   const b = await ended('b1', agent, 'n:held#1/b')
   assert.equal(b.status.state, 'failed')
-  const page = await Gateway.events(world, 'b1', agent, 0)
-  assert.ok(page.ok)
-  const failures = page.value.events.flatMap((event) => {
+  const events: { event?: { update?: unknown } }[] = []
+  for (let after = 0; ; ) {
+    const page = await Gateway.events(world, 'b1', agent, after)
+    assert.ok(page.ok)
+    events.push(...page.value.events)
+    after = page.value.next_cursor
+    if (!page.value.has_more) break
+  }
+  const failures = events.flatMap((event) => {
     const update = event.event?.update as { event?: { payload?: { error?: string }; type?: string }; id?: number } | undefined
     return update?.event?.type === 'model.call.failed' && update.id === b.agent_id ? [update.event.payload?.error ?? ''] : []
   })

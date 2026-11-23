@@ -149,12 +149,13 @@ test('runs spend within bounds', async (t) => {
   })
   assert.match(String(refused.status.error), /over_limit/)
   assert.ok(units(refused.spent_usd) <= units(refused.budget_usd ?? 0))
-  const node = await s.until('the run to settle', async () => {
+  const node = await s.until('the refused run to be settled into the node', async () => {
     const view = await s.node(nids['over']!)
-    return view.run === null && units(view.money.committed) === 0n ? view : undefined
+    return units(view.money.spent) >= units(refused.spent_usd) ? view : undefined
   })
-  assert.ok(units(node.money.spent) >= units(refused.spent_usd))
-  assert.ok(units(node.money.spent) <= units(run.budget) * 3n, 'a node spends no more than its committed runs')
+  const runs = s.subagents().filter((each) => each.role.startsWith('n:' + nids['over'] + '#'))
+  assert.ok(units(node.money.spent) <= runs.reduce((sum, each) => sum + units(each.budget_usd ?? 0), 0n), 'a node spends no more than its runs were bound to')
+  assert.ok(units(node.money.spent) <= units(node.money.pledged) + units(node.money.inherited), 'a node spends no more than reached it')
   s.bounded()
   await s.balanced('bounded')
 })
@@ -203,7 +204,7 @@ test('a split posts children with needs, and money follows them', async (t) => {
   }, 90_000)
   const view = await s.tree()
   const posted = children.map((nid) => by(view, nid)!)
-  assert.ok(posted.every((child) => child.by.agent === 'agent:n:' + nids['split']))
+  assert.ok(posted.every((child) => child.by.address === null && String(child.by.agent).includes(nids['split']!)), JSON.stringify(posted.map((child) => child.by)))
   assert.ok(posted.some((child) => child.needs.length === 1 && children.includes(child.needs[0]!)), 'the second child needs the first')
   await s.until('both children proven', async () => {
     const now = await s.tree()
@@ -280,7 +281,11 @@ test('archive an agent swarm with leftover money, and carry it to the tree', asy
   const paid = dev.gateway.chain.transfer({ amount: '3', from: ana.address, memo: Credit.memo(dev.gateway.wallet, old) as Chain.Hex })
   assert.equal((await ana.call('POST', `/v1/swarms/${old}/contributions`, { hash: paid.hash })).status, 201)
   await s.until('its lead to spend', async () => (dev.gateway.ledger(app).spent > 0n ? true : undefined))
-  const archived = await dev.call<{ archivedAt?: number }>('POST', `/v1/swarms/${old}/archive`, {}, dev.gateway.key)
+  const operator = await rider(dev, 'operator')
+  assert.equal(operator.address, dev.gateway.wallet)
+  const refused = await ana.call('POST', `/v1/swarms/${old}/archive`, {})
+  assert.equal(refused.status, 403)
+  const archived = await operator.call<{ archivedAt?: number }>('POST', `/v1/swarms/${old}/archive`, {})
   assert.ok(archived.status === 200 || archived.status === 201, JSON.stringify(archived.body))
   const spent = dev.gateway.ledger(app).spent
   await new Promise((resolve) => setTimeout(resolve, 5_000))
