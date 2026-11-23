@@ -213,12 +213,24 @@ export async function pledge(self: Swarm, input: { amount: bigint; contributor: 
 
 export async function seed(self: Swarm) {
   if (self.kv.get<number>('seeded')) return true
-  const made = await Verify.seed(self.env, Nodes.swarm(self)).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
+  const made = await project(self)
+    .then((files) => Verify.seed(self.env, Nodes.swarm(self), files))
+    .catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
   if (made.ok || ('status' in made && made.status === 409)) {
     self.kv.put('seeded', Date.now())
     return true
   }
   return false
+}
+
+async function project(self: Swarm) {
+  const found = await Nodes.state(self)
+  const files = new Map((await Verify.template()).map((file) => [file.path, file]))
+  for (const [nid, task] of found.nodes) {
+    const statement = Nodes.parse(task.spec).statement
+    if (statement !== null) files.set(Verify.statementPath(nid), { path: Verify.statementPath(nid), text: Verify.statementFile(nid, statement) })
+  }
+  return [...files.values()].sort((a, b) => (a.path < b.path ? -1 : 1))
 }
 
 async function arm(self: Swarm, at: number) {

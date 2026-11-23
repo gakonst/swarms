@@ -5,8 +5,9 @@ import { redact } from '../shared/Trail.ts'
 import * as Chat from './Chat.ts'
 import * as Flow from './Flow.ts'
 import * as Store from './Store.ts'
-import * as Telegram from './Telegram.ts'
 import type { Swarm } from './Swarm.ts'
+import * as Telegram from './Telegram.ts'
+import * as Verify from './Verify.ts'
 import * as Work from './Work.ts'
 
 export const root = 'root'
@@ -238,6 +239,7 @@ export async function post(self: Swarm, input: Posting) {
   })
   if (posted.ok) {
     emit(self, id, 'posted', normalized(input.title))
+    if (input.statement !== null && self.kv.get<number>('seeded')) self.ctx.waitUntil(Verify.statement(self.env, swarm(self), id, input.statement).catch(() => false))
     return { created: true, nid: id }
   }
   if (posted.rejection.kind === 'Exists') return { created: false, nid: id }

@@ -90,6 +90,10 @@ export function statementFile(nid: string, statement: string) {
   return `import Pnp.Defs\n\nnamespace Pnp\n\ndef Statements.N${nid} : Prop :=\n${body}\n\nend Pnp\n`
 }
 
+export function statementPath(nid: string) {
+  return `Pnp/Statements/N${nid}.lean`
+}
+
 export function proofPath(nid: string) {
   return `Pnp/Proofs/N${nid}.lean`
 }
@@ -369,6 +373,11 @@ export async function template() {
   const loaders = import.meta.glob<string>(['../../problems/pnp/**/*', '!../../problems/pnp/seed.json'], { import: 'default', query: '?raw' })
   const files = await Promise.all(Object.entries(loaders).map(async ([path, load]) => ({ path: path.replace('../../problems/pnp/', ''), text: await load() })))
   return files.sort((a, b) => (a.path < b.path ? -1 : 1))
+}
+
+export async function statement(env: Cloudflare.Env, swarm: string, nid: string, text: string) {
+  const committed = await gateway(env, '/v1/git/commit', { branch: 'main', files: [{ path: statementPath(nid), text: statementFile(nid, text) }], message: `Statement of node ${nid}`, name: project }, Credit.app(swarm))
+  return committed.ok
 }
 
 export async function seed(env: Cloudflare.Env, swarm: string, files?: { path: string; text: string }[]): Promise<{ ok: true; repo: string | null } | { ok: false; detail: string }> {
