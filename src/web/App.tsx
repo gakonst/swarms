@@ -79,6 +79,10 @@ function WalletButton(props: { config: Config | undefined }) {
     return () => removeEventListener('pointerdown', close)
   }, [open])
 
+  const prime = () => {
+    if (props.config) Wallet.prime(props.config)
+  }
+
   const tap = (event: MouseEvent<HTMLAnchorElement>) => {
     if (open || !matchMedia('(hover: none)').matches) return event.currentTarget.blur()
     event.preventDefault()
@@ -119,6 +123,9 @@ function WalletButton(props: { config: Config | undefined }) {
       onClick={() => {
         if (props.config) Wallet.signIn(props.config).then(() => setError(undefined), (reason: unknown) => setError(message(reason)))
       }}
+      onFocus={prime}
+      onPointerDown={prime}
+      onPointerEnter={prime}
       title={error ?? 'Sign in with Tempo ID to post in rooms and see your balance'}
       type="button"
     >
