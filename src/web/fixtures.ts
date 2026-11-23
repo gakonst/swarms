@@ -383,6 +383,7 @@ const fixtures: Live[] = [
       [1380, 'Indexed 1,000,000 blocks into the bucket (14 GiB of receipts).', '0.512000'],
       [1290, 'Classified 48,113 candidate bundles; 61% DEX arbitrage, 23% liquidations, 16% sandwiches.', '0.630000'],
       [1100, "Final report.\n\n1. Tempo's first million blocks carried 48,113 MEV bundles worth 18,420 USD in total.\n2. Arbitrage between the stablecoin DEX and outside venues is 61% of it and mostly harmless: it keeps pegs tight.\n3. Sandwiches are 16% of bundles but 38% of value, concentrated in 4 searchers.\n4. Payment lanes left no room for sandwiches on transfers; every sandwich hit a DEX swap with slippage above 0.5%.\n\nData, notebooks and the classifier are in the bucket under mev/ and in the repository.", '0.806120'],
+      [894, "I'm not starting anything this turn: $0.052 is left, and the room has no new messages or money.\n\nThe report above stands.", '0.029000'],
     ],
     code: { app: 'swarm-mev-map', clone: 'https://gateway.tempo-dev.workers.dev/p/0x975937feafc6869a260c176854dda8764a78e122/swarm-mev-map/git/mev-map.git', name: 'mev-map', owner: '0x975937feafc6869a260c176854dda8764a78e122' },
     id: 'mev-map',
@@ -962,6 +963,10 @@ const talk: Record<string, readonly (readonly [number | null, string, number, st
     [5, 'Sandwiches at 38% of value from 4 searchers is the headline.', 1095],
     [1, '@5 and none of them on transfers. Payment lanes did their job.', 1092],
     [null, 'The agent is resting after its report. A note or new money wakes it.', 1090],
+    [null, "Update: I'm not starting anything this turn. $0.11 is left, and the room has no new messages or money.", 900],
+    [null, "Update: I'm not starting anything this turn, and I made no tool calls, so this reply is the only cost.", 898],
+    [null, "Update: I'm not starting anything this turn: $0.08 is left, and the room has no new messages or money.", 896],
+    [null, "Update: I'm not starting anything this turn and made no tool calls, so this reply is the only cost.", 894],
   ],
 }
 
@@ -1336,6 +1341,9 @@ const sprouts: readonly Sprout[] = [
   [4, 3, 'machine-2', 'Run tasks 76 to 150 on the second machine.', 'running', '0.600000', '0.310000'],
   [5, null, 'latency-probe', 'Measure time to first token and tokens per second for each model through the gateway.', 'failed', '0.500000', '0.500000'],
   [6, null, 'license-check', 'Read each shortlisted model\'s license and say which ones a company may use commercially.', 'completed', '0.300000', '0.120000'],
+  [7, null, 'autoresearch branch: attention4 (full-layer verify attention)', 'Tune verify attention on full layers and keep only changes that pass the judge.', 'completed', '9.000000', '3.629664'],
+  [8, null, 'autoresearch branch: moe5 (routed experts + MoE glue)', 'Fuse the MoE glue around the routed experts.', 'completed', '15.000000', '2.757636'],
+  [9, null, 'autoresearch branch: moe2 (NVFP4 grouped GEMM)', 'Replace Marlin with an NVFP4 grouped GEMM.', 'failed', '9.000000', '0.324579'],
 ]
 
 const planted = new Map<string, { amount: bigint; branch: number; contributor: `0x${string}` }[]>()
@@ -1344,7 +1352,13 @@ const woken = new Set<string>()
 
 const halted = new Set<string>()
 
+const errors: Record<number, string> = {
+  9: 'subagent 9 could not resume after a runtime restart: invalid task request\n\nTool calls observed during the interrupted turn',
+}
+
 const found: Record<number, string> = {
+  7: JSON.stringify({ best_commit_dir: '/w/attention4_best', best_speedup: 1.3697, blockers: 'No correctness or infrastructure blockers. Further gains likely need a cache-gather redesign.', files_changed: ['attn.py'], summary: 'Best commit 4be1c0d. Gathered both KV heads per program in verify attention and split the softmax across warps, 1.37x over SGLang on the six loads. Configuration sweeps past that had diminishing returns.' }, null, 2),
+  8: JSON.stringify({ best_commit_dir: '/w/moe5_best', best_speedup: 1.3376, blockers: 'No active blockers. Small gains are close to the timing noise.', files_changed: ['moe.py'], summary: 'Best commit cfae32e. Fused pre-expert RMSNorm and local-id mapping with Marlin-compatible alignment in one Triton launch. Both best and final runs passed 13/13 judge tests.' }, null, 2),
   2: '18 parsing tasks with hidden tests, in `tasks/parse/`. Two of them (nested generics, raw strings) fail on every model so far.',
   6: 'Seven of the nine shortlisted models allow commercial use. **Llama 4** needs a separate license above 700M monthly users, and **Command R+** is non-commercial only. Details in `licenses.md`.',
 }
@@ -1364,7 +1378,7 @@ function grown(swarm: Live): Branch[] {
     for (const put of mine) shares.set(put.contributor, (shares.get(put.contributor) ?? 0n) + put.amount)
     return {
       budget: total === null ? null : decimal(total),
-      error: null,
+      error: errors[id] ?? null,
       funded: decimal(funded > 0n ? funded : 0n),
       funders: [...shares].filter(([, amount]) => amount > 0n).sort((a, b) => (b[1] > a[1] ? 1 : -1)).map(([address, amount]) => ({ address, amount: decimal(amount), handle: called(address) })),
       id,

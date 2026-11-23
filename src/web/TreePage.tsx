@@ -14,7 +14,7 @@ import { NodePanel, Ride } from './Node.tsx'
 import { Room } from './Room.tsx'
 import { Link, navigate, useBase, useQuery } from './router.tsx'
 import { scene } from './stage.ts'
-import { at, backers, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
+import { at, backers, Explainer, side, Strip, type Tab, Tabs } from './Strip.tsx'
 import { Filters, Mark } from './Tree.tsx'
 import * as Wire from './wire.ts'
 
@@ -64,7 +64,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const [open, setOpen] = useState<ReadonlySet<string>>(() => unfolded(tree.data))
   const [more, setMore] = useState<Readonly<Record<string, number>>>({})
   const [peek, setPeek] = useState<string | undefined>(() => (inside === 'root' ? undefined : inside))
-  const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([view]))
+  const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([view, side(view)]))
   const [unread, setUnread] = useState(0)
   const [riding, setRiding] = useState(false)
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<{ members: Member[] }>(`room:${id}`)?.members ?? [])
@@ -77,7 +77,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   }, [inside])
 
   useEffect(() => {
-    setSeen((current) => (current.has(view) ? current : new Set([...current, view])))
+    setSeen((current) => (current.has(view) && current.has(side(view)) ? current : new Set([...current, view, side(view)])))
     if (view === 'board') board.current = path(selected)
   }, [view, selected, path])
 
@@ -221,11 +221,11 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>
       </Strip>
       <Tabs base={base} onShow={show} unread={unread} view={view} />
-      <div className="panel panel-chat" hidden={view !== 'chat'}>
-        <Room config={props.config} onArtifact={results} onBack={ride} onMessages={heard} onResults={results} onUnread={setUnread} steer={false} swarm={swarm} visible={view === 'chat'} />
+      <div className="panel panel-chat" data-side="true" hidden={view !== 'chat'}>
+        <Room config={props.config} onArtifact={results} onBack={ride} onMessages={heard} onResults={results} onUnread={setUnread} steer={false} swarm={swarm} visible={view === 'chat' || !phone} />
       </div>
       {seen.has('board') && (
-        <div className="grove-body panel" hidden={view !== 'board'}>
+        <div className="grove-body panel" data-desk={view === 'chat' || undefined} hidden={side(view) !== 'board'}>
           <section aria-label="The board" className="grove-tree">
             <Filters filter={filter} nodes={nodes} onFilter={filtered} />
             <div className="grove-scroll">

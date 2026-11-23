@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import type { Artifact, Branch, Detail, Update } from '../shared/Api.ts'
 import * as Brief from '../shared/Brief.ts'
+import * as Chatter from '../shared/Chatter.ts'
 import * as Kinds from '../shared/Surface.ts'
+import { Board } from './Crew.tsx'
 import { ago } from './format.ts'
 import { useNow } from './hooks.ts'
 import { Surface } from './Surface.tsx'
@@ -19,10 +22,10 @@ export function Now(props: {
 }) {
   const swarm = props.swarm
   const now = useNow(60_000)
-  const told = props.updates?.filter((update) => update.text.trim()).at(-1) ?? (swarm.answer?.text.trim() ? swarm.answer : undefined)
+  const [traced, setTraced] = useState(false)
+  const told = props.updates?.filter((update) => update.text.trim() && !Chatter.idle(update.text)).at(-1) ?? (swarm.answer?.text.trim() && !Chatter.idle(swarm.answer.text) ? swarm.answer : undefined)
   const brief = Brief.brief({ status: Kinds.status(props.surface), surfaced: props.artifacts?.find(Kinds.is), update: told })
-  const laid = Kinds.shown(props.surface)
-  const nodes = laid.length ? laid : Kinds.crew(props.branches ?? [])
+  const nodes = Kinds.shown(props.surface)
   const running = swarm.status === 'running'
   const stalled = running && !!swarm.working?.stalled
   const settled = props.artifacts !== undefined && props.updates !== undefined
@@ -44,7 +47,13 @@ export function Now(props: {
           <Surface nodes={nodes} onChat={props.onChat} onSteer={props.onSteer} />
         </section>
       )}
-      <Traces branches={props.branches} id={swarm.id} running={running} stalled={stalled} stir={props.stir} visible={props.visible} />
+      {settled && props.branches && <Board branches={props.branches} />}
+      {settled && props.branches && <section className="now-traces">
+        <button aria-expanded={traced} className="now-traces-toggle" onClick={() => setTraced(!traced)} type="button">
+          <i aria-hidden="true" />{traced ? 'Hide traces' : 'Traces'}<span data-mood={running ? (stalled ? 'stalled' : 'live') : 'idle'}>{running ? (stalled ? 'Stalled' : 'Live') : 'Idle'}</span>
+        </button>
+        {traced && <Traces branches={props.branches} id={swarm.id} running={running} stalled={stalled} stir={props.stir} visible={props.visible} />}
+      </section>}
     </div>
   )
 }

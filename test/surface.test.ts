@@ -50,20 +50,3 @@ test('the status node is kept apart from what the surface lays out, and a statem
   assert.deepEqual(Surface.shown(nodes).map((node) => node.kind), ['tiles'])
   assert.equal(nodes[1]?.kind === 'tiles' && nodes[1].items.length, 60)
 })
-
-test('a swarm without a surface shows who is on what from its branches', () => {
-  const branch = (id: number, state: 'running' | 'completed' | 'failed' | 'closed', extra: object = {}) => ({ budget: null, error: null, funded: '0', funders: [], id, left: null, parent: null, result: null, role: 'helper', spent: null, starved: false, state, task: 'Prove **statement** ' + id + '\nand more', who: 'helper-' + id, ...extra })
-  assert.deepEqual(Surface.crew([]), [])
-  assert.deepEqual(Surface.crew([branch(1, 'running', { parent: 7 })]), [])
-  const [node] = Surface.crew([branch(1, 'completed', { result: 'Proved it.' }), branch(2, 'running'), branch(3, 'failed', { starved: true }), branch(4, 'closed'), branch(5, 'running', { parent: 2 })])
-  assert.equal(node?.kind, 'list')
-  assert.deepEqual(
-    node?.kind === 'list' && node.items.map((row) => [row.text, row.state, row.tone, row.note]),
-    [
-      ['helper-2', 'working', 'live', 'Prove statement 2'],
-      ['helper-4', 'stopped', 'quiet', 'Prove statement 4'],
-      ['helper-3', 'out of budget', 'warn', 'Prove statement 3'],
-      ['helper-1', 'done', 'good', 'Proved it.'],
-    ],
-  )
-})

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Branch, Entry } from '../shared/Api.ts'
+import * as Crew from '../shared/Crew.ts'
 import * as Trace from '../shared/Trace.ts'
 import * as Api from './api.ts'
 import { clock, day } from './format.ts'
@@ -176,7 +177,7 @@ export function Traces(props: { branches: readonly Branch[] | undefined; id: str
           <nav aria-label="Agent" className="traces-who">
             {chip(undefined, 'All')}
             {chip(agent, 'lead')}
-            {crew.map((branch) => chip(branch.who, branch.who, branch.state !== 'pending' && branch.state !== 'running'))}
+            {crew.map((branch) => chip(branch.who, Crew.title(branch), branch.state !== 'pending' && branch.state !== 'running'))}
           </nav>
         )}
       </header>

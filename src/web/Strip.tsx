@@ -25,6 +25,10 @@ export function tab(tail: string): Tab {
   return tabs.some(([key]) => key === name) ? (name as Tab) : 'chat'
 }
 
+export function side(view: Tab): Tab {
+  return view === 'chat' ? 'board' : view
+}
+
 export function at(base: string, view: Tab) {
   return view === 'chat' ? base : `${base}/${view}`
 }
@@ -91,11 +95,12 @@ export function Strip(props: { backers: readonly Backer[]; children?: ReactNode;
 
 export function Tabs(props: { base: string; onShow: (view: Tab) => void; unread: number; view: Tab }) {
   return (
-    <nav aria-label="Swarm" className="tabs">
+    <nav aria-label="Swarm" className="tabs" data-view={props.view}>
       {tabs.map(([key, label]) => (
         <a
           aria-current={props.view === key ? 'page' : undefined}
           className="tab"
+          data-tab={key}
           href={href(at(props.base, key))}
           key={key}
           onClick={(event: MouseEvent<HTMLAnchorElement>) => {

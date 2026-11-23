@@ -1,6 +1,7 @@
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Config, Detail, Me, Member, Room as RoomState, Said } from '../shared/Api.ts'
 import * as Answer from '../shared/Answer.ts'
+import * as Chatter from '../shared/Chatter.ts'
 import { maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Api from './api.ts'
@@ -65,7 +66,8 @@ function merge(list: readonly Said[], more: readonly Said[]) {
 
 type Row =
   | { at: number; key: string; kind: 'day'; label: string }
-  | { at: number; key: string; kind: 'ai'; artifact: Said['artifact']; text: string }
+  | { at: number; count: number; key: string; kind: 'ai'; artifact: Said['artifact']; text: string }
+  | { at: number; count: number; key: string; kind: 'idle'; text: string }
   | { at: number; key: string; kind: 'backed'; note: string | undefined; text: string }
   | { at: number; first: boolean; item: Said; key: string; kind: 'said'; last: boolean }
 
@@ -80,8 +82,13 @@ function rows(messages: readonly Said[], now: number): Row[] {
       out.push({ at: item.at, key: `d${item.id}`, kind: 'day', label })
     }
     if (item.artifact || !item.author) {
-      if (item.artifact || item.text.startsWith('Update: ')) out.push({ artifact: item.artifact, at: item.at, key: `m${item.id}`, kind: 'ai', text: item.artifact ? item.text.replace(/^New artifact: /, '') : item.text.slice(8) })
-      else out.push({ at: item.at, key: `m${item.id}`, kind: 'backed', note: noted(item.text), text: friendly(item.text) })
+      if (item.artifact) out.push({ artifact: item.artifact, at: item.at, count: 1, key: `m${item.id}`, kind: 'ai', text: item.text.replace(/^New artifact: /, '') })
+      else if (item.text.startsWith('Update: ')) {
+        const text = item.text.slice(8)
+        const before = out.at(-1)
+        if (before && (before.kind === 'idle' || (before.kind === 'ai' && !before.artifact)) && Chatter.gist(before.text) === Chatter.gist(text)) out[out.length - 1] = { ...before, at: item.at, count: before.count + 1, text }
+        else out.push(Chatter.idle(text) ? { at: item.at, count: 1, key: `m${item.id}`, kind: 'idle', text } : { artifact: null, at: item.at, count: 1, key: `m${item.id}`, kind: 'ai', text })
+      } else out.push({ at: item.at, key: `m${item.id}`, kind: 'backed', note: noted(item.text), text: friendly(item.text) })
       return
     }
     const previous = shown[index - 1]
@@ -533,12 +540,22 @@ export const Room = memo(function Room(props: {
                 {row.note && steers && <button onClick={() => props.onBack(row.note ?? '')} type="button">+ Steer this</button>}
               </div>
             )
+          if (row.kind === 'idle')
+            return (
+              <div className="chat-event chat-idle" key={row.key}>
+                <p>
+                  <span aria-hidden="true">✦</span> {Chatter.clause(row.text)}
+                  {row.count > 1 && <b>×{row.count}</b>}
+                  <time dateTime={new Date(row.at).toISOString()}>{minute(row.at)}</time>
+                </p>
+              </div>
+            )
           if (row.kind === 'ai')
             return (
               <div className="msg msg-ai" data-first="true" data-last="true" key={row.key}>
                 <span aria-hidden="true" className="avatar avatar-ai">✦</span>
                 <div className="msg-col">
-                  <p className="msg-who"><b>AI</b><time dateTime={new Date(row.at).toISOString()}>{minute(row.at)}</time></p>
+                  <p className="msg-who"><b>AI</b><time dateTime={new Date(row.at).toISOString()}>{minute(row.at)}</time>{row.count > 1 && <small className="msg-count">×{row.count}</small>}</p>
                   {row.artifact ? (
                     <button className="msg-card" onClick={() => row.artifact && props.onArtifact(row.artifact.slug)} type="button">
                       <small>New result</small>

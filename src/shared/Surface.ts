@@ -1,4 +1,4 @@
-import type { Artifact, Branch } from './Api.ts'
+import type { Artifact } from './Api.ts'
 
 export const slug = 'surface'
 
@@ -207,29 +207,6 @@ export function status(nodes: readonly Node[]) {
 
 export function shown(nodes: readonly Node[]) {
   return nodes.filter((item) => item.kind !== 'status')
-}
-
-function working(branch: Branch) {
-  return branch.state === 'pending' || branch.state === 'running'
-}
-
-export function crew(branches: readonly Branch[]): Node[] {
-  const top = branches.filter((branch) => branch.parent === null)
-  if (!top.length) return []
-  const rows = [...top]
-    .sort((a, b) => Number(working(b)) - Number(working(a)) || b.id - a.id)
-    .slice(0, 8)
-    .map((branch): Row => {
-      const state = working(branch) ? 'working' : branch.starved ? 'out of budget' : branch.state === 'completed' ? 'done' : branch.state === 'failed' ? 'failed' : 'stopped'
-      const about = (working(branch) ? branch.task : (branch.result ?? branch.task)).trim().split('\n')[0]?.replace(/[*_`]/g, '').replace(/\s+/g, ' ') ?? ''
-      return {
-        note: about.length > 160 ? about.slice(0, 159).trimEnd() + '…' : about || null,
-        state,
-        text: branch.who,
-        tone: state === 'working' ? 'live' : state === 'done' ? 'good' : state === 'failed' ? 'bad' : state === 'out of budget' ? 'warn' : 'quiet',
-      }
-    })
-  return [{ id: 'crew', items: rows, kind: 'list', numbered: false, title: 'Who is on what', wide: true }]
 }
 
 export function parse(source: string) {

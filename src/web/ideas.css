@@ -124,11 +124,8 @@ button.swarm-home { border:0; background:none; cursor:pointer; }
 .idea-seed .box { grid-row:auto; grid-column:auto; }
 .idea-head h1 { font-size:var(--size-title); font-weight:400; line-height:1.1; letter-spacing:-.03em; overflow-wrap:anywhere; text-wrap:balance; }
 .idea-pitch { display:-webkit-box; margin-top:var(--space-4); overflow:hidden; font-size:var(--size-body); line-height:1.25; -webkit-box-orient:vertical; -webkit-line-clamp:4; overflow-wrap:anywhere; }
-.idea-now { display:grid; grid-template-columns:minmax(0,1fr) 380px; align-items:start; gap:var(--space-6); }
-.idea-main { grid-row:1; grid-column:1; min-width:0; }
 
 .box { position:sticky; top:calc(var(--header-height) + 16px); grid-row:1; grid-column:2; display:grid; gap:12px; padding:20px; background:var(--wash); }
-.idea-now .box { top:calc(var(--header-height) + 66px); margin-top:20px; }
 .box-top { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
 .box-balance { font:13px var(--mono); color:var(--muted); }
 .box-balance b { display:block; margin-bottom:2px; font:var(--size-title)/1.1 var(--serif); font-weight:400; letter-spacing:-.03em; color:var(--fg); }
@@ -163,8 +160,6 @@ button.swarm-home { border:0; background:none; cursor:pointer; }
 .fuel-least[data-bad='true'] { color:var(--red); }
 .fuel-told { display:grid; gap:10px; scroll-margin:90px; }
 .fuel-told:empty { display:none; }
-
-.idea-now[hidden] { display:none; }
 
 .repo { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; }
 .repo-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px 20px; }
@@ -409,14 +404,11 @@ html[data-viewing] body { overflow:hidden; }
 .how-creed span { color:var(--fg); }
 
 @media (max-width:899px) {
-  .idea-now { grid-template-columns:minmax(0,1fr); gap:20px; }
   .idea-head { grid-template-columns:minmax(0,1fr); margin:var(--space-3) 0 var(--space-5); }
   .box { position:static; grid-row:auto; grid-column:1; }
-  .idea-now .box { margin-top:16px; }
   .repo-clone { width:100%; }
   .repo-clone code { flex:1; max-width:none; }
   .repo-readme > .markdown { padding:16px; }
-  .idea-main { grid-row:auto; }
 }
 @media (max-width:799px) {
   .browse-head .chips { flex-wrap:nowrap; width:calc(100% + var(--margin) * 2); margin:0 calc(var(--margin) * -1); padding:0 var(--margin); overflow-x:auto; scrollbar-width:none; }
@@ -580,15 +572,7 @@ button.traces-note { cursor:pointer; }
   .made-rows button { grid-template-columns:22px minmax(0,1fr); gap:10px; }
   .made-rows small { display:none; }
 }
-@media (max-width:899px) {
-  .idea-now .idea-main,.idea-now .now { display:contents; }
-  .idea-now .now-status { order:1; margin-top:14px; }
-  .idea-now .box { order:2; margin-top:0; }
-  .idea-now .now-swarm { order:3; }
-  .idea-now .traces { order:4; }
-}
 
-.idea-now { min-height:calc(100vh - var(--header-height) - 47px); }
 .repo { --repo-height:clamp(420px,calc(100vh - var(--header-height) - 250px),760px); }
 .repo-ghost { height:calc(var(--repo-height) + 92px); }
 .repo-crumbs { min-height:47px; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; white-space:nowrap; }
