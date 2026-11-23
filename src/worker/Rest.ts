@@ -127,7 +127,7 @@ app.get('/v1/swarms/:id/machines/:machine/logs', async (c) =>
 
 app.get('/v1/swarms/:id/backers', async (c) => Problem.respond(await Operations.backers(c.env, { swarm: c.req.param('id') })))
 
-app.get('/v1/swarms/:id/progress', async (c) => Problem.respond(await Operations.progress(c.env, { swarm: c.req.param('id') })))
+app.get('/v1/swarms/:id/progress', async (c) => Problem.respond(await Operations.progress(c.env, { ...c.req.query(), swarm: c.req.param('id') })))
 
 app.get('/v1/swarms/:id/artifacts', async (c) =>
   Problem.respond(await Operations.artifacts(c.env, { swarm: c.req.param('id') }, Site.url(c.env, c.req.url))),
@@ -175,5 +175,41 @@ app.post('/v1/swarms/:id/branches/:branch/move', async (c) =>
 app.post('/v1/swarms/:id/branches/:branch/stop', async (c) =>
   Problem.respond(await Operations.stop(c.env, { branch: c.req.param('branch'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
 )
+
+app.get('/v1/swarms/:id/tree', async (c) => Problem.respond(await Operations.tree(c.env, { ...c.req.query(), swarm: c.req.param('id') })))
+
+app.get('/v1/swarms/:id/nodes/:nid', async (c) => Problem.respond(await Operations.node(c.env, { node: c.req.param('nid'), swarm: c.req.param('id') })))
+
+app.get('/v1/swarms/:id/nodes/:nid/updates', async (c) => Problem.respond(await Operations.nodeUpdates(c.env, { ...c.req.query(), node: c.req.param('nid'), swarm: c.req.param('id') })))
+
+app.get('/v1/swarms/:id/proofs', async (c) => Problem.respond(await Operations.proofs(c.env, { swarm: c.req.param('id') })))
+
+app.post('/v1/swarms/:id/nodes', async (c) =>
+  Problem.respond(await Operations.propose(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, Site.url(c.env, c.req.url), await Sessions.who(c.env, c.req.raw)), 201),
+)
+
+app.post('/v1/swarms/:id/ideas', async (c) => Problem.respond(await Operations.suggest(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), 201))
+
+app.post('/v1/swarms/:id/transfer', async (c) => Problem.respond(await Operations.transfer(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, Site.url(c.env, c.req.url))))
+
+app.post('/v1/swarms/:id/nodes/:nid/steer', async (c) =>
+  Problem.respond(await Operations.nodeSteer(c.env, { ...(await body(c.req.raw)), node: c.req.param('nid'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
+)
+
+app.post('/v1/swarms/:id/nodes/:nid/move', async (c) =>
+  Problem.respond(await Operations.nodeMove(c.env, { ...(await body(c.req.raw)), node: c.req.param('nid'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
+)
+
+app.post('/v1/swarms/:id/nodes/:nid/end', async (c) =>
+  Problem.respond(await Operations.nodeEnd(c.env, { ...(await body(c.req.raw)), node: c.req.param('nid'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
+)
+
+app.post('/v1/swarms/:id/triage', async (c) => Problem.respond(await Operations.triage(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
+
+app.post('/v1/swarms/:id/archive', async (c) => Problem.respond(await Operations.archive(c.env, { swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
+
+app.get('/v1/me/swarms/:id', async (c) => Problem.respond(await Operations.standing(c.env, { swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
+
+app.post('/v1/hooks/github', async (c) => Problem.respond(await Operations.verified(c.env, c.req.raw)))
 
 app.all('/v1/*', () => Problem.json({ code: 'not_found', detail: 'No such route. See /openapi.json.', status: 404 }))

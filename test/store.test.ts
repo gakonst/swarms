@@ -44,7 +44,7 @@ test('the list and a swarm read their totals from the backing index, each contri
   const listed = await Store.list(db.env)
   assert.deepEqual(listed.map((row) => [row.id, row.balance, row.contributors, row.spent, row.remaining]), [['a', 175, 2, 0, 175]])
   assert.deepEqual((await Store.list(db.env, 'paused')).map((row) => row.id), [])
-  assert.match(planned(db, /from swarms s join/), /SCAN contributions USING COVERING INDEX contributions_backing/)
+  assert.match(planned(db, /from swarms s left join/), /SCAN contributions USING COVERING INDEX contributions_backing/)
 
   const found = await Store.find(db.env, 'a')
   assert.deepEqual([found?.balance, found?.contributors], [175, 2])

@@ -34,7 +34,21 @@ import type {
   Status,
   Summary,
   Waited,
+  Ledgered,
+  NodeUpdates,
+  NodeView,
+  ProgressView,
+  ProofsView,
+  Proposed,
+  Standing as Rider,
+  Suggested,
+  TreeView,
 } from '../shared/Api.ts'
+import type * as Tree from '../shared/Tree.ts'
+import * as Nodes from './Nodes.ts'
+import type * as Riding from './Riding.ts'
+import * as Triage from './Triage.ts'
+import * as Verify from './Verify.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Setup from '../shared/Setup.ts'
@@ -74,6 +88,12 @@ export const sources = ['swarm', 'update', 'note', 'feed'] as const satisfies re
 export const maxWait = 55
 
 const id = z.string().trim().min(1).max(64).describe('The swarm id, the last part of its page URL /s/<id>.')
+
+const nid = z.string().trim().regex(/^(root|triage|[0-9a-f]{10})$/, 'A node id is root, triage or 10 hex characters.').describe('A node id, as in /s/<id>/n/<nid>.')
+
+const free = z.union([nid, z.literal('')])
+
+const lean = z.string().trim().min(1).max(8000)
 
 function units(value: string | number) {
   return Memo.units(typeof value === 'number' ? value.toFixed(6) : value)
@@ -125,6 +145,7 @@ export const schema = {
       .string()
       .regex(/^0x[0-9a-fA-F]{64}$/)
       .describe("The hash of a transferWithMemo of MACH, OUSD, USDC.e or pathUSD to the gateway's recipient (config.credit.recipient) whose memo names this swarm, as the MCP tool swarm_contribute prepares it."),
+    node: nid.optional().describe('Tree swarms: the node the memo names (its tag is checked against the transfer); a tag that names no node counts to the root.'),
     note,
     swarm: id,
   }),
@@ -138,6 +159,7 @@ export const schema = {
       .regex(/^0x[0-9a-fA-F]{64}$/)
       .optional()
       .describe('The hash of a transfer already sent. With it the money is counted instead of prepared.'),
+    node: nid.optional().describe('Tree swarms: the node to ride, by its id; the memo then names it. Default the root, which rides the whole swarm.'),
     note,
     swarm: id,
     token: z.enum(['mach', ...Chain.ids]).default('mach').describe('What to send: mach (MACH), ousd (OUSD), usdce (USDC.e) or pathusd (pathUSD). Each counts at $1.'),
@@ -168,6 +190,23 @@ export const schema = {
       .nullable()
       .optional()
       .describe('custom only: the harnesses and gateway models the lead\'s subagents may use, every model under every harness; null or left out lets them use any.'),
+    form: z.enum(['agent', 'tree']).default('agent').describe('tree: a tree of tasks riders put dollars and ideas into, worked by budgeted runs and checked in Lean; agent: one long-running agent (earlier swarms).'),
+    statement: lean.nullable().optional().describe('tree only: the root goal as a Lean statement, frozen once posted.'),
+    seed: z
+      .array(
+        z.object({
+          form: z.enum(['program', 'approach', 'lemma', 'idea']).default('program'),
+          key: z.string().trim().min(1).max(64),
+          needs: z.array(z.string().trim().min(1).max(64)).max(20).default([]),
+          parent: z.string().trim().min(1).max(64).default('root'),
+          spec: z.string().max(8000).default(''),
+          statement: lean.nullable().optional(),
+          title: z.string().trim().min(3).max(200),
+        }),
+      )
+      .max(2000)
+      .default([])
+      .describe('tree only: reviewed nodes to post under the root at creation; parent and needs name other seed keys, or root.'),
   }),
   seat: z.object({
     budget: allowance.optional(),
@@ -286,6 +325,45 @@ export const schema = {
     swarm: id.optional().describe('Search only this swarm, including its feed.'),
   }),
   swarm: z.object({ swarm: id }),
+  tree: z.object({
+    depth: z.coerce.number().int().min(0).max(64).default(3).describe('How many levels under root to include; deeper nodes appear only as ids in children.'),
+    root: nid.default('root').describe('The node to start from; root is the whole swarm.'),
+    status: z.enum(['proposed', 'funded', 'in flight', 'proven', 'dead end']).optional().describe('Only nodes in this status.'),
+    swarm: id,
+  }),
+  node: z.object({ node: nid, swarm: id }),
+  nodeUpdates: z.object({
+    after: z.coerce.number().int().min(0).default(0).describe('Return the deltas after this seq.'),
+    limit: z.coerce.number().int().min(1).max(500).default(200),
+    node: nid.optional().describe('Only this node\'s deltas; every node when left out.'),
+    swarm: id,
+  }),
+  burn: z.object({ every: z.enum(['hour']).default('hour').describe('The step of the series.'), swarm: id }),
+  propose: z.object({
+    amount: decimal.optional().describe('How much the proposer will ride it with; at least ideaMin ($1) makes it a node.'),
+    form: z.enum(['program', 'approach', 'lemma', 'idea']).default('lemma'),
+    parent: nid.default('root').describe('The node it goes under.'),
+    spec: z.string().max(8000).default('').describe('The proposal in words: what it claims and why it helps.'),
+    statement: lean.nullable().optional().describe('For a lemma: its Lean statement, frozen once the node is posted.'),
+    swarm: id,
+    title: z.string().trim().min(3).max(200).describe('One line; the same title under the same parent is the same node.'),
+    token: z.enum(['mach', ...Chain.ids]).default('mach'),
+  }),
+  suggest: z.object({ parent: nid.default('root'), swarm: id, text: z.string().trim().min(3).max(2000).describe('The idea, free of charge; triage may adopt it as a node credited to you.') }),
+  nodeSteer: z.object({
+    amount: z.string().regex(/^\d+(\.\d{1,6})?$/).default('0').describe('Dollars of your free money in this swarm to move onto the node with the note; 0 steers with what you already have on it.'),
+    node: nid,
+    note: z.string().trim().min(1).max(Memo.maxNote).describe('The note; the node\'s run reads it with the money behind it.'),
+    swarm: id,
+  }),
+  nodeMove: z.object({
+    amount: decimal.refine((value) => units(value) > 0n, 'Move more than nothing.'),
+    node: free.describe('Where the money is now: a node id, or "" for your free money.'),
+    swarm: id,
+    to: free.describe('Where it goes: a node id, or "" for your free money.'),
+  }),
+  nodeEnd: z.object({ node: nid, swarm: id, why: z.string().trim().min(1).max(500) }),
+  triage: z.object({ action: z.record(z.string(), z.unknown()).describe('One triage action: approve, adopt, merge, reject, grant or restate, as the triage node returns them.'), swarm: id }),
   wait: z.object({
     after: z.coerce
       .number()
@@ -402,8 +480,14 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   if (typeof setup === 'string') return Problem.fail(400, 'invalid_request', `${setup} GET /v1/config lists them.`)
   const policy = parsed.value.steering ?? (creator ? 'team' : 'open')
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
-  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup), steering: policy })
+  const tree = parsed.value.form === 'tree'
+  if (!tree && (parsed.value.seed.length || parsed.value.statement)) return Problem.fail(400, 'invalid_request', 'seed and statement go with form tree.')
+  const row = await Store.insert(env, { ...swarm, creator: creator ?? null, form: parsed.value.form, problem: parsed.value.problem ?? null, setup: JSON.stringify(setup), steering: policy })
   if (!row) return Problem.fail(502, 'unavailable', 'The swarm was not saved.')
+  if (tree) {
+    const planted = await plant(env, row, parsed.value, setup)
+    if (!planted.ok) return planted
+  }
   await logged(Search.swarm(env, swarm))
   return Problem.ok(Store.summary(row))
 }
@@ -515,6 +599,7 @@ export async function live(env: Cloudflare.Env, input: Input<'swarm'>, signal: A
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
   if (!(await Store.exists(env, parsed.value.swarm))) return missing()
+  if ((await Store.find(env, parsed.value.swarm))?.form === 'tree') return treeLive(env, parsed.value, signal, after)
 
   const url = after !== undefined && /^\d{1,15}$/.test(after) ? `https://swarm/live?after=${after}` : 'https://swarm/live'
   return Problem.ok(await stub(env, parsed.value.swarm).fetch(new Request(url, { signal })))
@@ -587,12 +672,13 @@ export async function artifacts(env: Cloudflare.Env, input: Input<'swarm'>, orig
   return Problem.ok({ artifacts: found.map((artifact) => ({ ...artifact, url: origin + artifact.url })) })
 }
 
-export async function progress(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ progress: Progress.Progress | null }>> {
-  const parsed = parse(schema.swarm, input)
+export async function progress(env: Cloudflare.Env, input: Input<'burn'>): Promise<Problem.Result<{ progress: Progress.Progress | null } | ProgressView>> {
+  const parsed = parse(schema.burn, input)
   if (!parsed.ok) return parsed
   const swarm = parsed.value.swarm
   const row = await Store.find(env, swarm)
   if (!row) return missing()
+  if (row.form === 'tree') return burn(env, parsed.value)
   const value = await Edge.cached(env, `progress/${swarm}`, progressSeconds, async () => {
     const shelf = await Artifacts.list(env, swarm)
     const recorded = shelf?.some((artifact) => artifact.slug === Progress.slug)
@@ -668,6 +754,9 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   if (!parsed.ok) return parsed
   const request = parsed.value
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to post in a room.')
+  const shown = await Store.find(env, request.swarm)
+  if (shown?.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived and read-only.')
+  if (shown?.form === 'tree' && request.steer !== undefined) return Problem.fail(410, 'gone', 'Tree swarms have no steering notes: steer a node with POST /v1/swarms/:id/nodes/:nid/steer.')
   const [found, account] = await Promise.all([Store.rostered(env, request.swarm), Store.account(env, address)])
   if (!found) return missing()
   if (!account.name) return unnamed()
@@ -862,6 +951,8 @@ const shownPatience = 1500
 export async function branches(env: Cloudflare.Env, input: Input<'branches'>): Promise<Problem.Result<Branches>> {
   const parsed = parse(schema.branches, input)
   if (!parsed.ok) return parsed
+  const gone = await legacy(env, parsed.value.swarm, false)
+  if (!gone.ok) return gone
   const id = parsed.value.swarm
   const held = Team.cached(id)?.steering
   const steering = held ? Promise.resolve(held) : Store.steering(env, id)
@@ -900,6 +991,8 @@ async function fresh(env: Cloudflare.Env, row: Store.Row, ids: readonly number[]
 export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: Address): Promise<Problem.Result<Branch>> {
   const parsed = parse(schema.fund, input)
   if (!parsed.ok) return parsed
+  const gone = await legacy(env, parsed.value.swarm, true)
+  if (!gone.ok) return gone
   const request = parsed.value
   const allowed = await steerable(env, { address, swarm: request.swarm })
   if (!allowed.ok) return allowed
@@ -974,6 +1067,8 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
 export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: Address): Promise<Problem.Result<Branch>> {
   const parsed = parse(schema.stop, input)
   if (!parsed.ok) return parsed
+  const gone = await legacy(env, parsed.value.swarm, true)
+  if (!gone.ok) return gone
   const request = parsed.value
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to stop a branch.')
   const [row, account] = await Promise.all([Store.find(env, request.swarm), Store.account(env, address)])
@@ -1013,6 +1108,8 @@ export async function stop(env: Cloudflare.Env, input: Input<'stop'>, address?: 
 export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: Address): Promise<Problem.Result<Branch[]>> {
   const parsed = parse(schema.move, input)
   if (!parsed.ok) return parsed
+  const gone = await legacy(env, parsed.value.swarm, true)
+  if (!gone.ok) return gone
   const request = parsed.value
   if (request.branch === request.to) return Problem.fail(400, 'invalid_request', 'Move money to another branch.')
   const allowed = await steerable(env, { address, swarm: request.swarm })
@@ -1068,6 +1165,8 @@ export async function move(env: Cloudflare.Env, input: Input<'move'>, address?: 
 export async function btw(env: Cloudflare.Env, input: Input<'btw'>, address?: Address): Promise<Problem.Result<Btw.Exchange>> {
   const parsed = parse(schema.btw, input)
   if (!parsed.ok) return parsed
+  const gone = await legacy(env, parsed.value.swarm, true)
+  if (!gone.ok) return gone
   const request = parsed.value
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to ask the swarm side questions.')
   const [found, account] = await Promise.all([Store.rostered(env, request.swarm), Store.account(env, address)])
@@ -1119,6 +1218,8 @@ async function governed(env: Cloudflare.Env, swarm: string, address: Address | u
 export async function steer(env: Cloudflare.Env, input: Input<'steering'>, address?: Address): Promise<Problem.Result<Roster>> {
   const parsed = parse(schema.steering, input)
   if (!parsed.ok) return parsed
+  const gone = await legacy(env, parsed.value.swarm, true)
+  if (!gone.ok) return gone
   const request = parsed.value
   if (request.steering === undefined && request.memberBudget === undefined) return Problem.fail(400, 'invalid_request', 'Send steering, memberBudget or both.')
   const governing = await governed(env, request.swarm, address)
@@ -1218,6 +1319,8 @@ async function self(env: Cloudflare.Env, members: readonly Member[], address: Ad
 export async function hand(env: Cloudflare.Env, input: Input<'hand'>, contributor?: Address): Promise<Problem.Result<Issued>> {
   const parsed = parse(schema.hand, input)
   if (!parsed.ok) return parsed
+  const gone = await legacy(env, parsed.value.swarm, true)
+  if (!gone.ok) return gone
   const row = await Store.find(env, parsed.value.swarm)
   if (!row) return missing()
   const label = parsed.value.label ?? ''
@@ -1248,6 +1351,8 @@ const lendingMs = 10_000
 export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ hands: Lent[] }>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
+  const gone = await legacy(env, parsed.value.swarm, false)
+  if (!gone.ok) return gone
   const cached = lending.get(parsed.value.swarm)
   if (cached && Date.now() - cached.at < lendingMs) return Problem.ok({ hands: cached.hands })
   if (!(await Store.exists(env, parsed.value.swarm))) return missing()
@@ -1263,9 +1368,11 @@ export async function transfer(env: Cloudflare.Env, input: Input<'transfer'>, or
   const request = parsed.value
   const [row, owner] = await Promise.all([Store.find(env, request.swarm), Gateway.wallet(env)])
   if (!row) return missing()
+  if (row.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived: it takes no new rides.')
   if (!owner) return Problem.fail(502, 'unavailable', 'The gateway did not answer, so a transfer cannot be prepared right now.')
+  if (request.node && row.form !== 'tree') return Problem.fail(400, 'invalid_request', 'node goes with tree swarms.')
 
-  const note = request.note || null
+  const note = row.form === 'tree' ? (request.node && request.node !== Nodes.root ? 'n:' + request.node : null) : request.note || null
   const amount = request.amount === undefined ? null : units(request.amount)
   const memo = Credit.memo(owner, row.id, note)
   const token = request.token === 'mach' ? Chain.mach : Chain.tokens[request.token]
@@ -1273,12 +1380,12 @@ export async function transfer(env: Cloudflare.Env, input: Input<'transfer'>, or
     fund: '',
     token: request.token,
     ...(amount === null ? {} : { amount: Memo.decimal(amount) }),
-    ...(note ? { note } : {}),
+    ...(note && row.form !== 'tree' ? { note } : {}),
   })
   return Problem.ok({
     amount: amount === null ? null : Memo.decimal(amount),
     call: amount === null ? null : { data: encodeFunctionData({ abi: Abis.tip20, args: [Chain.recipient, amount, memo], functionName: 'transferWithMemo' }), to: token.address },
-    link: `${origin}/s/${row.id}?${query}`,
+    link: row.form === 'tree' && request.node ? `${origin}/s/${row.id}/n/${request.node}?${query}` : `${origin}/s/${row.id}?${query}`,
     memo,
     memoText: `bytes16(keccak256("gateway:credit:${Credit.chainId}:${owner}:${Credit.app(row.id)}")) ++ bytes16(keccak256("${note ? `note:${row.id}:${note}` : `swarm:${row.id}`}"))`,
     note,
@@ -1299,6 +1406,7 @@ export async function contribute(
   const request = parsed.value
   const row = await Store.find(env, request.swarm)
   if (!row) return missing()
+  if (row.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived: it takes no new rides.')
 
   const [credited, existing] = await Promise.all([Gateway.credited(env, row.id, request.hash), Store.gift(env, request.hash)])
   if (!credited.ok) {
@@ -1311,6 +1419,15 @@ export async function contribute(
   if (!first) return Problem.fail(502, 'upstream_failed', 'The gateway credited no transfer for this transaction.')
 
   const total = credited.value.deposits.reduce((sum, deposit) => sum + Memo.units(deposit.amount), 0n)
+  if (row.form === 'tree') {
+    const asked = request.node && request.node !== Nodes.root ? request.node : null
+    const tagged = asked && credited.value.deposits.some((deposit) => deposit.tag.toLowerCase() === Credit.tag(row.id, 'n:' + asked).toLowerCase()) ? asked : null
+    const gift = existing ?? (await Store.give(env, { amount: String(total), channel: null, contributor: first.from, id: request.hash as Hex, note: null, note_id: null, swarm: row.id, token: first.token })) ?? (await Store.gift(env, request.hash))
+    if (!gift) return Problem.fail(502, 'unavailable', 'The contribution was not saved.')
+    await stub(env, row.id).treePledge(row.id, { amount: gift.amount.includes('.') ? gift.amount : Memo.decimal(BigInt(gift.amount)), contributor: gift.contributor, hash: request.hash, nid: tagged })
+    const updated = await Store.find(env, row.id)
+    return Problem.ok({ contributed: { contribution: Store.contribution(gift), swarm: Store.summary(updated ?? row) }, created: !existing })
+  }
   const asked = request.note || null
   const tagged = asked && credited.value.deposits.some((deposit) => deposit.tag.toLowerCase() === Credit.tag(row.id, asked).toLowerCase()) ? asked : null
   const steers = tagged ? await Team.steerer(env, row, first.from) : Problem.ok(undefined)
@@ -1356,11 +1473,12 @@ function excerpt(entry: Entry, terms: readonly string[], size = 240) {
   return `${start > 0 ? '…' : ''}${marked}${start + size < text.length ? '…' : ''}`
 }
 
-export async function health(env: Cloudflare.Env): Promise<Problem.Result<{ ok: boolean; refused: { id: string; remaining: string; title: string }[]; running: number; swarms: number }>> {
+export async function health(env: Cloudflare.Env): Promise<Problem.Result<{ ledgers: Ledgered[]; ok: boolean; refused: { id: string; remaining: string; title: string }[]; running: number; swarms: number }>> {
   const listed = await list(env, {})
   if (!listed.ok) return listed
-  const refused = listed.value.swarms.filter((swarm) => Standing.refused(swarm)).map((swarm) => ({ id: swarm.id, remaining: swarm.remaining, title: swarm.title }))
-  return Problem.ok({ ok: refused.length === 0, refused, running: listed.value.swarms.filter((swarm) => swarm.status === 'running').length, swarms: listed.value.swarms.length })
+  const refused = listed.value.swarms.filter((swarm) => swarm.form !== 'tree' && !swarm.archivedAt && Standing.refused(swarm)).map((swarm) => ({ id: swarm.id, remaining: swarm.remaining, title: swarm.title }))
+  const books = await ledgers(env)
+  return Problem.ok({ ledgers: books, ok: refused.length === 0 && books.every((book) => book.ok), refused, running: listed.value.swarms.filter((swarm) => swarm.status === 'running').length, swarms: listed.value.swarms.length })
 }
 
 export async function problems(env: Cloudflare.Env): Promise<Problem.Result<{ problems: (Brief.Problem & { open: boolean; swarm: string | null })[] }>> {
@@ -1396,3 +1514,215 @@ export async function backers(env: Cloudflare.Env, input: Input<'swarm'>): Promi
   const ideas = found.notes(new Set(view.steered))
   return Problem.ok({ backers: [...members].sort((a, b) => Number(BigInt(Math.round(Number(b.backed) * 1e6)) - BigInt(Math.round(Number(a.backed) * 1e6)))), ideas })
 }
+
+
+async function treeRow(env: Cloudflare.Env, swarm: string, writing = false): Promise<Problem.Result<Store.Row>> {
+  const row = await Store.find(env, swarm)
+  if (!row) return missing()
+  if (row.form !== 'tree') return Problem.fail(404, 'not_found', 'This swarm is not a tree swarm; read it with /v1/swarms/:id.')
+  if (writing && row.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived and read-only.')
+  return Problem.ok(row)
+}
+
+const answerCodes: Record<Riding.Fault['status'], Problem.Code> = { 400: 'invalid_request', 403: 'access_denied', 404: 'not_found', 409: 'conflict', 410: 'gone' }
+
+function answered<value>(answer: Riding.Answer<value>): Problem.Result<value> {
+  return answer.ok ? Problem.ok(answer.value) : Problem.fail(answer.status, answerCodes[answer.status], answer.detail)
+}
+
+async function legacy(env: Cloudflare.Env, swarm: unknown, writing: boolean): Promise<Problem.Result<null>> {
+  if (typeof swarm !== 'string') return Problem.ok(null)
+  const row = await Store.find(env, swarm.trim())
+  if (row?.form === 'tree') return Problem.fail(410, 'gone', 'Tree swarms have no branches, lent hands or steering notes: ride and steer their nodes instead.')
+  if (writing && row?.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived and read-only.')
+  return Problem.ok(null)
+}
+
+export async function tree(env: Cloudflare.Env, input: Input<'tree'>): Promise<Problem.Result<TreeView>> {
+  const parsed = parse(schema.tree, input)
+  if (!parsed.ok) return parsed
+  const row = await treeRow(env, parsed.value.swarm)
+  if (!row.ok) return row
+  return answered(await stub(env, row.value.id).treeRead(row.value.id, { depth: parsed.value.depth, root: parsed.value.root, status: parsed.value.status }))
+}
+
+export async function node(env: Cloudflare.Env, input: Input<'node'>): Promise<Problem.Result<NodeView>> {
+  const parsed = parse(schema.node, input)
+  if (!parsed.ok) return parsed
+  const row = await treeRow(env, parsed.value.swarm)
+  if (!row.ok) return row
+  return answered(await stub(env, row.value.id).nodeRead(row.value.id, parsed.value.node))
+}
+
+export async function nodeUpdates(env: Cloudflare.Env, input: Input<'nodeUpdates'>): Promise<Problem.Result<NodeUpdates>> {
+  const parsed = parse(schema.nodeUpdates, input)
+  if (!parsed.ok) return parsed
+  const row = await treeRow(env, parsed.value.swarm)
+  if (!row.ok) return row
+  return answered(await stub(env, row.value.id).treeDeltas(row.value.id, { after: parsed.value.after, limit: parsed.value.limit, nid: parsed.value.node ?? null }))
+}
+
+export async function treeLive(env: Cloudflare.Env, input: Input<'swarm'>, signal: AbortSignal, after?: string): Promise<Problem.Result<Response>> {
+  const parsed = parse(schema.swarm, input)
+  if (!parsed.ok) return parsed
+  const row = await treeRow(env, parsed.value.swarm)
+  if (!row.ok) return row
+  const from = after !== undefined && /^\d{1,15}$/.test(after) ? after : '0'
+  return Problem.ok(await stub(env, row.value.id).fetch(new Request('https://swarm/tree?after=' + from, { signal })))
+}
+
+export async function burn(env: Cloudflare.Env, input: Input<'burn'>): Promise<Problem.Result<ProgressView>> {
+  const parsed = parse(schema.burn, input)
+  if (!parsed.ok) return parsed
+  const row = await treeRow(env, parsed.value.swarm)
+  if (!row.ok) return row
+  return Problem.ok({ burn: await stub(env, row.value.id).treeBurn(row.value.id) })
+}
+
+export async function proofs(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<ProofsView>> {
+  const parsed = parse(schema.swarm, input)
+  if (!parsed.ok) return parsed
+  const row = await treeRow(env, parsed.value.swarm)
+  if (!row.ok) return row
+  return Problem.ok(await stub(env, row.value.id).treeProofs(row.value.id))
+}
+
+export async function propose(env: Cloudflare.Env, input: Input<'propose'>, origin: string, address?: Address): Promise<Problem.Result<Proposed>> {
+  const parsed = parse(schema.propose, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to propose a node.')
+  const request = parsed.value
+  const row = await treeRow(env, request.swarm, true)
+  if (!row.ok) return row
+  const nid = await Nodes.nid(request.parent, request.title)
+  const proposal: Riding.Proposal = { by: address.toLowerCase(), form: request.form, parent: request.parent, statement: request.statement ?? null, title: request.title, words: request.spec }
+  const kept = answered(await stub(env, row.value.id).treePropose(row.value.id, nid, proposal))
+  if (!kept.ok) return kept
+  const prepared = await transfer(env, { amount: request.amount ?? Nodes.defaults.ideaMin, node: nid, swarm: row.value.id, token: request.token }, origin)
+  if (!prepared.ok) return prepared
+  return Problem.ok({ nid, transfer: prepared.value })
+}
+
+const ideasPerDay = 5
+
+export async function suggest(env: Cloudflare.Env, input: Input<'suggest'>, address?: Address): Promise<Problem.Result<Suggested>> {
+  const parsed = parse(schema.suggest, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to suggest an idea.')
+  const request = parsed.value
+  const row = await treeRow(env, request.swarm, true)
+  if (!row.ok) return row
+  const shown = await stub(env, row.value.id).nodeRead(row.value.id, request.parent)
+  if (!shown.ok) return answered(shown)
+  if (shown.value.status === 'proven' || shown.value.status === 'dead end') return Problem.fail(409, 'conflict', 'That node has ended; suggest under an open one.')
+  const idea = identifier()
+  const written = await env.DB.prepare(
+    'insert into ideas (id, swarm, parent, author, text, created_at) select ?1, ?2, ?3, ?4, ?5, ?6 where (select count(*) from ideas where author = ?4 and created_at > ?6 - 86400000) < ?7',
+  )
+    .bind(idea, row.value.id, request.parent, address.toLowerCase(), request.text, Date.now(), ideasPerDay)
+    .run()
+  if (!written.meta.changes) return Problem.fail(429, 'rate_limited', 'At most ' + ideasPerDay + ' suggestions a day from one account.')
+  return Problem.ok({ id: idea })
+}
+
+export async function nodeSteer(env: Cloudflare.Env, input: Input<'nodeSteer'>, address?: Address): Promise<Problem.Result<Tree.Node>> {
+  const parsed = parse(schema.nodeSteer, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to steer a node.')
+  const row = await treeRow(env, parsed.value.swarm, true)
+  if (!row.ok) return row
+  return answered(await stub(env, row.value.id).treeSteer(row.value.id, { amount: parsed.value.amount, contributor: address, nid: parsed.value.node, note: parsed.value.note }))
+}
+
+export async function nodeMove(env: Cloudflare.Env, input: Input<'nodeMove'>, address?: Address): Promise<Problem.Result<Tree.Node | null>> {
+  const parsed = parse(schema.nodeMove, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to move your money.')
+  const row = await treeRow(env, parsed.value.swarm, true)
+  if (!row.ok) return row
+  return answered(await stub(env, row.value.id).treeMove(row.value.id, { amount: Memo.decimal(units(parsed.value.amount)), contributor: address, from: parsed.value.node, to: parsed.value.to }))
+}
+
+export async function nodeEnd(env: Cloudflare.Env, input: Input<'nodeEnd'>, address?: Address): Promise<Problem.Result<Tree.Node>> {
+  const parsed = parse(schema.nodeEnd, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to end a node.')
+  const row = await treeRow(env, parsed.value.swarm, true)
+  if (!row.ok) return row
+  const admin = await Team.admin(env, row.value, address).catch(() => false)
+  return answered(await stub(env, row.value.id).treeEnd(row.value.id, { admin: !!admin, contributor: address, nid: parsed.value.node, why: parsed.value.why }))
+}
+
+export async function triage(env: Cloudflare.Env, input: Input<'triage'>, address?: Address): Promise<Problem.Result<{ applied: Triage.Applied[] }>> {
+  const parsed = parse(schema.triage, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID as an admin of the swarm.')
+  const row = await treeRow(env, parsed.value.swarm, true)
+  if (!row.ok) return row
+  if (!(await Team.admin(env, row.value, address).catch(() => false))) return Problem.fail(403, 'access_denied', "Only the swarm's admins take triage actions by hand.")
+  const action = Triage.action(parsed.value.action)
+  if (!action) return Problem.fail(400, 'invalid_request', 'action is one of approve { node, weight }, adopt { idea, title, spec, statement }, merge { node, into }, reject { node, why }, grant { node, amount } or restate { node, statement }.')
+  return Problem.ok({ applied: await stub(env, row.value.id).treeTriage(row.value.id, action, 'admin:' + address.toLowerCase()) })
+}
+
+export async function standing(env: Cloudflare.Env, input: Input<'swarm'>, address?: Address): Promise<Problem.Result<Rider>> {
+  const parsed = parse(schema.swarm, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to read your standing.')
+  const row = await treeRow(env, parsed.value.swarm)
+  if (!row.ok) return row
+  return Problem.ok(await stub(env, row.value.id).treeStanding(row.value.id, address))
+}
+
+export async function archive(env: Cloudflare.Env, input: Input<'swarm'>, address?: Address): Promise<Problem.Result<Summary>> {
+  const parsed = parse(schema.swarm, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID as the operator.')
+  const operator = await Gateway.wallet(env)
+  if (!operator) return Problem.fail(502, 'unavailable', 'The gateway did not answer, so the operator cannot be checked right now.')
+  if (address.toLowerCase() !== operator.toLowerCase()) return Problem.fail(403, 'access_denied', 'Only the operator archives a swarm.')
+  const row = await Store.find(env, parsed.value.swarm)
+  if (!row) return missing()
+  const at = row.archived_at ?? Date.now()
+  await stub(env, row.id).archive(row.id, at)
+  await Store.archive(env, row.id, at)
+  const updated = await Store.find(env, row.id)
+  return Problem.ok(Store.summary(updated ?? row))
+}
+
+export async function verified(env: Cloudflare.Env, request: Request): Promise<Problem.Result<{ counted: boolean }>> {
+  const read = await Verify.read(env, request)
+  if (!read) return Problem.ok({ counted: false })
+  const row = await Store.find(env, read.swarm)
+  if (!row || row.form !== 'tree' || row.archived_at) return Problem.ok({ counted: false })
+  await stub(env, row.id).treeVerified(row.id, read.nid, read.sha, read.outcome)
+  return Problem.ok({ counted: true })
+}
+
+export async function ledgers(env: Cloudflare.Env): Promise<Ledgered[]> {
+  const { results } = await env.DB.prepare("select id from swarms where form = 'tree' and archived_at is null limit 20").all<{ id: string }>()
+  return Promise.all(results.map((row) => stub(env, row.id).treeHealth(row.id)))
+}
+
+async function plant(env: Cloudflare.Env, row: Store.Row, request: z.output<typeof schema.create>, setup: Setup.Setup) {
+  const keys = new Map<string, string>([['root', Nodes.root]])
+  const seed: Nodes.Posting[] = []
+  for (const one of request.seed) {
+    const parent = keys.get(one.parent)
+    if (!parent) return Problem.fail(400, 'invalid_request', 'Seed node ' + one.key + ' names a parent that comes later or not at all: ' + one.parent + '.')
+    const made = await Nodes.nid(parent, one.title)
+    keys.set(one.key, made)
+    seed.push({ by: 'seed', form: one.form, needs: one.needs.flatMap((need) => keys.get(need) ?? []), nid: made, parent, statement: one.statement ?? null, title: one.title, words: one.spec })
+  }
+  await stub(env, row.id).plant({
+    dispatcher: Persona.dispatcher(),
+    root: { statement: request.statement ?? null, title: request.title, words: request.goal },
+    seed,
+    settings: Nodes.defaults,
+    setup,
+    swarm: row.id,
+  })
+  await Verify.seed(env, row.id)
+  return Problem.ok(null)
+}
+

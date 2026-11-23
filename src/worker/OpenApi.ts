@@ -64,7 +64,95 @@ const currency = { enum: ['mach', 'ousd', 'pathusd', 'usdce'], type: 'string' }
 
 const address = { pattern: '^0x[0-9a-fA-F]{40}$', type: 'string' }
 
+const dollars = { description: 'Dollars with 6 decimals, such as "1.250000".', type: 'string' }
+
+const statuses = { enum: ['proposed', 'funded', 'in flight', 'proven', 'dead end'], type: 'string' }
+
+const check = object(
+  {
+    at: time,
+    axioms: { items: string, type: 'array' },
+    checker: string,
+    command: string,
+    commit: string,
+    contentHash: string,
+    durationMs: integer,
+    exitCode: integer,
+    mathlib: string,
+    repo: string,
+    run: string,
+    statement: { description: "16 hex of the sha256 of the node's frozen Lean statement.", type: 'string' },
+    theorem: string,
+    toolchain: string,
+    url: { description: 'The public verifier run: the checked record.', type: 'string' },
+  },
+  'What the verifier checked: the theorem built against the frozen statement with only the allowed axioms.',
+)
+
+const who = object({ address: nullable(string), agent: nullable(string), handle: string })
+
+const funder = object({ amount: dollars, since: time, who })
+
+const treeNode = object({
+  by: who,
+  children: { items: string, type: 'array' },
+  counts: { additionalProperties: integer, description: 'Nodes in the subtree by status, this one included.', type: 'object' },
+  createdAt: time,
+  end: nullable(object({ at: time, check: nullable(check), into: nullable(string), kind: { enum: ['refuted', 'barrier', 'exhausted', 'merged', 'withdrawn', 'rejected'], type: 'string' }, why: string })),
+  form: { enum: ['goal', 'program', 'approach', 'lemma', 'idea', 'triage'], type: 'string' },
+  funders: { description: 'The top five riders.', items: funder, type: 'array' },
+  id: string,
+  money: object({
+    committed: dollars,
+    granted: dollars,
+    inherited: dollars,
+    left: dollars,
+    pledged: dollars,
+    spent: dollars,
+    subtree: object({ left: dollars, pledged: dollars, spent: dollars }),
+  }),
+  needs: { items: string, type: 'array' },
+  parent: nullable(string),
+  proof: nullable(check),
+  riders: integer,
+  run: nullable(object({ agent: nullable(integer), attempt: integer, budget: dollars, checking: { type: 'boolean' }, k: integer, since: time, spent: dollars, task: string, until: time })),
+  spec: string,
+  statement: nullable(string),
+  status: statuses,
+  title: string,
+  updatedAt: time,
+})
+
+const delta = object({ at: time, event: { enum: ['posted', 'funded', 'started', 'progress', 'checking', 'proven', 'ended', 'steered', 'moved'], type: 'string' }, node: treeNode, seq: integer, text: string })
+
 const schemas = {
+  Check: check,
+  TreeNode: treeNode,
+  Delta: delta,
+  TreeView: object({
+    headline: object({ deadEnds: integer, frontier: integer, inFlight: integer, lastProvenAt: nullable(time), pledged: dollars, perProven: nullable(dollars), proven: integer, spent: dollars }),
+    nodes: { items: treeNode, type: 'array' },
+    seq: { description: 'The newest delta seq: drop deltas at or below it.', type: 'integer' },
+  }),
+  NodeView: {
+    allOf: [
+      treeNode,
+      object({
+        funders: { items: funder, type: 'array' },
+        review: { description: 'The statement is seeded and still under human review.', type: 'boolean' },
+        runs: { items: object({ budget: dollars, commit: nullable(string), k: integer, outcome: nullable(string), since: time, spent: dollars, summary: string, task: string, until: nullable(time) }), type: 'array' },
+        steers: { items: object({ amount: dollars, at: time, note: string, who }), type: 'array' },
+        suggestions: { items: object({ at: time, id: string, text: string, who }), type: 'array' },
+      }),
+    ],
+  },
+  NodeUpdates: object({ deltas: { items: delta, type: 'array' }, next: integer }),
+  Burn: object({ burn: { items: object({ at: time, deadEnds: integer, proven: integer, spent: dollars }), type: 'array' } }),
+  Proofs: object({ proofs: { items: object({ check, node: string, title: string }), type: 'array' } }),
+  Prepared: object({ amount: nullable(dollars), call: nullable(object({ data: string, to: string })), link: string, memo: string, memoText: string, note: nullable(string), swarm: string, symbol: string, to: string, token: string, tokenAddress: string }, 'A transfer ready to send: transferWithMemo of amount to `to` with memo, or open link.'),
+  Proposed: object({ nid: string, transfer: ref('Prepared') }),
+  Suggested: object({ id: string }),
+  Standing: object({ buckets: { items: object({ amount: dollars, node: string, title: string }), type: 'array' }, committed: dollars, free: dollars, refundable: dollars, spent: dollars, swarm: string }),
   Account: object(
     {
       address,
@@ -236,6 +324,8 @@ const schemas = {
   Status: { enum: [...Operations.statuses], type: 'string' },
   Summary: object({
     answer: nullable(ref('Answer')),
+    archivedAt: nullable({ ...time, description: 'When the swarm was archived: read-only, taking no rides. null: live.' }),
+    form: { description: 'tree: a tree of tasks riders put dollars and ideas into, checked in Lean; agent: one long-running agent (earlier swarms).', enum: ['agent', 'tree'], type: 'string' },
     balance: { ...mach, description: "Everything riders put in, which the gateway holds as the swarm's credit: each transfer at its amount. A spending approval from before 2026-11-11, when transfers became the only way in, counts at its limit, or at what it paid once it ended." },
     contributors: integer,
     cover: nullable(object({ form: { enum: ['image', 'page'], type: 'string' }, url: { description: 'A path on this site: an image, or an HTML artifact to show in a sandboxed frame, with cover=1 in its query.', type: 'string' } }, "The swarm's preview, which it chooses by marking one artifact's manifest with cover: true. null: none yet.")),
@@ -483,6 +573,103 @@ export function document(origin: string) {
           },
           summary: 'Count money sent',
         },
+      },
+      '/v1/swarms/{id}/tree': {
+        get: {
+          description: 'A tree swarm: its headline (proven, frontier, in flight, dead ends, spent and cost per proof, with no growing denominator) and its nodes from root down to depth, each with its status (derived from its tasks, never stored), money, riders, run in flight and checked proof.',
+          operationId: 'tree',
+          parameters: [swarm, ...queried(Operations.schema.tree, ['root', 'depth', 'status'])],
+          responses: { ...ok(ref('TreeView'), 'The headline and the nodes.'), ...failures(400, 404) },
+          summary: 'Tree',
+        },
+      },
+      '/v1/swarms/{id}/nodes': {
+        post: {
+          description: 'Signed in: propose a node under parent. Answers its id and a prepared transfer; the node is posted when a ride of at least $1 naming it is counted (POST contributions with node). The same title under the same parent is the same node.',
+          operationId: 'propose',
+          parameters: [swarm],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.propose.omit({ swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Proposed'), 'The node id and the transfer that makes it a node.', '201'), ...failures(400, 401, 404, 409, 410, 502) },
+          summary: 'Propose a node',
+        },
+      },
+      '/v1/swarms/{id}/nodes/{nid}': {
+        get: { description: 'One node in full: words, Lean statement, status and why, checked record, every rider, runs, steers and suggestions.', operationId: 'node', parameters: [swarm, parameter('nid', 'path', string, 'The node id: root, triage or 10 hex characters.')], responses: { ...ok(ref('NodeView'), 'The node.'), ...failures(400, 404) }, summary: 'Node' },
+      },
+      '/v1/swarms/{id}/nodes/{nid}/updates': {
+        get: { description: "A node's deltas after a seq, oldest first; the room socket and /live carry the same.", operationId: 'nodeUpdates', parameters: [swarm, parameter('nid', 'path', string, 'The node id: root, triage or 10 hex characters.'), ...queried(Operations.schema.nodeUpdates, ['after', 'limit'])], responses: { ...ok(ref('NodeUpdates'), 'The deltas and the seq to ask after next.'), ...failures(400, 404) }, summary: 'Node updates' },
+      },
+      '/v1/swarms/{id}/nodes/{nid}/steer': {
+        post: {
+          description: "Signed in, as a rider with money on the node: a note with the money behind it. amount first moves that much of your free money in the swarm onto the node. With a run in flight the note reaches its subagent at once; otherwise the next run reads it.",
+          operationId: 'steerNode',
+          parameters: [swarm, parameter('nid', 'path', string, 'The node id: root, triage or 10 hex characters.')],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.nodeSteer.omit({ node: true, swarm: true })) } }, required: true },
+          responses: { ...ok(ref('TreeNode'), 'The node.'), ...failures(400, 401, 403, 404, 409, 410) },
+          summary: 'Steer a node',
+        },
+      },
+      '/v1/swarms/{id}/nodes/{nid}/move': {
+        post: {
+          description: 'Signed in: move your own uncommitted money from this node (or "" for your free money) to another node or to "".',
+          operationId: 'moveMoney',
+          parameters: [swarm, parameter('nid', 'path', string, 'Where the money is now: a node id.')],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.nodeMove.omit({ node: true, swarm: true })) } }, required: true },
+          responses: { ...ok(nullable(ref('TreeNode')), 'The node the money went to.'), ...failures(400, 401, 404, 409, 410) },
+          summary: 'Move money between nodes',
+        },
+      },
+      '/v1/swarms/{id}/nodes/{nid}/end': {
+        post: {
+          description: "Signed in, holding more than half of what riders put on the node, or as an admin: end it as withdrawn. Its open children end with it, its runs stop and settle, and its money goes back the way it came: granted money to the parent, riders' own to their free money.",
+          operationId: 'endNode',
+          parameters: [swarm, parameter('nid', 'path', string, 'The node id: root, triage or 10 hex characters.')],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.nodeEnd.omit({ node: true, swarm: true })) } }, required: true },
+          responses: { ...ok(ref('TreeNode'), 'The ended node.'), ...failures(400, 401, 403, 404, 409, 410) },
+          summary: 'End a node',
+        },
+      },
+      '/v1/swarms/{id}/ideas': {
+        post: {
+          description: 'Signed in: a suggestion without money, at most 5 a day. Triage may adopt it as a node credited to you.',
+          operationId: 'suggest',
+          parameters: [swarm],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.suggest.omit({ swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Suggested'), 'The suggestion id.', '201'), ...failures(400, 401, 404, 409, 410, 429) },
+          summary: 'Suggest an idea',
+        },
+      },
+      '/v1/swarms/{id}/transfer': {
+        post: {
+          description: 'Prepare a ride: the transfer to send and its memo. On a tree swarm node names the node to ride (default the root, the whole swarm).',
+          operationId: 'transfer',
+          parameters: [swarm],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.transfer.omit({ hash: true, swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Prepared'), 'The transfer.'), ...failures(400, 404, 410, 502) },
+          summary: 'Prepare a ride',
+        },
+      },
+      '/v1/swarms/{id}/proofs': {
+        get: { description: 'Every Lean-checked proof, newest first, each with its node and Check.', operationId: 'proofs', parameters: [swarm], responses: { ...ok(ref('Proofs'), 'The proofs.'), ...failures(404) }, summary: 'Proofs' },
+      },
+      '/v1/swarms/{id}/triage': {
+        post: {
+          description: "As an admin of the swarm: one triage action by hand (approve, adopt, merge, reject, grant or restate), bounded as the triage node's are.",
+          operationId: 'triage',
+          parameters: [swarm],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.triage.omit({ swarm: true })) } }, required: true },
+          responses: { ...ok(object({ applied: { items: object({ action: { type: 'object' }, ok: { type: 'boolean' }, why: string }), type: 'array' } }), 'What was applied.'), ...failures(400, 401, 403, 404, 410) },
+          summary: 'Triage by hand',
+        },
+      },
+      '/v1/swarms/{id}/archive': {
+        post: { description: 'The operator only: archive a swarm. Its running work stops, open branches settle, it takes no rides (410) and its pages stay read-only. Money left stays in its gateway credit.', operationId: 'archive', parameters: [swarm], responses: { ...ok(ref('Summary'), 'The archived swarm.'), ...failures(401, 403, 404, 502) }, summary: 'Archive a swarm' },
+      },
+      '/v1/me/swarms/{id}': {
+        get: { description: "Signed in: your money in a tree swarm: each node's share that is yours, your free money (yours to move), what your rides spent and what is refundable.", operationId: 'standing', parameters: [swarm], responses: { ...ok(ref('Standing'), 'Your standing.'), ...failures(401, 404) }, summary: 'Your standing' },
+      },
+      '/v1/hooks/github': {
+        post: { description: "The verifier's GitHub workflow_run webhook (signature checked).", operationId: 'verified', responses: ok(object({ counted: { type: 'boolean' } }), 'Whether it was a check of ours.'), summary: 'Verifier webhook' },
       },
       '/v1/health': {
         get: {

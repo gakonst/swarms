@@ -4,6 +4,7 @@ import type { Problem } from '../shared/Api.ts'
 export type Code =
   | 'access_denied'
   | 'conflict'
+  | 'gone'
   | 'insufficient_balance'
   | 'invalid_request'
   | 'not_found'
@@ -23,6 +24,7 @@ export type Result<value> = { ok: true; value: value } | ({ ok: false } & Failur
 export const codes = {
   access_denied: "Only the swarm's admins manage its team, and only whoever holds more than half of what is behind a branch, or an admin, stops it.",
   conflict: 'The transaction is already counted, the name is taken, or the branch is already stopped.',
+  gone: 'The swarm is archived and read-only, or it is a tree swarm, which has no branches, lent hands or steering notes: ride and steer its nodes instead.',
   insufficient_balance: "A steer asks for more than its author's backing not yet behind a note.",
   invalid_request: 'The input failed validation; detail says which field.',
   not_found: 'No swarm, branch or route has this id, or Tempo has no receipt for the transaction yet.',

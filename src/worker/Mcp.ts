@@ -7,6 +7,7 @@ import * as Machines from './Machines.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
+import * as Sessions from './Sessions.ts'
 
 function instructions(origin: string) {
   return [
@@ -25,7 +26,7 @@ export async function handle(request: Request, env: Cloudflare.Env) {
   if (request.method !== 'POST')
     return Problem.json({ code: 'invalid_request', detail: 'Use POST for MCP over streamable HTTP.', status: 405 })
 
-  const server = create(env, Replica.read(env, request), Site.url(env, request.url))
+  const server = create(env, Replica.read(env, request), Site.url(env, request.url), await Sessions.who(env, request))
   const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true })
   await server.connect(transport)
   return transport.handleRequest(request)
@@ -42,7 +43,7 @@ function reply<value>(result: Problem.Result<value>, shape: (value: value) => un
 
 const reading = { openWorldHint: false, readOnlyHint: true } as const
 
-function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
+function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, address: Awaited<ReturnType<typeof Sessions.who>>) {
   const server = new McpServer({ name: 'swarms', version: '1.0.0' }, { instructions: instructions(origin) })
 
   server.registerTool(
@@ -217,12 +218,72 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string) {
       inputSchema: Operations.schema.transfer.shape,
     },
     async (input) => {
-      if (input.hash) return reply(await Operations.contribute(env, { hash: input.hash, note: input.note, swarm: input.swarm }), (value) => value.contributed)
+      if (input.hash) return reply(await Operations.contribute(env, { hash: input.hash, node: input.node, note: input.note, swarm: input.swarm }), (value) => value.contributed)
       return reply(await Operations.transfer(env, input, origin), (value) => ({
         ...value,
         message: `Send ${value.amount ?? 'any amount of'} ${value.symbol} to ${value.to} with transferWithMemo and the memo ${value.memo}, or open ${value.link} to back it with Tempo ID from the swarm's page, which counts it. After sending it any other way, call swarm_contribute with the transaction hash.`,
       }))
     },
+  )
+
+  const tree = 'A tree swarm is one tree of tasks (nodes: programs, approaches, lemmas, ideas). Riders put dollars on a node, a subtree or the root (the whole swarm) and propose nodes; the swarm\'s own workers run each funded node as a budgeted run, and money flows down from a node to the runnable nodes under it. Lean decides what is proven: a node is proven only when a public verifier built its proof against its frozen statement, and its Check links that run.'
+
+  server.registerTool(
+    'swarm_tree',
+    { annotations: reading, description: `${tree} Returns the headline (proven, frontier, in flight, dead ends, spent, cost per proof) and the nodes from root down to depth, each with its status, money (pledged, inherited, granted, spent, left, committed, subtree), riders, run in flight and checked proof.`, inputSchema: Operations.schema.tree.shape },
+    async (input) => reply(await Operations.tree(read, input)),
+  )
+
+  server.registerTool(
+    'swarm_node',
+    { annotations: reading, description: 'One node of a tree swarm in full: its words and Lean statement, status and why, its checked record, every rider, its runs with what each spent and returned, riders\' steers and the suggestions under it.', inputSchema: Operations.schema.node.shape },
+    async (input) => reply(await Operations.node(read, input)),
+  )
+
+  server.registerTool(
+    'swarm_proofs',
+    { annotations: reading, description: 'Every Lean-checked proof of a tree swarm, newest first, each with its node and its Check: repository, commit, theorem, statement hash, axioms, toolchain and Mathlib pins, checker, command, exit code, duration, content hash and the public verifier run.', inputSchema: Operations.schema.swarm.shape },
+    async (input) => reply(await Operations.proofs(read, input)),
+  )
+
+  server.registerTool(
+    'swarm_propose',
+    {
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true, readOnlyHint: false },
+      description: `${tree} Propose a node under parent (signed in with Tempo ID, Authorization: Bearer <token>). Answers its id and a prepared transfer: the node is posted when a ride of at least $1 naming it is counted with swarm_contribute (hash and node). The same title under the same parent is the same node, so a duplicate adds money to it. Call it only when the user asks.`,
+      inputSchema: Operations.schema.propose.shape,
+    },
+    async (input) => reply(await Operations.propose(env, input, origin, address)),
+  )
+
+  server.registerTool(
+    'swarm_suggest',
+    {
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true, readOnlyHint: false },
+      description: 'Suggest an idea under a node of a tree swarm without money (signed in; 5 a day). Triage may adopt it as a node credited to you, and anyone may ride it. Call it only when the user asks.',
+      inputSchema: Operations.schema.suggest.shape,
+    },
+    async (input) => reply(await Operations.suggest(env, input, address)),
+  )
+
+  server.registerTool(
+    'swarm_steer',
+    {
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true, readOnlyHint: false },
+      description: 'Steer a node of a tree swarm with a note (signed in): amount moves that much of your free money in the swarm onto the node first; the note reaches its run in flight at once, with the money behind it, or the next run. Only a rider with money on the node steers it. Call it only when the user asks.',
+      inputSchema: Operations.schema.nodeSteer.shape,
+    },
+    async (input) => reply(await Operations.nodeSteer(env, input, address)),
+  )
+
+  server.registerTool(
+    'swarm_move',
+    {
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true, readOnlyHint: false },
+      description: 'Move your own uncommitted money in a tree swarm from one node (or "" for your free money) to another node or back to "" (signed in). Money committed to a run in flight stays with it until the run settles. Call it only when the user asks.',
+      inputSchema: Operations.schema.nodeMove.shape,
+    },
+    async (input) => reply(await Operations.nodeMove(env, input, address)),
   )
 
   server.registerTool(
