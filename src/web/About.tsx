@@ -1,6 +1,5 @@
+import * as Site from '../shared/Site.ts'
 import { Go } from './Home.tsx'
-
-const essay = 'https://www.paradigm.xyz/writing/swarms'
 
 const steps = [
   ['Ride a lemma, a program or the whole swarm', 'Your dollars go to that part of the tree. Riding the root rides everything under it.'],
@@ -37,7 +36,7 @@ export function About() {
         <div className="how-main">
           <p className="how-lead">A swarm is one tree of work on a hard problem: the goal at the root, the programs that attack it, and the lemmas each program needs. Riders put in dollars and ideas, the swarm's workers do the work, and Lean decides what is proven.</p>
           <p className="fine">
-            Read <a href={essay}>Effective Swarm Riding for Engineers</a> on Paradigm.
+            Read <a href={Site.essay}>Effective Swarm Riding for Engineers</a> on Paradigm.
           </p>
           <ol className="how-creed">
             {steps.map(([title, text], index) => (

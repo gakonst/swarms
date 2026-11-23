@@ -2,6 +2,8 @@ export const base = '/swarms'
 
 export const paradigm = 'https://paradigm.xyz'
 
+export const essay = 'https://www.paradigm.xyz/writing/swarms'
+
 export function under(path: string) {
   return path === base || path.startsWith(`${base}/`)
 }
