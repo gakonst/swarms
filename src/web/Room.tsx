@@ -115,6 +115,7 @@ export const Room = memo(function Room(props: {
   onMessages?: (messages: readonly Said[], me: Me | null, members: readonly Member[], online: readonly string[], watching: number) => void
   onResults?: () => void
   onUnread: (count: number) => void
+  steer?: false
   swarm: Detail
   visible: boolean
 }) {
@@ -268,8 +269,8 @@ export const Room = memo(function Room(props: {
   const policy = roster?.steering ?? props.swarm.steering
   const door = gated(wallet, policy, roster, { me })
   const mine = typeof door === 'object' && door.at === 'open' ? (me ?? undefined) : undefined
-  const helm = typeof door === 'object' && door.at === 'open' && door.from !== null
-  const steers = steerer(policy, roster, wallet.session?.address ?? wallet.address)
+  const helm = props.steer !== false && typeof door === 'object' && door.at === 'open' && door.from !== null
+  const steers = props.steer !== false && steerer(policy, roster, wallet.session?.address ?? wallet.address)
   const query = mine && !closed ? /(^|\s)@([a-z0-9_-]*)$/i.exec(text.slice(0, caret)) : null
   const options = query
     ? [
@@ -279,7 +280,7 @@ export const Room = memo(function Room(props: {
         .filter((option) => option.handle.startsWith((query[2] ?? '').toLowerCase()))
         .slice(0, 6)
     : []
-  const steering = ai || Mention.steers(text)
+  const steering = props.steer !== false && (ai || Mention.steers(text))
   const idea = ai ? text.replace(/\s+/g, ' ').trim() : Mention.idea(text)
   const typers = Object.entries(typing).filter(([address, until]) => until > now && address !== me?.address).map(([address]) => handleOf(address))
   const here = members.filter((member) => online.includes(member.address)).slice(0, 4)

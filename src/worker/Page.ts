@@ -21,7 +21,7 @@ const firstChat = 30
 
 const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/faq', '/board'])
 
-const swarmed = /^\/s\/([^/]+)(\/chat|\/code|\/results|\/n\/[0-9a-z]+)?\/?$/
+const swarmed = /^\/s\/([^/]+)(\/chat|\/code|\/results|\/board|\/about|\/n\/[0-9a-z]+)?\/?$/
 
 export function rendered(path: string) {
   return listed.has(path) || swarmed.test(path) || Nickname.parse(path) !== undefined

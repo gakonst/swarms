@@ -10,11 +10,11 @@ const sessions = new WeakMap<Cloudflare.Env, D1DatabaseSession>()
 
 const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|hands|answer|updates|search|wait|machines|machines\/export|machines\/[^/]+\/(commands|commands\/\d+|commands\/\d+\/log|logs|export)|backers|team|branches))?)?$/
 
-const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|tg|tg\/s\/[^/]+|s\/[^/]+|s\/[^/]+\/(?:code|results))$/
+const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|tg|tg\/s\/[^/]+|s\/[^/]+|s\/[^/]+\/(?:code|results|board|about))$/
 
 export function readable(method: string, path: string) {
   if (method !== 'GET' && method !== 'HEAD') return false
-  return swarm.test(path) || pages.test(path) || ['', '/code', '/results'].includes(Nickname.parse(path)?.tail ?? '/chat') || /^\/(api|v1)\/me$/.test(path) || /^\/v1\/(search|problems|health)$/.test(path)
+  return swarm.test(path) || pages.test(path) || ['', '/code', '/results', '/board', '/about'].includes(Nickname.parse(path)?.tail ?? '/chat') || /^\/(api|v1)\/me$/.test(path) || /^\/v1\/(search|problems|health)$/.test(path)
 }
 
 export function writes(method: string, path: string) {

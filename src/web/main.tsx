@@ -9,6 +9,7 @@ import './room.css'
 import './ideas.css'
 import './reins.css'
 import './tree.css'
+import './swarm.css'
 
 function fit() {
   document.documentElement.style.setProperty('--screen', `${Math.round(visualViewport?.height ?? innerHeight)}px`)
@@ -25,7 +26,7 @@ document.cookie = `swarms_tz=${encodeURIComponent(Intl.DateTimeFormat().resolved
 const path = Site.strip(location.pathname)
 const named = Nickname.parse(path)
 const free = !!named && globalThis.__SWARMS_BOOT__?.data[`name:${named.name}`] === null
-const route = /^\/s\/[^/]+(\/chat|\/code|\/results|\/n\/[^/]+)?\/?$/.test(path) || (named && !free)
+const route = /^\/s\/[^/]+(\/chat|\/code|\/results|\/board|\/about|\/n\/[^/]+)?\/?$/.test(path) || (named && !free)
   ? Promise.all([import('./Swarm.tsx').then((module) => preload('swarm', module.Swarm)), import('./TreePage.tsx').then((module) => preload('tree', module.TreePage))])
   : path === '/new' || free
       ? import('./New.tsx').then((module) => preload('new', module.New))

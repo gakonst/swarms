@@ -91,7 +91,7 @@ export function page(url: URL) {
   const path = url.pathname.replace(/\/$/, '') || '/'
   const leaf = /^\/s\/([A-Za-z0-9_-]{1,64})\/n\/([a-z0-9]{1,16})$/.exec(path)
   if (leaf) return `s/${leaf[1]}/n/${leaf[2]}`
-  const id = /^\/s\/([A-Za-z0-9_-]{1,64})(?:\/chat|\/code|\/results)?$/.exec(path)?.[1]
+  const id = /^\/s\/([A-Za-z0-9_-]{1,64})(?:\/chat|\/code|\/results|\/board|\/about)?$/.exec(path)?.[1]
   if (id) return `s/${id}`
   if (path === '/new' && url.searchParams.has('q')) return problem(url.searchParams.get('q')) ? `new/${url.searchParams.get('q')}` : undefined
   return ({ '/': 'home', '/about': 'about', '/docs': 'docs', '/ideas': 'ideas', '/new': 'new' } as Record<string, string>)[path]

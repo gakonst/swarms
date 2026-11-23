@@ -45,7 +45,7 @@ if (typeof window !== 'undefined') {
     if (route === '/about') void import('./About.tsx').then((module) => preload('about', module.About))
     if (route === '/docs') void import('./Docs.tsx').then((module) => preload('docs', module.Docs))
     if (route === '/faq') void import('./Faq.tsx').then((module) => preload('faq', module.Faq))
-    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results|\/n\/[^/?#]+)?\/?(?:[?#]|$)/.exec(path)?.[1]
+    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results|\/board|\/about|\/n\/[^/?#]+)?\/?(?:[?#]|$)/.exec(path)?.[1]
     const named = Nickname.parse(route)
     if (named) void warmSwarm().then(() => Names.warm(named.name)).then((found) => found && warmDetail(found.swarm), () => {})
     if (!id) return
@@ -210,7 +210,9 @@ function Busy() {
   return <section aria-busy="true" className="page lost"><span className="lost-orbit" aria-hidden="true"><i /><i /><i /></span></section>
 }
 
-function Picked(props: { base: string; config: Config | undefined; id: string; nid: string | undefined; tail: string; view: 'chat' | 'code' | 'now' | 'results' }) {
+type Tab = 'chat' | 'board' | 'results' | 'code' | 'about'
+
+function Picked(props: { base: string; config: Config | undefined; id: string; nid: string | undefined; tail: string; view: Tab }) {
   const [detail] = usePoll(() => Api.swarm(props.id, false), null, props.id)
   const data = detail.data
   const nickname = data?.nickname
@@ -221,20 +223,20 @@ function Picked(props: { base: string; config: Config | undefined; id: string; n
     if (nickname) Names.keep(nickname, { name: nickname, nickname, swarm: props.id })
     navigate(`${wanted}${props.tail}${location.search}`, { keep: true, replace: true })
   }, [nickname])
-  const page = data?.form === 'tree' && !data.archivedAt ? <TreePage config={props.config} detail={data} id={props.id} nid={props.nid} /> : !data && !detail.error ? <Busy /> : props.nid && data ? <Lost title="This swarm has no tree."><Link className="lost-row" replace to={props.base}>Open it <span aria-hidden="true">→</span></Link></Lost> : <Swarm config={props.config} id={props.id} view={props.view} />
+  const page = data?.form === 'tree' && !data.archivedAt ? <TreePage config={props.config} detail={data} id={props.id} nid={props.nid} view={props.view} /> : !data && !detail.error ? <Busy /> : props.nid && data ? <Lost title="This swarm has no tree."><Link className="lost-row" replace to={props.base}>Open it <span aria-hidden="true">→</span></Link></Lost> : <Swarm config={props.config} id={props.id} view={props.view} />
   return <Base value={props.base}>{page}</Base>
 }
 
 export function App() {
   const path = usePath()
   const config = useConfig()
-  const matched = /^\/s\/([^/]+)((?:\/chat|\/code|\/results)|\/n\/([^/]+))?\/?$/.exec(path)
+  const matched = /^\/s\/([^/]+)((?:\/chat|\/code|\/results|\/board|\/about)|\/n\/([^/]+))?\/?$/.exec(path)
   const named = matched ? undefined : Nickname.parse(path)
   const found = Names.useNamed(named?.name)
   const swarm = matched?.[1] ? decodeURIComponent(matched[1]) : typeof found === 'object' && found ? found.swarm : undefined
   const tail = (matched ? matched[2] : named?.tail) ?? ''
   const node = /^\/n\/([^/]+)$/.exec(tail)?.[1]
-  const view = tail === '/chat' ? 'chat' : tail === '/code' ? 'code' : tail === '/results' ? 'results' : 'now'
+  const view: Tab = node || tail === '/board' ? 'board' : tail === '/code' ? 'code' : tail === '/results' ? 'results' : tail === '/about' ? 'about' : 'chat'
   const free = !!named && found === null
 
   useEffect(() => {
@@ -267,7 +269,7 @@ export function App() {
     )
 
   return (
-    <div className="app" data-chat={view === 'chat' || undefined}>
+    <div className="app">
       <Header config={config} free={free} path={path} swarm={swarm} />
       <Cheered />
       <main>

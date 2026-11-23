@@ -60,7 +60,7 @@ function Checked(props: { check: Tree.Check; title: string }) {
   )
 }
 
-function Ride(props: { config: Config | undefined; node: Tree.Node; onClose: () => void; onDone: () => void; swarm: string }) {
+export function Ride(props: { config: Config | undefined; node: Tree.Node; onClose: () => void; onDone: () => void; swarm: string }) {
   const [note, setNote] = useState('')
   const [prefill] = useState(() => asked())
   const root = props.node.form === 'goal'
@@ -70,7 +70,7 @@ function Ride(props: { config: Config | undefined; node: Tree.Node; onClose: () 
         <button aria-label="Close" className="sheet-close" onClick={props.onClose} type="button">×</button>
         <h3>{root ? 'Ride the whole swarm' : props.node.form === 'lemma' ? 'Ride this lemma' : `Ride ${noun(props.node)}`}</h3>
         <p className="ride-what">{root ? 'Your dollars serve every program, split by what is runnable.' : `Your dollars run ${noun(props.node)} first, then what grows under it.`} Workers spend it only through the gateway; what is left stays yours to move.</p>
-        <Fuel ask="A note for its worker" config={props.config} note={note} onDone={() => { props.onDone(); props.onClose() }} onNote={setNote} prefill={prefill} slot={Pay.slot(props.swarm, props.node.id)} target={() => Promise.resolve({ id: props.swarm, node: props.node.id })} verb="Ride it" />
+        <Fuel config={props.config} note={note} onDone={() => { props.onDone(); props.onClose() }} onNote={setNote} prefill={prefill} steers={false} slot={Pay.slot(props.swarm, props.node.id)} target={() => Promise.resolve({ id: props.swarm, node: props.node.id })} verb="Ride it" />
       </div>
     </div>
   )
@@ -92,7 +92,7 @@ function Propose(props: { asked: boolean; config: Config | undefined; parent: Tr
   const base = useBase(props.swarm)
   return (
     <details className="node-part node-form" onToggle={(event) => setShown(event.currentTarget.open)} open={shown} ref={part}>
-      <summary>Propose a lemma: $1 or more makes it a node</summary>
+      <summary>Add a sub-item<span>$1+</span></summary>
       <label className="node-field"><span>Title</span><input maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="Parity needs depth d circuits of size 2^n^(1/d)" value={title} /></label>
       <label className="node-field"><span>What and why</span><textarea maxLength={2000} onChange={(event) => setSpec(event.target.value)} rows={3} value={spec} /></label>
       <label className="node-field"><span>Lean statement (optional)</span><textarea className="mono" maxLength={2000} onChange={(event) => setStatement(event.target.value)} placeholder="theorem parity_not_ac0 : ..." rows={2} value={statement} /></label>
@@ -238,6 +238,7 @@ export function NodePanel(props: {
         {node.children.length > 0 && <> · subtree {usd(node.money.subtree.spent)} spent</>}
       </p>
       {open && node.form !== 'triage' && <button className="btn btn-high node-ride" onClick={() => setRiding(true)} type="button">{node.form === 'goal' ? 'Ride the whole swarm' : node.form === 'lemma' ? 'Ride this lemma' : `Ride ${noun(node)}`}</button>}
+      {open && node.form !== 'triage' && <Propose asked={asked} config={props.config} key={`${node.id}:${asked}`} parent={node} swarm={props.swarm} />}
       {text && <section className="node-part node-words"><Markdown text={text} /></section>}
       {node.statement && (
         <section className="node-part">
@@ -289,15 +290,6 @@ export function NodePanel(props: {
           </ol>
         </section>
       )}
-      {view && view.steers.length > 0 && (
-        <section className="node-part">
-          <h3>Notes to its worker</h3>
-          <ol className="node-updates">
-            {view.steers.map((steer) => <li key={`${steer.at}:${steer.who.handle}`}><span>"{steer.note}" · @{steer.who.handle}{Number(steer.amount) > 0 && <>, {usd(steer.amount)}</>}</span><time>{ago(steer.at, props.now)}</time></li>)}
-          </ol>
-        </section>
-      )}
-      {open && node.form !== 'triage' && <Propose asked={asked} config={props.config} key={`${node.id}:${asked}`} parent={node} swarm={props.swarm} />}
       {open && <Suggest config={props.config} onDone={props.onChanged} parent={node} swarm={props.swarm} />}
       {view && view.suggestions.length > 0 && (
         <section className="node-part">

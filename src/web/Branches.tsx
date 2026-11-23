@@ -59,6 +59,7 @@ type Props = {
   more: Readonly<Record<string, number>>
   nodes: Readonly<Record<string, Tree.Node>>
   now: number
+  onFold: (node: Tree.Node) => void
   onMore: (id: string, count: number) => void
   onPick: (node: Tree.Node) => void
   onPropose: (node: Tree.Node) => void
@@ -73,32 +74,38 @@ function Bud(props: Props & { depth: number; node: Tree.Node }) {
   const node = props.node
   const live = doing(node)
   const open = props.open.has(node.id) || props.filter !== 'all'
+  const folds = node.children.length > 0 && node.form !== 'goal' && props.filter === 'all'
   return (
-    <a
-      aria-current={props.selected === node.id ? 'true' : undefined}
-      aria-expanded={node.children.length && node.form !== 'goal' ? open : undefined}
-      className="bud"
-      href={href(props.path(node.id))}
-      onClick={(event) => {
-        if (!plain(event)) return
-        event.preventDefault()
-        props.onPick(node)
-      }}
-    >
+    <div className="bud">
       <Mark checking={node.run?.checking} status={node.status} />
-      <span className="bud-title">{node.title}</span>
+      <a
+        aria-current={props.selected === node.id ? 'true' : undefined}
+        className="bud-title"
+        href={href(props.path(node.id))}
+        onClick={(event) => {
+          if (!plain(event)) return
+          event.preventDefault()
+          props.onPick(node)
+        }}
+      >
+        {node.title}
+      </a>
       <span className="bud-meta">
         <span className="bud-money">{cash(node.money.subtree.pledged)}</span>
         <Faces funders={node.funders} riders={node.riders} />
         {node.children.length > 0 && <Tally node={node} />}
-        {node.children.length > 0 && node.form !== 'goal' && !open && <span className="bud-fold">{node.children.length} under it</span>}
+        {folds && (
+          <button aria-controls={open ? `limbs-${node.id}` : undefined} aria-expanded={open} aria-label={open ? `Fold ${node.title}` : `Show the ${node.children.length} under ${node.title}`} className="bud-fold" onClick={() => props.onFold(node)} type="button">
+            <i aria-hidden="true" />{open ? 'Fold' : `${node.children.length} under it`}
+          </button>
+        )}
       </span>
       {live ? (
         <span className="bud-doing">{live.text}<time>{ago(live.at, props.now)}</time></span>
       ) : node.status === 'in flight' && node.run ? (
         <span className="bud-doing">{node.run.checking ? 'The verifier is building it' : `Run ${node.run.k} · ${usd(node.run.spent)} of ${usd(node.run.budget)}`}</span>
       ) : null}
-    </a>
+    </div>
   )
 }
 
@@ -124,7 +131,7 @@ function Limb(props: Props & { depth: number; id: string; index: number }) {
     >
       <Bud {...props} node={node} />
       {(shown.length > 0 || proposing) && (
-        <ol className="limbs">
+        <ol className="limbs" id={`limbs-${node.id}`}>
           {shown.map((kid, index) => <Limb {...props} depth={props.depth + 1} id={kid.id} index={index} key={kid.id} />)}
           {hidden.length > 0 && (
             <li className="limb limb-more">
@@ -140,7 +147,7 @@ function Limb(props: Props & { depth: number; id: string; index: number }) {
                 event.preventDefault()
                 props.onPropose(node)
               }}>
-                <i aria-hidden="true">+</i>Propose {node.form === 'goal' ? 'a program' : node.form === 'program' ? 'an approach' : 'a lemma'}<span>$1+</span>
+                <i aria-hidden="true">+</i>Add a sub-item<span>$1+</span>
               </a>
             </li>
           )}
@@ -164,7 +171,7 @@ export function Peek(props: { node: Tree.Node; nodes: Readonly<Record<string, Tr
 export function Branches(props: Props) {
   if (!props.nodes['root']) return <p className="tree-empty">Nothing here yet.</p>
   return (
-    <ol className="branches" data-shape={props.shape} role="tree">
+    <ol className="branches" data-shape={props.shape}>
       <Limb {...props} depth={0} id="root" index={0} />
     </ol>
   )
