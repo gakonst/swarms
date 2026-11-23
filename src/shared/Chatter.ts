@@ -3,6 +3,11 @@ const idlers = [
   /^(nothing|no) (new|change|changes|progress|tool calls?) (this|since|to)\b/i,
   /^(still )?(waiting|resting|idle|paused)\b/i,
   /^no new (messages|money|notes)\b/i,
+  /\b(started|starting|doing|spending|running|launching) nothing\b/i,
+  /\bnot (starting|doing|running|launching|spending|trying) anything\b/i,
+  /\b(can['’]?t|cannot|couldn['’]?t) make (any )?progress\b/i,
+  /^i (can['’]?t|cannot) (continue|do the next step|take the next step|start)\b/i,
+  /^i didn['’]?t (check the (budget|balance)|spend anything|start anything|run anything)\b/i,
 ]
 
 export function opening(text: string) {
