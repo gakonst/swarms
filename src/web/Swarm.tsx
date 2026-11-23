@@ -208,7 +208,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Vie
         <header className="idea-head">
           <div className="idea-info">
             <h1>{swarm.title}</h1>
-            <p className="idea-kind" data-mood={stood.mood}><i />{pill(stood.word)}{swarm.contributors > 0 && <> · {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'}</>}</p>
+            <p className="idea-kind" data-mood={archived ? 'new' : stood.mood}><i />{archived ? 'Archived' : pill(stood.word)}{swarm.contributors > 0 && <> · {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'}</>}</p>
             {pitch && <p className="idea-pitch">{pitch}</p>}
             {archived ? <Archived swarm={swarm} /> : <Reins swarm={swarm} />}
           </div>
@@ -247,7 +247,7 @@ function Archived(props: { swarm: Detail }) {
   return (
     <div className="archived" role="note">
       <b>Archived{swarm.archivedAt ? ` ${stamp(swarm.archivedAt)}` : ''}.</b> Read-only: nothing here runs or takes rides.{' '}
-      {Number(swarm.remaining) > 0 ? <>{usdShort(swarm.remaining)} is left of the {usdShort(swarm.balance)} {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'} put in. It stays in the swarm's gateway credit, still theirs; archiving never spends it.</> : <>Nothing was left of the {usdShort(swarm.balance)} riders put in.</>}
+      {Number(swarm.remaining) >= 0.005 ? <>{usdShort(swarm.remaining)} is left of the {usdShort(swarm.balance)} {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'} put in. It stays in the swarm's gateway credit, still theirs; archiving never spends it.</> : <>Nothing was left of the {usdShort(swarm.balance)} riders put in.</>}
     </div>
   )
 }

@@ -153,3 +153,4 @@
 }
 
 @media (prefers-reduced-motion:reduce) { .mark, .tree-row > a, .headline-stats [data-live] b::after { animation:none; } }
+.grove-scroll > .program { margin:8px 0; }

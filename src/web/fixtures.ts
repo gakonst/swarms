@@ -1561,13 +1561,13 @@ function sprout(sprig: Sprig, index: number): Twig {
     run,
     runs,
     spent,
-    statement: extra.statement ? `${extra.statement} := by\n  sorry` : null,
+    statement: extra.statement ?? null,
     status,
     steers: key === 'switch' ? [{ amount: '2.000000', at: at(90), note: 'Try the Razborov encoding proof first; it is shorter in Lean.', who: who(5) }] : [],
     suggestions: key === 'lower' ? [{ at: at(200), id: 'idea-1', text: 'Formalize the Raz–McKenzie lifting theorem as its own approach.', who: who(6) }] : [],
     title,
     updatedAt: at(Math.max(1, minutes / 20)),
-    words: form === 'goal' ? 'Settle whether every problem whose answer can be checked quickly can also be solved quickly. Every result is checked in Lean, and every dead end is kept with its reason.' : form === 'program' ? `A program of the swarm: ${title.toLowerCase()}. Its money flows to the runnable lemmas under it.` : form === 'triage' ? 'Reads new proposals and suggestions, approves, merges and grants from the root, within 5% of what riders put on the root.' : `${title}. Stated in Lean below; proven only when the verifier builds a proof of exactly this statement.`,
+    words: form === 'goal' ? 'Settle whether every problem whose answer can be checked quickly can also be solved quickly. Every result is checked in Lean, and every dead end is kept with its reason.' : form === 'program' ? `A program of the swarm: ${title.toLowerCase()}. Its money flows to the runnable lemmas under it.` : form === 'triage' ? 'Reads new proposals and suggestions, approves, merges and grants from the root, within 5% of what riders put on the root.' : 'Stated in Lean below. Proven only when the verifier builds a proof of exactly this statement.',
   }
 }
 
