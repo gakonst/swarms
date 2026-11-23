@@ -41,8 +41,21 @@ function useIdeas() {
   const ranked = Status.ranked(open, latest)
   const free = list.data ? openProblems(open) : list.error ? [...problems] : []
   const seeds = free.map(fromProblem)
-  const ideas = ranked.map(fromSwarm).flatMap((idea, index) => (index % 3 === 2 && seeds.length ? [idea, seeds.shift()!] : [idea])).concat(seeds)
-  return { free, ideas, latest, list, open, ranked }
+  const current = ranked.filter((swarm) => swarm.form === 'tree' && !swarm.archivedAt)
+  const earlier = ranked.filter((swarm) => !(swarm.form === 'tree' && !swarm.archivedAt)).map(fromSwarm)
+  const ideas = current.map(fromSwarm).flatMap((idea, index) => (index % 3 === 2 && seeds.length ? [idea, seeds.shift()!] : [idea])).concat(seeds)
+  return { earlier, free, ideas, latest, list, open, ranked }
+}
+
+function Earlier(props: { ideas: readonly Idea[] }) {
+  if (!props.ideas.length) return null
+  return (
+    <details className="earlier">
+      <summary>Earlier swarms <span className="chip-count">{props.ideas.length}</span></summary>
+      <p className="fine">Archived and read-only: what each found stays, and so does any money left in it.</p>
+      <Grid ideas={props.ideas} loading={false} />
+    </details>
+  )
 }
 
 function Grid(props: { ideas: readonly Idea[]; loading: boolean }) {
@@ -76,7 +89,7 @@ function plural(count: number, word: string) {
 }
 
 export function Home() {
-  const { free, ideas, latest, list, open, ranked } = useIdeas()
+  const { earlier, free, ideas, latest, list, open, ranked } = useIdeas()
   const sky = useRef<HTMLElement>(null)
   const [lit, setLit] = useState<string>()
   const [view, setView] = useState<'popular' | 'live' | 'new'>('popular')
@@ -140,6 +153,7 @@ export function Home() {
           ) : (
             <Grid ideas={shown} loading={!list.data && !list.error} />
           )}
+          <Earlier ideas={earlier} />
           <Link className="band-more" to="/ideas">All {list.data ? plural(ideas.length, 'swarm') : 'swarms'}</Link>
         </div>
       </section>
@@ -175,7 +189,7 @@ export function Go() {
 }
 
 export function Join() {
-  const { ideas, list } = useIdeas()
+  const { earlier, ideas, list } = useIdeas()
   const [filter, setFilter] = useState<Filter>(asked)
   const fit = (key: Filter, idea: Idea) => fits[key](idea)
   const shown = ideas.filter((idea) => fit(filter, idea))
@@ -209,6 +223,7 @@ export function Join() {
       ) : (
         <Grid ideas={shown} loading={!list.data} />
       )}
+      <Earlier ideas={earlier} />
     </div>
   )
 }

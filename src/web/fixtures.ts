@@ -1,12 +1,13 @@
 import * as Answer from '../shared/Answer.ts'
 import * as Shelf from '../shared/Artifact.ts'
-import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, Note, Part, Posted, Pulse, Room, Roster, Said, Status, Steering, Summary, Token, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, ProgressView, ProofsView, Proposed, Pulse, Room, Roster, Said, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
 import * as Progress from '../shared/Progress.ts'
 import * as Setup from '../shared/Setup.ts'
 import * as Site from '../shared/Site.ts'
+import * as Tree from '../shared/Tree.ts'
 import { usd } from './format.ts'
 import { pace, scene, visitor } from './stage.ts'
 
@@ -17,6 +18,8 @@ type Backing = { amount: string; contributor: `0x${string}`; note: string }
 type Live = Omit<Detail, 'answer' | 'reason' | 'updates' | 'why' | 'working'> & { updates: Update[]; chat: Said[]; cursor: number; flicker: readonly string[]; next: number; resting: boolean; owner: `0x${string}`; script: readonly Line[]; since: number | null; steered: Set<string>; steers: Backing[] }
 
 const minute = 60_000
+
+export const treeId = 'p-vs-np'
 
 const models: Setup.Price[] = [
   { cached: 0.19, id: '@cf/moonshotai/kimi-k2.7-code', input: 0.95, output: 4 },
@@ -117,8 +120,8 @@ function build(input: {
     who: who ?? null,
   }))
   return settle({
-    archivedAt: null,
-    form: 'agent',
+    archivedAt: input.id === treeId ? null : at(600),
+    form: input.id === treeId ? 'tree' : 'agent',
     balance: '0',
     chat: [],
     contributions,
@@ -395,6 +398,24 @@ const fixtures: Live[] = [
     status: 'paused',
     steered: ['Separate sandwiches from arbitrage'],
     title: "Map the MEV in Tempo's first million blocks",
+  }),
+  build({
+    age: 2880,
+    gifts: [
+      [0, '12.000000', 'usdce', 2800, null],
+      [1, '8.000000', 'usdce', 2400, null],
+      [2, '6.500000', 'pathusd', 1900, null],
+      [3, '9.000000', 'usdce', 900, null],
+      [4, '5.000000', 'ousd', 300, null],
+    ],
+    goal: 'Settle whether every problem whose answer can be checked quickly can also be solved quickly. Many agents work one tree of lemmas from both directions; Lean decides what is proven, and every dead end is kept with its reason.',
+    id: 'p-vs-np',
+    lines: [],
+    setup: null,
+    spent: '47.300000',
+    status: 'running',
+    title: 'Does P = NP?',
+    updates: [],
   }),
 ]
 
@@ -1104,6 +1125,7 @@ function pulsed(key: string, swarm: Live) {
 const offline = scene.has('down') || scene.has('wait')
 
 export function chatter(key: string, listen: boolean, listener: (event: Chatter | { type: 'open' | 'closed' }) => void) {
+  if (key === treeId) return woods(listener)
   let alive = true
   let timer: ReturnType<typeof setTimeout> | undefined
   let watch: ReturnType<typeof setInterval> | undefined
@@ -1390,4 +1412,418 @@ export async function move(key: string, branch: number, input: { amount: string;
   const after = grown(swarm)
   changed(key, ['branches', 'members'])
   return delay([after.find((found) => found.id === branch) as Branch, after.find((found) => found.id === input.to) as Branch], 300)
+}
+
+
+const handles = ['ada', 'mira', 'kofi', 'lena', 'tomas', 'yuki', 'devi', 'sam'] as const
+
+function who(index: number): Tree.Who {
+  return { address: people[index % people.length] as `0x${string}`, agent: null, handle: handles[index % handles.length] ?? 'rider' }
+}
+
+function worker(parent: string): Tree.Who {
+  return { address: null, agent: `agent:n:${parent}`, handle: 'worker' }
+}
+
+function nid(key: string) {
+  return key === 'root' || key === 'triage' ? key : (id(`pnp:${key}`) + id(`n:${key}`)).slice(0, 10)
+}
+
+type Twig = {
+  by: Tree.Who
+  createdAt: number
+  deltas: Tree.Delta[]
+  end: Tree.End | null
+  form: Tree.Form
+  funders: Tree.Funder[]
+  id: string
+  inherited: bigint
+  left: bigint
+  needs: string[]
+  parent: string | null
+  pledged: bigint
+  proof: Tree.Check | null
+  run: Tree.Run | null
+  runs: NodeRun[]
+  spent: bigint
+  statement: string | null
+  status: Tree.Status
+  steers: NodeSteer[]
+  suggestions: Suggestion[]
+  title: string
+  updatedAt: number
+  words: string
+}
+
+type Sprig = readonly [key: string, parent: string | null, form: Tree.Form, title: string, status: Tree.Status, spent: number, left: number, extra?: { by?: number | 'agent'; end?: [Tree.End['kind'], string]; needs?: readonly string[]; statement?: string; summaries?: readonly string[] }]
+
+const sprigs: readonly Sprig[] = [
+  ['root', null, 'goal', 'Does P = NP?', 'in flight', 0.42, 31.2, { by: 0 }],
+  ['triage', 'root', 'triage', 'Triage', 'in flight', 0.31, 1.4, { by: 'agent', summaries: ['Approved 3 proposals, merged 1 duplicate, granted $4 to the switching lemma'] }],
+  ['found', 'root', 'program', 'Foundations: machines, P, NP and reductions', 'in flight', 1.2, 6.5, { by: 0 }],
+  ['tm', 'found', 'lemma', 'A Turing machine model with time bounds', 'proven', 3.1, 0, { by: 'agent', statement: 'theorem tm_time_bounded (M : TM) (n : ℕ) : M.steps n ≤ M.bound n', summaries: ['Wrote the machine model on Mathlib.Computability.TuringMachine', 'Proved; sent to the verifier'] }],
+  ['pclosed', 'found', 'lemma', 'P is closed under composition', 'proven', 2.4, 0, { by: 'agent', needs: ['tm'], statement: 'theorem p_comp {f g : ℕ → ℕ} (hf : InP f) (hg : InP g) : InP (f ∘ g)', summaries: ['Proved with a polynomial bound on the composed running time'] }],
+  ['npver', 'found', 'lemma', 'NP has polynomial-time verifiers', 'proven', 2.9, 0, { by: 2, needs: ['tm'], statement: 'theorem np_iff_verifier (L : Lang) : L ∈ NP ↔ ∃ V, InP V ∧ PolyWitness V L', summaries: ['Split the equivalence into two directions', 'Proved both directions; sent to the verifier'] }],
+  ['red', 'found', 'lemma', 'Polynomial-time many-one reductions compose', 'in flight', 1.7, 3.3, { by: 'agent', needs: ['pclosed'], statement: 'theorem reduce_trans {A B C : Lang} : A ≤ₚ B → B ≤ₚ C → A ≤ₚ C', summaries: ['Stated the reduction and the bound; 3 of 5 steps compile'] }],
+  ['cook', 'found', 'lemma', 'Cook–Levin: SAT is NP-complete', 'funded', 0, 5, { by: 1, needs: ['npver', 'red'], statement: 'theorem cook_levin : NPComplete SAT' }],
+  ['lower', 'root', 'program', 'Lower bounds toward P ≠ NP', 'in flight', 0.8, 4.1, { by: 0 }],
+  ['mono', 'lower', 'approach', 'Monotone circuit lower bounds', 'in flight', 0.6, 2.2, { by: 3 }],
+  ['sun', 'mono', 'lemma', 'Sunflower lemma (Erdős–Rado)', 'proven', 4.2, 0, { by: 'agent', statement: 'theorem sunflower (F : Finset (Finset α)) (hk : ∀ s ∈ F, s.card = k) (h : F.card > k ! * (p - 1) ^ k) : HasSunflower F p', summaries: ['Proved on paper by induction on k', 'Formalized the induction; sent to the verifier'] }],
+  ['razb', 'mono', 'lemma', "Razborov's approximation method for CLIQUE", 'in flight', 5.6, 2.4, { by: 'agent', needs: ['sun'], statement: 'theorem approx_error (C : MonoCircuit) : ApproxError C ≤ C.size * errorPerGate', summaries: ['Set up approximators as unions of cliques', 'Bounded the error per OR gate; the AND gate case is open', 'Proved the AND gate bound for k ≤ 4'] }],
+  ['clique', 'mono', 'lemma', 'Monotone circuits for CLIQUE need exponential size', 'proposed', 0, 0, { by: 4, needs: ['razb'], statement: 'theorem clique_mono_lower : ∃ ε > 0, ∀ n, monoSize (CLIQUE n) ≥ 2 ^ (n ^ ε)' }],
+  ['ac0', 'lower', 'approach', 'Parity is not in AC0', 'in flight', 0.4, 3.1, { by: 5 }],
+  ['switch', 'ac0', 'lemma', "Håstad's switching lemma", 'in flight', 3.3, 4.7, { by: 'agent', statement: 'theorem switching (f : DNF n w) (p : ℝ) : Pr[¬ DepthAtMost (restrict f ρ) t] ≤ (5 * p * w) ^ t', summaries: ['Chose the canonical decision tree argument', 'Encoded restrictions; the counting step compiles'] }],
+  ['depth', 'ac0', 'lemma', 'Depth reduction by random restrictions', 'proposed', 0, 0.2, { by: 'agent', needs: ['switch'], statement: 'theorem depth_reduce (C : AC0 d s) : ∃ ρ, Depth (C.restrict ρ) ≤ d - 1' }],
+  ['gct', 'lower', 'idea', 'Separate permanent and determinant by orbit closures', 'dead end', 2.1, 0, { by: 6, end: ['exhausted', 'Three runs found no step a checked lemma could state; occurrence obstructions are known not to exist for this pair.'] }],
+  ['barrier', 'root', 'program', 'Barriers: why whole lines of attack fail', 'in flight', 0.5, 2.6, { by: 0 }],
+  ['bgs', 'barrier', 'lemma', 'Baker–Gill–Solovay: an oracle A with P^A = NP^A', 'proven', 2.2, 0, { by: 'agent', statement: 'theorem bgs_eq : ∃ A, P[A] = NP[A]', summaries: ['Took A to be a PSPACE-complete set', 'Proved; sent to the verifier'] }],
+  ['bgs2', 'barrier', 'lemma', 'An oracle B with P^B ≠ NP^B', 'proven', 3.4, 0, { by: 'agent', statement: 'theorem bgs_ne : ∃ B, P[B] ≠ NP[B]', summaries: ['Diagonalized against every polynomial-time oracle machine', 'Proved; sent to the verifier'] }],
+  ['natural', 'barrier', 'lemma', 'Natural proofs barrier (Razborov–Rudich)', 'proposed', 0, 0, { by: 7, statement: 'theorem natural_barrier (h : PRFExist) : ¬ ∃ P, NaturalAgainst P PPoly' }],
+  ['diag', 'barrier', 'idea', 'Diagonalization alone separates P and NP', 'dead end', 0.9, 0, { by: 1, end: ['barrier', 'Relativizes: the oracle B above has P^B ≠ NP^B and Baker–Gill–Solovay gives an oracle with equality, so no relativizing argument settles it.'] }],
+  ['upper', 'root', 'program', 'Upper bounds toward P = NP', 'in flight', 0.4, 3.3, { by: 0 }],
+  ['twosat', 'upper', 'lemma', '2-SAT is in P', 'proven', 1.9, 0, { by: 'agent', statement: 'theorem two_sat_in_p : TwoSAT ∈ P', summaries: ['Proved via strongly connected components of the implication graph'] }],
+  ['horn', 'upper', 'lemma', 'Horn-SAT is in P', 'proven', 1.6, 0, { by: 2, statement: 'theorem horn_sat_in_p : HornSAT ∈ P', summaries: ['Proved by unit propagation'] }],
+  ['schaefer', 'upper', 'lemma', "Schaefer's dichotomy theorem", 'funded', 0, 5, { by: 3, needs: ['twosat', 'horn'], statement: 'theorem schaefer (Γ : Constraints) : CSP Γ ∈ P ∨ NPComplete (CSP Γ)' }],
+  ['xor', 'upper', 'lemma', 'XOR-SAT is in P by Gaussian elimination', 'proposed', 0, 0.3, { by: 5, statement: 'theorem xor_sat_in_p : XorSAT ∈ P' }],
+  ['claim', 'upper', 'idea', 'A claimed polynomial algorithm for 3-SAT', 'dead end', 1.2, 0, { by: 4, end: ['refuted', 'A checked counterexample: a 14-variable formula on which the algorithm answers unsatisfiable though it has a satisfying assignment.'] }],
+]
+
+const landing = nid('razb')
+
+function hex(seed: string, size: number) {
+  let out = ''
+  for (let index = 0; out.length < size; index++) out += id(`${seed}:${index}`)
+  return out.slice(0, size)
+}
+
+function checked(key: string, minutes: number): Tree.Check {
+  const node = nid(key)
+  return {
+    at: at(minutes),
+    axioms: ['propext', 'Classical.choice', 'Quot.sound'],
+    checker: 'lean4checker v4.24.0',
+    command: `lake build Pnp.Check.N${node} && lake exe lean4checker Pnp.Check`,
+    commit: hex(`commit:${key}`, 40),
+    contentHash: `sha256:${hex(`content:${key}`, 64)}`,
+    durationMs: 140_000 + (Number.parseInt(hex(key, 4), 16) % 180_000),
+    exitCode: 0,
+    mathlib: hex('mathlib', 40),
+    repo: 'example/pnp-proofs',
+    run: String(19_000_000_000 + (Number.parseInt(hex(`run:${key}`, 6), 16) % 999_999)),
+    statement: hex(`stmt:${key}`, 16),
+    theorem: `Pnp.N${node}`,
+    toolchain: 'leanprover/lean4:v4.24.0',
+    url: `https://github.com/example/pnp-proofs/actions/runs/${19_000_000_000 + (Number.parseInt(hex(`run:${key}`, 6), 16) % 999_999)}`,
+  }
+}
+
+const seededOnly = new Set(['root', 'triage', 'found', 'tm', 'pclosed', 'npver', 'red', 'cook', 'lower', 'mono', 'sun', 'razb', 'clique', 'ac0', 'switch', 'depth', 'barrier', 'bgs', 'bgs2', 'natural', 'upper', 'twosat', 'horn', 'schaefer', 'xor'])
+
+function micro(value: number) {
+  return BigInt(Math.round(value * 1_000_000))
+}
+
+function sprout(sprig: Sprig, index: number): Twig {
+  const [key, parent, form, title, given, spentGiven, leftGiven, extra = {}] = sprig
+  const seeded = scene.has('seeded')
+  const status: Tree.Status = seeded ? (key === 'triage' ? 'funded' : given === 'funded' ? 'funded' : 'proposed') : (form === 'goal' || form === 'program' || form === 'approach') && given === 'in flight' ? 'proposed' : given
+  const spent = seeded ? 0n : micro(spentGiven)
+  const left = seeded ? (key === 'root' ? micro(40) : key === 'cook' || key === 'schaefer' ? micro(5) : 0n) : micro(leftGiven)
+  const minutes = 2880 - index * 90
+  const node = nid(key)
+  const by = extra.by === 'agent' && parent ? worker(nid(parent)) : who(typeof extra.by === 'number' ? extra.by : index)
+  const proof = status === 'proven' ? checked(key, Math.max(20, 1400 - index * 60)) : null
+  const end = status === 'dead end' && extra.end ? { at: at(Math.max(30, 1500 - index * 40)), check: extra.end[0] === 'refuted' ? checked(key, 300) : null, into: null, kind: extra.end[0], why: extra.end[1] } : null
+  const runs = seeded ? [] : (extra.summaries ?? (spent > 0n ? ['Read the parent and its siblings; planned the first step'] : [])).map((summary, k): NodeRun => {
+    const share = spent / BigInt(Math.max(1, extra.summaries?.length ?? 1))
+    const until = k === (extra.summaries?.length ?? 1) - 1 && status === 'in flight' ? null : at(minutes - 60 - k * 40)
+    return { budget: decimal(share > 5_000_000n ? share : 5_000_000n), commit: until === null ? null : hex(`run:${key}:${k}`, 40), k: k + 1, outcome: until === null ? null : status === 'proven' && k === (extra.summaries?.length ?? 1) - 1 ? 'proved' : /Split/.test(summary) ? 'split' : 'progress', since: at(minutes - 50 - k * 40), spent: decimal(share), summary, task: `r:${node}:${k + 1}`, until }
+  })
+  const backers = key === 'root' ? [0, 1, 2, 3, 4] : form === 'program' ? [index % 8] : spent > 0n || left > 0n ? [index % 8, (index + 3) % 8] : []
+  const pledged = left + (spent * 2n) / 3n
+  const funders = backers.map((person, rank): Tree.Funder => ({ amount: decimal(backers.length ? pledged / BigInt(backers.length) + BigInt(rank) * 10_000n : 0n), since: at(minutes - rank * 30), who: who(person) }))
+  const run: Tree.Run | null = status === 'in flight' && form !== 'goal' && form !== 'program' && form !== 'approach' ? { agent: 3 + index, attempt: 1, budget: '5.000000', checking: false, k: runs.length, since: at(25), spent: decimal(spent % 5_000_000n), task: `r:${node}:${runs.length}`, until: at(-5) } : null
+  return {
+    by,
+    createdAt: at(minutes),
+    deltas: [],
+    end,
+    form,
+    funders,
+    id: node,
+    inherited: parent && parent !== 'root' ? spent / 3n : 0n,
+    left,
+    needs: (extra.needs ?? []).map(nid),
+    parent: parent ? nid(parent) : null,
+    pledged: key === 'root' ? left + micro(18) : pledged,
+    proof,
+    run,
+    runs,
+    spent,
+    statement: extra.statement ?? null,
+    status,
+    steers: key === 'switch' ? [{ amount: '2.000000', at: at(90), note: 'Try the Razborov encoding proof first; it is shorter in Lean.', who: who(5) }] : [],
+    suggestions: key === 'lower' ? [{ at: at(200), id: 'idea-1', text: 'Formalize the Raz–McKenzie lifting theorem as its own approach.', who: who(6) }] : [],
+    title,
+    updatedAt: at(Math.max(1, minutes / 20)),
+    words: form === 'goal' ? 'Settle whether every problem whose answer can be checked quickly can also be solved quickly. Every result is checked in Lean, and every dead end is kept with its reason.' : form === 'program' ? `A program of the swarm: ${title.toLowerCase()}. Its money flows to the runnable lemmas under it.` : form === 'triage' ? 'Reads new proposals and suggestions, approves, merges and grants from the root, within 5% of what riders put on the root.' : 'Stated in Lean below. Proven only when the verifier builds a proof of exactly this statement.',
+  }
+}
+
+const grove: Twig[] = sprigs.filter(([key]) => (scene.has('empty') ? key === 'root' || key === 'triage' : scene.has('seeded') ? seededOnly.has(key) : true)).map(sprout)
+
+if (scene.has('empty')) for (const twig of grove) Object.assign(twig, { funders: [], left: 0n, pledged: 0n, runs: [], spent: 0n, status: 'proposed' })
+
+let treeSeq = 100
+
+function zeroed(): Record<Tree.Status, number> {
+  return { 'dead end': 0, funded: 0, 'in flight': 0, proposed: 0, proven: 0 }
+}
+
+function derive(): Record<string, Tree.Node> {
+  const kids = new Map<string, string[]>()
+  for (const twig of grove) if (twig.parent) kids.set(twig.parent, [...(kids.get(twig.parent) ?? []), twig.id])
+  const out: Record<string, Tree.Node> = {}
+  const fold = (twig: Twig): Tree.Node => {
+    const children = (kids.get(twig.id) ?? []).map((child) => fold(grove.find((each) => each.id === child)!))
+    const counts = zeroed()
+    counts[twig.status] += 1
+    let spent = twig.spent
+    let left = twig.left
+    let pledged = twig.pledged
+    for (const child of children) {
+      for (const status of Object.keys(counts) as Tree.Status[]) counts[status] += child.counts[status]
+      spent += units(child.money.subtree.spent)
+      left += units(child.money.subtree.left)
+      pledged += units(child.money.subtree.pledged)
+    }
+    const node: Tree.Node = {
+      by: twig.by,
+      children: children.map((child) => child.id),
+      counts,
+      createdAt: twig.createdAt,
+      end: twig.end,
+      form: twig.form,
+      funders: twig.funders.slice(0, 5),
+      id: twig.id,
+      money: { committed: twig.run ? twig.run.budget : '0', granted: decimal(children.reduce((sum, child) => sum + units(child.money.inherited), 0n)), inherited: decimal(twig.inherited), left: decimal(twig.left), pledged: decimal(twig.pledged), spent: decimal(twig.spent), subtree: { left: decimal(left), pledged: decimal(pledged), spent: decimal(spent) } },
+      needs: twig.needs,
+      parent: twig.parent,
+      proof: twig.proof,
+      riders: twig.funders.length,
+      run: twig.run,
+      spec: `# ${twig.title}\n\n${twig.words}${twig.statement ? `\n\n\`\`\`lean\n${twig.statement}\n\`\`\`` : ''}`,
+      statement: twig.statement,
+      status: twig.status,
+      title: twig.title,
+      updatedAt: twig.updatedAt,
+    }
+    out[twig.id] = node
+    return node
+  }
+  const root = grove.find((twig) => twig.id === 'root')
+  if (root) fold(root)
+  return out
+}
+
+function deep(nodes: Record<string, Tree.Node>, root: string, depth: number) {
+  const out: Tree.Node[] = []
+  const walk = (id: string, level: number) => {
+    const node = nodes[id]
+    if (!node) return
+    out.push(node)
+    if (level < depth) for (const child of node.children) walk(child, level + 1)
+  }
+  walk(root, 0)
+  return out
+}
+
+function twig(key: string, nidGiven: string) {
+  if (key !== treeId) throw fail(404, 'not_found', 'No swarm has this id.')
+  const found = grove.find((each) => each.id === nidGiven)
+  if (!found) throw fail(404, 'not_found', 'No node has this id.')
+  return found
+}
+
+export function treeView(key: string, query: { depth?: number; root?: string }): Promise<TreeView> {
+  if (key !== treeId) return Promise.reject(fail(404, 'not_found', 'No swarm has this id.'))
+  const nodes = derive()
+  return delay({ headline: Tree.headline(Object.values(nodes)), nodes: deep(nodes, query.root ?? 'root', query.depth ?? 3), seq: treeSeq })
+}
+
+function told(found: Twig): Tree.Delta[] {
+  const node = derive()[found.id]!
+  const made: Tree.Delta[] = [{ at: found.createdAt, event: 'posted', node, seq: 1, text: `Proposed by @${found.by.handle}` }]
+  for (const funder of found.funders) made.push({ at: funder.since, event: 'funded', node, seq: 2, text: `@${funder.who.handle} put ${usd(funder.amount)} on it` })
+  for (const run of found.runs) made.push({ at: run.since, event: 'started', node, seq: 3, text: `Run ${run.k} started with ${usd(run.budget)}` }, ...(run.until ? [{ at: run.until, event: 'progress' as const, node, seq: 4, text: run.summary }] : []))
+  if (found.proof) made.push({ at: found.proof.at, event: 'proven', node, seq: 5, text: 'Checked by Lean' })
+  if (found.end) made.push({ at: found.end.at, event: 'ended', node, seq: 5, text: found.end.why })
+  return [...made, ...found.deltas].sort((a, b) => b.at - a.at)
+}
+
+export function nodeView(key: string, nidGiven: string): Promise<NodeView> {
+  try {
+    const found = twig(key, nidGiven)
+    const node = derive()[found.id]!
+    return delay({ ...node, funders: found.funders, review: scene.has('seeded') || found.status === 'proposed', runs: [...found.runs].reverse(), steers: found.steers, suggestions: found.suggestions })
+  } catch (error) {
+    return Promise.reject(error)
+  }
+}
+
+export function nodeUpdates(key: string, nidGiven: string): Promise<NodeUpdates> {
+  try {
+    return delay({ deltas: told(twig(key, nidGiven)).slice(0, 30), next: treeSeq })
+  } catch (error) {
+    return Promise.reject(error)
+  }
+}
+
+export function burn(key: string): Promise<ProgressView> {
+  if (key !== treeId) return Promise.reject(fail(404, 'not_found', 'No swarm has this id.'))
+  const proven = grove.filter((each) => each.proof).map((each) => each.proof!.at)
+  const dead = grove.filter((each) => each.end).map((each) => each.end!.at)
+  const total = grove.reduce((sum, each) => sum + each.spent, 0n)
+  const hours = 48
+  const now = Date.now()
+  return delay({ burn: scene.has('empty') ? [] : Array.from({ length: hours + 1 }, (_, index) => {
+    const when = now - (hours - index) * 3_600_000
+    return { at: when, deadEnds: dead.filter((time) => time <= when).length, proven: proven.filter((time) => time <= when).length, spent: decimal((total * BigInt(index)) / BigInt(hours)) }
+  }) })
+}
+
+export function proofs(key: string): Promise<ProofsView> {
+  if (key !== treeId) return Promise.reject(fail(404, 'not_found', 'No swarm has this id.'))
+  return delay({ proofs: grove.filter((each) => each.proof).map((each) => ({ check: each.proof!, node: each.id, title: each.title })).sort((a, b) => b.check.at - a.check.at) })
+}
+
+function emit(found: Twig, event: Tree.Delta['event'], text: string) {
+  treeSeq += 1
+  const delta: Tree.Delta = { at: Date.now(), event, node: derive()[found.id]!, seq: treeSeq, text }
+  found.deltas.push(delta)
+  found.updatedAt = delta.at
+  tell(treeId, { delta, type: 'delta' })
+  return delta
+}
+
+const proposals = new Map<string, Twig>()
+
+export async function propose(key: string, input: { form: Tree.Form; parent: string; spec: string; statement?: string; title: string }, by: `0x${string}` | undefined): Promise<Proposed> {
+  if (!by) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to propose.')
+  const parent = twig(key, input.parent)
+  const made = nid(`${parent.id}\n${input.title.trim().toLowerCase()}`)
+  proposals.set(made, { by: who(0), createdAt: Date.now(), deltas: [], end: null, form: input.form, funders: [], id: made, inherited: 0n, left: 0n, needs: [], parent: parent.id, pledged: 0n, proof: null, run: null, runs: [], spent: 0n, statement: input.statement?.trim() || null, status: 'proposed', steers: [], suggestions: [], title: input.title.trim(), updatedAt: Date.now(), words: input.spec.trim() })
+  const memo = `0x${hex(`memo:${made}`, 64)}` as `0x${string}`
+  return delay({ nid: made, transfer: { amount: '1.000000', call: null, link: '', memo, memoText: `n:${made}`, note: `n:${made}`, swarm: key, symbol: 'USDC.e', to: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE', token: 'usdce', tokenAddress: '0x20C000000000000000000000b9537d11c60E8b50' } }, 400)
+}
+
+export async function ride(key: string, input: { hash: string; node: string }): Promise<Contributed> {
+  const hash = input.hash as `0x${string}`
+  if (scene.has('uncounted') && !dropped.has(hash)) {
+    dropped.add(hash)
+    throw fail(502, 'unavailable', 'Swarms could not reach Tempo to check the transfer.')
+  }
+  const fresh = proposals.get(input.node)
+  if (fresh) {
+    proposals.delete(input.node)
+    grove.push(fresh)
+  }
+  const found = twig(key, input.node)
+  const amount = sent.get(hash)?.amount ?? 1_000_000n
+  found.pledged += amount
+  found.left += amount
+  const mine = found.funders.find((funder) => funder.who.address === visitor)
+  if (mine) mine.amount = decimal(units(mine.amount) + amount)
+  else found.funders.unshift({ amount: decimal(amount), since: Date.now(), who: who(0) })
+  if (found.status === 'proposed' && found.left >= 500_000n && found.form === 'lemma') found.status = 'funded'
+  emit(found, fresh ? 'posted' : 'funded', fresh ? `@ada proposed it with ${usd(decimal(amount))}` : `@ada put ${usd(decimal(amount))} on it`)
+  const swarm = await find(key)
+  swarm.contributions.push({ amount: decimal(amount), at: Date.now(), contributor: visitor, hash, note: null, token: sent.get(hash)?.token ?? 'usdce' })
+  settle(swarm)
+  return delay({ contribution: swarm.contributions.at(-1)!, swarm: summary(swarm) }, 500)
+}
+
+export async function suggest(key: string, input: { parent: string; text: string }, by: `0x${string}` | undefined): Promise<Suggested> {
+  if (!by) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to suggest.')
+  const found = twig(key, input.parent)
+  const made = `idea-${found.suggestions.length + 2}`
+  found.suggestions.unshift({ at: Date.now(), id: made, text: input.text.trim(), who: who(0) })
+  return delay({ id: made }, 300)
+}
+
+export async function steerNode(key: string, nidGiven: string, input: { amount: string; note: string }, by: `0x${string}` | undefined): Promise<Tree.Node> {
+  if (!by) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to steer.')
+  const found = twig(key, nidGiven)
+  found.steers.unshift({ amount: input.amount, at: Date.now(), note: input.note.trim(), who: who(0) })
+  return delay(emit(found, 'steered', `@ada: ${input.note.trim()}`).node, 300)
+}
+
+export async function moveNode(key: string, nidGiven: string, input: { amount: string; to: string }, by: `0x${string}` | undefined): Promise<Tree.Node> {
+  if (!by) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to move money.')
+  const found = twig(key, nidGiven)
+  const mine = found.funders.find((funder) => funder.who.address === visitor)
+  const amount = units(input.amount)
+  if (!mine || units(mine.amount) < amount || found.left < amount) throw fail(409, 'conflict', 'You have less than that on this node.')
+  mine.amount = decimal(units(mine.amount) - amount)
+  found.left -= amount
+  found.pledged -= amount
+  const target = input.to ? twig(key, input.to) : undefined
+  if (target) {
+    target.left += amount
+    target.pledged += amount
+    const theirs = target.funders.find((funder) => funder.who.address === visitor)
+    if (theirs) theirs.amount = decimal(units(theirs.amount) + amount)
+    else target.funders.unshift({ amount: decimal(amount), since: Date.now(), who: who(0) })
+    emit(target, 'moved', `@ada moved ${usd(input.amount)} here`)
+  }
+  return delay(emit(found, 'moved', `@ada moved ${usd(input.amount)} ${target ? 'to ' + target.title : 'to their free money'}`).node, 300)
+}
+
+function woods(listener: (event: Chatter | { type: 'open' | 'closed' }) => void) {
+  const set = listeners.get(treeId) ?? new Set()
+  set.add(listener)
+  listeners.set(treeId, set)
+  const timers: ReturnType<typeof setTimeout>[] = []
+  let beat: ReturnType<typeof setInterval> | undefined
+  timers.push(setTimeout(() => {
+    listener({ type: 'open' })
+    if (offline) return
+    listener({ type: 'welcome', version: String(treeSeq) })
+    if (scene.has('landing')) {
+      const found = grove.find((each) => each.id === landing)
+      if (found && found.status !== 'proven') {
+        timers.push(setTimeout(() => {
+          if (found.run) found.run = { ...found.run, checking: true }
+          emit(found, 'checking', 'Run 4 says proved; the verifier is building it')
+        }, 2000))
+        timers.push(setTimeout(() => {
+          found.status = 'proven'
+          found.run = null
+          found.proof = checked('razb', 0)
+          found.proof.at = Date.now()
+          found.runs.push({ budget: '5.000000', commit: found.proof.commit, k: found.runs.length + 1, outcome: 'proved', since: Date.now() - 600_000, spent: '1.120000', summary: 'Proved the AND gate bound for all k; sent to the verifier', task: `r:${found.id}:${found.runs.length + 1}`, until: Date.now() })
+          emit(found, 'proven', 'Checked by Lean')
+        }, 4500))
+      }
+    }
+    if (!scene.has('empty') && !scene.has('seeded'))
+      beat = setInterval(() => {
+        const busy = grove.filter((each) => each.status === 'in flight' && each.run && !each.run.checking)
+        const found = busy[Math.floor(Date.now() / 4000) % Math.max(1, busy.length)]
+        if (!found?.run) return
+        found.spent += 30_000n
+        found.left = found.left > 30_000n ? found.left - 30_000n : 0n
+        found.run = { ...found.run, spent: decimal(units(found.run.spent) + 30_000n) }
+        emit(found, 'progress', 'Spent $0.03 on the next step')
+      }, 4000)
+  }, 200))
+  return {
+    close: () => {
+      for (const timer of timers) clearTimeout(timer)
+      clearInterval(beat)
+      set.delete(listener)
+    },
+    hello: () => {},
+    typing: () => {},
+  }
 }
