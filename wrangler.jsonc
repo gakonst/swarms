@@ -19,7 +19,7 @@
     "TELEGRAM_BOT": "TempoSwarmsBot",
     "TEMPO_RPC": "https://rpc.tempo.xyz"
   },
-  "secrets": { "required": ["SWARMS_GATEWAY_KEY", "SWARMS_GITHUB_TOKEN", "SWARMS_GITHUB_WEBHOOK_SECRET"] },
+  "secrets": { "required": ["SWARMS_GATEWAY_KEY", "SWARMS_GITHUB_WEBHOOK_SECRET"] },
   "d1_databases": [
     {
       "binding": "DB",
