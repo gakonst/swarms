@@ -70,7 +70,7 @@ function Ride(props: { config: Config | undefined; node: Tree.Node; onClose: () 
         <button aria-label="Close" className="sheet-close" onClick={props.onClose} type="button">×</button>
         <h3>{root ? 'Ride the whole swarm' : props.node.form === 'lemma' ? 'Ride this lemma' : `Ride ${noun(props.node)}`}</h3>
         <p className="ride-what">{root ? 'Your dollars serve every program, split by what is runnable.' : `Your dollars run ${noun(props.node)} first, then what grows under it.`} Workers spend it only through the gateway; what is left stays yours to move.</p>
-        <Fuel ask="A note for its worker" config={props.config} note={note} onDone={props.onDone} onNote={setNote} prefill={prefill} slot={Pay.slot(props.swarm, props.node.id)} target={() => Promise.resolve({ id: props.swarm, node: props.node.id })} verb="Ride it" />
+        <Fuel ask="A note for its worker" config={props.config} note={note} onDone={() => { props.onDone(); props.onClose() }} onNote={setNote} prefill={prefill} slot={Pay.slot(props.swarm, props.node.id)} target={() => Promise.resolve({ id: props.swarm, node: props.node.id })} verb="Ride it" />
       </div>
     </div>
   )

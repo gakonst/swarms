@@ -271,6 +271,17 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
   .side { width:100vw; padding:12px 12px 14px; border-left:0; }
 }
 .wallet-menu { position:relative; display:flex; }
+.share-go { border:0; background:none; padding:0; cursor:pointer; }
+.sheet-card.cheer { display:grid; justify-items:center; gap:8px; max-width:420px; margin:0 auto; padding:28px 20px calc(20px + env(safe-area-inset-bottom)); text-align:center; }
+.cheer-mark { display:grid; place-items:center; width:56px; height:56px; margin:0; border-radius:50%; background:var(--green); color:var(--bg); font:28px var(--mono); animation:cheer .5s cubic-bezier(.2,1.4,.4,1) both; }
+@keyframes cheer { from { transform:scale(.4); opacity:0; } to { transform:none; opacity:1; } }
+.cheer-head { margin:6px 0 0; font:400 28px/1.1 var(--serif); }
+.cheer-what { margin:0; color:var(--muted); }
+.cheer-stats { margin:0; font:13px var(--mono); color:var(--muted); }
+.cheer-stats b { font-weight:400; color:var(--fg); }
+.cheer-go { display:grid; gap:8px; width:100%; margin-top:12px; }
+.cheer-go .btn { width:100%; min-height:44px; justify-content:center; }
+@media (min-width:800px) { .sheet.cheer-sheet { align-items:center; } .sheet-card.cheer { border-radius:12px; } }
 .wallet-drop { position:absolute; top:100%; right:0; z-index:2; display:none; min-width:100%; padding-top:6px; }
 .wallet-menu[data-open='true'] > .wallet-drop,.wallet-menu:focus-within > .wallet-drop { display:block; }
 @media (hover:hover) { .wallet-menu:hover > .wallet-drop { display:block; } }

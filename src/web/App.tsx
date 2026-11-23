@@ -11,6 +11,7 @@ import { Home, Join } from './Home.tsx'
 import { Base, Link, navigate, usePath, warmer } from './router.tsx'
 import { Lost } from './Lost.tsx'
 import * as Names from './names.ts'
+import { Cheered, ShareSwarm } from './Share.tsx'
 import { page, preload } from './pages.ts'
 import { problems } from './research.ts'
 import * as Wallet from './wallet.ts'
@@ -146,7 +147,7 @@ function WalletButton(props: { config: Config | undefined }) {
   )
 }
 
-function Header(props: { config: Config | undefined; free: boolean; path: string }) {
+function Header(props: { config: Config | undefined; free: boolean; path: string; swarm: string | undefined }) {
   const links = (
     <>
       <Link className={props.path === '/ideas' || props.path.startsWith('/s/') || (!props.free && Nickname.parse(props.path) !== undefined) ? 'game-nav game-nav-on' : 'game-nav'} to="/ideas">All swarms</Link>
@@ -176,6 +177,7 @@ function Header(props: { config: Config | undefined; free: boolean; path: string
       </p>
       <div className="header-end">
         <a className="game-nav header-essay" href={Site.essay}>Swarm riding, by Paradigm</a>
+        {props.swarm && <ShareSwarm id={props.swarm} key={props.swarm} />}
         <WalletButton config={props.config} />
       </div>
     </header>
@@ -266,7 +268,8 @@ export function App() {
 
   return (
     <div className="app" data-chat={view === 'chat' || undefined}>
-      <Header config={config} free={free} path={path} />
+      <Header config={config} free={free} path={path} swarm={swarm} />
+      <Cheered />
       <main>
         <Caught path={path}>
         <Suspense fallback={<section aria-busy="true" className="page lost" />}>

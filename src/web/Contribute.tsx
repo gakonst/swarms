@@ -7,6 +7,7 @@ import { mach, short } from './format.ts'
 import { message, useWallet } from './hooks.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Pay from './pay.ts'
+import * as Share from './Share.tsx'
 import * as Wallet from './wallet.ts'
 
 const stops = [1, 2, 3, 5, 8, 10, 15, 20, 25, 35, 50, 75, 100, 150, 250, 500] as const
@@ -127,7 +128,10 @@ export function Fuel(props: {
     const counting = Pay.record(owed, props.slot)
     props.onNote('')
     props.onSent?.(target)
-    if ((await counting).at === 'counted') props.onDone(target)
+    if ((await counting).at === 'counted') {
+      props.onDone(target)
+      Share.celebrate({ amount: owed.amount, node: owed.node, swarm: owed.swarm })
+    }
   }
 
   const submit = async () => {
@@ -166,7 +170,7 @@ export function Fuel(props: {
           </Alert>
         )}
         {flow.at === 'failed' && !flow.hash && (
-          <Alert title={explain(flow.error).title} tone="bad">
+          <Alert action={props.config && /less than|insufficient|too little|balance/i.test(flow.error) ? { label: 'Add funds', onClick: () => void Wallet.fund(props.config!).then(() => Pay.move(props.slot, Pay.idle), () => {}) } : undefined} title={explain(flow.error).title} tone="bad">
             {explain(flow.error).detail}
           </Alert>
         )}
