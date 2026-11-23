@@ -21,7 +21,7 @@ const preferred: readonly Currency[] = ['mach', 'ousd', 'usdce', 'pathusd']
 
 const smallest = '0.01'
 
-export type Target = { id: string }
+export type Target = { id: string; node?: string | undefined }
 
 export type Prefill = { amount: string; note: string; token: Currency | undefined }
 
@@ -61,8 +61,8 @@ const working = {
 async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency): Promise<Pay.Owed> {
   if (!config.credit) throw new Error('Riding is not available right now. Try again in a moment.')
   const { memo } = await import('../shared/Credit.ts')
-  const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, note), to: config.credit.recipient, token })
-  return { amount: decimal(amount), hash, note, swarm: target.id }
+  const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, target.node ? `n:${target.node}` : note), to: config.credit.recipient, token })
+  return { amount: decimal(amount), hash, note, swarm: target.id, ...(target.node ? { node: target.node } : {}) }
 }
 
 function dollars(amount: string) {
@@ -71,6 +71,7 @@ function dollars(amount: string) {
 
 export function Fuel(props: {
   config: Config | undefined
+  ask?: string | undefined
   extra?: ReactNode
   first?: boolean | undefined
   focus?: number | undefined
@@ -84,6 +85,7 @@ export function Fuel(props: {
   slot: string
   steers?: boolean | undefined
   target: (step: (step: 'create') => void) => Promise<Target>
+  verb?: string | undefined
 }) {
   const wallet = useWallet()
   const [amount, setAmount] = useState(props.prefill.amount)
@@ -114,7 +116,7 @@ export function Fuel(props: {
   const at = nearest(amount, marks)
 
   const record = async (owed: Pay.Owed) => {
-    const target = { id: owed.swarm }
+    const target = { id: owed.swarm, ...(owed.node ? { node: owed.node } : {}) }
     const counting = Pay.record(owed, props.slot)
     props.onNote('')
     props.onSent?.(target)
@@ -145,9 +147,9 @@ export function Fuel(props: {
       </div>
       {floor !== smallest && !ok && <p className="fuel-least" data-bad={amount.trim() !== ''}>At least {dollars(floor)}</p>}
       {props.extra}
-      {!props.first && props.steers !== false && <input aria-label="What should it try next?" className="fuel-steer" disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder="What should it try next? (optional)" ref={steer} value={props.note} />}
+      {!props.first && props.steers !== false && <input aria-label={props.ask ?? 'What should it try next?'} className="fuel-steer" disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder={`${props.ask ?? 'What should it try next?'} (optional)`} ref={steer} value={props.note} />}
       <button className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
-        {flow.at === 'busy' ? working[flow.step] : ok ? `${props.first ? 'Start it' : 'Ride it'} · ${dollars(amount)}` : props.first ? 'Start it' : 'Ride it'}
+        {flow.at === 'busy' ? working[flow.step] : ok ? `${props.first ? 'Start it' : (props.verb ?? 'Ride it')} · ${dollars(amount)}` : props.first ? 'Start it' : (props.verb ?? 'Ride it')}
       </button>
       <div className="fuel-told" ref={told}>
         {flow.at === 'done' && <Alert action={{ label: 'Add more', onClick: () => Pay.move(props.slot, Pay.idle) }} title={`You're riding. ${dollars(flow.amount)} is in.`} tone="good">Thank you!</Alert>}

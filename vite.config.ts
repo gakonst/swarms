@@ -32,7 +32,7 @@ function preloads(): Plugin {
         if (!context.bundle) return html
         const { entry, page } = graph(context.bundle)
         const routes: [string, string[]][] = [
-          [`^${base}/s/[^/]+(/chat|/code|/results)?/?$`, page('Swarm')],
+          [`^${base}/s/[^/]+(/chat|/code|/results|/n/[^/]+)?/?$`, [...page('Swarm'), ...page('TreePage')]],
           [`^${base}/new/?$`, page('New')],
           [`^${base}/about/?$`, page('About')],
           [`^${base}/docs/?$`, page('Docs')],

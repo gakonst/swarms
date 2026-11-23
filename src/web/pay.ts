@@ -2,7 +2,15 @@ import { useCallback, useSyncExternalStore } from 'react'
 import * as Api from './api.ts'
 import { message } from './hooks.ts'
 
-export type Owed = { amount: string; hash: string; note: string; swarm: string }
+export type Owed = { amount: string; hash: string; node?: string | undefined; note: string; swarm: string }
+
+export function slot(swarm: string, node?: string) {
+  return node ? `${swarm}/n/${node}` : swarm
+}
+
+function slotted(owed: Owed) {
+  return slot(owed.swarm, owed.node)
+}
 
 export type Counted = { at: 'counted' } | { at: 'later' } | { at: 'refused'; reason: string }
 
@@ -75,7 +83,7 @@ function without(owed: Owed) {
 
 export function flow(slot: string): Flow {
   const step = flows.get(slot) ?? idle
-  const owed = step.at === 'busy' ? undefined : owing().find((each) => each.swarm === slot)
+  const owed = step.at === 'busy' ? undefined : owing().find((each) => slotted(each) === slot)
   if (!owed) return step
   const waiting = unrecorded.get(owed) ?? { at: 'unrecorded', owed }
   unrecorded.set(owed, waiting)
@@ -114,7 +122,10 @@ async function count(owed: Owed): Promise<Counted> {
   const note = owed.note ? { note: owed.note } : {}
   for (let attempt = 0; ; attempt++) {
     try {
-      await Api.contribute(owed.swarm, { hash: owed.hash, ...note })
+      if (owed.node) {
+        await Api.ride(owed.swarm, { hash: owed.hash, node: owed.node })
+        if (owed.note) await Api.steerNode(owed.swarm, owed.node, { amount: '0', note: owed.note }).catch(() => {})
+      } else await Api.contribute(owed.swarm, { hash: owed.hash, ...note })
       return { at: 'counted' }
     } catch (error) {
       if (code(error) === 'conflict') return { at: 'counted' }
@@ -127,12 +138,12 @@ async function count(owed: Owed): Promise<Counted> {
   }
 }
 
-export async function record(owed: Owed, from = owed.swarm) {
+export async function record(owed: Owed, from = slotted(owed)) {
   keep([...without(owed), owed])
-  if (from !== owed.swarm) move(from, idle)
-  move(owed.swarm, { at: 'busy', step: 'record' })
+  if (from !== slotted(owed)) move(from, idle)
+  move(slotted(owed), { at: 'busy', step: 'record' })
   const counted = await count(owed)
   if (counted.at !== 'later') keep(without(owed))
-  move(owed.swarm, counted.at === 'counted' ? { amount: owed.amount, at: 'done' } : counted.at === 'refused' ? { at: 'failed', error: counted.reason, hash: owed.hash } : idle)
+  move(slotted(owed), counted.at === 'counted' ? { amount: owed.amount, at: 'done' } : counted.at === 'refused' ? { at: 'failed', error: counted.reason, hash: owed.hash } : idle)
   return counted
 }
