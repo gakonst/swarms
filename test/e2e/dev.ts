@@ -3,6 +3,7 @@ import * as fs from 'node:fs'
 import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import type { Readable } from 'node:stream'
 import * as Mock from '../mock/gateway.ts'
 import * as GitHub from '../mock/github.ts'
 
@@ -23,8 +24,8 @@ async function free() {
   })
 }
 
-export function run(command: string, args: string[], env: NodeJS.ProcessEnv) {
-  const done = child.spawnSync(command, args, { cwd: root, encoding: 'utf8', env, timeout: 120_000 })
+export function run(command: string, args: string[], env: Record<string, string | undefined>) {
+  const done = child.spawnSync(command, args, { cwd: root, encoding: 'utf8', env: env as unknown as NodeJS.ProcessEnv, timeout: 120_000 })
   if (done.status !== 0) throw new Error(`${command} ${args.join(' ')} failed: ${done.stdout}${done.stderr}`)
   return done.stdout
 }
@@ -35,7 +36,7 @@ export async function start(options: { gateway?: Mock.Options; leaseMs?: number;
   const url = `http://127.0.0.1:${port}/swarms`
   const gateway = await Mock.start(options.gateway)
   const github = await GitHub.start({ hook: url + '/v1/hooks/github' })
-  const env: NodeJS.ProcessEnv = {
+  const env: Record<string, string | undefined> = {
     ...process.env,
     CLOUDFLARE_INCLUDE_PROCESS_ENV: 'true',
     GITHUB_API: github.url,
@@ -68,7 +69,7 @@ export async function start(options: { gateway?: Mock.Options; leaseMs?: number;
     if (pids) fs.rmSync(path.join(pids, String(pid)), { force: true })
   }
   const launch = async () => {
-    const started = child.spawn(bin('vite'), ['--port', String(port), '--strictPort', '--host', '127.0.0.1'], { cwd: root, detached: true, env, stdio: ['ignore', 'pipe', 'pipe'] })
+    const started: child.ChildProcessByStdio<null, Readable, Readable> = child.spawn(bin('vite'), ['--port', String(port), '--strictPort', '--host', '127.0.0.1'], { cwd: root, detached: true, env: env as unknown as NodeJS.ProcessEnv, stdio: ['ignore', 'pipe', 'pipe'] })
     vite = started
     if (pids && started.pid) fs.writeFileSync(path.join(pids, String(started.pid)), 'vite\n')
     started.stdout?.on('data', (chunk: Buffer) => log.push(chunk.toString()))

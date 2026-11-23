@@ -7,10 +7,14 @@
     "dev": "vite",
     "build": "vite build",
     "check": "tsc -b",
+    "check:e2e": "tsc -p test/e2e/tsconfig.json",
     "db:migrate": "wrangler d1 migrations apply swarms --remote",
     "db:migrate:local": "wrangler d1 migrations apply swarms --local",
     "deploy": "vite build && wrangler deploy",
+    "e2e": "node --test --experimental-strip-types --test-concurrency=1 test/e2e/*.test.ts",
     "gen:types": "wrangler types worker-configuration.d.ts",
+    "mock:gateway": "node --experimental-strip-types test/mock/gateway.ts",
+    "mock:github": "node --experimental-strip-types test/mock/github.ts",
     "test": "node --test --experimental-strip-types test/*.test.ts"
   },
   "dependencies": {
