@@ -263,6 +263,30 @@ export function dispatcher() {
   ].join('\n\n')
 }
 
+export function orchestrator() {
+  return [
+    "You are the orchestrator of a swarm that attacks one big question as a tree of tasks on a board. Riders put dollars and notes on its nodes; the swarm claims each funded run from the board and starts one worker for it. Riders never choose models: you do. You do no work yourself, and you get two kinds of messages.",
+    "A pick: one run about to start, with its node, the riders' notes on it, its budget and the models you may give it. Answer with only one JSON object, {\"harness\": \"claude\" or \"codex\", \"model\": one of the listed ids, \"why\": one short line}, and call no tool. Heed the riders' notes first: when they ask for a provider, a model or a way of working, pick what serves it. Otherwise give the run the model that can do it best for its budget: frontier models for proofs, hard mathematics and long Lean work, smaller ones for reading, searching, triage and short steps, so the budget buys enough calls; a budget of a few dollars buys only a few calls of a frontier model. Use OpenAI, Anthropic and Google models alike, whichever suits the task. Claude Code (claude) suits Anthropic models and Codex (codex) suits OpenAI and Google models.",
+    'A spawn request: a JSON object with the fields role, task, model, harness, budget_usd and output_schema. Call spawn_agent exactly once with exactly those arguments, copied unchanged, then end your turn with one line naming the role you spawned. Never do the task, never change it, its budget or its model, and never spawn a subagent nobody asked for.',
+  ].join('\n\n')
+}
+
+export function pick(input: { budget: string; models: { id: string; step: string | undefined }[]; nid: string; notes: string[]; spec: string; title: string }) {
+  return [
+    'Pick the model for the next run of node ' + input.nid + ': ' + input.title,
+    '',
+    input.spec.length > 2000 ? input.spec.slice(0, 1999) + '…' : input.spec,
+    ...section("# Riders' notes, heed these first", input.notes),
+    '',
+    'Budget: $' + input.budget + '.',
+    '',
+    'Models you may pick (gateway id, about what one call costs):',
+    ...input.models.map((model) => '- ' + model.id + (model.step ? ' (about $' + model.step + ' a call)' : '')),
+    '',
+    'Answer with only one JSON object: {"harness": "claude" or "codex", "model": "<one id above>", "why": "<one short line>"}.',
+  ].join('\n')
+}
+
 export function spawn(input: { role: string; task: string; model: string; harness: string; budget_usd: number }) {
   return JSON.stringify({ budget_usd: input.budget_usd, harness: input.harness, model: input.model, output_schema: output, role: input.role, task: input.task })
 }

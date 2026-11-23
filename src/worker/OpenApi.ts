@@ -117,7 +117,7 @@ const treeNode = object({
   proof: nullable(check),
   review: { description: 'The statement is seeded and still under human review.', type: 'boolean' },
   riders: integer,
-  run: nullable(object({ agent: nullable(integer), attempt: integer, budget: dollars, checking: { type: 'boolean' }, doing: nullable(object({ at: time, text: string }, "The run's latest step, its newest reasoning summary or tool call in one line, while it works.")), k: integer, since: time, spent: dollars, task: string, until: time })),
+  run: nullable(object({ agent: nullable(integer), attempt: integer, budget: dollars, checking: { type: 'boolean' }, doing: nullable(object({ at: time, text: string }, "The run's latest step, its newest reasoning summary or tool call in one line, while it works.")), k: integer, model: nullable({ description: "The gateway model the orchestrator picked for this run; null when the swarm's own setup chose it.", type: 'string' }), since: time, spent: dollars, task: string, until: time })),
   spec: string,
   statement: nullable(string),
   status: statuses,

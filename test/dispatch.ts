@@ -1,4 +1,5 @@
 import { world } from './run.ts'
+import type * as Setup from '../src/shared/Setup.ts'
 import type * as StoreModule from '../src/worker/Store.ts'
 import type * as NodesModule from '../src/worker/Nodes.ts'
 import type * as RunnerModule from '../src/worker/Runner.ts'
@@ -26,7 +27,9 @@ export function gateway() {
   const prompts: string[] = []
   const budgets: [number, number][] = []
   const spawned: Record<string, unknown>[] = []
-  const state = { agents: 0, fresh: false, refuse: false, spawnRoute: true, starting: 0 }
+  const agents: Record<string, unknown>[] = []
+  const sides: string[] = []
+  const state = { agents: 0, fresh: false, pick: '', refuse: false, side: null as string | null, spawnRoute: true, starting: 0 }
   const keyed = new Map<string, Sub>()
   const make = (args: { budget_usd: number; role: string; task: string }) => {
     const sub: Sub = { agent_id: subs.length + 1, budget_usd: args.budget_usd, messages: [], parent_agent_id: null, role: args.role, spent_usd: 0, status: { state: 'running' }, task: args.task }
@@ -34,12 +37,23 @@ export function gateway() {
     return sub
   }
   const route = async (request: Request, url: URL) => {
-    if (url.pathname === '/v1/agents' && request.method === 'POST') return Response.json({ id: 'agt_d' + ++state.agents })
+    if (url.pathname === '/v1/agents' && request.method === 'POST') {
+      agents.push((await request.json()) as Record<string, unknown>)
+      return Response.json({ id: 'agt_d' + ++state.agents })
+    }
+    if (/^\/v1\/agents\/agt_d\d+\/side_question$/.test(url.pathname)) {
+      sides.push(String(((await request.json()) as { question: string }).question))
+      if (state.side === null) return Response.json({ code: 'conflict', detail: 'the session has no conversation to ask about yet' }, { status: 409 })
+      return Response.json({ text: state.side, usage: { estimated_cost: { total_usd: 0.002 } } })
+    }
+    const reported = url.pathname.match(/^\/v1\/agents\/agt_d\d+\/turns\/(.+)$/)
+    if (reported && request.method === 'GET') return Response.json({ ok: { message: state.pick }, request_id: decodeURIComponent(reported[1] ?? ''), spent_usd: 0.004, status: 'completed' })
     const turn = url.pathname.match(/^\/v1\/agents\/(agt_d\d+)\/turns$/)
     if (turn && request.method === 'POST') {
       if (state.refuse) return Response.json({ error: 'over_limit' }, { status: 402 })
       const body = (await request.json()) as { prompt: string }
       prompts.push(body.prompt)
+      if (body.prompt.startsWith('Pick the model for')) return Response.json({ request_id: 'p', status: 'queued' })
       make(JSON.parse(body.prompt.slice(body.prompt.indexOf('{'))) as { budget_usd: number; role: string; task: string })
       return Response.json({ request_id: 'x', status: 'queued' })
     }
@@ -81,7 +95,7 @@ export function gateway() {
     if (url.pathname === '/api/keys/me') return Response.json({ wallet: '0x' + 'e'.repeat(40) })
     return undefined
   }
-  return { budgets, make, prompts, route, spawned, state, subs }
+  return { agents, budgets, make, prompts, route, sides, spawned, state, subs }
 }
 
 export async function until(check: () => boolean | Promise<boolean>, ms = 5000) {
@@ -97,7 +111,7 @@ export function github(env: Cloudflare.Env) {
   Object.assign(env, { GITHUB: { fetch: async (request: Request) => (request.method === 'GET' ? Response.json({ workflow_runs: [] }) : new Response(null, { status: 204 })) }, SWARMS_GITHUB_TOKEN: 't' })
 }
 
-export async function planted(route: Parameters<typeof world>[0], triageShare = 0, statement: string | null = null) {
+export async function planted(route: Parameters<typeof world>[0], triageShare = 0, statement: string | null = null, setup: Setup.Setup | null = null) {
   const w = world(route)
   github(w.env)
   await Store.insert(w.env, { creator: null, form: 'tree', goal: 'g', id, problem: null, setup: null, steering: 'open', title: 'Tree' })
@@ -107,7 +121,7 @@ export async function planted(route: Parameters<typeof world>[0], triageShare = 
     root: { statement, title: 'Does P = NP?', words: 'The question.' },
     seed: [],
     settings: { ...Nodes.defaults, triageShare },
-    setup: null,
+    setup,
     swarm: id,
   })
   return w

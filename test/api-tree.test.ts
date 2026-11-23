@@ -23,7 +23,7 @@ const bo = ('0x' + 'b'.repeat(40)) as `0x${string}`
 function setup() {
   const deposits = new Map<string, { amount: string; from: string; tag: string }>()
   const w = world(async (request, url) => {
-    if (url.pathname === '/v1/models') return Response.json({ data: [Setup.flash, Setup.glmFlash].map((id) => ({ id, kind: 'generate', pricing: { cached: 0.01, input: 0.1, output: 0.4 } })) })
+    if (url.pathname === '/v1/models') return Response.json({ data: [Setup.flash, Setup.glmFlash, Setup.fable, Setup.sol, 'vercel/google/gemini-3.8-flash'].map((id) => ({ id, kind: 'generate', pricing: { cached: 0.01, input: 0.1, output: 0.4 } })) })
     if (url.pathname === '/api/keys/me') return Response.json({ wallet: owner })
     if (url.pathname === '/api/keys/credit' && request.method === 'POST') {
       const { hash } = (await request.json()) as { hash: string }
@@ -90,6 +90,22 @@ test('a tree swarm is created with its root, triage and reviewed seed, and lists
   assert.deepEqual(listed.map((row) => [row.id, row.form]), [[id, 'tree']])
   const branches = await Operations.branches(w.env, { swarm: id })
   assert.deepEqual([branches.ok, !branches.ok && branches.status], [false, 410])
+})
+
+test("a tree swarm ignores a rider's model fields: its orchestrator is Fable 5.2 and its runs may use any listed OpenAI, Anthropic or Google model", async (t) => {
+  const { w } = setup()
+  t.after(async () => {
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  const made = await Operations.create(w.env, { form: 'tree', goal: 'Settle whether P equals NP, checked in Lean.', harness: 'codex', model: Setup.flash, subagents: { harnesses: ['codex'], models: [Setup.flash] }, template: 'custom', title: 'P vs NP' }, ana)
+  assert.ok(made.ok, JSON.stringify(made))
+  const row = await Store.find(w.env, made.value.id)
+  const chosen = JSON.parse(String(row?.setup)) as Setup.Setup
+  assert.deepEqual([chosen.template, chosen.harness, chosen.model], ['board', 'claude', Setup.fable])
+  assert.deepEqual(chosen.subagents, { harnesses: ['claude', 'codex'], models: [Setup.fable, 'vercel/google/gemini-3.8-flash', Setup.sol] })
+  const agent = await Operations.create(w.env, { goal: 'An agent swarm still checks its fields.', model: Setup.flash, template: 'cheap', title: 'Agent' }, ana)
+  assert.deepEqual([agent.ok, !agent.ok && agent.status], [false, 400])
 })
 
 test('a seed created as reviewed shows no statement under review', async (t) => {

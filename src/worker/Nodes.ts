@@ -32,7 +32,9 @@ export const schema = [
 
 export type Event = Tree.Delta['event']
 
-export type Spawned = { agent: string; at: number; sub: number; turn?: string }
+export type Pick = { harness: string; model: string; spent: string; turn?: string; why: string | null }
+
+export type Spawned = { agent: string; at: number; pick?: Pick; sub: number; turn?: string }
 
 export type Live = { budget: string; spent: string }
 
@@ -781,7 +783,7 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
     const last = open ?? (checking ? runs.at(-1) : undefined)
     const spawned = last ? self.kv.get<Spawned>('run:' + last.id) : undefined
     const run: Tree.Run | null = last
-      ? { agent: spawned?.sub ?? null, attempt: last.attempts, budget: Flow.usd(bucket), checking, doing: null, k: kOf(last.id), since: spawned?.at ?? 0, spent: Flow.usd(live), task: last.id, until: last.untilMs ?? 0 }
+      ? { agent: spawned?.sub ?? null, attempt: last.attempts, budget: Flow.usd(bucket), checking, doing: null, k: kOf(last.id), model: spawned?.pick?.model ?? null, since: spawned?.at ?? 0, spent: Flow.usd(live), task: last.id, until: last.untilMs ?? 0 }
       : null
     const parsed = parse(task.spec)
     const childIds = (kids.get(nid) ?? []).sort()

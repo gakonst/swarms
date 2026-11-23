@@ -147,16 +147,26 @@ function worker(self: Swarm) {
   return { harness: chosen?.harness ?? Setup.presets.cheap.harness, model: chosen?.model ?? Setup.presets.cheap.model }
 }
 
+function boarded(self: Swarm) {
+  return setup(self)?.template === 'board'
+}
+
 export async function dispatcher(self: Swarm, swarm: string): Promise<Gateway.Result<string>> {
   const kept = self.kv.get<Dispatcher>('dispatcher')
   if (kept && kept.runs < rotateAfter) return { ok: true, value: kept.id }
   if (kept && [...runtime(self).aborts.keys()].some((run) => self.kv.get<Nodes.Spawned>('run:' + run)?.agent === kept.id)) return { ok: true, value: kept.id }
   const chosen = setup(self)
-  const made = await Gateway.agent(self.env, swarm, {
-    instructions: self.kv.get<string>('dispatcherText') ?? Persona.dispatcher(),
-    name: 'dispatcher',
-    setup: { ...(chosen ?? { most: '0', step: '0', steps: {}, template: 'cheap' as const }), harness: 'codex', model: Setup.flash, subagents: { harnesses: [worker(self).harness], models: [worker(self).model] } },
-  })
+  const made = await Gateway.agent(
+    self.env,
+    swarm,
+    chosen?.template === 'board'
+      ? { instructions: self.kv.get<string>('dispatcherText') ?? Persona.orchestrator(), name: 'orchestrator', setup: chosen }
+      : {
+          instructions: self.kv.get<string>('dispatcherText') ?? Persona.dispatcher(),
+          name: 'dispatcher',
+          setup: { ...(chosen ?? { most: '0', step: '0', steps: {}, template: 'cheap' as const }), harness: 'codex', model: Setup.flash, subagents: { harnesses: [worker(self).harness], models: [worker(self).model] } },
+        },
+  )
   if (!made.ok) return made
   self.kv.put('dispatcher', { at: Date.now(), id: made.value.id, runs: 0 } satisfies Dispatcher)
   return { ok: true, value: made.value.id }
@@ -202,6 +212,51 @@ async function spawn(self: Swarm, swarm: string, agent: string, args: Gateway.Sp
     await wait(self, timing.listMs, signal)
   }
   return { detail: 'The dispatcher did not start the subagent in time.', ok: false, status: 504 }
+}
+
+export function picked(answer: string | undefined, models: readonly string[], fallback: string): Omit<Nodes.Pick, 'spent' | 'turn'> {
+  const value = json(answer)
+  const asked = typeof value?.['model'] === 'string' && models.includes(value['model']) ? value['model'] : undefined
+  const model = asked ?? fallback
+  const harness = asked && Setup.harnesses.some((one) => one === value?.['harness']) ? String(value?.['harness']) : Setup.harnessOf(model)
+  return { harness, model, why: asked ? text(value?.['why'], 200) : null }
+}
+
+async function ask(self: Swarm, swarm: string, agent: string, question: string, id: string, signal: AbortSignal): Promise<{ spent: bigint; text: string; turn?: string } | undefined> {
+  const side = await Gateway.side(self.env, swarm, agent, question)
+  if (side.ok) return { spent: Flow.micro(side.value.usage?.estimated_cost?.total_usd), text: side.value.text }
+  if (side.status !== 409) return undefined
+  follow(self, swarm, agent)
+  const sent = await Gateway.prompt(self.env, swarm, agent, { id, prompt: question, steer: false })
+  if (!sent.ok && sent.status !== 409) return undefined
+  const until = Date.now() + timing.spawnMs
+  while (Date.now() < until && !signal.aborted) {
+    const report = await Gateway.turn(self.env, swarm, agent, id)
+    if (report.ok && !['queued', 'running'].includes(report.value.status)) return { spent: Flow.micro(report.value.spent_usd), text: report.value.ok?.message ?? '' }
+    await wait(self, timing.listMs, signal)
+  }
+  return { spent: 0n, text: '', turn: id }
+}
+
+async function pick(self: Swarm, swarm: string, agent: string, task: Work.Task, input: { budget: bigint; nid: string; notes: string[]; node: Work.Task | undefined }, signal: AbortSignal): Promise<Nodes.Pick> {
+  const kept = self.kv.get<Nodes.Pick>('picked:' + task.id)
+  if (kept) return kept
+  const chosen = setup(self)
+  const prices = await Gateway.prices(self.env)
+  const models = (chosen?.subagents?.models ?? []).filter((model) => !prices || prices.has(model))
+  const parsed = Nodes.parse(input.node?.spec ?? '')
+  const question = Persona.pick({
+    budget: Memo.decimal(input.budget).replace(/\.?0+$/, ''),
+    models: models.map((id) => ({ id, step: chosen?.steps[id] ? Memo.decimal(BigInt(chosen.steps[id])) : undefined })),
+    nid: input.nid,
+    notes: input.notes,
+    spec: parsed.words,
+    title: parsed.title,
+  })
+  const answer = await ask(self, swarm, agent, question, 'pick-' + task.id + '-' + task.attempts, signal)
+  const made: Nodes.Pick = { ...picked(answer?.text, models, chosen?.model ?? Setup.fable), spent: Memo.decimal(answer?.spent ?? 0n), ...(answer?.turn ? { turn: answer.turn } : {}) }
+  self.kv.put('picked:' + task.id, made)
+  return made
 }
 
 async function strays(self: Swarm, swarm: string, agent: string) {
@@ -282,14 +337,18 @@ async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promis
       const listed = await list(self, swarm, agent.value, true)
       const adopted = listed.ok ? listed.value.find((sub) => sub.role === role && sub.parent_agent_id === null) : undefined
       const prompted = self.kv.get<string>('prompted:' + task.id)
-      if (adopted) spawned = { agent: agent.value, at: Date.now(), sub: adopted.agent_id, ...(prompted ? { turn: prompted } : {}) }
+      const kept = self.kv.get<Nodes.Pick>('picked:' + task.id)
+      if (adopted) spawned = { agent: agent.value, at: Date.now(), sub: adopted.agent_id, ...(prompted ? { turn: prompted } : {}), ...(kept ? { pick: kept } : {}) }
       else {
         const steers = triaging ? [] : await Nodes.unheeded(self, nid)
         const words = triaging ? await Triage.task(self, found) : await brief(self, found, nid, steers.map((steer) => steer.body))
-        const args: Gateway.Spawn = { budget_usd: Flow.number(budget), ...worker(self), output_schema: triaging ? Triage.output : output, role, task: words }
+        const chosen = boarded(self) ? await pick(self, swarm, agent.value, task, { budget, nid, node: found.nodes.get(nid), notes: steers.map((steer) => steer.body) }, abort.signal) : undefined
+        const left = budget - Memo.units(chosen?.spent ?? '0')
+        if (left <= 0n) return { failed: 'Picking its model spent the money committed to this run.' }
+        const args: Gateway.Spawn = { budget_usd: Flow.number(left), ...(chosen ? { harness: chosen.harness, model: chosen.model } : worker(self)), output_schema: triaging ? Triage.output : output, role, task: words }
         const made = await spawn(self, swarm, agent.value, args, task.id, lease.claim, abort.signal)
         if (!made.ok) return await refusal(self, task, lease, made)
-        spawned = { agent: agent.value, at: Date.now(), sub: made.value.sub, ...(made.value.turn ? { turn: made.value.turn } : {}) }
+        spawned = { agent: agent.value, at: Date.now(), sub: made.value.sub, ...(made.value.turn ? { turn: made.value.turn } : {}), ...(chosen ? { pick: chosen } : {}) }
         budgeted = !made.value.turn
         counted(self, agent.value)
         const last = steers.at(-1)
@@ -298,11 +357,11 @@ async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promis
       track(self, spawned, task)
       self.kv.put('run:' + task.id, spawned)
       if (!budgeted) {
-        const set = await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(budget))
+        const set = await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(budget - Memo.units(spawned.pick?.spent ?? '0')))
         if (!set.ok && set.status === 402) return await refusal(self, task, lease, set)
       }
       await strays(self, swarm, spawned.agent)
-      Nodes.emit(self, nid, 'started', 'Run ' + k + ' started')
+      Nodes.emit(self, nid, 'started', 'Run ' + k + ' started' + (spawned.pick ? ' on ' + Setup.name(spawned.pick.model) : ''))
     }
     self.kv.delete('paid:' + task.id)
     self.kv.delete('rest:' + task.id)
@@ -571,9 +630,13 @@ async function charge(self: Swarm) {
 }
 
 export async function dispatched(self: Swarm, swarm: string, spawned: Nodes.Spawned) {
-  if (!spawned.turn) return 0n
-  const report = await Gateway.turn(self.env, swarm, spawned.agent, spawned.turn)
-  return report.ok ? Flow.micro(report.value.spent_usd) : 0n
+  let total = Memo.units(spawned.pick?.spent ?? '0')
+  for (const turn of [spawned.turn, spawned.pick?.turn]) {
+    if (!turn) continue
+    const report = await Gateway.turn(self.env, swarm, spawned.agent, turn)
+    if (report.ok) total += Flow.micro(report.value.spent_usd)
+  }
+  return total
 }
 
 export async function spentOf(self: Swarm, run: string, close = false): Promise<bigint | null> {
@@ -581,8 +644,9 @@ export async function spentOf(self: Swarm, run: string, close = false): Promise<
   const swarm = Nodes.swarm(self)
   if (!spawned) {
     const prompted = self.kv.get<string>('prompted:' + run)
+    const pick = self.kv.get<Nodes.Pick>('picked:' + run)
     const agent = self.kv.get<Dispatcher>('dispatcher')?.id
-    return prompted && agent ? dispatched(self, swarm, { agent, at: 0, sub: 0, turn: prompted }) : 0n
+    return (prompted || pick) && agent ? dispatched(self, swarm, { agent, at: 0, sub: 0, ...(prompted ? { turn: prompted } : {}), ...(pick ? { pick } : {}) }) : 0n
   }
   const listed = await list(self, swarm, spawned.agent, true)
   if (!listed.ok) return null
