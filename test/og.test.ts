@@ -292,3 +292,10 @@ test('proofs and dead ends are announced with links to their node, and nothing e
   assert.equal(Share.announce('https://swarms.example', 'pnp', 'Does P = NP?', { at: 9, event: 'proven', node: lemmas[3]!, seq: 4, text: '' }), undefined)
 })
 
+
+test('a statement nobody has reviewed says so on its card and frame', async () => {
+  const value = { ...lemmas[3]!, review: true }
+  assert.match(Film.svg(Cards.node(fonts, Cards.leaf('pnp', 'Does P = NP?', value), 1200, 630), true), /Proposed · statement under review/)
+  assert.notEqual(Share.version(Share.node('pnp', 'Does P = NP?', value)), Share.version(Share.node('pnp', 'Does P = NP?', lemmas[3]!)))
+})
+

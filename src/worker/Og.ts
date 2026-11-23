@@ -57,7 +57,7 @@ export function parse(path: string): { key: string; name: Name } | undefined {
 type View = { headline: Tree.Headline; nodes: Tree.Node[] }
 
 type Reads = {
-  node?: (env: Cloudflare.Env, input: { node: string; swarm: string }) => Promise<Problem.Result<Tree.Node>>
+  node?: (env: Cloudflare.Env, input: { node: string; swarm: string }) => Promise<Problem.Result<Tree.Node & { review?: boolean }>>
   tree?: (env: Cloudflare.Env, input: { depth?: number; swarm: string }) => Promise<Problem.Result<View>>
 }
 

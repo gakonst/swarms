@@ -66,7 +66,7 @@ export function tree(swarm: string, view: { headline: Tree.Headline; nodes: read
   return { item: Cards.grove(swarm, view), kind: 'tree', swarm }
 }
 
-export function node(swarm: string, title: string, value: Tree.Node): Subject {
+export function node(swarm: string, title: string, value: Tree.Node & { review?: boolean }): Subject {
   return { item: Cards.leaf(swarm, title, value), kind: 'node', node: value.id, swarm }
 }
 

@@ -293,7 +293,7 @@ export function tree(origin: string, swarm: string, view: View, request?: URL, b
   }, 200, request, bot)
 }
 
-export function node(origin: string, swarm: string, title: string, value: Tree.Node, request?: URL, bot?: string) {
+export function node(origin: string, swarm: string, title: string, value: Tree.Node & { review?: boolean }, request?: URL, bot?: string) {
   const base = rooted(origin) + shell(request)
   const item = Cards.leaf(swarm, title, value)
   const id = encodeURIComponent(swarm)
@@ -315,7 +315,7 @@ export function node(origin: string, swarm: string, title: string, value: Tree.N
       ${action}
     </header>
     <div class="feed">
-      <p class="badge" data-state="${states[value.status]}"><i class="mark-node" data-state="${states[value.status]}"></i>${attribute(item.checked ? 'Proven · checked by Lean' : Cards.words[value.status])}</p>
+      <p class="badge" data-state="${states[value.status]}"><i class="mark-node" data-state="${states[value.status]}"></i>${attribute(item.checked ? 'Proven · checked by Lean' : Cards.words[value.status])}</p>${item.review ? '<p class="badge" data-state="open">Statement under review</p>' : ''}
       <h1>${attribute(value.title)}</h1>
       <p class="why">${attribute(item.why)}</p>
       ${under ? `<p class="facts">Under it: ${attribute(under)}</p>` : ''}

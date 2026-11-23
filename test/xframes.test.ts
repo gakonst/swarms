@@ -206,3 +206,10 @@ test('a node frame shows its status, why, money and the checked record, and shar
   for (const page of [proven, open]) for (const found of page.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(found[1] ?? ''))
 })
 
+
+test('a node frame marks a statement under review', async () => {
+  const html = await XFrames.node('https://swarms.example', 'pnp', 'Does P = NP?', { ...lemmas[3]!, review: true }).text()
+  assert.match(html, />Statement under review</)
+  assert.doesNotMatch(await XFrames.node('https://swarms.example', 'pnp', 'Does P = NP?', lemmas[3]!).text(), /under review/)
+})
+

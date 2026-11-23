@@ -400,7 +400,7 @@ export type Cell = 'dead' | 'flight' | 'open' | 'proven'
 
 export type Grove = { cells: Cell[]; deadEnds: number; frontier: number; id: string; inFlight: number; perProven: number | null; proven: number; ridden: number; spent: number; title: string }
 
-export type Leaf = { checked: string | null; counts: Record<Tree.Status, number>; form: Tree.Form; id: string; ridden: number; riders: number; spent: number; status: Tree.Status; swarm: string; title: string; why: string; working: boolean }
+export type Leaf = { checked: string | null; counts: Record<Tree.Status, number>; form: Tree.Form; id: string; review: boolean; ridden: number; riders: number; spent: number; status: Tree.Status; swarm: string; title: string; why: string; working: boolean }
 
 const ends: Record<Tree.End['kind'], string> = {
   barrier: 'Stopped by a known barrier',
@@ -453,7 +453,7 @@ export function grove(swarm: string, view: { headline: Tree.Headline; nodes: rea
   }
 }
 
-export function leaf(swarm: string, title: string, node: Tree.Node): Leaf {
+export function leaf(swarm: string, title: string, node: Tree.Node & { review?: boolean }): Leaf {
   const counts = { ...node.counts }
   counts[node.status] = Math.max(0, counts[node.status] - 1)
   return {
@@ -461,6 +461,7 @@ export function leaf(swarm: string, title: string, node: Tree.Node): Leaf {
     counts,
     form: node.form,
     id: node.id,
+    review: node.review === true,
     ridden: Number(node.money.subtree.pledged) + Number(node.money.inherited),
     riders: node.riders,
     spent: Number(node.money.subtree.spent),
@@ -587,7 +588,7 @@ export function node(fonts: Fonts, item: Leaf, width: number, height: number): S
   const right = width - margin
   const room = right - margin
   const crumb = Glyphs.wrap(fonts.mono, item.swarm, 17 * k, room * 0.55, 1)[0] ?? ''
-  const tag = badge(fonts, margin, top + 34 * k, item.status, item.checked ? 'Proven · checked by Lean' : words[item.status], k)
+  const tag = badge(fonts, margin, top + 34 * k, item.status, `${item.checked ? 'Proven · checked by Lean' : words[item.status]}${item.review ? ' · statement under review' : ''}`, k)
   const sizes = [78, 66, 56, 48].map((size) => size * k)
   let size = sizes[0] ?? 78
   let title = Glyphs.wrap(fonts.serif, item.title, size, room, 3, -0.035 * size)
