@@ -611,6 +611,20 @@ export async function start(options: Options = {}) {
     const listed = (into: Map<string, Stored> | undefined) => [...(into ?? new Map<string, Stored>())].filter(([stored]) => stored.startsWith(String(body['prefix'] ?? ''))).map(([stored, value]) => ({ key: stored, public: value.public }))
     if (path === '/v1/kv/list') return { cursor: null, entries: listed(found?.kv) }
     if (path === '/v1/bucket/list') return { cursor: null, objects: listed(found?.bucket) }
+    if (path === '/v1/git/create' && found) {
+      const repo = String(body['name'] ?? '')
+      if (!repo) throw new Problem(400, 'invalid_request', 'Name the repository.')
+      if (found.git.has(repo)) throw new Problem(409, 'conflict', `Repository ${repo} exists.`)
+      found.git.set(repo, { public: body['public'] === true })
+      return { name: repo, public: body['public'] === true }
+    }
+    if (path === '/v1/git/commit' && found) {
+      const repo = String(body['name'] ?? '')
+      if (!found.git.has(repo)) throw new Problem(404, 'not_found', `No repository ${repo}.`)
+      const sha = keccak256(stringToHex(`commit:${repo}:${found.commits.length}:${String(body['message'] ?? '')}`)).slice(2, 42)
+      found.commits.push({ branch: String(body['branch'] ?? 'main'), date: new Date().toISOString(), message: String(body['message'] ?? ''), parents: [], sha })
+      return { sha }
+    }
     if (path === '/v1/git/list') return { repos: [...(found?.git ?? [])].map(([repo, stored]) => ({ name: repo, public: stored.public })) }
     const shown = /^\/v1\/(kv|bucket|git)\/visibility$/.exec(path)
     if (shown && found) {

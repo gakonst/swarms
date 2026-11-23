@@ -65,7 +65,13 @@ export function swarm(dev: Dev, id: string) {
     assert.equal(units(health.held), units(health.pledged) - units(health.spent), at + ': buckets do not sum to pledges less spend')
     const drift = mock.left - (units(health.held) - units(health.live))
     drifts.push({ at, drift: Chain.decimal(drift), first: Chain.decimal(first ?? 0n), live: health.live, mock: Chain.decimal(mock.left) })
-    assert.ok((drift < 0n ? -drift : drift) <= tolerance, `${at}: sum(flows) less live spend is $${Chain.decimal(units(health.held) - units(health.live))} but the gateway credit has $${Chain.decimal(mock.left)}`)
+    if ((drift < 0n ? -drift : drift) > tolerance) {
+      const view = await tree()
+      const told = new Map<string, string>()
+      for (const each of view.nodes) for (const run of (await node(each.id)).runs ?? []) told.set(`n:${each.id}${'#'}${run.k}`, run.spent)
+      const apart = subagents().filter((each) => each.parent_agent_id === null && units(told.get(each.role) ?? '0') !== units(each.spent_usd)).map((each) => `${each.role} ${each.status.state}: gateway $${each.spent_usd}, Swarms $${told.get(each.role) ?? 'none'}`)
+      assert.fail(`${at}: sum(flows) less live spend is $${Chain.decimal(units(health.held) - units(health.live))} but the gateway credit has $${Chain.decimal(mock.left)}; runs apart: ${apart.join('; ')}`)
+    }
     assert.equal(health.ok, true, at + ': ' + JSON.stringify(health))
     return { drift, health, mock }
   }
