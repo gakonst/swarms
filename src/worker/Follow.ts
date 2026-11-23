@@ -9,7 +9,7 @@ import * as Clock from './Clock.ts'
 import * as Money from './Money.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
 
-function frame(block: string) {
+export function frame(block: string) {
   const lines = block.split('\n')
   const data = lines
     .filter((line) => line.startsWith('data:'))

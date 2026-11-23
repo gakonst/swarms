@@ -226,11 +226,27 @@ export function emit(self: Swarm, nid: string, event: Event, text: string) {
         if (!node) return
         const delta: Tree.Delta = { at, event, node, seq, text: redact(text) }
         if (told) await Telegram.announce(self.env, swarm(self), shown.nodes.get(root)?.title ?? '', delta).catch((error: unknown) => console.error('Announcing a delta failed', error))
-        if (self.listened()) Chat.broadcast(self, { delta, type: 'delta' })
-        const frame = new TextEncoder().encode('id: ' + seq + '\ndata: ' + JSON.stringify(delta) + '\n\n')
-        for (const writer of [...self.treeWatchers]) await writer.write(frame).catch(() => self.treeWatchers.delete(writer))
+        await send(self, delta, true)
       })
       .catch((error: unknown) => console.error('Sending a tree delta failed', error)),
+  )
+}
+
+async function send(self: Swarm, delta: Tree.Delta, stored: boolean) {
+  if (self.listened()) Chat.broadcast(self, { delta, type: 'delta' })
+  const frame = new TextEncoder().encode((stored ? 'id: ' + delta.seq + '\n' : '') + 'data: ' + JSON.stringify(delta) + '\n\n')
+  for (const writer of [...self.treeWatchers]) await writer.write(frame).catch(() => self.treeWatchers.delete(writer))
+}
+
+export function doing(self: Swarm, nid: string) {
+  if (!self.listened() && !self.treeWatchers.size) return
+  self.ctx.waitUntil(
+    view(self)
+      .then(async (shown) => {
+        const node = shown.nodes.get(nid)
+        if (node) await send(self, { at: node.run?.doing?.at ?? Date.now(), event: 'doing', node, seq: shown.seq, text: node.run?.doing?.text ?? '' }, false)
+      })
+      .catch((error: unknown) => console.error('Sending what a run is doing failed', error)),
   )
 }
 
@@ -713,11 +729,21 @@ export type View = { nodes: Map<string, Tree.Node>; seq: number; state: State }
 export async function view(self: Swarm): Promise<View> {
   const version = self.treeVersion
   const kept = self.treeView
-  if (kept && kept.version === version) return kept.value
+  if (kept && kept.version === version) return busy(self, kept.value)
   const found = await state(self)
   const value = fold(self, found, await handles(self, found))
   if (self.treeVersion === version) self.treeView = { value, version }
-  return value
+  return busy(self, value)
+}
+
+function busy(self: Swarm, value: View): View {
+  if (!self.treeDoing.size) return value
+  const nodes = new Map(value.nodes)
+  for (const [nid, node] of value.nodes) {
+    const doing = node.run && !node.run.checking ? self.treeDoing.get(node.run.task) : undefined
+    if (node.run && doing) nodes.set(nid, { ...node, run: { ...node.run, doing } })
+  }
+  return { ...value, nodes }
 }
 
 async function handles(self: Swarm, found: State) {
@@ -755,7 +781,7 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
     const last = open ?? (checking ? runs.at(-1) : undefined)
     const spawned = last ? self.kv.get<Spawned>('run:' + last.id) : undefined
     const run: Tree.Run | null = last
-      ? { agent: spawned?.sub ?? null, attempt: last.attempts, budget: Flow.usd(bucket), checking, k: kOf(last.id), since: spawned?.at ?? 0, spent: Flow.usd(live), task: last.id, until: last.untilMs ?? 0 }
+      ? { agent: spawned?.sub ?? null, attempt: last.attempts, budget: Flow.usd(bucket), checking, doing: null, k: kOf(last.id), since: spawned?.at ?? 0, spent: Flow.usd(live), task: last.id, until: last.untilMs ?? 0 }
       : null
     const parsed = parse(task.spec)
     const childIds = (kids.get(nid) ?? []).sort()

@@ -117,7 +117,7 @@ const treeNode = object({
   proof: nullable(check),
   review: { description: 'The statement is seeded and still under human review.', type: 'boolean' },
   riders: integer,
-  run: nullable(object({ agent: nullable(integer), attempt: integer, budget: dollars, checking: { type: 'boolean' }, k: integer, since: time, spent: dollars, task: string, until: time })),
+  run: nullable(object({ agent: nullable(integer), attempt: integer, budget: dollars, checking: { type: 'boolean' }, doing: nullable(object({ at: time, text: string }, "The run's latest step, its newest reasoning summary or tool call in one line, while it works.")), k: integer, since: time, spent: dollars, task: string, until: time })),
   spec: string,
   statement: nullable(string),
   status: statuses,
@@ -125,7 +125,7 @@ const treeNode = object({
   updatedAt: time,
 })
 
-const delta = object({ at: time, event: { enum: ['posted', 'funded', 'started', 'progress', 'checking', 'proven', 'ended', 'steered', 'moved'], type: 'string' }, node: treeNode, seq: integer, text: string })
+const delta = object({ at: time, event: { enum: ['posted', 'funded', 'started', 'progress', 'checking', 'proven', 'ended', 'steered', 'moved', 'doing'], type: 'string' }, node: treeNode, seq: integer, text: string })
 
 const schemas = {
   Check: check,

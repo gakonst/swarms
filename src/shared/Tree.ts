@@ -64,7 +64,7 @@ export type Node = {
   createdAt: number
   updatedAt: number
 }
-export type Delta = { seq: number; at: number; node: Node; event: 'posted' | 'funded' | 'started' | 'progress' | 'checking' | 'proven' | 'ended' | 'steered' | 'moved'; text: string }
+export type Delta = { seq: number; at: number; node: Node; event: 'posted' | 'funded' | 'started' | 'progress' | 'checking' | 'proven' | 'ended' | 'steered' | 'moved' | 'doing'; text: string }
 export type Headline = { proven: number; frontier: number; inFlight: number; deadEnds: number; spent: Usd; pledged: Usd; perProven: Usd | null; lastProvenAt: number | null }
 export type Burn = { at: number; proven: number; deadEnds: number; spent: Usd }[]
 
