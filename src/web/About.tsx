@@ -1,5 +1,8 @@
 import { Go } from './Home.tsx'
 
+/** Paradigm's essay on riding swarms. */
+const essay = 'https://www.paradigm.xyz/writing/swarms'
+
 const steps = [
   ['Ride a lemma, a program or the whole swarm', 'Your dollars go to that part of the tree. Riding the root rides everything under it.'],
   ['Money flows down', "A program's money goes to the lemmas under it that can be worked now. A lemma runs on its own riders' money first."],
@@ -34,6 +37,9 @@ export function About() {
         <h2 id="steps-title">How it works</h2>
         <div className="how-main">
           <p className="how-lead">A swarm is one tree of work on a hard problem: the goal at the root, the programs that attack it, and the lemmas each program needs. Riders put in dollars and ideas, the swarm's workers do the work, and Lean decides what is proven.</p>
+          <p className="fine">
+            Read <a href={essay}>Effective Swarm Riding for Engineers</a> on Paradigm.
+          </p>
           <ol className="how-creed">
             {steps.map(([title, text], index) => (
               <li key={title}>

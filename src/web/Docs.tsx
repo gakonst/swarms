@@ -3,6 +3,8 @@ import { type ReactNode, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import * as Site from '../shared/Site.ts'
 
+const essay = 'https://www.paradigm.xyz/writing/swarms'
+
 const tools = [
   ['swarms_list', 'Swarms with their status and money. Filter by status.'],
   ['swarm_get', 'One swarm: its goal, money and where it stands.'],
@@ -142,6 +144,9 @@ export function Docs(props: { config: Config | undefined }) {
             <a className="btn btn-medium" href={Site.at('/openapi.json')} rel="noreferrer" target="_blank">
               openapi.json
             </a>
+          </p>
+          <p className="fine">
+            Why swarms, and how to ride one well: <a href={essay}>Effective Swarm Riding for Engineers</a> on Paradigm.
           </p>
         </div>
       </section>

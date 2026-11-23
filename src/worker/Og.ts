@@ -70,16 +70,16 @@ export async function grove(env: Cloudflare.Env, swarm: string) {
 
 export async function leaf(env: Cloudflare.Env, swarm: string, nid: string) {
   if (!reads.node) return undefined
-  const [found, root] = await Promise.all([reads.node(env, { node: nid, swarm }), nid === 'root' ? undefined : reads.node(env, { node: 'root', swarm })])
+  const [found, root, view] = await Promise.all([reads.node(env, { node: nid, swarm }), nid === 'root' ? undefined : reads.node(env, { node: 'root', swarm }), grove(env, swarm).catch(() => undefined)])
   if (!found.ok) return undefined
-  return { node: found.value, title: nid === 'root' ? found.value.title : root?.ok ? root.value.title : 'Swarm' }
+  return { node: found.value, title: nid === 'root' ? found.value.title : root?.ok ? root.value.title : 'Swarm', view }
 }
 
 async function tree(env: Cloudflare.Env, key: string): Promise<Share.Subject | undefined> {
   const [swarm = '', , nid] = key.slice(2).split('/')
   if (nid) {
     const found = await leaf(env, swarm, nid)
-    return found && Share.node(swarm, found.title, found.node)
+    return found && Share.node(swarm, found.title, found.node, found.view)
   }
   const found = await grove(env, swarm)
   return found && Share.tree(swarm, found)
@@ -143,7 +143,7 @@ function scene(fonts: Cards.Fonts, subject: Share.Subject, width: number, height
   if (subject.kind === 'tree') return Cards.tree(fonts, subject.item, width, height)
   if (subject.kind === 'node') return Cards.node(fonts, subject.item, width, height)
   if (subject.kind === 'swarm') return Cards.swarm(fonts, subject.item, width, height)
-  if (subject.kind === 'idea') return Cards.swarm(fonts, subject.item, width, height, 'Start it')
+  if (subject.kind === 'idea') return Cards.swarm(fonts, subject.item, width, height)
   if (subject.kind === 'home') return Cards.home(fonts, subject.field, width, height)
   if (subject.kind === 'ideas') return Cards.ideas(fonts, subject.field, width, height)
   if (subject.kind === 'new') return Cards.start(fonts, subject.field, width, height)
@@ -155,7 +155,7 @@ async function render(found: Share.Subject, name: Name): Promise<Made | undefine
   if (name === 'video.mp4' && !Share.moving(found)) return undefined
   const tools = await ready()
   const version = Share.version(found)
-  if (name === 'video.mp4') return { at: Date.now(), body: await Film.film(tools.kit, scene(tools.fonts, found, Share.poster.width, Share.poster.height)), lasting: true, type: 'video/mp4', version }
+  if (name === 'video.mp4') return { at: Date.now(), body: await Film.film(tools.kit, scene(tools.fonts, found, Share.video.width, Share.video.height)), lasting: true, type: 'video/mp4', version }
   const size = name === 'card.png' ? Share.card : Share.poster
   return { at: Date.now(), body: await Film.picture(tools.kit, scene(tools.fonts, found, size.width, size.height)), lasting: true, type: 'image/png', version }
 }
@@ -264,7 +264,7 @@ export function frame(env: Cloudflare.Env, id: string | undefined, nid?: string)
     }
     if (nid !== undefined) {
       const found = /^[a-z0-9]{1,16}$/.test(nid) ? await leaf(env, id, nid) : undefined
-      return { response: found ? XFrames.node(site, id, found.title, found.node, url, env.TELEGRAM_BOT) : XFrames.lost(site, url, env.TELEGRAM_BOT), whole: Promise.resolve(!!found) }
+      return { response: found ? XFrames.node(site, id, found.title, found.node, url, env.TELEGRAM_BOT, found.view) : XFrames.lost(site, url, env.TELEGRAM_BOT), whole: Promise.resolve(!!found) }
     }
     const grown = await grove(env, id)
     if (grown) return { response: XFrames.tree(site, id, grown, url, env.TELEGRAM_BOT), whole: Promise.resolve(true) }

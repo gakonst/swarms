@@ -8,6 +8,7 @@ A swarm is one tree of work on a hard problem: the goal at the root, the program
 - API and MCP docs: https://swarms.tempo-dev.workers.dev/docs
 - OpenAPI: https://swarms.tempo-dev.workers.dev/openapi.json
 - MCP server: https://swarms.tempo-dev.workers.dev/mcp
+- Essay: [Effective Swarm Riding for Engineers](https://www.paradigm.xyz/writing/swarms) on Paradigm
 
 ## How it works
 
@@ -20,7 +21,7 @@ A swarm is one tree of work on a hard problem: the goal at the root, the program
 
 Swarms holds no funds and no keys: the gateway holds the money and pays for the workers' runs. Money does not go back to a wallet yet: it stays in the swarm as the rider's, to move. Proven means Lean accepted the proof of the frozen statement, not that the statement says what its title says; statements nobody has reviewed yet are marked under review. There are no tokens and no returns.
 
-Every swarm and node also plays as an X card (`/x/s/<id>`, `/x/s/<id>/n/<nid>`) and in Telegram (@TempoSwarmsBot), and proofs and dead ends can be announced to a Telegram channel.
+Link previews follow Paradigm's own card: a flat grey page, the title in Paradigm Serif, a few small numbers (proven, in flight, dead ends, dollars spent), and the swarm's tree drawn as one spiral of "+" marks, one per node, green once Lean has checked it. Every swarm and node also plays as an X card (`/x/s/<id>`, `/x/s/<id>/n/<nid>`) and in Telegram (@TempoSwarmsBot), and proofs and dead ends can be announced to a Telegram channel.
 
 Swarms started before the tree, each one agent in one long thread, stay readable as earlier swarms.
 

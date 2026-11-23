@@ -64,6 +64,13 @@ export function segment(canvas: Canvas, ax: number, ay: number, bx: number, by: 
   )
 }
 
+/** A "+" mark: two strokes of the given width, size pixels long, crossing at x, y. */
+export function plus(canvas: Canvas, x: number, y: number, size: number, stroke: number, color: Color, alpha = 1) {
+  const half = (size - 1) / 2
+  segment(canvas, x - half, y, x + half, y, stroke, color, alpha)
+  shade(canvas, x - stroke, y - half - 1, x + stroke, y + half + 1, (px, py) => (Math.abs(py - y) < stroke / 2 + 0.5 ? 0 : clamp(stroke / 2 + 0.5 - Math.hypot(px - x, Math.max(0, Math.abs(py - y) - half)))), color, alpha)
+}
+
 export function bar(canvas: Canvas, left: number, top: number, wide: number, high: number, color: Color, alpha = 1) {
   if (wide <= 0) return
   const radius = Math.min(high, wide) / 2

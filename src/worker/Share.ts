@@ -6,7 +6,7 @@ import * as Status from '../shared/Status.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Cards from './Cards.ts'
 
-export const look = 2
+export const look = 3
 
 export type Subject =
   | { field: Cards.Field; kind: 'home' }
@@ -32,7 +32,11 @@ export type Share = {
 
 export const card = { height: 630, width: 1200 }
 
-export const poster = { height: 720, width: 1280 }
+/** X's large image: twitter:image of a player card. */
+export const poster = { height: 675, width: 1200 }
+
+/** The og:video film. */
+export const video = { height: 720, width: 1280 }
 
 export const player = { height: 450, width: 800 }
 
@@ -66,8 +70,8 @@ export function tree(swarm: string, view: { headline: Tree.Headline; nodes: read
   return { item: Cards.grove(swarm, view), kind: 'tree', swarm }
 }
 
-export function node(swarm: string, title: string, value: Tree.Node & { review?: boolean }): Subject {
-  return { item: Cards.leaf(swarm, title, value), kind: 'node', node: value.id, swarm }
+export function node(swarm: string, title: string, value: Tree.Node & { review?: boolean }, view?: { nodes: readonly Tree.Node[] }): Subject {
+  return { item: Cards.leaf(swarm, title, value, view), kind: 'node', node: value.id, swarm }
 }
 
 export function idea(value: Problem): Subject {
@@ -272,8 +276,8 @@ export function tags(share: Share) {
           meta('property', 'og:video', share.video),
           meta('property', 'og:video:secure_url', share.video),
           meta('property', 'og:video:type', 'video/mp4'),
-          meta('property', 'og:video:width', poster.width),
-          meta('property', 'og:video:height', poster.height),
+          meta('property', 'og:video:width', video.width),
+          meta('property', 'og:video:height', video.height),
         ]
       : []),
     meta('name', 'twitter:card', share.player ? 'player' : 'summary_large_image'),

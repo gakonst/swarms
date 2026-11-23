@@ -81,6 +81,13 @@ test('a swarm shares its own title, numbers, card, poster, video and X player', 
   assert.match(html, /<link rel="alternate" type="application\/json\+oembed" href="https:\/\/swarms\.example\/oembed\?url=https%3A%2F%2Fswarms\.example%2Fs%2Fabc123"/)
 })
 
+test('X gets a 1200x675 poster and the film stays 1280x720', () => {
+  assert.deepEqual(Share.card, { height: 630, width: 1200 })
+  assert.deepEqual(Share.poster, { height: 675, width: 1200 })
+  const html = Share.tags(Share.share('https://swarms.example', Share.swarm(swarm)))
+  assert.match(html, /<meta property="og:video:width" content="1280"><meta property="og:video:height" content="720">/)
+})
+
 test('pages without a moving picture share a large image and no player', () => {
   const html = Share.tags(Share.share('https://swarms.example', Share.plain('docs')))
   assert.match(html, /<meta name="twitter:card" content="summary_large_image">/)
@@ -123,11 +130,43 @@ test('text wraps inside its width and ends with an ellipsis when it runs out of 
 
 test('cards escape what people wrote', () => {
   const scene = Cards.swarm(fonts, Cards.item(swarm), 1200, 630)
-  const svg = Film.svg(scene, true)
+  const svg = Film.svg(scene)
   assert.doesNotMatch(svg, /<Spark>|<muse_decode_layer>/)
   assert.match(svg, /&lt;Spark&gt;/)
-  assert.ok(scene.lines.length > 0)
-  assert.ok(scene.gauge && scene.gauge.fill > 0 && scene.gauge.fill < 0.05)
+  assert.match(svg, /\$80\.00 ridden · 2 riders/)
+  assert.ok(scene.marks.length > 40)
+})
+
+const cards = () => {
+  const field = Share.field([swarm])
+  return [
+    Cards.swarm(fonts, Cards.item(swarm), 1200, 630),
+    Cards.swarm(fonts, Cards.idea({ hint: 'x', id: 'port-to-rust', title: 'Port a C library to safe Rust' } as never), 1200, 630),
+    Cards.home(fonts, field, 1200, 630),
+    Cards.ideas(fonts, field, 1200, 630),
+    Cards.start(fonts, field, 1200, 630),
+    Cards.about(fonts, 1200, 630),
+    Cards.docs(fonts, 1200, 630),
+  ]
+}
+
+test('every card is a flat grey page with a black serif title at the left and no button, border or gradient', () => {
+  for (const scene of cards()) {
+    const svg = Film.svg(scene)
+    assert.match(svg, /^<svg [^>]*><rect width="1200" height="630" fill="#F6F6F6"\/>/)
+    assert.equal([...svg.matchAll(/<rect /g)].length, 1, 'one rect: the page')
+    assert.doesNotMatch(svg, /Gradient|stroke=|rx=|→|Ride it|Start it/)
+    assert.match(svg, /<text x="15\d\.\d" y="[\d.]+" font-family="Paradigm Serif" font-size="[\d.]+"[^>]* fill="#000000">/)
+    const right = scene.marks.filter((mark) => mark.x > 600)
+    assert.ok(right.length > 40, 'a drawing of marks on the right half')
+    assert.ok(right.every((mark) => mark.color === '#000000' && mark.size === 9), 'black 9 px marks')
+  }
+})
+
+test('the first frame of a film is the still card, and the marks move after it', () => {
+  const scene = Cards.home(fonts, Share.field([swarm]), 1280, 720)
+  for (const mark of scene.marks) assert.deepEqual(Film.where(scene, mark, 0), { x: Math.floor(mark.x) + 0.5, y: Math.floor(mark.y) + 0.5 })
+  assert.ok(scene.marks.some((mark) => Math.hypot(Film.where(scene, mark, 1.5).x - mark.x, Film.where(scene, mark, 1.5).y - mark.y) > 1))
 })
 
 test('a picture is a valid PNG of its canvas', async () => {
@@ -231,33 +270,58 @@ test('a tree swarm shares its headline count, never a total, with a card and an 
   assert.doesNotMatch(html, /og:video/)
 })
 
-test('the swarm card draws the count large and one square per lemma, filled when proven', () => {
+test('the swarm card draws its tree as one mark per node, coloured by how each stands, and its numbers small', () => {
   const item = Cards.grove('pnp', view)
   assert.deepEqual(item.cells, ['proven', 'dead', 'flight', 'open'])
-  const svg = Film.svg(Cards.tree(fonts, item, 1200, 630), true)
-  assert.equal([...svg.matchAll(/<rect [^>]*width="(?!1200)[^"]+" height="[^"]+" rx="[^"]+" fill="(#1a7a3c|#c8ccc2|#9fd18a|#ffffff)"/g)].length, 4)
-  assert.equal([...svg.matchAll(/fill="#1a7a3c"/g)].length, 1)
-  assert.match(svg, />1<\/text>/)
-  assert.match(svg, />proven<\/text>/)
-  assert.match(svg, /2 on the frontier/)
-  assert.match(svg, /\$3\.50 spent/)
-  assert.doesNotMatch(svg, / of \d/)
+  assert.deepEqual(item.twigs, [{ cell: 'open', up: -1 }, { cell: 'open', up: 0 }, { cell: 'proven', up: 1 }, { cell: 'dead', up: 1 }, { cell: 'flight', up: 1 }, { cell: 'open', up: 1 }])
+  const scene = Cards.tree(fonts, item, 1200, 630)
+  const drawn = scene.marks.filter((mark) => mark.x > 600)
+  assert.equal(drawn.length, nodes.length)
+  assert.deepEqual(drawn.map((mark) => mark.color).sort(), ['#000000', '#00E10A', '#999999', '#CCCCCC', '#CCCCCC', '#CCCCCC'])
+  const svg = Film.svg(scene)
+  assert.match(svg, />1 proven<\/text>/)
+  assert.match(svg, />1 in flight<\/text>/)
+  assert.match(svg, />1 dead end<\/text>/)
+  assert.match(svg, />\$3\.50 spent<\/text>/)
+  assert.doesNotMatch(svg, / of \d|Ride|→/)
+})
+
+test('a big tree still gets one mark per node, none on top of another, inside the right half', () => {
+  const many = Array.from({ length: 640 }, (_, index) => grown(`m${index}`, { status: index % 3 ? 'proposed' : 'proven' }))
+  const big = [grown('root', { children: many.map((node) => node.id), form: 'goal', parent: null }), ...many]
+  for (const size of [{ height: 630, width: 1200 }, { height: 675, width: 1200 }]) {
+    const scene = Cards.tree(fonts, Cards.grove('big', { headline: Tree.headline(big), nodes: big }), size.width, size.height)
+    const drawn = scene.marks.filter((mark) => mark.x > 600)
+    assert.equal(drawn.length, big.length)
+    assert.ok(drawn.every((mark) => mark.x > 640 && mark.x < size.width - 40 && mark.y > 40 && mark.y < size.height - 40))
+    let closest = Infinity
+    for (let a = 0; a < drawn.length; a++) for (let b = a + 1; b < drawn.length; b++) closest = Math.min(closest, Math.hypot(drawn[a]!.x - drawn[b]!.x, drawn[a]!.y - drawn[b]!.y))
+    assert.ok(closest >= 8, `marks ${closest.toFixed(1)} px apart`)
+  }
 })
 
 test('a node card says its status, why, what is under it and, when proven, the commit Lean checked', () => {
   const proven = Cards.leaf('pnp', 'Does P = NP?', lemmas[0]!)
   assert.equal(proven.checked, 'abc1234')
-  const svg = Film.svg(Cards.node(fonts, proven, 1200, 630), true)
-  assert.match(svg, /Checked by Lean · abc1234/)
+  const svg = Film.svg(Cards.node(fonts, proven, 1200, 630))
+  assert.match(svg, /Proven · checked by Lean · abc1234/)
   assert.match(svg, /Parity is not in &lt;AC0&gt; &amp; co/)
   assert.doesNotMatch(svg, /<AC0>/)
-  const dead = Film.svg(Cards.node(fonts, Cards.leaf('pnp', 'Does P = NP?', lemmas[1]!), 1200, 630), true)
-  assert.match(dead, /Kept as a dead end/)
+  const dead = Film.svg(Cards.node(fonts, Cards.leaf('pnp', 'Does P = NP?', lemmas[1]!), 1200, 630))
+  assert.match(dead, />Dead end<\/text>/)
   assert.match(dead, /Stopped by a known barrier/)
   const parent = Cards.leaf('pnp', 'Does P = NP?', program)
   assert.equal(Cards.below(parent.counts), '1 proven · 1 in flight · 1 dead end · 1 open')
-  assert.match(Film.svg(Cards.node(fonts, parent, 1200, 630), true), /Ride this program →/)
+  assert.match(Film.svg(Cards.node(fonts, parent, 1200, 630)), /Under it: 1 proven · 1 in flight · 1 dead end · 1 open/)
+  assert.doesNotMatch(Film.svg(Cards.node(fonts, parent, 1200, 630)), /Ride|→/)
   assert.equal(Cards.ask('goal'), 'Ride the whole swarm')
+  const placed = Cards.leaf('pnp', 'Does P = NP?', lemmas[2]!, view)
+  assert.equal(placed.at, 4)
+  const scene = Cards.node(fonts, placed, 1200, 630)
+  const ringed = scene.marks.filter((mark) => mark.ring)
+  assert.equal(ringed.length, 1)
+  assert.equal(ringed[0]!.color, '#000000')
+  assert.equal(scene.marks.filter((mark) => mark.x > 600).length, nodes.length)
 })
 
 test('a node page shares its own card and player, and keys map both ways', () => {
@@ -295,7 +359,8 @@ test('proofs and dead ends are announced with links to their node, and nothing e
 
 test('a statement nobody has reviewed says so on its card and frame', async () => {
   const value = { ...lemmas[3]!, review: true }
-  assert.match(Film.svg(Cards.node(fonts, Cards.leaf('pnp', 'Does P = NP?', value), 1200, 630), true), /Proposed · statement under review/)
+  assert.match(Film.svg(Cards.node(fonts, Cards.leaf('pnp', 'Does P = NP?', value), 1200, 630)), />Statement under review<\/text>/)
+  assert.doesNotMatch(Film.svg(Cards.node(fonts, Cards.leaf('pnp', 'Does P = NP?', lemmas[3]!), 1200, 630)), /under review/)
   assert.notEqual(Share.version(Share.node('pnp', 'Does P = NP?', value)), Share.version(Share.node('pnp', 'Does P = NP?', lemmas[3]!)))
 })
 

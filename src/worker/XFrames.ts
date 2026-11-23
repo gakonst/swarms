@@ -293,7 +293,7 @@ export function tree(origin: string, swarm: string, view: View, request?: URL, b
   }, 200, request, bot)
 }
 
-export function node(origin: string, swarm: string, title: string, value: Tree.Node & { review?: boolean }, request?: URL, bot?: string) {
+export function node(origin: string, swarm: string, title: string, value: Tree.Node & { review?: boolean }, request?: URL, bot?: string, view?: { nodes: readonly Tree.Node[] }) {
   const base = rooted(origin) + shell(request)
   const item = Cards.leaf(swarm, title, value)
   const id = encodeURIComponent(swarm)
@@ -334,7 +334,8 @@ export function node(origin: string, swarm: string, title: string, value: Tree.N
     ${amounts('Ride')}
   </section>
   ${wallet}`
-  return document(origin, path, Share.node(swarm, title, value), `${value.title} · ${Cards.words[value.status]}`, Share.describe(Share.node(swarm, title, value)), content, {
+  const shared = Share.node(swarm, title, value, view)
+  return document(origin, path, shared, `${value.title} · ${Cards.words[value.status]}`, Share.describe(shared), content, {
     kind: 'node',
     node: value.id,
     page,
