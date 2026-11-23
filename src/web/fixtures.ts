@@ -1547,7 +1547,8 @@ function sprout(sprig: Sprig, index: number): Twig {
   const backers = key === 'root' ? [0, 1, 2, 3, 4] : form === 'program' ? [index % 8] : spent > 0n || left > 0n ? [index % 8, (index + 3) % 8] : []
   const pledged = left + (spent * 2n) / 3n
   const funders = backers.map((person, rank): Tree.Funder => ({ amount: decimal(backers.length ? pledged / BigInt(backers.length) + BigInt(rank) * 10_000n : 0n), since: at(minutes - rank * 30), who: who(person) }))
-  const run: Tree.Run | null = status === 'in flight' && form !== 'goal' && form !== 'program' && form !== 'approach' ? { agent: 3 + index, attempt: 1, budget: '5.000000', checking: false, k: runs.length, since: at(25), spent: decimal(spent % 5_000_000n), task: `r:${node}:${runs.length}`, until: at(-5) } : null
+  const doings = ['lake build: 2 goals left in the main induction', 'Searching Mathlib for a matching counting bound', 'Trying the case n = 4 by hand', 'Writing the Lean statement and the first two steps', 'Asked a helper to check the base case']
+  const run: Tree.Run | null = status === 'in flight' && form !== 'goal' && form !== 'program' && form !== 'approach' ? { agent: 3 + index, attempt: 1, budget: '5.000000', checking: false, doing: { at: at(1), text: doings[(index * 3 + node.length) % doings.length]! }, k: runs.length, since: at(25), spent: decimal(spent % 5_000_000n), task: `r:${node}:${runs.length}`, until: at(-5) } : null
   return {
     by,
     createdAt: at(minutes),

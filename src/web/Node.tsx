@@ -226,6 +226,7 @@ export function NodePanel(props: {
       )}
       <h2 className="node-title">{node.title}</h2>
       <p className="node-status" data-status={node.status}><Mark checking={node.run?.checking} status={node.status} /><b>{node.run?.checking ? 'Checking' : word(node.status)}</b> {why(node, props.nodes)}</p>
+      {node.status === 'in flight' && !node.run?.checking && node.run?.doing && <p className="node-doing" aria-live="polite"><i aria-hidden="true" />{node.run.doing.text}</p>}
       <p className="node-money">
         <b>{usd(node.money.pledged)}</b> ridden by {node.riders} rider{node.riders === 1 ? '' : 's'} · {usd(node.money.spent)} spent · {usd(node.money.left)} left
         {node.children.length > 0 && <> · subtree {usd(node.money.subtree.spent)} spent</>}
