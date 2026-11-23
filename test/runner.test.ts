@@ -201,3 +201,24 @@ test('stream deltas with no new spend take no lock, and a completion on the stre
   await until(async () => (await w.swarm.board.task('r:root:1'))?.phase === 'done', 3000)
 })
 
+
+
+test('a run posted while the pool is busy is claimed at once, not at the next poll', async (t) => {
+  const g = gateway()
+  const w = await planted(g.route)
+  const kept = Runner.timing.pollMs
+  Runner.timing.pollMs = 600_000
+  t.after(async () => {
+    Runner.timing.pollMs = kept
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  const a = await Nodes.post(w.swarm, { by: 'seed', form: 'lemma', needs: [], parent: 'root', statement: 'True', title: 'Lemma A', words: '' })
+  const b = await Nodes.post(w.swarm, { by: 'seed', form: 'lemma', needs: [], parent: 'root', statement: 'True', title: 'Lemma B', words: '' })
+  await w.swarm.treePledge(id, { amount: '2', contributor: ana, hash: '0x' + '7'.repeat(64), nid: a.nid })
+  await until(() => g.subs.length === 1)
+  await w.swarm.treePledge(id, { amount: '2', contributor: ana, hash: '0x' + '8'.repeat(64), nid: b.nid })
+  await until(() => g.subs.length === 2, 2000)
+  assert.equal(g.subs[1]?.role, 'n:' + b.nid + '#1')
+})
+
