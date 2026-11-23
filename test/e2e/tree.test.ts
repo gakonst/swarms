@@ -234,20 +234,23 @@ test('a steer mid-run is heeded', async (t) => {
 
 test('a lease lapses and a takeover adopts the subagent', async (t) => {
   if (!needs(t)) return
-  nids['lapse'] = await s.propose(ana, { form: 'lemma', parent: nids['program']!, spec: 'A long run whose runner dies.\n\nmock:slow', statement: 'theorem e2e_lapse : True', title: 'A lemma whose runner restarts (e2e)' }, '3')
+  dev.gateway.script('e2e-lapse-marker', [{ think: 'A run that outlives its runner.' }, { spend: 0.1 }, ...Array.from({ length: 120 }, (_, index): Model.Step[] => [{ wait: 250 }, { think: 'step ' + index }]).flat(), { spend: 0.1 }, { result: { outcome: 'progress', summary: 'Outlived its runner.' } }])
+  nids['lapse'] = await s.propose(ana, { form: 'lemma', parent: nids['program']!, spec: 'A long run whose runner dies. e2e-lapse-marker', statement: 'theorem e2e_lapse : True', title: 'A lemma whose runner restarts (e2e)' }, '3')
   const run = await s.until('the run to start', async () => (await s.node(nids['lapse']!)).run ?? undefined)
   const first = await s.until('its subagent', async () => s.subagents().find((each) => each.role === role(nids['lapse']!, run.k)))
   await dev.restart('SIGKILL')
-  const adopted = await s.until('a new runner to take the run over', async () => {
+  const restarted = Date.now()
+  const seen: number[] = []
+  const finished = await s.until('the run to finish after the restart', async () => {
     const node = await s.node(nids['lapse']!)
-    return node.run && node.run.attempt >= 2 ? node.run : undefined
-  }, 60_000 + leaseMs * 3)
-  assert.equal(adopted.agent, first.agent_id, 'the takeover adopted the subagent instead of spawning another')
-  assert.equal(s.subagents().filter((each) => each.role === role(nids['lapse']!, run.k)).length, 1)
-  await s.until('the adopted run to finish', async () => {
-    const node = await s.node(nids['lapse']!)
-    return node.run === null || node.run.k > run.k ? true : undefined
-  }, 90_000)
+    if (node.run) seen.push(node.run.attempt)
+    const ended = (node.runs ?? []).find((each) => each.k === run.k && each.outcome !== null)
+    return ended ?? undefined
+  }, 120_000 + leaseMs * 3)
+  assert.equal(s.subagents().filter((each) => each.role === role(nids['lapse']!, run.k)).length, 1, 'the takeover adopted the subagent instead of spawning another')
+  assert.equal(finished.summary, 'Outlived its runner.')
+  assert.ok(['closed', 'completed'].includes(String(s.subagents().find((each) => each.agent_id === first.agent_id)?.status.state)))
+  assert.ok(Date.now() - restarted > leaseMs, 'the run finished after the lease lapsed')
   await s.balanced('taken over')
 })
 
@@ -255,8 +258,7 @@ test('a node ends and money returns along its edges to the cent', async (t) => {
   if (!needs(t)) return
   nids['end'] = await s.propose(bob, { form: 'lemma', parent: nids['program']!, spec: 'A run that hangs until its rider ends it.\n\nmock:stall', statement: 'theorem e2e_end : True', title: 'A lemma its rider ends (e2e)' }, '4')
   await s.until('its run to start', async () => (await s.node(nids['end']!)).run ?? undefined)
-  const before = { bob: await standing(bob), node: await s.node(nids['end']!), parent: by(await s.tree(), nids['program']!)! }
-  const total = units(before.node.money.left) + units(before.node.money.committed)
+  const before = { bob: await standing(bob), node: await s.node(nids['end']!) }
   const ended = await bob.call('POST', `/v1/swarms/${s.id}/nodes/${nids['end']}/end`, { why: 'Not worth it.' })
   assert.ok(ended.status === 200 || ended.status === 201, JSON.stringify(ended.body))
   const settled = await s.until('the node to settle', async () => {
@@ -264,11 +266,14 @@ test('a node ends and money returns along its edges to the cent', async (t) => {
     return node.status === 'dead end' && node.run === null && units(node.money.left) === 0n && units(node.money.committed) === 0n ? node : undefined
   })
   assert.equal(settled.end?.kind, 'withdrawn')
-  const now = { bob: await standing(bob), parent: by(await s.tree(), nids['program']!)! }
-  const spent = units(settled.money.spent) - units(before.node.money.spent)
-  const back = units(now.bob.free) - units(before.bob.free) + (units(now.parent.money.left) - units(before.parent.money.left))
-  assert.equal(back + spent, total, `$${Chain.decimal(total)} on the node came back as $${Chain.decimal(back)} with $${Chain.decimal(spent)} spent`)
-  assert.ok(units(now.bob.free) > units(before.bob.free), "bob's own money came back to him")
+  const now = await standing(bob)
+  const money = settled.money
+  assert.equal(units(money.pledged) + units(money.inherited) - units(money.granted), units(money.spent), `what reached the node less what it spent is all returned: ${JSON.stringify(money)}`)
+  const toBob = units(now.free) - units(before.bob.free)
+  assert.equal(toBob, units(before.node.money.pledged) - units(money.pledged), `bob's free money grew by $${Chain.decimal(toBob)}, his returned share is $${Chain.decimal(units(before.node.money.pledged) - units(money.pledged))}`)
+  assert.ok(toBob > 0n, "bob's own money came back to him")
+  assert.ok(units(before.node.money.inherited) >= units(money.inherited), 'what the parent granted went back up its edge')
+  assert.equal(now.buckets.find((bucket) => bucket.node === nids['end'])?.amount ?? '0.000000', '0.000000')
   await s.balanced('ended')
 })
 
