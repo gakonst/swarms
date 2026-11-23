@@ -140,8 +140,7 @@
   .grove[data-node='open'] .grove-tree { visibility:hidden; }
   .grove-node { z-index:2; padding:6px var(--margin) 32px; border-left:0; background:var(--bg); }
   .node-back { display:inline-flex; align-items:center; justify-self:start; min-height:36px; font-size:14px; }
-  .tree-filters { flex-wrap:nowrap; width:calc(100% + var(--margin) * 2); margin:0 calc(var(--margin) * -1); padding:8px var(--margin); overflow-x:auto; scrollbar-width:none; }
-  .tree-filters::-webkit-scrollbar { display:none; }
+  .tree-filters { flex-wrap:wrap; gap:6px; padding:8px 0; }
   .tree-row > a { min-height:48px; padding:0 2px; }
   .tree-row-fold { display:none; }
   .tree-row-tag[data-tone='wait'] { display:none; }

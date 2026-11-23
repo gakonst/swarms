@@ -118,13 +118,23 @@ function WalletButton(props: { config: Config | undefined }) {
 }
 
 function Header(props: { config: Config | undefined; path: string }) {
+  const links = (
+    <>
+      <Link className={props.path === '/ideas' || props.path.startsWith('/s/') ? 'game-nav game-nav-on' : 'game-nav'} to="/ideas">All swarms</Link>
+      <Link className={props.path === '/new' && !here().searchParams.has('q') ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start a swarm</Link>
+      <Link className={props.path === '/about' ? 'game-nav game-nav-on' : 'game-nav'} to="/about">Swarm riders</Link>
+    </>
+  )
   return (
     <header className="game-header">
-      <nav className="header-nav">
-        <Link className={props.path === '/ideas' || props.path.startsWith('/s/') ? 'game-nav game-nav-on' : 'game-nav'} to="/ideas">All<span className="nav-long"> swarms</span></Link>
-        <Link className={props.path === '/new' && !here().searchParams.has('q') ? 'game-nav game-nav-on' : 'game-nav'} to="/new">Start<span className="nav-long"> a swarm</span></Link>
-        <Link className={props.path === '/about' ? 'game-nav game-nav-on' : 'game-nav'} to="/about">Swarm riders</Link>
-      </nav>
+      <nav className="header-nav">{links}</nav>
+      <details className="header-menu" key={props.path}>
+        <summary className="game-nav">Menu</summary>
+        <nav>
+          {links}
+          <a className="game-nav" href={Site.essay}>Swarm riding, by Paradigm</a>
+        </nav>
+      </details>
       <p className="brand">
         <a aria-label="Paradigm" className="brand-mark" href={Site.paradigm}>
           <svg aria-hidden="true" viewBox="0 0 25 29"><path d="m9.249 28.39-1.632-.986v-2.516l-2.21 1.258-1.632-.952v-2.516l-2.142 1.224L0 22.916V5.236l1.53-.85 2.244 1.292V3.094l1.598-.884 2.244 1.292V.918L9.249 0l15.334 8.806v1.87l-2.21 1.292 2.21 1.258v1.904l-2.176 1.258 2.176 1.258v1.904zm-.068-1.87 13.838-7.888-2.278-1.292-11.56 6.63zm-3.774-2.244 2.21-1.258v-2.55l-2.21 1.258zm-3.808-2.21 2.176-1.258V7.548L1.599 6.29zm3.808-2.176 2.21-1.292v-8.84L5.407 8.5zm0-13.26 2.21 1.258v-2.55L5.407 4.08zM9.18 22.1l9.962-5.712-2.244-1.292L9.18 19.55zm0-4.386 6.12-3.536-6.12-3.536zm0-8.942 7.752 4.488 2.244-1.292L9.18 6.256zm0-4.386 11.594 6.664 2.244-1.292L9.18 1.836zm9.35 9.792 2.244 1.292 2.244-1.292-2.278-1.292z" fill="currentColor" /></svg>
@@ -135,6 +145,7 @@ function Header(props: { config: Config | undefined; path: string }) {
         </Link>
       </p>
       <div className="header-end">
+        <a className="game-nav header-essay" href={Site.essay}>Swarm riding, by Paradigm</a>
         <WalletButton config={props.config} />
       </div>
     </header>

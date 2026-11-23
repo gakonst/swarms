@@ -3,7 +3,6 @@ import { type ReactNode, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import * as Site from '../shared/Site.ts'
 
-const essay = 'https://www.paradigm.xyz/writing/swarms'
 
 const tools = [
   ['swarms_list', 'Swarms with their status and money. Filter by status.'],
@@ -147,7 +146,7 @@ export function Docs(props: { config: Config | undefined }) {
             </a>
           </p>
           <p className="fine">
-            Why swarms, and how to ride one well: <a href={essay}>Effective Swarm Riding for Engineers</a> on Paradigm.
+            Why swarms, and how to ride one well: <a href={Site.essay}>Effective Swarm Riding for Engineers</a> on Paradigm.
           </p>
         </div>
       </section>
