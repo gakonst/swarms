@@ -205,7 +205,9 @@
   .limbs > .limb-more::before, .limbs > .limb-propose::before { height:20px; }
   .limbs > .limb { padding-left:18px; }
   .limbs > .limb::before { width:16px; }
-  .since { right:var(--margin); left:var(--margin); width:auto; }
+  .since { right:var(--margin); left:var(--margin); grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:2px 12px; width:auto; padding:8px 12px; }
+  .since ul { display:none; }
+  .since-close { grid-area:1 / 2 / 3; }
 }
 
 @media (prefers-reduced-motion:reduce) { .mark, .bud, .headline-stats [data-live] b::after { animation:none; } }
