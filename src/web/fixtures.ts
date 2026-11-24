@@ -122,7 +122,7 @@ function build(input: {
     who: who ?? null,
   }))
   return settle({
-    archivedAt: input.id === treeId ? null : at(600),
+    archivedAt: input.id === treeId || scene.has('open') ? null : at(600),
     form: input.id === treeId ? 'tree' : 'agent',
     balance: '0',
     chat: [],

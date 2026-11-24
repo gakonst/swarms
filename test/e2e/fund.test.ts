@@ -235,7 +235,7 @@ test('a sub-item and a new swarm say what they still need, then start in one go'
       await page.tap('.fuel-go')
       assert.ok(await page.until('!!document.querySelector(".cheer")', 20_000))
       assert.match(await page.evaluate<string>('location.pathname'), /\/s\/[0-9a-f]+$/)
-      assert.match((await page.read('.cheer')) ?? '', /1 rider · \$5 in/)
+      assert.match((await page.read('.cheer')) ?? '', /1 rider · \$5\.00 raised/)
       assert.deepEqual(page.errors, [])
     } finally {
       await page.close()

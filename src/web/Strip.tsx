@@ -31,8 +31,7 @@ export function at(base: string, view: Tab) {
 }
 
 export function dollars(value: string) {
-  const number = Number(value)
-  return number >= 100 ? `$${Math.round(number).toLocaleString('en-US')}` : usd(value)
+  return usd(value)
 }
 
 export function backers(contributions: readonly Contribution[], names: ReadonlyMap<string, string>): Backer[] {

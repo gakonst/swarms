@@ -132,11 +132,14 @@ export function Fuel(props: {
   const steer = useRef<HTMLInputElement>(null)
   const sum = useRef<HTMLInputElement>(null)
   const was = useRef(act.at)
+  const done = useRef(props.onDone)
+  done.current = props.onDone
   useEffect(() => {
     const moved = was.current !== act.at
     was.current = act.at
+    if (moved && act.at === 'counted') done.current({ id: act.swarm, ...(act.node ? { node: act.node } : {}), ...(act.parent ? { parent: act.parent } : {}), ...(act.title ? { title: act.title } : {}) })
     if (moved && (act.at === 'counted' || act.at === 'failed' || act.at === 'owed' || act.at === 'refused')) told.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [act.at])
+  }, [act])
   useEffect(() => {
     if (props.focus && !matchMedia('(pointer: coarse)').matches) (props.steers === false || props.first ? sum : steer).current?.focus({ preventScroll: true })
   }, [props.focus])
@@ -172,10 +175,7 @@ export function Fuel(props: {
     }
   }
 
-  const retry = async () => {
-    const owed = Pay.sent(act)
-    if ((await Pay.retry(props.slot))?.at === 'counted' && owed) props.onDone({ id: owed.swarm, ...(owed.node ? { node: owed.node } : {}) })
-  }
+  const retry = () => void Pay.retry(props.slot)
 
   const submit = async () => {
     const config = props.config
@@ -192,9 +192,8 @@ export function Fuel(props: {
       if (start.creates) Pay.move(props.slot, { type: 'created' })
       const owed = await transfer(config, target, units(amount), text, token)
       props.onNote('')
-      const counting = Pay.record(owed, props.slot)
+      void Pay.record(owed, props.slot)
       props.onSent?.(target)
-      if ((await counting).at === 'counted') props.onDone(target)
     } catch (error) {
       const failed = { error: message(error), type: 'failed' } as const
       if (Pay.can(props.slot, failed)) Pay.move(props.slot, failed)
@@ -218,7 +217,7 @@ export function Fuel(props: {
         {busy ? working[act.at as keyof typeof working] : funding ? 'Adding funds…' : props.ended ? 'Ended' : props.locked && props.wants ? props.wants : ok ? `${said} · ${dollars(amount)}` : said}
       </button>
       <div className="fuel-told" ref={told}>
-        {props.ended && !busy && act.at !== 'counted' ? <Alert title={props.ended} tone="warn" /> : added && act.at === 'idle' ? <Alert title="Funds added." tone="good">{wallet.balance === undefined ? 'Ride it now.' : `Your wallet has ${usd(decimal(wallet.balance))}. Ride it now.`}</Alert> : <Told act={act} config={props.config} onFund={() => void fund()} onRetry={() => void retry()} slot={props.slot} />}
+        {props.ended && !busy && act.at !== 'counted' ? <Alert title={props.ended} tone="warn" /> : added && act.at === 'idle' ? <Alert title="Funds added." tone="good">{wallet.balance === undefined ? 'Ride it now.' : `Your wallet has ${usd(decimal(wallet.balance))}. Ride it now.`}</Alert> : <Told act={act} config={props.config} onFund={() => void fund()} onRetry={retry} slot={props.slot} />}
       </div>
     </div>
   )

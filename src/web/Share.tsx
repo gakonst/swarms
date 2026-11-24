@@ -21,7 +21,7 @@ export function links(swarm: Shown, amount?: string) {
   const origin = here().origin
   const page = origin + Site.at(Nickname.path({ id: swarm.id, nickname: swarm.nickname }))
   const card = origin + Site.at(`/x/s/${encodeURIComponent(swarm.id)}`)
-  const riders = `${swarm.contributors} rider${swarm.contributors === 1 ? '' : 's'}, ${cut(swarm.balance)} in`
+  const riders = `${swarm.contributors} rider${swarm.contributors === 1 ? '' : 's'}, ${usd(swarm.balance)} raised`
   const title = Prose.plain(swarm.title)
   const text = amount ? `I'm riding ${title} with ${cut(amount)}. ${riders}.` : `${title}: ${riders}.`
   return { intent: `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(card)}`, page }
@@ -42,9 +42,23 @@ let cheer: Cheer | undefined
 
 const listeners = new Set<() => void>()
 
+const live = new Map<string, Shown>()
+
+function tell() {
+  for (const listener of [...listeners]) listener()
+}
+
 function show(next: Cheer | undefined) {
   cheer = next
-  for (const listener of listeners) listener()
+  tell()
+}
+
+export function useShown(swarm: Shown | undefined) {
+  useEffect(() => {
+    if (!swarm || live.get(swarm.id) === swarm) return
+    live.set(swarm.id, swarm)
+    tell()
+  }, [swarm])
 }
 
 export function celebrate(next: Cheer) {
@@ -76,15 +90,18 @@ export function Cheered() {
 
 function Sheet(props: { cheer: Cheer }) {
   const id = props.cheer.swarm
-  const [swarm, setSwarm] = useState<Shown | undefined>(() => remembered<Shown>(id))
+  const shown = useSyncExternalStore(subscribe, () => live.get(id), () => undefined)
+  const [fetched, setFetched] = useState<Shown | undefined>(() => remembered<Shown>(id))
+  const swarm = shown ?? fetched
   const [copied, setCopied] = useState(false)
   const go = useRef<HTMLAnchorElement>(null)
   useEffect(() => {
     let alive = true
-    Api.swarm(id, false).then((detail) => {
-      remember(id, detail)
-      if (alive) setSwarm(detail)
-    }, () => {})
+    if (!live.has(id))
+      Api.swarm(id, false).then((detail) => {
+        remember(id, detail)
+        if (alive) setFetched(detail)
+      }, () => {})
     go.current?.focus({ preventScroll: true })
     const escape = (event: KeyboardEvent) => event.key === 'Escape' && show(undefined)
     addEventListener('keydown', escape)
@@ -102,7 +119,7 @@ function Sheet(props: { cheer: Cheer }) {
         <p aria-hidden="true" className="cheer-mark">✓</p>
         <h3 className="cheer-head">You're riding · {cut(props.cheer.amount)}</h3>
         {(props.cheer.title ?? swarm) && <p className="cheer-what"><Inline text={props.cheer.title ?? swarm?.title ?? ''} /></p>}
-        {swarm && <p className="cheer-stats"><b>{swarm.contributors}</b> rider{swarm.contributors === 1 ? '' : 's'} · <b>{cut(swarm.balance)}</b> in</p>}
+        {swarm && <p className="cheer-stats"><b>{swarm.contributors}</b> rider{swarm.contributors === 1 ? '' : 's'} · <b>{usd(swarm.balance)}</b> raised</p>}
         <div className="cheer-go">
           <a className="btn btn-high" href={shared?.intent} onClick={close} ref={go} rel="noreferrer" target="_blank">Share on X</a>
           <button className="btn btn-medium" disabled={!shared} onClick={() => shared && void copy(shared.page).then(setCopied)} type="button">{copied ? 'Link copied' : 'Invite friends'}</button>

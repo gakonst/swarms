@@ -18,6 +18,7 @@ import * as Pay from './pay.ts'
 import { Room } from './Room.tsx'
 import { back, Link, navigate, useBase } from './router.tsx'
 import { shareTree } from './channels.ts'
+import { useShown } from './Share.tsx'
 import { useSwipe } from './Shell.tsx'
 import { scene } from './stage.ts'
 import { at, backers, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
@@ -80,6 +81,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set())
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<{ members: Member[] }>(`room:${id}`)?.members ?? [])
   const swarm = detail.data ?? props.detail
+  useShown(swarm)
 
   useEffect(() => {
     setSeen((current) => (current.has(view) ? current : new Set([...current, view])))

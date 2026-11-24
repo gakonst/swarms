@@ -14,10 +14,12 @@ import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
 import { usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
+import { Overlay } from './Overlay.tsx'
 import * as Names from './names.ts'
 import { Now } from './Now.tsx'
 import { Results } from './Results.tsx'
 import { Room } from './Room.tsx'
+import { useShown } from './Share.tsx'
 import { Reins, steerer, useRoster } from './Steering.tsx'
 import { at, backers, dollars, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
 import { back, Link, navigate, useBase, useQuery } from './router.tsx'
@@ -54,7 +56,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   const [prefill] = useState(() => asked())
   const [note, setNote] = useState(prefill.note)
   const [focus, setFocus] = useState(0)
-  const [sheet, setSheet] = useState(() => !!prefill.note || here().searchParams.has('fund'))
+  const [riding, setRiding] = useState<{ anchor?: HTMLElement | undefined } | undefined>(() => (prefill.note || here().searchParams.has('fund') ? {} : undefined))
   const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([view]))
   const [stir, setStir] = useState(0)
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<RoomState>(`room:${id}`)?.members ?? [])
@@ -90,11 +92,13 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
 
   const heard = useCallback((_said: readonly Said[], _me: Me | null, list: readonly Member[]) => setMembers(list), [])
 
-  const steer = (text: string) => {
+  useShown(detail.data)
+
+  const steer = (text: string, anchor?: HTMLElement) => {
     if (detail.data?.archivedAt) return
     if (text && steers) setNote(text)
     setFocus(Date.now())
-    setSheet(true)
+    setRiding({ anchor })
   }
 
   if (!detail.data)
@@ -126,7 +130,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
 
   return (
     <article className="swarm-shell" data-tab={view}>
-      <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : () => steer('')} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
+      <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span><b>{dollars(swarm.remaining)}</b> left</span>
         <span className="strip-mood" data-mood={stood.mood} title={line(stood.word)}><i />{pill(stood.word)}</span>
@@ -159,26 +163,27 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           {archived ? <Archived swarm={swarm} /> : <Reins onNamed={named} swarm={swarm} />}
         </div>
       )}
-      {sheet && (
-        <div className="sheet" onClick={(event) => event.target === event.currentTarget && setSheet(false)}>
-          <div className="sheet-card">
-            <button aria-label="Close" className="sheet-close" onClick={() => setSheet(false)} type="button">×</button>
-            <Box
-              config={props.config}
-              focus={focus}
-              members={members}
-              note={steers ? note : ''}
-              onDone={() => reload()}
-              onNote={setNote}
-              onOpen={() => steer('')}
-              open
-              prefill={prefill}
-              steers={steers}
-              swarm={swarm}
-              target={() => Promise.resolve({ id: swarm.id })}
-            />
-          </div>
-        </div>
+      {riding && !archived && (
+        <Overlay anchor={riding.anchor} className="ride ride-box" label="Ride it" onClose={() => setRiding(undefined)}>
+          <Box
+            config={props.config}
+            focus={focus}
+            members={members}
+            note={steers ? note : ''}
+            onDone={() => {
+              setRiding(undefined)
+              reload()
+            }}
+            onNote={setNote}
+            onOpen={() => steer('')}
+            open
+            prefill={prefill}
+            shared={false}
+            steers={steers}
+            swarm={swarm}
+            target={() => Promise.resolve({ id: swarm.id })}
+          />
+        </Overlay>
       )}
       {viewing && <Viewer artifact={viewing} onClose={() => back(at(base, view))} />}
     </article>

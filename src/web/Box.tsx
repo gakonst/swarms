@@ -1,5 +1,4 @@
 import { forwardRef, type ReactNode, useState } from 'react'
-import * as Answer from '../shared/Answer.ts'
 import type { Config, Member, Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Status from '../shared/Status.ts'
@@ -7,6 +6,7 @@ import { site } from './boot.ts'
 import { Gauge, line } from './Card.tsx'
 import { Fuel, type Prefill, type Target } from './Contribute.tsx'
 import * as Pay from './pay.ts'
+import { usd } from './format.ts'
 import { Avatar } from './Room.tsx'
 
 export const Box = forwardRef<HTMLElement, {
@@ -55,7 +55,7 @@ export const Box = forwardRef<HTMLElement, {
   return (
     <aside className="box" data-open={props.open} id="back" ref={ref}>
       {!props.bare && (balance > 0 || swarm.contributors > 0) && <div className="box-top">
-        <p className="box-balance"><b>{Answer.cash(balance)}</b> balance</p>
+        <p className="box-balance"><b>{usd(swarm.balance)}</b> raised</p>
         <p className="box-people">
           {backers.length > 0 && <span className="box-faces">{backers.slice(0, 5).map((member) => <Avatar address={member.address} handle={member.handle} key={member.address} size="small" />)}</span>}
           {swarm.contributors > 0 ? `${swarm.contributors} rider${swarm.contributors === 1 ? '' : 's'}` : 'No riders yet'}
@@ -64,7 +64,7 @@ export const Box = forwardRef<HTMLElement, {
       {balance > 0 && (
         <p className="box-gauge">
           <Gauge balance={balance} left={left} />
-          <span>{Answer.cash(left)} left</span>
+          <span>{usd(swarm.remaining)} left</span>
         </p>
       )}
       {!props.bare && <p className="box-state" data-mood={stood.mood}>{balance > 0 || swarm.contributors > 0 ? (stood.word === 'Needs money' && swarm.reason) || line(stood.word) : 'Be the first to ride it.'}</p>}
