@@ -13,6 +13,7 @@ import { useMedia, useNow, usePoll } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Inline } from './Markdown.tsx'
 import { NodePanel, Ride } from './Node.tsx'
+import * as Pay from './pay.ts'
 import { Room } from './Room.tsx'
 import { Link, navigate, useBase, useQuery } from './router.tsx'
 import { scene } from './stage.ts'
@@ -68,7 +69,9 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const [peek, setPeek] = useState<string | undefined>(() => (inside === 'root' ? undefined : inside))
   const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([view, side(view)]))
   const [unread, setUnread] = useState(0)
-  const [riding, setRiding] = useState(false)
+  const [riding, setRiding] = useState<string | undefined>()
+  const [composing, setComposing] = useState<string | undefined>()
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set())
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<{ members: Member[] }>(`room:${id}`)?.members ?? [])
   const board = useRef(view === 'board' ? path(selected) : `${base}/board`)
   const focus = phone ? (peek ?? 'root') : selected
@@ -147,7 +150,31 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   }, [selected, !!node.data, !!grove])
 
   const heard = useCallback((_said: readonly Said[], _me: unknown, list: readonly Member[]) => setMembers(list), [])
-  const ride = useCallback(() => setRiding(true), [])
+  const ride = useCallback(() => setRiding('root'), [])
+
+  useEffect(
+    () =>
+      Pay.listen((_slot, act) => {
+        const owed = Pay.sent(act)
+        if (act.at === 'counting' && owed?.swarm === id && owed.parent && owed.node) {
+          const made = owed.node
+          setFresh((current) => (current.has(made) ? current : new Set([...current, made])))
+        }
+        if (act.at !== 'counted' || act.swarm !== id) return
+        redetail()
+        const made = act.node
+        if (!made) return
+        setGrove((current) => current && { ...current, landed: { ...current.landed, [made]: Date.now() } })
+        const parent = act.parent
+        if (!parent) return
+        setOpen((current) => (current.has(parent) ? current : new Set([...current, parent])))
+        void Api.tree(id, { depth: 1, root: parent }).then((got) => setGrove((current) => current && Grove.graft(current, got)), () => {})
+        if (!phone) navigate(carried(path(made)), { keep: true, replace: true })
+        else if (props.nid === undefined) setPeek(made)
+        else navigate(path(made), { keep: true })
+      }),
+    [id, phone, props.nid, path],
+  )
   const results = useCallback(() => navigate(`${base}/results`, { keep: true, replace: true }), [base])
 
   const filtered = (next: Grove.Filter) => {
@@ -232,23 +259,27 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
             <Filters filter={filter} nodes={nodes} onFilter={filtered} />
             <div className="grove-scroll">
               <Branches
+                composing={composing}
+                config={props.config}
                 filter={filter}
+                fresh={fresh}
                 landed={grove.landed}
                 more={more}
                 nodes={nodes}
                 now={now}
+                onCompose={setComposing}
                 onFold={fold}
                 onMore={(nid, count) => setMore((current) => ({ ...current, [nid]: count }))}
                 onPick={pick}
-                onPropose={(node) => navigate(propose(node.id), { keep: true, replace: !phone })}
                 open={open}
                 path={path}
                 propose={propose}
                 selected={phone ? (peek ?? '') : selected}
                 shape={scene.has('spine') ? 'spine' : 'tree'}
+                swarm={id}
               />
             </div>
-            {phone && peek && nodes[peek] && <Peek node={nodes[peek]!} nodes={nodes} to={path(peek)} />}
+            {phone && peek && nodes[peek] && <Peek node={nodes[peek]!} nodes={nodes} onRide={(node) => setRiding(node.id)} to={path(peek)} />}
             <Since id={id} nodes={nodes} now={now} />
           </section>
           {nodeShown && (
@@ -314,7 +345,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
           <Explainer spec={root?.spec} swarm={swarm} />
         </div>
       )}
-      {riding && root && <Ride config={props.config} node={root} onClose={() => setRiding(false)} onDone={() => redetail()} swarm={id} />}
+      {riding && nodes[riding] && <Ride config={props.config} node={nodes[riding]!} onClose={() => setRiding(undefined)} onDone={() => redetail()} swarm={id} />}
     </article>
   )
 }

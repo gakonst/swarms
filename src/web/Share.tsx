@@ -8,6 +8,7 @@ import { here } from './boot.ts'
 import { usd } from './format.ts'
 import { Inline } from './Markdown.tsx'
 import { remember, remembered, usePoll } from './hooks.ts'
+import * as Pay from './pay.ts'
 import { navigate } from './router.tsx'
 
 type Shown = Pick<Summary, 'balance' | 'contributors' | 'form' | 'id' | 'nickname' | 'title'>
@@ -49,6 +50,10 @@ function show(next: Cheer | undefined) {
 export function celebrate(next: Cheer) {
   show(next)
 }
+
+Pay.listen((_slot, act) => {
+  if (act.at === 'counted') celebrate({ amount: act.amount, node: act.node, swarm: act.swarm })
+})
 
 function subscribe(listener: () => void) {
   listeners.add(listener)

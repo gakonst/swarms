@@ -27,9 +27,9 @@ function useLaunch(slot: string, title: string, goal: string, problem: string | 
   const [launch] = useState(() => launcher((input: Parameters<typeof Api.create>[0]) => Api.create(input).then((swarm): Target => ({ id: swarm.id }))))
   const input = { steering, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}), ...(nickname ? { nickname } : {}) }
   return {
-    busy: Pay.useFlow(slot).at === 'busy',
+    busy: Pay.busy(Pay.useFlow(slot)),
     locked: !(input.title.length >= 1 && input.title.length <= 80 && input.goal.length >= 10 && input.goal.length <= 12_000),
-    target: (step: (step: 'create') => void) => launch(input, step),
+    target: () => launch(input, () => {}),
   }
 }
 
@@ -74,6 +74,7 @@ function Seed(props: { config: Config | undefined; name: string | undefined; pro
           </header>
           <Box
             config={props.config}
+            creates
             extra={<Steered disabled={launch.busy} onPick={setSteering} steering={steering} />}
             first
             focus={0}
@@ -117,6 +118,7 @@ function Own(props: { config: Config | undefined; name: string | undefined }) {
       <div className="own-box">
         <Box
             config={props.config}
+            creates
             extra={<Steered disabled={launch.busy} onPick={setSteering} steering={steering} />}
             first
             focus={0}

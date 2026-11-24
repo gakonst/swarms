@@ -314,7 +314,7 @@ export function disconnect() {
 export async function send(config: Config, input: { amount: bigint; memo: Hex; to: Address; token: Currency }) {
   if (fixture) {
     const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])
-    if (fixtures.balances[input.token] < input.amount) throw Object.assign(new Error(`Your wallet holds less than this.`), { code: 'insufficient_balance' })
+    if (Object.values(fixtures.balances).reduce((sum, value) => sum + value, 0n) < input.amount) throw Object.assign(new Error(`Your wallet holds less than this.`), { code: 'insufficient_balance' })
     const hash = `0x${Date.now().toString(16).padStart(64, '5')}` as Hex
     fixtures.sent.set(hash, { amount: input.amount, token: input.token })
     if (!state.session) set({ address: visitor, pending: false, session: { address: visitor, token: 'fixture' } })

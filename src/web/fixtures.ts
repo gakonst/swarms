@@ -681,6 +681,7 @@ export async function contribute(key: string, input: { hash: string; note?: stri
   const swarm = await find(key)
   const hash = input.hash as `0x${string}`
   if (swarm.contributions.some((gift) => gift.hash === hash)) throw fail(409, 'conflict', 'This transaction is already counted.')
+  await uncountable()
   if (scene.has('uncounted') && !dropped.has(hash)) {
     dropped.add(hash)
     throw fail(502, 'unavailable', 'Swarms could not reach Tempo to check the transfer.')
@@ -1791,8 +1792,14 @@ export async function propose(key: string, input: { form: Tree.Form; parent: str
   return delay({ nid: made, transfer: { amount: '1.000000', call: null, link: '', memo, memoText: `n:${made}`, note: `n:${made}`, swarm: key, symbol: 'USDC.e', to: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE', token: 'usdce', tokenAddress: '0x20C000000000000000000000b9537d11c60E8b50' } }, 400)
 }
 
+async function uncountable() {
+  if (scene.has('stuck')) await new Promise<never>(() => {})
+  if (scene.has('reject')) throw fail(400, 'invalid_request', 'That transaction is not a transfer to the gateway for this swarm.')
+}
+
 export async function ride(key: string, input: { hash: string; node: string }): Promise<Contributed> {
   const hash = input.hash as `0x${string}`
+  await uncountable()
   if (scene.has('uncounted') && !dropped.has(hash)) {
     dropped.add(hash)
     throw fail(502, 'unavailable', 'Swarms could not reach Tempo to check the transfer.')

@@ -1,37 +1,94 @@
-import { useCallback, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import * as Api from './api.ts'
 import { message } from './hooks.ts'
 
-export type Owed = { amount: string; hash: string; node?: string | undefined; note: string; swarm: string }
+export type Owed = { amount: string; hash: string; node?: string | undefined; note: string; parent?: string | undefined; swarm: string; title?: string | undefined }
+
+export type Why = 'broke' | 'cancelled' | 'offline' | 'other'
+
+export type Act =
+  | { at: 'idle' }
+  | { at: 'signing' }
+  | { at: 'creating' }
+  | { at: 'paying' }
+  | { at: 'counting'; owed: Owed; tries: number }
+  | { at: 'owed'; owed: Owed; tries: number }
+  | { amount: string; at: 'counted'; node?: string | undefined; parent?: string | undefined; swarm: string }
+  | { at: 'failed'; error: string; why: Why }
+  | { at: 'refused'; error: string; owed: Owed }
+
+export type Event =
+  | { creates: boolean; signed: boolean; type: 'start' }
+  | { type: 'signed' }
+  | { type: 'created' }
+  | { owed: Owed; type: 'sent' }
+  | { type: 'counted' }
+  | { type: 'later' }
+  | { error: string; type: 'refused' }
+  | { error: string; type: 'failed' }
+  | { type: 'retry' }
+  | { type: 'reset' }
+
+export type Counted = { at: 'counted' } | { at: 'later' } | { at: 'refused'; reason: string }
+
+export const idle: Act = { at: 'idle' }
+
+export const retries = [2_000, 5_000, 15_000, 30_000] as const
 
 export function slot(swarm: string, node?: string) {
   return node ? `${swarm}/n/${node}` : swarm
 }
 
-function slotted(owed: Owed) {
+export function proposing(swarm: string, parent: string) {
+  return `${swarm}/propose/${parent}`
+}
+
+function home(owed: Owed) {
   return slot(owed.swarm, owed.node)
 }
 
-export type Counted = { at: 'counted' } | { at: 'later' } | { at: 'refused'; reason: string }
-
-export type Working = 'create' | 'record' | 'send'
-
-export type Step = { at: 'idle' } | { at: 'busy'; step: Working } | { amount: string; at: 'done' } | { at: 'failed'; error: string; hash?: string }
-
-export type Flow = Step | { at: 'unrecorded'; owed: Owed }
-
-export const idle: Step = { at: 'idle' }
-
-const next: Record<Step['at'], readonly Step['at'][]> = {
-  busy: ['busy', 'done', 'failed', 'idle'],
-  done: ['busy', 'idle'],
-  failed: ['busy', 'failed', 'idle'],
-  idle: ['busy', 'failed'],
+export function why(error: string): Why {
+  if (/declined|rejected|denied|cancel|closed the/i.test(error)) return 'cancelled'
+  if (/less than|insufficient|too little|balance/i.test(error)) return 'broke'
+  if (/fetch|network|unavailable|not answering|timeout/i.test(error)) return 'offline'
+  return 'other'
 }
 
-export function can(from: Flow, to: Step) {
-  if (from.at === 'unrecorded') return to.at === 'busy' && to.step === 'record'
-  return next[from.at].includes(to.at)
+function startable(act: Act) {
+  return act.at === 'idle' || act.at === 'failed' || act.at === 'counted' || act.at === 'refused'
+}
+
+export function next(act: Act, event: Event): Act | null {
+  switch (event.type) {
+    case 'start':
+      return startable(act) ? (event.creates && !event.signed ? { at: 'signing' } : event.creates ? { at: 'creating' } : { at: 'paying' }) : null
+    case 'signed':
+      return act.at === 'signing' ? { at: 'creating' } : null
+    case 'created':
+      return act.at === 'creating' ? { at: 'paying' } : null
+    case 'sent':
+      return act.at === 'paying' ? { at: 'counting', owed: event.owed, tries: 0 } : null
+    case 'counted':
+      return act.at === 'counting' ? { amount: act.owed.amount, at: 'counted', node: act.owed.node, parent: act.owed.parent, swarm: act.owed.swarm } : null
+    case 'later':
+      return act.at === 'counting' ? { at: 'owed', owed: act.owed, tries: act.tries } : null
+    case 'refused':
+      return act.at === 'counting' ? { at: 'refused', error: event.error, owed: act.owed } : null
+    case 'failed':
+      return act.at === 'signing' || act.at === 'creating' || act.at === 'paying' ? { at: 'failed', error: event.error, why: why(event.error) } : null
+    case 'retry':
+      return act.at === 'owed' ? { at: 'counting', owed: act.owed, tries: act.tries + 1 } : null
+    case 'reset':
+      return act.at === 'counted' || act.at === 'failed' || act.at === 'refused' ? idle : null
+  }
+}
+
+export function busy(act: Act) {
+  return act.at === 'signing' || act.at === 'creating' || act.at === 'paying' || act.at === 'counting'
+}
+
+export function sent(act: Act) {
+  return act.at === 'counting' || act.at === 'owed' || act.at === 'refused' ? act.owed : undefined
 }
 
 export function code(error: unknown) {
@@ -42,13 +99,20 @@ const kept = 'swarms.owed'
 
 let saved: { all: readonly Owed[]; raw: string | null } = { all: [], raw: null }
 
-const flows = new Map<string, Step>()
+const acts = new Map<string, Act>()
 
-const unrecorded = new WeakMap<Owed, Flow>()
+const derived = new WeakMap<Owed, Act & { at: 'owed' }>()
+
+const tried = new Map<string, number>()
 
 const watchers = new Map<string, Set<() => void>>()
 
+const heard = new Set<(slot: string, act: Act) => void>()
+
+let version = 0
+
 function notify() {
+  version += 1
   for (const listeners of [...watchers.values()]) for (const listener of [...listeners]) listener()
 }
 
@@ -58,7 +122,7 @@ function owing(): readonly Owed[] {
     const raw = localStorage.getItem(kept)
     if (raw !== saved.raw) {
       const all: unknown = raw ? JSON.parse(raw) : []
-      saved = { all: Array.isArray(all) ? (all as Owed[]).filter((each) => typeof each?.hash === 'string') : [], raw }
+      saved = { all: Array.isArray(all) ? (all as Owed[]).filter((each) => typeof each?.hash === 'string' && typeof each?.swarm === 'string') : [], raw }
     }
   } catch {}
   return saved.all
@@ -74,28 +138,48 @@ function keep(all: readonly Owed[]) {
     }
   } catch {}
   saved = { all, raw: stored }
-  notify()
 }
 
 function without(owed: Owed) {
   return owing().filter((each) => each.hash !== owed.hash)
 }
 
-export function flow(slot: string): Flow {
-  const step = flows.get(slot) ?? idle
-  const owed = step.at === 'busy' ? undefined : owing().find((each) => slotted(each) === slot)
-  if (!owed) return step
-  const waiting = unrecorded.get(owed) ?? { at: 'unrecorded', owed }
-  unrecorded.set(owed, waiting)
+export function flow(slot: string): Act {
+  const act = acts.get(slot)
+  if (act) return act
+  const owed = owing().find((each) => home(each) === slot)
+  if (!owed) return idle
+  const tries = tried.get(owed.hash) ?? 0
+  const known = derived.get(owed)
+  if (known?.tries === tries) return known
+  const waiting = { at: 'owed', owed, tries } as const
+  derived.set(owed, waiting)
   return waiting
 }
 
-export function move(slot: string, to: Step) {
+export function can(slot: string, event: Event) {
+  return next(flow(slot), event) !== null
+}
+
+export function move(slot: string, event: Event) {
   const from = flow(slot)
-  if (!can(from, to)) throw new Error(`A payment cannot go from ${from.at} to ${to.at}.`)
-  if (to.at === 'idle') flows.delete(slot)
-  else flows.set(slot, to)
+  const to = next(from, event)
+  if (!to) throw new Error(`A payment cannot go from ${from.at} on ${event.type}.`)
+  const at = event.type === 'sent' ? home(event.owed) : slot
+  if (at !== slot) acts.delete(slot)
+  if (to.at === 'owed') tried.set(to.owed.hash, to.tries)
+  if (to.at === 'idle' || to.at === 'owed') acts.delete(at)
+  else acts.set(at, to)
   notify()
+  for (const listener of [...heard]) listener(at, to)
+  return to
+}
+
+export function listen(listener: (slot: string, act: Act) => void) {
+  heard.add(listener)
+  return () => {
+    heard.delete(listener)
+  }
 }
 
 export function watch(slot: string, listener: () => void) {
@@ -105,12 +189,9 @@ export function watch(slot: string, listener: () => void) {
     listeners.delete(listener)
     if (listeners.size) return
     watchers.delete(slot)
-    if (flows.get(slot)?.at !== 'busy') flows.delete(slot)
+    const act = acts.get(slot)
+    if (act && !busy(act) && act.at !== 'refused') acts.delete(slot)
   }
-}
-
-export function useFlow(slot: string) {
-  return useSyncExternalStore(useCallback((listener: () => void) => watch(slot, listener), [slot]), () => flow(slot), () => idle)
 }
 
 function refuses(error: unknown) {
@@ -138,12 +219,58 @@ async function count(owed: Owed): Promise<Counted> {
   }
 }
 
-export async function record(owed: Owed, from = slotted(owed)) {
-  keep([...without(owed), owed])
-  if (from !== slotted(owed)) move(from, idle)
-  move(slotted(owed), { at: 'busy', step: 'record' })
+async function counting(owed: Owed) {
   const counted = await count(owed)
   if (counted.at !== 'later') keep(without(owed))
-  move(slotted(owed), counted.at === 'counted' ? { amount: owed.amount, at: 'done' } : counted.at === 'refused' ? { at: 'failed', error: counted.reason, hash: owed.hash } : idle)
+  move(home(owed), counted.at === 'counted' ? { type: 'counted' } : counted.at === 'refused' ? { error: counted.reason, type: 'refused' } : { type: 'later' })
   return counted
+}
+
+export function record(owed: Owed, from = home(owed)) {
+  keep([...without(owed), owed])
+  move(from, { owed, type: 'sent' })
+  return counting(owed)
+}
+
+export async function retry(slot: string): Promise<Counted | undefined> {
+  const act = flow(slot)
+  if (act.at !== 'owed') return undefined
+  move(slot, { type: 'retry' })
+  return counting(act.owed)
+}
+
+export function forget(slot: string) {
+  const act = flow(slot)
+  if (act.at === 'refused' || act.at === 'counted' || act.at === 'failed') move(slot, { type: 'reset' })
+}
+
+export function ghosts(swarm: string, parent: string): readonly { act: Act; owed: Owed }[] {
+  const found = new Map<string, { act: Act; owed: Owed }>()
+  for (const owed of owing()) if (owed.swarm === swarm && owed.parent === parent) found.set(owed.hash, { act: flow(home(owed)), owed })
+  for (const act of acts.values()) {
+    const owed = sent(act)
+    if (owed && owed.swarm === swarm && owed.parent === parent) found.set(owed.hash, { act, owed })
+  }
+  return [...found.values()]
+}
+
+function useVersion() {
+  return useSyncExternalStore(useCallback((listener: () => void) => watch('*', listener), []), () => version, () => 0)
+}
+
+export function useGhosts(swarm: string, parent: string) {
+  useVersion()
+  return ghosts(swarm, parent)
+}
+
+export function useFlow(slot: string) {
+  const act = useSyncExternalStore(useCallback((listener: () => void) => watch(slot, listener), [slot]), () => flow(slot), () => idle)
+  const tries = act.at === 'owed' ? act.tries : -1
+  useEffect(() => {
+    const wait = retries[tries]
+    if (wait === undefined) return
+    const timer = setTimeout(() => void retry(slot), wait)
+    return () => clearTimeout(timer)
+  }, [slot, act, tries])
+  return act
 }

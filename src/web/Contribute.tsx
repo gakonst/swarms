@@ -7,7 +7,6 @@ import { mach, short } from './format.ts'
 import { message, useWallet } from './hooks.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Pay from './pay.ts'
-import * as Share from './Share.tsx'
 import * as Wallet from './wallet.ts'
 
 const stops = [1, 2, 3, 5, 8, 10, 15, 20, 25, 35, 50, 75, 100, 150, 250, 500] as const
@@ -29,7 +28,7 @@ const preferred: readonly Currency[] = ['mach', 'ousd', 'usdce', 'pathusd']
 
 const smallest = '0.01'
 
-export type Target = { id: string; node?: string | undefined }
+export type Target = { id: string; node?: string | undefined; parent?: string | undefined; title?: string | undefined }
 
 export type Prefill = { amount: string; note: string; token: Currency | undefined }
 
@@ -61,25 +60,52 @@ export function valid(amount: string, minimum = smallest) {
 }
 
 const working = {
-  create: 'Setting up…',
-  record: 'Recording…',
-  send: 'Check prompt…',
-} as const satisfies Record<Pay.Working, string>
+  counting: 'Counting…',
+  creating: 'Setting up…',
+  paying: 'Check prompt…',
+  signing: 'Signing in…',
+} as const
 
 async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency): Promise<Pay.Owed> {
   if (!config.credit) throw new Error('Riding is not available right now. Try again in a moment.')
   const { memo } = await import('../shared/Credit.ts')
   const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, target.node ? `n:${target.node}` : note), to: config.credit.recipient, token })
-  return { amount: decimal(amount), hash, note, swarm: target.id, ...(target.node ? { node: target.node } : {}) }
+  return { amount: decimal(amount), hash, note, swarm: target.id, ...(target.node ? { node: target.node } : {}), ...(target.parent ? { parent: target.parent, title: target.title } : {}) }
 }
 
-function dollars(amount: string) {
+export function dollars(amount: string) {
   return `$${mach(decimal(units(amount)))}`.replace(/\.00$/, '')
+}
+
+export function Told(props: { act: Pay.Act; config: Config | undefined; onFund: () => void; onRetry: () => void; slot: string }) {
+  const act = props.act
+  if (act.at === 'counting') return <Alert title={`Counting your ${dollars(act.owed.amount)}…`} tone="warn">Sent. Nothing is paid twice.</Alert>
+  if (act.at === 'owed')
+    return (
+      <Alert action={{ label: 'Try again', onClick: props.onRetry }} title="Sent, but not counted yet." tone="warn">
+        {act.tries < Pay.retries.length ? 'Trying again by itself. Nothing is paid twice.' : 'Nothing is paid twice.'}
+      </Alert>
+    )
+  if (act.at === 'counted') return <Alert action={{ label: 'Add more', onClick: () => Pay.forget(props.slot) }} title={`You're riding. ${dollars(act.amount)} is in.`} tone="good" />
+  if (act.at === 'refused')
+    return (
+      <Alert action={props.config && { href: `${props.config.explorer}/tx/${act.owed.hash}`, label: short(act.owed.hash) }} title="Sent, but it cannot be counted." tone="bad">
+        {act.error}
+      </Alert>
+    )
+  if (act.at !== 'failed') return null
+  if (act.why === 'cancelled') return <Alert title="Cancelled." tone="warn">Nothing was charged.</Alert>
+  if (act.why === 'broke') return <Alert action={{ label: 'Add funds', onClick: props.onFund }} title="Not enough in your wallet." tone="bad">Nothing was charged.</Alert>
+  const told = explain(act.error)
+  return <Alert title={told.title} tone="bad">{told.detail}</Alert>
 }
 
 export function Fuel(props: {
   config: Config | undefined
   ask?: string | undefined
+  compact?: boolean | undefined
+  creates?: boolean | undefined
+  ended?: string | undefined
   extra?: ReactNode
   first?: boolean | undefined
   focus?: number | undefined
@@ -92,66 +118,90 @@ export function Fuel(props: {
   prefill: Prefill
   slot: string
   steers?: boolean | undefined
-  target: (step: (step: 'create') => void) => Promise<Target>
+  target: () => Promise<Target>
   verb?: string | undefined
 }) {
   const wallet = useWallet()
   const [amount, setAmount] = useState(props.prefill.amount)
   const [picked] = useState<Currency | undefined>(props.prefill.token)
-  const flow = Pay.useFlow(props.slot)
+  const [funding, setFunding] = useState(false)
+  const act = Pay.useFlow(props.slot)
   const told = useRef<HTMLDivElement>(null)
   const steer = useRef<HTMLInputElement>(null)
+  const sum = useRef<HTMLInputElement>(null)
+  const was = useRef(act.at)
   useEffect(() => {
-    if (flow.at === 'done' || flow.at === 'failed' || flow.at === 'unrecorded') told.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [flow.at])
+    const moved = was.current !== act.at
+    was.current = act.at
+    if (moved && (act.at === 'counted' || act.at === 'failed' || act.at === 'owed' || act.at === 'refused')) told.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [act.at])
   useEffect(() => {
-    if (props.focus) steer.current?.focus({ preventScroll: true })
+    if (props.focus) (props.steers === false || props.first ? sum : steer).current?.focus({ preventScroll: true })
   }, [props.focus])
   useEffect(() => {
     if (!props.config) return
     Wallet.warm(props.config)
     void import('../shared/Credit.ts')
   }, [props.config])
-  const busy = flow.at === 'busy'
-  const step = (next: Pay.Working) => Pay.move(props.slot, { at: 'busy', step: next })
+  const busy = Pay.busy(act)
   const token = picked ?? choose(amount, wallet.balances)
   const floor = props.least ?? smallest
   const ok = valid(amount, floor)
-  const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && flow.at !== 'unrecorded'
+  const signed = !!wallet.session
+  const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && !props.ended && act.at !== 'owed' && !funding
   const text = props.note.trim()
   const least = Math.ceil(Number(floor) * 100) / 100
   const marks = grown(least > stops[0] ? [least, ...stops.filter((stop) => stop > least)] : stops, amount)
   const at = nearest(amount, marks)
+  const verb = props.first ? 'Start it' : (props.verb ?? 'Ride it')
+  const said = props.creates && !signed ? `Sign in and ${verb.charAt(0).toLowerCase()}${verb.slice(1)}` : verb
 
-  const record = async (owed: Pay.Owed) => {
-    const target = { id: owed.swarm, ...(owed.node ? { node: owed.node } : {}) }
-    const counting = Pay.record(owed, props.slot)
-    props.onNote('')
-    props.onSent?.(target)
-    if ((await counting).at === 'counted') {
-      props.onDone(target)
-      Share.celebrate({ amount: owed.amount, node: owed.node, swarm: owed.swarm })
+  const fund = async () => {
+    if (!props.config || funding) return
+    setFunding(true)
+    try {
+      await Wallet.fund(props.config)
+      if (act.at === 'failed') Pay.forget(props.slot)
+    } catch {
+    } finally {
+      setFunding(false)
     }
+  }
+
+  const retry = async () => {
+    const owed = Pay.sent(act)
+    if ((await Pay.retry(props.slot))?.at === 'counted' && owed) props.onDone({ id: owed.swarm, ...(owed.node ? { node: owed.node } : {}) })
   }
 
   const submit = async () => {
     const config = props.config
-    if (!config || !ready) return
+    const start = { creates: !!props.creates, signed: !!Wallet.snapshot().session, type: 'start' } as const
+    if (!config || !ready || !Pay.can(props.slot, start)) return
+    Pay.move(props.slot, start)
     try {
-      const target = await props.target((next) => step(next))
-      step('send')
-      await record(await transfer(config, target, units(amount), text, token))
+      if (start.creates && !start.signed) {
+        await Wallet.signIn(config)
+        Pay.move(props.slot, { type: 'signed' })
+      }
+      const target = await props.target()
+      if (start.creates) Pay.move(props.slot, { type: 'created' })
+      const owed = await transfer(config, target, units(amount), text, token)
+      props.onNote('')
+      const counting = Pay.record(owed, props.slot)
+      props.onSent?.(target)
+      if ((await counting).at === 'counted') props.onDone(target)
     } catch (error) {
-      Pay.move(props.slot, { at: 'failed', error: message(error) })
+      const failed = { error: message(error), type: 'failed' } as const
+      if (Pay.can(props.slot, failed)) Pay.move(props.slot, failed)
     }
   }
 
   return (
-    <div className="fuel">
+    <div className="fuel" data-at={act.at} data-size={props.compact ? 'compact' : undefined}>
       <div className="fuel-amount">
         <label className="fuel-sum">
           <span aria-hidden="true">$</span>
-          <input aria-label="Amount in dollars" disabled={busy} id="amount" inputMode="decimal" onChange={(event) => setAmount(event.target.value.replace(',', '.').replace('$', ''))} style={{ width: `${Math.max(1, amount.length) + 0.4}ch` }} value={amount} />
+          <input aria-label="Amount in dollars" disabled={busy} id="amount" inputMode="decimal" onChange={(event) => setAmount(event.target.value.replace(',', '.').replace('$', ''))} ref={sum} style={{ width: `${Math.max(1, amount.length) + 0.4}ch` }} value={amount} />
         </label>
         <input aria-label="Amount" aria-valuetext={dollars(String(marks[at]))} className="fuel-slide" disabled={busy} max={marks.length - 1} min={0} onChange={(event) => setAmount(String(marks[Number(event.target.value)]))} step={1} style={{ '--fill': `${(at / (marks.length - 1)) * 100}%` } as CSSProperties} type="range" value={at} />
         <p className="fuel-ends"><span>{dollars(String(marks[0]))}</span><span>{dollars(String(marks[marks.length - 1]))}</span></p>
@@ -159,26 +209,11 @@ export function Fuel(props: {
       {floor !== smallest && !ok && <p className="fuel-least" data-bad={amount.trim() !== ''}>At least {dollars(floor)}</p>}
       {props.extra}
       {!props.first && props.steers !== false && <input aria-label={props.ask ?? 'What should it try next?'} className="fuel-steer" disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder={`${props.ask ?? 'What should it try next?'} (optional)`} ref={steer} value={props.note} />}
-      <button className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
-        {flow.at === 'busy' ? working[flow.step] : ok ? `${props.first ? 'Start it' : (props.verb ?? 'Ride it')} · ${dollars(amount)}` : props.first ? 'Start it' : (props.verb ?? 'Ride it')}
+      <button aria-busy={busy || undefined} className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
+        {busy ? working[act.at as keyof typeof working] : funding ? 'Adding funds…' : props.ended ? 'Ended' : ok ? `${said} · ${dollars(amount)}` : said}
       </button>
       <div className="fuel-told" ref={told}>
-        {flow.at === 'done' && <Alert action={{ label: 'Add more', onClick: () => Pay.move(props.slot, Pay.idle) }} title={`You're riding. ${dollars(flow.amount)} is in.`} tone="good">Thank you!</Alert>}
-        {flow.at === 'unrecorded' && (
-          <Alert action={{ label: 'Try again', onClick: () => void record(flow.owed) }} title="Sent, but not counted yet." tone="warn">
-            Nothing is paid twice.
-          </Alert>
-        )}
-        {flow.at === 'failed' && !flow.hash && (
-          <Alert action={props.config && /less than|insufficient|too little|balance/i.test(flow.error) ? { label: 'Add funds', onClick: () => void Wallet.fund(props.config!).then(() => Pay.move(props.slot, Pay.idle), () => {}) } : undefined} title={explain(flow.error).title} tone="bad">
-            {explain(flow.error).detail}
-          </Alert>
-        )}
-        {flow.at === 'failed' && flow.hash && (
-          <Alert action={props.config && { href: `${props.config.explorer}/tx/${flow.hash}`, label: short(flow.hash) }} title="Sent, but it cannot be counted." tone="bad">
-            {flow.error}
-          </Alert>
-        )}
+        {props.ended && !busy && act.at !== 'counted' ? <Alert title={props.ended} tone="warn" /> : <Told act={act} config={props.config} onFund={() => void fund()} onRetry={() => void retry()} slot={props.slot} />}
       </div>
     </div>
   )

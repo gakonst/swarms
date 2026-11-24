@@ -5,13 +5,14 @@ import type * as Tree from '../shared/Tree.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
+import { Compose, Pendings } from './Compose.tsx'
 import { asked, Fuel, valid } from './Contribute.tsx'
 import { ago, duration, short, stamp, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { message, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import * as Pay from './pay.ts'
-import { Back, Link, navigate, useBase, useQuery } from './router.tsx'
+import { Back, Link, useBase, useQuery } from './router.tsx'
 import { Mark, word } from './Tree.tsx'
 import * as Wallet from './wallet.ts'
 
@@ -60,72 +61,58 @@ function Checked(props: { check: Tree.Check; title: string }) {
   )
 }
 
-export function Ride(props: { config: Config | undefined; node: Tree.Node; onClose: () => void; onDone: () => void; swarm: string }) {
-  const [note, setNote] = useState('')
+export function verb(node: Tree.Node) {
+  return node.form === 'goal' ? 'Ride the whole swarm' : node.form === 'lemma' ? 'Ride this lemma' : `Ride ${noun(node)}`
+}
+
+export function RideFuel(props: { compact?: boolean; config: Config | undefined; focus?: number | undefined; node: Tree.Node; onDone: () => void; swarm: string }) {
   const [prefill] = useState(() => asked())
+  return (
+    <Fuel
+      compact={props.compact}
+      config={props.config}
+      ended={Grove.closed(props.node) ? 'This item has ended. Ride the whole swarm instead.' : undefined}
+      focus={props.focus}
+      note=""
+      onDone={props.onDone}
+      onNote={() => {}}
+      prefill={prefill}
+      slot={Pay.slot(props.swarm, props.node.id)}
+      steers={false}
+      target={() => Promise.resolve({ id: props.swarm, node: props.node.id })}
+      verb="Ride it"
+    />
+  )
+}
+
+export function Ride(props: { config: Config | undefined; node: Tree.Node; onClose: () => void; onDone: () => void; swarm: string }) {
   const root = props.node.form === 'goal'
   return (
-    <div className="sheet" onClick={(event) => event.target === event.currentTarget && props.onClose()}>
-      <div aria-label="Ride" className="sheet-card ride" role="dialog">
+    <div className="sheet ride-sheet" onClick={(event) => event.target === event.currentTarget && props.onClose()}>
+      <div aria-label="Ride" aria-modal="true" className="sheet-card ride" role="dialog">
         <button aria-label="Close" className="sheet-close" onClick={props.onClose} type="button">×</button>
-        <h3>{root ? 'Ride the whole swarm' : props.node.form === 'lemma' ? 'Ride this lemma' : `Ride ${noun(props.node)}`}</h3>
+        <h3>{root ? 'Ride the whole swarm' : props.node.title}</h3>
         <p className="ride-what">{root ? 'Your dollars serve every program, split by what is runnable.' : `Your dollars run ${noun(props.node)} first, then what grows under it.`} Workers spend it only through the gateway; what is left stays yours to move.</p>
-        <Fuel config={props.config} note={note} onDone={() => { props.onDone(); props.onClose() }} onNote={setNote} prefill={prefill} steers={false} slot={Pay.slot(props.swarm, props.node.id)} target={() => Promise.resolve({ id: props.swarm, node: props.node.id })} verb="Ride it" />
+        <RideFuel config={props.config} focus={1} node={props.node} onDone={() => { props.onDone(); props.onClose() }} swarm={props.swarm} />
       </div>
     </div>
   )
 }
 
-function Propose(props: { asked: boolean; config: Config | undefined; parent: Tree.Node; swarm: string }) {
+function Propose(props: { asked: boolean; config: Config | undefined; nodes: Readonly<Record<string, Tree.Node>>; parent: Tree.Node; swarm: string }) {
   const [shown, setShown] = useState(props.asked)
   const part = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
-    if (props.asked) part.current?.scrollIntoView({ block: 'start' })
+    if (props.asked) part.current?.scrollIntoView({ block: 'nearest' })
   }, [props.asked])
-  const [title, setTitle] = useState('')
-  const [spec, setSpec] = useState('')
-  const [statement, setStatement] = useState('')
-  const [form, setForm] = useState<Tree.Form>('lemma')
-  const [sent, setSent] = useState(false)
-  const [prefill] = useState(() => ({ ...asked(), amount: '1' }))
-  const slot = `${props.swarm}/propose/${props.parent.id}`
-  const base = useBase(props.swarm)
   return (
-    <details className="node-part node-form" onToggle={(event) => setShown(event.currentTarget.open)} open={shown} ref={part}>
-      <summary>Add a sub-item<span>$1+</span></summary>
-      <label className="node-field"><span>Title</span><input maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="Parity needs depth d circuits of size 2^n^(1/d)" value={title} /></label>
-      <label className="node-field"><span>What and why</span><textarea maxLength={2000} onChange={(event) => setSpec(event.target.value)} rows={3} value={spec} /></label>
-      <label className="node-field"><span>Lean statement (optional)</span><textarea className="mono" maxLength={2000} onChange={(event) => setStatement(event.target.value)} placeholder="theorem parity_not_ac0 : ..." rows={2} value={statement} /></label>
-      <label className="node-field"><span>Kind</span>
-        <select onChange={(event) => setForm(event.target.value as Tree.Form)} value={form}>
-          <option value="lemma">Lemma</option>
-          <option value="approach">Approach</option>
-          <option value="idea">Idea</option>
-        </select>
-      </label>
-      <p className="fine">Under {props.parent.form === 'goal' ? 'the whole swarm' : props.parent.title}. The same title under the same parent is the same node, so a duplicate adds money to it.</p>
-      <Fuel
-        config={props.config}
-        least="1"
-        locked={!title.trim()}
-        note=""
-        onDone={(target) => {
-          setSent(false)
-          if (target.node) navigate(`${base}/n/${target.node}`, { keep: true })
-        }}
-        onNote={() => {}}
-        onSent={() => setSent(true)}
-        prefill={prefill}
-        slot={slot}
-        steers={false}
-        target={async () => {
-          const made = await Api.propose(props.swarm, { form, parent: props.parent.id, spec: spec.trim() || title.trim(), title: title.trim(), ...(statement.trim() ? { statement: statement.trim() } : {}) })
-          return { id: props.swarm, node: made.nid }
-        }}
-        verb="Propose it"
-      />
-      {sent && <Alert title="Sent. Counting it…" tone="warn">It becomes a node once the transfer is counted.</Alert>}
-    </details>
+    <>
+      <details className="node-part node-form" onToggle={(event) => setShown(event.currentTarget.open)} open={shown} ref={part}>
+        <summary>Add a sub-item<span>$1+</span></summary>
+        {shown && <Compose config={props.config} full parent={props.parent} swarm={props.swarm} />}
+      </details>
+      <Pendings nodes={props.nodes} parent={props.parent.id} swarm={props.swarm} />
+    </>
   )
 }
 
@@ -201,9 +188,10 @@ export function NodePanel(props: {
   updates: readonly Tree.Delta[] | undefined
   view: NodeView | undefined
 }) {
-  const [riding, setRiding] = useState(() => here().searchParams.has('ride'))
+  const [riding] = useState(() => (here().searchParams.has('ride') ? 1 : 0))
   const asked = useQuery('propose') !== null
   const wallet = useWallet()
+  const ride = Pay.useFlow(Pay.slot(props.swarm, props.nid))
   const known = props.nodes[props.nid]
   const view = props.view
   const node: Tree.Node | undefined = view ?? known
@@ -220,6 +208,7 @@ export function NodePanel(props: {
   const mine = view?.funders.find((funder) => funder.who.address && funder.who.address.toLowerCase() === (wallet.session?.address ?? wallet.address))
   const text = words(node.spec)
   const open = !Grove.closed(node)
+  const rides = node.form !== 'triage' && (open || ride.at !== 'idle')
   return (
     <div className="node" data-status={node.status}>
       {props.back && <Back className="node-back" to={props.back}>← Back</Back>}
@@ -237,8 +226,13 @@ export function NodePanel(props: {
         <b>{usd(node.money.pledged)}</b> ridden by {node.riders} rider{node.riders === 1 ? '' : 's'} · {usd(node.money.spent)} spent · {usd(node.money.left)} left
         {node.children.length > 0 && <> · subtree {usd(node.money.subtree.spent)} spent</>}
       </p>
-      {open && node.form !== 'triage' && <button className="btn btn-high node-ride" onClick={() => setRiding(true)} type="button">{node.form === 'goal' ? 'Ride the whole swarm' : node.form === 'lemma' ? 'Ride this lemma' : `Ride ${noun(node)}`}</button>}
-      {open && node.form !== 'triage' && <Propose asked={asked} config={props.config} key={`${node.id}:${asked}`} parent={node} swarm={props.swarm} />}
+      {rides && (
+        <section aria-label={verb(node)} className="node-part node-ride">
+          <h3>{verb(node)}</h3>
+          <RideFuel compact config={props.config} focus={riding} key={node.id} node={node} onDone={props.onChanged} swarm={props.swarm} />
+        </section>
+      )}
+      {open && node.form !== 'triage' && <Propose asked={asked} config={props.config} key={`${node.id}:${asked}`} nodes={props.nodes} parent={node} swarm={props.swarm} />}
       {text && <section className="node-part node-words"><Markdown text={text} /></section>}
       {node.statement && (
         <section className="node-part">
@@ -301,7 +295,6 @@ export function NodePanel(props: {
       )}
       {mine && Number(mine.amount) > 0 && open && <Move mine={mine} node={node} nodes={props.nodes} onDone={props.onChanged} swarm={props.swarm} />}
       <p className="node-soon">Bring your own agent or machine · coming soon</p>
-      {riding && <Ride config={props.config} node={node} onClose={() => setRiding(false)} onDone={props.onChanged} swarm={props.swarm} />}
     </div>
   )
 }

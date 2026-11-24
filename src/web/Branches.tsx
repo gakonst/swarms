@@ -1,10 +1,13 @@
 import type { CSSProperties, MouseEvent } from 'react'
+import type { Config } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
+import { Compose, Pending } from './Compose.tsx'
 import { ago, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { Inline } from './Markdown.tsx'
 import { Avatar } from './Room.tsx'
 import { why } from './Node.tsx'
+import * as Pay from './pay.ts'
 import { href, Link } from './router.tsx'
 import { Mark } from './Tree.tsx'
 
@@ -55,20 +58,24 @@ export function Tally(props: { node: Tree.Node }) {
 }
 
 type Props = {
+  composing: string | undefined
+  config: Config | undefined
   filter: Grove.Filter
+  fresh: ReadonlySet<string>
   landed: Readonly<Record<string, number>>
   more: Readonly<Record<string, number>>
   nodes: Readonly<Record<string, Tree.Node>>
   now: number
+  onCompose: (nid: string | undefined) => void
   onFold: (node: Tree.Node) => void
   onMore: (id: string, count: number) => void
   onPick: (node: Tree.Node) => void
-  onPropose: (node: Tree.Node) => void
   open: ReadonlySet<string>
   path: (nid: string) => string
   propose: (nid: string) => string
   selected: string
   shape: Shape
+  swarm: string
 }
 
 function Bud(props: Props & { depth: number; node: Tree.Node }) {
@@ -76,6 +83,8 @@ function Bud(props: Props & { depth: number; node: Tree.Node }) {
   const live = doing(node)
   const open = props.open.has(node.id) || props.filter !== 'all'
   const folds = node.children.length > 0 && node.form !== 'goal' && props.filter === 'all'
+  const act = Pay.useFlow(Pay.slot(props.swarm, node.id))
+  const coming = act.at === 'counting' || act.at === 'owed' ? act.owed.amount : undefined
   return (
     <div className="bud">
       <Mark checking={node.run?.checking} status={node.status} />
@@ -92,7 +101,7 @@ function Bud(props: Props & { depth: number; node: Tree.Node }) {
         <Inline text={node.title} />
       </a>
       <span className="bud-meta">
-        <span className="bud-money">{cash(node.money.subtree.pledged)}</span>
+        <span className="bud-money">{cash(node.money.subtree.pledged)}{coming && <i className="bud-coming" title={act.at === 'owed' ? 'Sent, not counted yet' : 'Counting'}>+{cash(coming)}</i>}</span>
         <Faces funders={node.funders} riders={node.riders} />
         {node.children.length > 0 && <Tally node={node} />}
         {folds && (
@@ -111,14 +120,19 @@ function Bud(props: Props & { depth: number; node: Tree.Node }) {
 }
 
 function Limb(props: Props & { depth: number; id: string; index: number }) {
+  const ghosts = Pay.useGhosts(props.swarm, props.id)
   const node = props.nodes[props.id]
   if (!node) return null
   const open = node.form === 'goal' || props.open.has(node.id) || props.filter !== 'all'
-  const kids = open ? Grove.ranked(props.nodes, node.id, props.filter) : []
+  const ranked = open ? Grove.ranked(props.nodes, node.id, props.filter) : []
+  const kids = ranked.filter((kid) => !props.fresh.has(kid.id))
+  const pinned = ranked.filter((kid) => props.fresh.has(kid.id))
   const limit = props.more[node.id] ?? first[props.depth] ?? 3
   const hidden = kids.slice(limit)
-  const shown = kids.slice(0, limit)
+  const shown = [...kids.slice(0, limit), ...pinned]
   const proposing = open && !Grove.closed(node) && props.filter === 'all'
+  const waiting = proposing ? ghosts.filter((ghost) => !ghost.owed.node || !props.nodes[ghost.owed.node]) : []
+  const composing = proposing && props.composing === node.id
   return (
     <li
       className="limb"
@@ -141,12 +155,21 @@ function Limb(props: Props & { depth: number; id: string; index: number }) {
               </button>
             </li>
           )}
-          {proposing && (
+          {waiting.map((ghost) => (
+            <li className="limb limb-ghost" data-depth={props.depth + 1} key={ghost.owed.hash}>
+              <Pending act={ghost.act} owed={ghost.owed} />
+            </li>
+          ))}
+          {composing ? (
+            <li className="limb limb-compose">
+              <Compose config={props.config} onClose={() => props.onCompose(undefined)} onSent={() => props.onCompose(undefined)} parent={node} swarm={props.swarm} />
+            </li>
+          ) : proposing && (
             <li className="limb limb-propose">
               <a href={href(props.propose(node.id))} onClick={(event) => {
                 if (!plain(event)) return
                 event.preventDefault()
-                props.onPropose(node)
+                props.onCompose(node.id)
               }}>
                 <i aria-hidden="true">+</i>Add a sub-item<span>$1+</span>
               </a>
@@ -158,14 +181,18 @@ function Limb(props: Props & { depth: number; id: string; index: number }) {
   )
 }
 
-export function Peek(props: { node: Tree.Node; nodes: Readonly<Record<string, Tree.Node>>; to: string }) {
+export function Peek(props: { node: Tree.Node; nodes: Readonly<Record<string, Tree.Node>>; onRide: (node: Tree.Node) => void; to: string }) {
   const node = props.node
+  const rides = !Grove.closed(node) && node.form !== 'triage'
   return (
-    <Link className="peek" keep to={props.to}>
-      <span className="peek-head"><Mark checking={node.run?.checking} status={node.status} /><b>{node.form === 'goal' ? 'The whole swarm' : node.title}</b></span>
-      <span className="peek-why">{why(node, props.nodes)}</span>
-      <span className="peek-meta"><span className="bud-money">{cash(node.money.subtree.pledged)}</span><Faces funders={node.funders} riders={node.riders} /><span className="peek-go">Read and ride ›</span></span>
-    </Link>
+    <div className="peek" data-rides={rides || undefined}>
+      <Link className="peek-read" keep to={props.to}>
+        <span className="peek-head"><Mark checking={node.run?.checking} status={node.status} /><b>{node.form === 'goal' ? 'The whole swarm' : node.title}</b></span>
+        <span className="peek-why">{why(node, props.nodes)}</span>
+        <span className="peek-meta"><span className="bud-money">{cash(node.money.subtree.pledged)}</span><Faces funders={node.funders} riders={node.riders} /><span className="peek-go">Read more ›</span></span>
+      </Link>
+      {rides && <button className="btn btn-high peek-ride" onClick={() => props.onRide(node)} type="button">Ride it</button>}
+    </div>
   )
 }
 
