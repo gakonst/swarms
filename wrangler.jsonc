@@ -3,6 +3,7 @@
   "name": "swarms",
   "account_id": "0a39052b0a32ba8c8444345fe21b7595",
   "main": "./src/worker/index.ts",
+  "routes": [{ "pattern": "swarms.new", "custom_domain": true }, { "pattern": "www.swarms.new", "custom_domain": true }],
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
