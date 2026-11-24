@@ -45,7 +45,7 @@ export function table(key: string): Table {
   const kind = key.includes(':') ? key.slice(0, key.indexOf(':')) : ''
   if (kind === '') return 'swarms'
   if (kind === 'node') return 'nodes'
-  if (kind === 'room') return 'messages'
+  if (kind === 'room' || kind === 'replies') return 'messages'
   if (kind === 'rider') return 'riders'
   if (kind === 'updates' && key.split(':').length === 3) return 'runs'
   return 'views'
@@ -251,6 +251,40 @@ export function advance(swarm: string, next: string, changed: boolean) {
     held.version = next
     save(key)
   }
+}
+
+type Message = { id: number; parent?: number }
+
+type Thread = { next: number; parent: Message; replies: readonly Message[] }
+
+function placed<T extends Message>(list: readonly T[], message: T) {
+  return list.some((each) => each.id === message.id) ? list : [...list, message].sort((a, b) => a.id - b.id)
+}
+
+function threads(swarm: string) {
+  return [...rows.keys()].filter((key) => key.startsWith(`replies:${swarm}:`))
+}
+
+export function said(swarm: string, message: Message) {
+  if (message.parent === undefined) return patch<{ messages: readonly Message[] }>(`room:${swarm}`, (room) => ({ ...room, messages: placed(room.messages, message) }))
+  patch<Thread>(`replies:${swarm}:${message.parent}`, (thread) => ({ ...thread, next: Math.max(thread.next, message.id), replies: placed(thread.replies, message) }))
+}
+
+function edited<T extends Message>(list: readonly T[], id: number, update: (message: T) => T) {
+  return list.some((each) => each.id === id) ? list.map((each) => (each.id === id ? update(each) : each)) : list
+}
+
+export function touched<T extends Message>(swarm: string, id: number, update: (message: T) => T) {
+  patch<{ messages: readonly T[] }>(`room:${swarm}`, (room) => {
+    const messages = edited(room.messages, id, update)
+    return messages === room.messages ? room : { ...room, messages }
+  })
+  for (const key of threads(swarm))
+    patch<{ next: number; parent: T; replies: readonly T[] }>(key, (thread) => {
+      const replies = edited(thread.replies, id, update)
+      const parent = thread.parent.id === id ? update(thread.parent) : thread.parent
+      return replies === thread.replies && parent === thread.parent ? thread : { ...thread, parent, replies }
+    })
 }
 
 export function delta(swarm: string, event: Tree.Delta) {

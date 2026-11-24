@@ -87,7 +87,9 @@ function heard(wire: Wire, event: Chatter | { type: 'open' | 'closed' }) {
   }
   if (event.type === 'pulse') Local.patch<Detail>(wire.id, (detail) => pulsed(detail, event) ?? detail)
   if (event.type === 'delta') Local.delta(wire.id, event.delta)
-  if (event.type === 'said') Local.patch<{ messages: readonly Said[] }>(`room:${wire.id}`, (room) => (room.messages.some((each) => each.id === event.message.id) ? room : { ...room, messages: [...room.messages, event.message].sort((a, b) => a.id - b.id) }))
+  if (event.type === 'said') Local.said(wire.id, event.message)
+  if (event.type === 'reacted') Local.touched<Said>(wire.id, event.id, (message) => ({ ...message, reactions: event.reactions }))
+  if (event.type === 'replies') Local.touched<Said>(wire.id, event.id, (message) => ({ ...message, replies: event.replies }))
   if (!wire.listeners.size && (event.type === 'pulse' || event.type === 'said' || event.type === 'artifacts' || event.type === 'roster')) return stir(wire, parts, 'welcome')
   dispatch(wire, event)
   if (event.type === 'changed') stir(wire, event.parts, 'changed')
