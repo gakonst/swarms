@@ -226,3 +226,52 @@
   .starter-card { padding:10px 12px; }
 }
 
+
+.general-body { flex:1; display:flex; flex-direction:column; min-height:0; }
+.general-board { display:flex; flex-direction:column; min-width:0; min-height:0; }
+.general-board .rail-label { padding-inline:6px; }
+.general-board [data-ready='false'], .general-list[data-loading='true'] { visibility:hidden; }
+.general-list { display:grid; gap:1px; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+.general-lot { display:grid; grid-template-columns:28px minmax(0, 1fr) auto; grid-template-areas:'mark name money' 'mark meta meta'; align-items:center; column-gap:10px; row-gap:1px; min-height:48px; padding:6px 8px; border-radius:8px; color:var(--fg); text-decoration:none; }
+.general-lot:hover { background:var(--wash); color:var(--fg); }
+.general-lot .spiral { grid-area:mark; width:28px; height:28px; align-self:center; }
+.general-lot[data-old='true'] { color:var(--faint); }
+.general-lot[data-old='true'] .spiral { opacity:.5; }
+.general-lot-name { grid-area:name; min-width:0; overflow:hidden; font-size:15.5px; line-height:1.3; white-space:nowrap; text-overflow:ellipsis; }
+.general-lot-money { grid-area:money; font:12px var(--mono); font-feature-settings:'tnum'; }
+.general-lot-meta { grid-area:meta; display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; font:11px var(--mono); color:var(--muted); white-space:nowrap; }
+.general-new { grid-template-areas:'mark name money'; border:1px dashed var(--rule); font:13px var(--mono); }
+.general-new > i { grid-area:mark; justify-self:center; font-style:normal; }
+.general-new .general-lot-name { font:13px var(--mono); }
+
+@media (min-width:900px) {
+  :is(.grove, .swarm-shell):not([data-room]) { display:grid; grid-template-columns:minmax(0, 1fr) clamp(320px, 28vw, 440px); grid-template-rows:auto auto minmax(0, 1fr); }
+  :is(.grove, .swarm-shell):not([data-room]) > .strip { grid-column:1 / -1; grid-row:1; }
+  :is(.grove, .swarm-shell):not([data-room]) > .tabs { grid-column:1; grid-row:2; }
+  :is(.grove, .swarm-shell):not([data-room]) > .panel { grid-column:1; grid-row:3; }
+  :is(.grove, .swarm-shell):not([data-room]) > .panel-chat { grid-column:2; grid-row:2 / -1; margin:0 calc(var(--margin) * -1) 0 var(--gutter); padding:0 var(--margin) 14px 18px; border-left:1px solid var(--line); }
+  :is(.grove, .swarm-shell) .tabs .tab[data-tab='chat'] { display:none; }
+  :is(.grove, .swarm-shell) .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
+  .grove[data-thread]:not([data-room]) > .strip { grid-column:1; }
+  .grove[data-thread]:not([data-room]) > .panel-chat { display:none; }
+  .general-body { display:grid; grid-template-columns:minmax(0, 1fr) clamp(280px, 24vw, 360px); grid-template-rows:minmax(0, 1fr); }
+  .general-board { order:2; margin:0 calc(var(--margin) * -1) 0 var(--gutter); padding:4px 14px 14px; border-left:1px solid var(--line); }
+  .general-body > .general-chat { order:1; }
+}
+
+@media (max-width:899px) {
+  :is(.grove, .swarm-shell):not([data-room]) > .panel-board { order:1; }
+  :is(.grove, .swarm-shell):not([data-room]) > .panel-chat { order:2; }
+  :is(.grove, .swarm-shell):not([data-room])[data-tab='chat'] > .panel-board { flex:0 0 40%; border-bottom:1px solid var(--line); }
+  :is(.grove, .swarm-shell):not([data-room])[data-tab='chat'] > .panel-chat { flex:1 1 0; }
+  :is(.grove, .swarm-shell):not([data-room])[data-tab='board'] > .panel-board { flex:1 1 0; }
+  :is(.grove, .swarm-shell):not([data-room])[data-tab='board'] > .panel-chat { flex:0 0 38%; border-top:1px solid var(--line); }
+  :is(.grove, .swarm-shell):not([data-room]):not([data-tab='chat']):not([data-tab='board']) > .panel-chat { display:none; }
+  .general-board { flex:none; padding:0 0 8px; border-bottom:1px solid var(--line); }
+  .general-board .rail-label { padding:8px var(--margin) 4px; }
+  .general-list { display:flex; gap:8px; padding:0 var(--margin); overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
+  .general-list > li { flex:none; }
+  .general-lot { width:min(72vw, 260px); min-height:52px; border:1px solid var(--line); }
+  .general-new { width:auto; }
+}
+

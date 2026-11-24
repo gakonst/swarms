@@ -256,11 +256,11 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>
       </Strip>}
       {!held && <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} unread={unread} view={view} />}
-      <div className="panel panel-chat" hidden={view !== 'chat' || !!held}>
-        <Room config={props.config} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} onUnread={setUnread} steer={false} swarm={swarm} visible={view === 'chat'} />
+      <div className="panel panel-chat" hidden={!!held}>
+        <Room config={props.config} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} onUnread={setUnread} steer={false} swarm={swarm} visible={!held && (view === 'chat' || view === 'board' || !phone)} />
       </div>
-      {seen.has('board') && (
-        <div className="grove-body panel" hidden={view !== 'board' || !!held}>
+      {(seen.has('board') || seen.has('chat')) && (
+        <div className="grove-body panel panel-board" hidden={(view !== 'board' && view !== 'chat') || !!held}>
           <section aria-label="Threads" className="grove-tree">
             <Filters filter={filter} nodes={nodes} onFilter={filtered} />
             <div className="grove-scroll">

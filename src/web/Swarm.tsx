@@ -14,7 +14,7 @@ import * as Prose from '../shared/Prose.ts'
 import { line, pill } from './Card.tsx'
 import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
-import { useNow, usePoll, useWallet } from './hooks.ts'
+import { useMedia, useNow, usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Overlay } from './Overlay.tsx'
 import * as Names from './names.ts'
@@ -55,6 +55,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   const [tree, rebranch] = usePoll(() => Api.branches(id), wired === 'down' && detail.data?.status === 'running' ? 30_000 : null, `branches:${id}`)
   const [chat, rechat] = usePoll(() => Api.room(id), null, `room:${id}`)
   const now = useNow(30_000)
+  const phone = useMedia('(max-width: 899px)')
   const wishes = useWishes(shelf.data?.artifacts)
   const surface = useSurface(shelf.data?.artifacts, id)
   const opened = useQuery('r')
@@ -159,7 +160,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           swarmTitle={swarm.title}
         />
       )}
-      <div className="panel panel-chat" hidden={view !== 'chat' || !!branch}>
+      <div className="panel panel-chat" hidden={!!branch}>
         <Room
           config={props.config}
           onArtifact={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`)}
@@ -168,11 +169,11 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           onResults={() => show('results')}
           onUnread={setUnread}
           swarm={swarm}
-          visible={view === 'chat'}
+          visible={!branch && (view === 'chat' || view === 'board' || !phone)}
         />
       </div>
-      <div className="panel panel-page" hidden={view !== 'board' || !!branch}>
-        <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'board'} />
+      <div className="panel panel-page panel-board" hidden={(view !== 'board' && view !== 'chat') || !!branch}>
+        <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'board' || view === 'chat'} />
       </div>
       {seen.has('results') && (
         <div className="panel panel-page" hidden={view !== 'results' || !!branch}>

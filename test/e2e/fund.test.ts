@@ -123,32 +123,37 @@ for (const viewport of ['desktop', 'phone'] as const) {
 test('a ride on a board item survives a cancel, an empty wallet, a ride sent but not counted at first, and a refusal', async () => {
   for (const viewport of ['desktop', 'phone'] as const) {
     const page = await browse(viewport)
-    const go = '.node-ride .fuel-go'
-    const told = () => page.read('.node-ride .fuel-told')
+    const go = '.ride .fuel-go'
+    const told = () => page.read('.ride .fuel-told')
     try {
       await page.open(lemma + '?fixture&scene=in,deny')
+      await page.tap('.node-ride-btn')
       await page.tap(go)
-      assert.ok(await page.until('/Cancelled/.test(document.querySelector(".node-ride .fuel-told")?.textContent ?? "")'), 'a cancel says so')
+      assert.ok(await page.until('/Cancelled/.test(document.querySelector(".ride .fuel-told")?.textContent ?? "")'), 'a cancel says so')
       assert.match((await told()) ?? '', /Nothing was charged/)
-      assert.equal(await page.evaluate('document.querySelector(".node-ride .fuel-go").disabled'), false, 'a cancel can be tried again')
+      assert.equal(await page.evaluate('document.querySelector(".ride .fuel-go").disabled'), false, 'a cancel can be tried again')
 
       await page.open(lemma + '?fixture&scene=in,broke')
+
+      await page.tap('.node-ride-btn')
       const before = await page.raised()
       await page.tap(go)
-      assert.ok(await page.until('/Not enough in your wallet/.test(document.querySelector(".node-ride .fuel-told")?.textContent ?? "")'))
+      assert.ok(await page.until('/Not enough in your wallet/.test(document.querySelector(".ride .fuel-told")?.textContent ?? "")'))
       await page.shoot('item-broke')
-      await page.tap('.node-ride .alert-go')
+      await page.tap('.ride .alert-go')
       assert.equal(await page.read(go), 'Adding funds…')
-      assert.ok(await page.until('/Funds added/.test(document.querySelector(".node-ride .fuel-told")?.textContent ?? "")'), 'adding funds says it worked')
+      assert.ok(await page.until('/Funds added/.test(document.querySelector(".ride .fuel-told")?.textContent ?? "")'), 'adding funds says it worked')
       assert.match((await told()) ?? '', /Your wallet has \$25\.00/)
       await page.tap(go)
       assert.ok(await page.until('!!document.querySelector(".cheer")'))
       assert.equal(await page.raised(), before + 5)
 
       await page.open(lemma + '?fixture&scene=in,uncounted')
+
+      await page.tap('.node-ride-btn')
       const owed = await page.raised()
       await page.tap(go)
-      assert.ok(await page.until('/Sent, but not counted yet/.test(document.querySelector(".node-ride .fuel-told")?.textContent ?? "")'), 'an uncounted ride says it was sent')
+      assert.ok(await page.until('/Sent, but not counted yet/.test(document.querySelector(".ride .fuel-told")?.textContent ?? "")'), 'an uncounted ride says it was sent')
       assert.match((await told()) ?? '', /Trying again by itself\. Nothing is paid twice\./)
       await page.shoot('item-owed')
       assert.ok(await page.until('!!document.querySelector(".cheer")', 20_000), 'the owed ride is counted by itself')
@@ -157,8 +162,10 @@ test('a ride on a board item survives a cancel, an empty wallet, a ride sent but
       assert.equal(await page.raised(), owed + 5)
 
       await page.open(lemma + '?fixture&scene=in,reject')
+
+      await page.tap('.node-ride-btn')
       await page.tap(go)
-      assert.ok(await page.until('/cannot be counted/.test(document.querySelector(".node-ride .fuel-told")?.textContent ?? "")'))
+      assert.ok(await page.until('/cannot be counted/.test(document.querySelector(".ride .fuel-told")?.textContent ?? "")'))
       await page.shoot('item-refused')
       assert.equal(await page.evaluate('window.__cheers'), 0)
       assert.deepEqual(page.errors, [])
@@ -173,7 +180,8 @@ test('an ended item offers no ride, and the strip still rides the whole swarm', 
   try {
     await page.open(grove + '/n/397998eb13?fixture&scene=in')
     assert.match((await page.read('h1, h2, .node-title')) ?? '', /\S/)
-    assert.equal(await page.evaluate('!!document.querySelector(".node-ride .fuel-go:not(:disabled)")'), false, 'an ended item offers no ride')
+    assert.equal(await page.evaluate('!!document.querySelector(".node-ride-btn")'), false, 'an ended item offers no ride')
+    await page.open(grove + '?fixture&scene=in')
     await page.tap('.strip-ride')
     assert.equal(await page.read('.overlay .ride h3'), 'Ride the whole swarm')
   } finally {
@@ -216,7 +224,7 @@ test('a sub-item and a new swarm say what they still need, then start in one go'
     const page = await browse(viewport)
     try {
       await page.open(lemma + '?fixture&scene=in')
-      await page.tap('.node-add')
+      await page.tap('.thread .channel-add')
       assert.ok(await page.until('!!document.querySelector(".compose .fuel-go")'))
       assert.equal(await page.read('.compose .fuel-go'), 'Give it a title first')
       await page.type('.compose-title', 'A lemma from the fund test')
