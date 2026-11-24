@@ -6,6 +6,7 @@ import { seeded } from './boot.ts'
 import { cash } from './Branches.tsx'
 import { type Channel as Room, holding, type Thread, useShape } from './channels.ts'
 import { Spiral } from './Field.tsx'
+import { Switcher } from './Switcher.tsx'
 import * as Status from '../shared/Status.ts'
 import { board, live, sown, stood } from './Home.tsx'
 import { Inline } from './Markdown.tsx'
@@ -243,11 +244,13 @@ function SwarmSide(props: { general: boolean; id: string; room: string | undefin
 
 const swipe = 56
 
+const edge = 28
+
 function held(target: EventTarget | null) {
   return target instanceof Element && !!target.closest('input, textarea, select, pre, .tabs, .tree-filters, .overlay, .sheet, [data-swipe="off"]')
 }
 
-export function useSwipe(handlers: { left?: (() => void) | undefined; right?: (() => void) | undefined }) {
+export function useSwipe(handlers: { edge?: (() => void) | undefined; left?: (() => void) | undefined; right?: (() => void) | undefined }) {
   const start = useRef<{ x: number; y: number } | undefined>(undefined)
   return {
     onTouchCancel: () => {
@@ -263,6 +266,7 @@ export function useSwipe(handlers: { left?: (() => void) | undefined; right?: ((
       const dy = touch.clientY - from.y
       if (Math.abs(dx) < swipe || Math.abs(dx) < Math.abs(dy) * 1.6) return
       if (dx < 0) handlers.left?.()
+      else if (from.x < edge && handlers.edge) handlers.edge()
       else handlers.right?.()
     },
     onTouchStart: (event: TouchEvent<HTMLElement>) => {
@@ -274,7 +278,7 @@ export function useSwipe(handlers: { left?: (() => void) | undefined; right?: ((
 }
 
 export function Shell(props: { channel: string | undefined; children: ReactNode; general: boolean; listing: boolean; onList: (open: boolean) => void; room: string | undefined; thread: string | undefined }) {
-  const swiped = useSwipe(props.listing ? { right: () => props.onList(false) } : { left: () => props.onList(true) })
+  const swiped = useSwipe(props.listing ? { right: () => props.onList(false) } : { edge: () => props.onList(true), left: () => props.onList(true) })
   const list = Wire.useSwarms()
   const items = channels(list.data)
   const unread = useUnread(items, props.channel)
@@ -288,6 +292,7 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
         {id ? <SwarmSide general={props.general} id={id} key={id} room={props.room} swarm={swarm} thread={props.thread} word={swarm && stood(swarm, list.data?.heads?.[id]).word} /> : <Home channel={props.channel} items={items} listing={list.data} unread={unread} />}
       </div>
       <div className="hub-main" inert={props.listing || undefined}>{props.children}</div>
+      <Switcher current={props.channel} items={items} listing={list.data} onList={props.onList} unread={unread} />
     </div>
   )
 }

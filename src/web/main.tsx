@@ -13,6 +13,7 @@ import './reins.css'
 import './tree.css'
 import './swarm.css'
 import './shell.css'
+import './switcher.css'
 
 function fit() {
   document.documentElement.style.setProperty('--screen', `${Math.round(visualViewport?.height ?? innerHeight)}px`)
