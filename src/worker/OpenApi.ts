@@ -5,6 +5,7 @@ import * as Machines from './Machines.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Sessions from './Sessions.ts'
+import * as Watch from './Watch.ts'
 
 type Json = Record<string, unknown>
 
@@ -444,6 +445,26 @@ const schemas = {
   }),
 }
 
+const resume = {
+  description: 'Resume a stream: the id of the last event you got. An EventSource sends it on reconnect; ?since=<id> does the same.',
+  in: 'header',
+  name: 'Last-Event-ID',
+  required: false,
+  schema: string,
+}
+
+function streamed(paths: Record<string, Record<string, Json>>) {
+  for (const [path, item] of Object.entries(paths)) {
+    const get = item['get'] as { parameters?: unknown[]; responses: Record<string, { content?: Record<string, unknown> }> } | undefined
+    const found = get && Watch.topic(path.replace(/\{[^}]+\}/g, 'x'))
+    const content = get?.responses['200']?.content
+    if (!get || !found || !content?.['application/json']) continue
+    content['text/event-stream'] = { schema: { description: Watch.explain(found), type: 'string' } }
+    get.parameters = [...(get.parameters ?? []), resume]
+  }
+  return paths
+}
+
 export function document(origin: string) {
   return {
     components: {
@@ -458,12 +479,12 @@ export function document(origin: string) {
       schemas,
     },
     info: {
-      description: `Swarms are crowdfunded, long-running AI agents on the Tempo gateway that research or build whatever their goal asks, in public. Backers send MACH, OUSD, USDC.e or pathUSD to the gateway with a memo that names the swarm and record it by hash; the gateway holds it as the swarm's credit and spends it on the agent's work. Notes on money steer the agent, weighted by the money behind them. Each swarm's backers talk in its room, where an @swarm message puts part of its author's backing behind an idea. Reading needs no account; posting needs a Tempo ID session from /v1/auth. Errors are problem JSON with a stable code. The same operations are MCP tools at ${origin}/mcp.`,
+      description: `Swarms are crowdfunded, long-running AI agents on the Tempo gateway that research or build whatever their goal asks, in public. Backers send MACH, OUSD, USDC.e or pathUSD to the gateway with a memo that names the swarm and record it by hash; the gateway holds it as the swarm's credit and spends it on the agent's work. Notes on money steer the agent, weighted by the money behind them. Each swarm's backers talk in its room, where an @swarm message puts part of its author's backing behind an idea. Reading needs no account; posting needs a Tempo ID session from /v1/auth. Errors are problem JSON with a stable code. The same operations are MCP tools at ${origin}/mcp. ${Watch.about}`,
       title: 'Swarms',
       version: '1',
     },
     openapi: '3.1.0',
-    paths: {
+    paths: streamed({
       '/v1/config': { get: { operationId: 'config', responses: ok(ref('Config'), 'Chain and tokens.'), summary: 'Configuration' } },
       '/v1/feedback': {
         post: {
@@ -634,6 +655,12 @@ export function document(origin: string) {
       },
       '/v1/swarms/{id}/nodes/{nid}': {
         get: { description: 'One node in full: words, Lean statement, status and why, checked record, every rider, runs, steers and suggestions.', operationId: 'node', parameters: [swarm, parameter('nid', 'path', string, 'The node id: root, triage or 10 hex characters.')], responses: { ...ok(ref('NodeView'), 'The node.'), ...failures(400, 404) }, summary: 'Node' },
+      },
+      '/v1/swarms/{id}/deltas': {
+        get: { description: "Every node's deltas after a seq, oldest first: what the tree stream sends as delta events.", operationId: 'treeDeltas', parameters: [swarm, ...queried(Operations.schema.nodeUpdates, ['after', 'limit'])], responses: { ...ok(ref('NodeUpdates'), 'The deltas and the seq to ask after next.'), ...failures(400, 404) }, summary: 'Tree deltas' },
+      },
+      '/v1/swarms/{id}/code': {
+        get: { description: "A snapshot of the swarm's code: its newest commits, its files and its README, or null before its first commit.", operationId: 'getCode', parameters: [swarm], responses: { ...ok(object({ snapshot: nullable({ type: 'object' }) }), 'The snapshot.'), ...failures(404) }, summary: 'Code' },
       },
       '/v1/swarms/{id}/nodes/{nid}/updates': {
         get: { description: "A node's deltas after a seq, oldest first; the room socket and /live carry the same.", operationId: 'nodeUpdates', parameters: [swarm, parameter('nid', 'path', string, 'The node id: root, triage or 10 hex characters.'), ...queried(Operations.schema.nodeUpdates, ['after', 'limit'])], responses: { ...ok(ref('NodeUpdates'), 'The deltas and the seq to ask after next.'), ...failures(400, 404) }, summary: 'Node updates' },
@@ -1031,7 +1058,7 @@ export function document(origin: string) {
           summary: 'Wait for the next update',
         },
       },
-    },
+    }),
     servers: [{ url: origin }],
   }
 }

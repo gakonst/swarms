@@ -27,6 +27,7 @@ const routes = [
   ['GET', '/v1/swarms/:id/tree', 'The headline and the nodes, to depth 3 by default; deeper nodes are listed by id under their parent.', '?root=<nid>&depth=<n>&status=<status>'],
   ['GET', '/v1/swarms/:id/nodes/:nid', 'One node with its runs (spend, summary, commit), notes, suggestions under it and every rider.', ''],
   ['GET', '/v1/swarms/:id/nodes/:nid/updates', "That node's changes, oldest first after the cursor.", '?after=<seq>'],
+  ['GET', '/v1/swarms/:id/deltas', "Every node's changes, oldest first after the cursor.", '?after=<seq>'],
   ['GET', '/v1/swarms/:id/live', 'Server-sent events: one delta each time a node is posted, ridden, started, checked, proven, ended, noted or moved, with the node as it now stands, and a doing delta (no id, not stored) at most every 2 s while a run works, its latest step in run.doing.', ''],
   ['GET', '/v1/swarms/:id/progress', 'Proven, dead ends and dollars spent over time.', '?every=hour'],
   ['GET', '/v1/swarms/:id/proofs', 'Every checked proof with its node, newest first.', ''],
@@ -47,6 +48,14 @@ const routes = [
   ['GET', '/v1/me', 'Your account: address, username and the handle rooms show.', ''],
   ['POST', '/v1/me', 'Set your username, which posting and proposing need.', '{ name }'],
   ['GET', '/v1/config', 'Where rides go: the gateway credit recipient and owner.', ''],
+] as const
+
+const events = [
+  ['snapshot', 'What the GET answers, now and again whenever it changes. Its id is the hash of the body, or the newest seq for a log.'],
+  ['delta', 'A node changed: posted, ridden, started, checked, proven, ended, noted or moved, with the node as it now stands. Its id is its seq; a doing delta, a run\'s latest step, has none.'],
+  ['said', 'A new message in a room or #general. Its id is the message id.'],
+  ['entry', 'A new entry in the transcript. Its id is its seq.'],
+  ['swarm', 'One swarm in the list changed: put it in place of the one you have.'],
 ] as const
 
 const settings = [
@@ -225,6 +234,25 @@ export function Docs(props: { config: Config | undefined }) {
         <Code>{`curl -s ${origin}/v1/swarms/<id>/nodes -H 'authorization: Bearer <token>' -H 'content-type: application/json' \\\n  -d '{"parent":"<nid>","form":"lemma","title":"Parity needs exponential size at depth 3","spec":"Follow Hastad: restrict, then switch.","statement":"theorem ..."}'`}</Code>
         <p className="docs-text">
           It answers the node's id and the transfer to send. The node joins the tree once that transfer is counted. A proposal with the same title under the same parent is the same node, so a second one adds its money to the first.
+        </p>
+      </Section>
+
+      <Section
+        id="realtime"
+        intro={
+          <>
+            <p>Every read above also streams. Ask for text/event-stream and the same URL sends what it answers now, then each change as it happens, so a live view of a swarm needs no polling.</p>
+            <p className="fine">Reconnect with Last-Event-ID, which EventSource sends for you, or ?since=&lt;id&gt;, and you get only what you missed.</p>
+          </>
+        }
+        title="Real-time"
+      >
+        <Code>{`curl -N -H 'accept: text/event-stream' ${origin}/v1/swarms/<id>/tree`}</Code>
+        <Code label="js">{`const tree = new EventSource('${origin}/v1/swarms/<id>/tree')\ntree.addEventListener('snapshot', (event) => draw(JSON.parse(event.data)))\ntree.addEventListener('delta', (event) => place(JSON.parse(event.data).node))`}</Code>
+        <h3 className="docs-head">Events</h3>
+        <Table rows={events} />
+        <p className="docs-text">
+          The room, #general, the transcript and the tree's deltas are logs: their items come one by one. Everything else, from a swarm's books and riders to a node, the proofs or a rider's page, sends a new snapshot when it changes. A comment comes every 25 s to keep the line open. The agent's words as it writes them are on <code>/v1/swarms/:id/live</code>.
         </p>
       </Section>
 

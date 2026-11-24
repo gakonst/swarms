@@ -88,7 +88,7 @@ export function code(id: string, fresh = false) {
   if (known && !fresh && Date.now() - known.at < 30_000) return known.read
   const entry: { at: number; read: Promise<Snapshot | null>; value?: Snapshot | null } = {
     at: Date.now(),
-    read: fixture ? Promise.resolve(null) : request<{ snapshot: Snapshot | null }>(`${path(id)}/code`).then((body) => (entry.value = body.snapshot)),
+    read: fixture ? Promise.resolve(null) : request<{ snapshot: Snapshot | null }>(`${v1(id)}/code`).then((body) => (entry.value = body.snapshot)),
   }
   entry.read.catch(() => snapshots.delete(id))
   snapshots.set(id, entry)
@@ -221,6 +221,13 @@ export function updates(id: string) {
 
 export function artifacts(id: string) {
   return fixture ? staged((fixtures) => fixtures.artifacts(id)) : request<{ artifacts: Artifact[] }>(`${path(id)}/artifacts`)
+}
+
+export function following<T>(route: string, listener: (value: T) => void) {
+  if (fixture || typeof EventSource === 'undefined') return () => {}
+  const source = new EventSource(Site.at(route))
+  source.addEventListener('snapshot', (event) => listener(JSON.parse(String(event.data)) as T))
+  return () => source.close()
 }
 
 export function rider(who: string) {

@@ -29,7 +29,9 @@ function plural(count: number, word: string) {
 
 export function Profile(props: { who: string }) {
   const who = whose(props.who)
-  const [read] = usePoll(() => Api.rider(who), null, `rider:${who}`)
+  const [read, , setRead] = usePoll(() => Api.rider(who), null, `rider:${who}`)
+  const known = read.data !== undefined
+  useEffect(() => (known ? Api.following<Read>(`/v1/riders/${encodeURIComponent(who)}`, (profile) => setRead(() => profile)) : undefined), [who, known, setRead])
   const wallet = useWallet()
   const data: Read | undefined = read.data
   const handle = data ? (data.rider.name ? `@${data.rider.name}` : data.rider.handle) : undefined

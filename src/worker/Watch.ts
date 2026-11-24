@@ -170,6 +170,16 @@ export function topic(path: string, search: URLSearchParams = new URLSearchParam
   return { events: ['snapshot'], gap: 5_000, name: first, scope: { kind: 'lobby' }, stirs: (signal) => signal.type === 'swarm' }
 }
 
+export const about =
+  'Every GET under /v1 that reads something also streams it: send Accept: text/event-stream (an EventSource does). The stream sends the body the GET answers as event: snapshot, then what changes as it happens, a comment every 25 s, and retry: 3000. Logs (the room, #general, the feed, the tree and node deltas) send each new item as its own event with its seq as the id; everything else sends a new snapshot, under the hash of its body as the id, whenever its body changes. Reconnect with Last-Event-ID (an EventSource does it for you) or ?since=<id> to get only what you missed: the items after that seq, or nothing until the body differs from that hash.'
+
+export function explain(topic: Topic) {
+  const items = topic.events.filter((event) => event !== 'snapshot')
+  if (topic.log) return 'Streams with Accept: text/event-stream: event: snapshot with this body and the newest seq as its id, then event: ' + items.join(', ') + ' for each new one with its seq as the id, and a new snapshot if the body changes otherwise. Last-Event-ID or ?since=<seq> sends only what came after it.'
+  if (items.length) return 'Streams with Accept: text/event-stream: event: snapshot with this body and its hash as the id, then event: ' + items.join(', ') + ' with one changed summary to put in its place. Last-Event-ID or ?since=<hash> skips the snapshot while the list is unchanged.'
+  return 'Streams with Accept: text/event-stream: event: snapshot with this body and its hash as the id, and again each time the body changes. Last-Event-ID or ?since=<hash> skips the snapshot while the body is unchanged.'
+}
+
 export function frame(event: string, data: string, id?: number | string) {
   return 'event: ' + event + '\n' + (id === undefined ? '' : 'id: ' + id + '\n') + 'data: ' + data + '\n\n'
 }
