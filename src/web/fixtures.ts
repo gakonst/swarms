@@ -307,7 +307,10 @@ const fixtures: Live[] = [
     age: 70,
     goal: 'Find the fastest and the cheapest way to parse a terabyte of newline-delimited JSON logs on rented machines. Compare serde_json, simd-json and sonic-rs across machine sizes and report GiB/s and MACH per TiB.',
     hands: ['sb-91e0aa4f', 'sb-5c2b7d10'],
-    updates: [[31, 'Generated 64 GiB of synthetic access logs and a harness that streams them through each parser.\nsonic-rs 1.55 GiB/s, simd-json 1.36 GiB/s, serde_json 0.41 GiB/s on 8 CPUs.', '0.180000']],
+    updates: [
+      [31, 'Generated 64 GiB of synthetic access logs and a harness that streams them through each parser.\nsonic-rs 1.55 GiB/s, simd-json 1.36 GiB/s, serde_json 0.41 GiB/s on 8 CPUs.', '0.180000'],
+      [12, '**Headline: sonic-rs parses a TiB for 0.21 MACH on 8 CPUs, and 16 CPUs buys nothing.** The 16-CPU machine tops out at 1.58 GiB/s because every parser is memory bound.\n\n| Parser | GiB/s on 8 CPUs | MACH per TiB |\n| --- | --- | --- |\n| sonic-rs | 1.55 | 0.21 |\n| simd-json | 1.36 | 0.24 |\n| serde_json | 0.41 | 0.79 |\n\n```rust\nlet value: sonic_rs::Value = sonic_rs::from_slice(&line)?;\n```\n\nNext: measure memory bandwidth with `mbw` before renting a bigger machine.', '0.051000'],
+    ],
     gifts: [
       [4, '0.180000', 'pathusd', 38, 'Measure cost per GiB, not just throughput'],
       [3, '0.500000', 'usdce', 68, 'Measure cost per GiB, not just throughput'],
@@ -955,8 +958,10 @@ const talk: Record<string, readonly (readonly [number | null, string, number, st
     [3, 'sonic-rs at 1.55 GiB/s on 8 CPUs is already past what I expected.', 25],
     [6, '@3 the baseline matters though. serde_json makes the speedup legible to everyone else.', 20],
     [null, 'New artifact: Parser throughput, GiB/s by machine size.', 15],
+    [null, 'Update: **Headline: sonic-rs parses a TiB for 0.21 MACH on 8 CPUs, and 16 CPUs buys nothing.** The 16-CPU machine tops out at 1.58 GiB/s because every parser is memory bound.', 12],
     [5, 'Curious whether 16 CPUs buys anything. The agent thinks it is memory bound.', 11],
     [2, '@swarm Measure memory bandwidth on the 16-CPU machine before scaling up', 9, '1.000000'],
+    [3, 'Two asks before anyone scales up:\n- pin `sonic-rs 0.5.1` so the numbers are reproducible\n- report **MACH per TiB** next to GiB/s\n\n```sh\nmbw -n 10 4096\n```', 6],
   ],
   'mev-map': [
     [null, "Update: Final report. Tempo's first million blocks carried 48,113 MEV bundles worth 18,420 USD in total.", 1100],

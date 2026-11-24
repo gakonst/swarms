@@ -1,16 +1,48 @@
-import { gfmFromMarkdown } from 'mdast-util-gfm'
-import { gfm } from 'micromark-extension-gfm'
-import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
+import { createHtmlRenderer } from '@pierre/words/html'
+import { type CodeHighlighterPlugin, type Components, defaultUrlTransform, type PluginConfig, Markdown as Words } from '@pierre/words/react'
+import { useEffect, useMemo, useSyncExternalStore } from 'react'
 
-type Extensions = { fromMarkdownExtensions?: unknown[]; micromarkExtensions?: unknown[] }
+let plugins: PluginConfig | undefined
 
-function readGfm(this: { data(): object }) {
-  const data: Extensions = this.data()
-  data.micromarkExtensions = [...(data.micromarkExtensions ?? []), gfm()]
-  data.fromMarkdownExtensions = [...(data.fromMarkdownExtensions ?? []), gfmFromMarkdown()]
+let loading: Promise<void> | undefined
+
+const heard = new Set<() => void>()
+
+const fence = /^ {0,3}(`{3,}|~{3,})/m
+
+const components: Components = { a: (html) => html.replace('<a ', '<a rel="noreferrer" target="_blank" ') }
+
+const controls = { code: { copy: true, download: false } }
+
+const marks = { mark: ['class', 'data-me', 'data-swarm'] }
+
+const line = createHtmlRenderer({ allowedElements: ['strong', 'em', 'code', 'del', 'mark'], controls: false, unwrapDisallowed: true })
+
+export function highlighted(plugin: CodeHighlighterPlugin) {
+  plugins = { code: plugin }
+  for (const listen of heard) listen()
 }
 
-const plugins = [readGfm]
+export function highlight() {
+  if (plugins) return Promise.resolve()
+  return (loading ??= import('./highlight.ts').then(
+    (module) => highlighted(module.code),
+    () => {
+      loading = undefined
+    },
+  ))
+}
+
+function subscribe(listen: () => void) {
+  heard.add(listen)
+  return () => {
+    heard.delete(listen)
+  }
+}
+
+function current() {
+  return plugins
+}
 
 function resolve(base: string | undefined) {
   return (url: string) => {
@@ -23,27 +55,34 @@ function resolve(base: string | undefined) {
   }
 }
 
-export function Markdown(props: { base?: string; streaming?: boolean; text: string }) {
+export function Markdown(props: { base?: string; compact?: boolean; marks?: boolean; streaming?: boolean; text: string }) {
+  const loaded = useSyncExternalStore(subscribe, current, current)
+  const fenced = fence.test(props.text)
+  const transform = useMemo(() => resolve(props.base), [props.base])
+  useEffect(() => {
+    if (fenced && !loaded) void highlight()
+  }, [fenced, loaded])
   return (
-    <div className="markdown" data-streaming={props.streaming === true}>
-      <ReactMarkdown
-        urlTransform={resolve(props.base)}
-        components={{
-          a: (link) => (
-            <a href={link.href} rel="noreferrer" target="_blank">
-              {link.children}
-            </a>
-          ),
-          table: (table) => (
-            <div className="markdown-table">
-              <table>{table.children}</table>
-            </div>
-          ),
-        }}
-        remarkPlugins={plugins}
-      >
-        {props.text}
-      </ReactMarkdown>
-    </div>
+    <Words
+      {...(props.marks ? { allowedHtml: marks } : {})}
+      {...(fenced && loaded ? { plugins: loaded } : {})}
+      caret="block"
+      className="markdown"
+      components={components}
+      controls={controls}
+      data-compact={props.compact || undefined}
+      isAnimating={props.streaming === true}
+      lineNumbers={false}
+      math
+      mode={props.streaming === undefined ? 'static' : 'streaming'}
+      urlTransform={transform}
+    >
+      {props.text}
+    </Words>
   )
+}
+
+export function Inline(props: { className?: string; text: string }) {
+  const html = useMemo(() => line.render(props.text, true).html.trim(), [props.text])
+  return <span className={props.className ? `inline ${props.className}` : 'inline'} dangerouslySetInnerHTML={{ __html: html }} />
 }

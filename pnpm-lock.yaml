@@ -12,8 +12,17 @@ importers:
         specifier: ^1.32.2
         version: 1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7)
       '@pierre/diffs':
-        specifier: 1.6.2
-        version: 1.6.2(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: 1.7.1
+        version: 1.7.1(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@pierre/highlights':
+        specifier: 0.5.2
+        version: 0.5.2
+      '@pierre/trees':
+        specifier: 1.0.0
+        version: 1.0.0(@pierre/theme@2.1.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)
+      '@pierre/words':
+        specifier: 0.3.0
+        version: 0.3.0(@pierre/highlights@0.5.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@resvg/resvg-wasm':
         specifier: 2.6.2
         version: 2.6.2
@@ -23,24 +32,15 @@ importers:
       hono:
         specifier: ^4.13.14
         version: 4.13.14
-      mdast-util-gfm:
-        specifier: 3.1.0
-        version: 3.1.0(supports-color@10.2.2)
-      micromark-extension-gfm:
-        specifier: 3.0.0
-        version: 3.0.0
       nanocode-ts:
         specifier: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz
-        version: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7)
+        version: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7)
       react:
         specifier: 19.3.1
         version: 19.3.1
       react-dom:
         specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
-      react-markdown:
-        specifier: ^10.1.0
-        version: 10.1.0(@types/react@19.3.0)(react@19.3.1)(supports-color@10.2.2)
       viem:
         specifier: 2.57.19
         version: 2.57.19(mppx@0.20.1)(typescript@6.0.2)(zod@4.6.7)
@@ -496,8 +496,8 @@ packages:
   '@oxc-project/types@0.156.0':
     resolution: {integrity: sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw==}
 
-  '@pierre/diffs@1.6.2':
-    resolution: {integrity: sha512-Hpk+HjjsJ2IWRZ3ALAa7rdBfhF2Zeyh5Kk7L4riMXRo3eHal9yQR1TgBryp+OzGyxfFfwsnEBOQztoANZIzpMQ==}
+  '@pierre/diffs@1.7.1':
+    resolution: {integrity: sha512-saKteoCq9tWbRqLruIixV6sKgxIcY0OK6RkKcr8lYv7r4iJhXQJbmVPN3VBmjBHivgMIG2Att6tV/AOXXzEvvg==}
     peerDependencies:
       react: ^18.3.1 || ^19.0.0
       react-dom: ^18.3.1 || ^19.0.0
@@ -507,11 +507,14 @@ packages:
       react-dom:
         optional: true
 
-  '@pierre/highlights@0.3.0':
-    resolution: {integrity: sha512-s6xZ/giPPrSeCO2w254GiysUXD4ditKMTOrl1vHynvPqP7VdlujYi01O9joxJ0T16XkoXGQMN6zkRi9+O8NCzg==}
+  '@pierre/highlights@0.5.2':
+    resolution: {integrity: sha512-CV+yFa8dodaU3w7U42FR+AfoavrsfcH0/n3rckDu1A/UXan1Dzo6OdM/MPOAAsGM/EbKhDxD6k+qMcNUtnLfsg==}
 
-  '@pierre/theme@2.0.0':
-    resolution: {integrity: sha512-yNDd9GYLQl1mEUJR8AneJ5e4ohLIHQd/wZLWr4fagt78vS2RwwZNW530vVgHqXFAyFVcFlRmGUD5ramXH46OXw==}
+  '@pierre/patches@0.0.1':
+    resolution: {integrity: sha512-NycJQVQNuqmBdr7u1LsUcmkiIz1fRm9xhWZyRbm21oJYd0MVVCa45t9Lsuj5IKrTMBonxOuh4LMv+R3BpL4bmQ==}
+
+  '@pierre/theme@2.1.0':
+    resolution: {integrity: sha512-GIE3AD8eqUlZN2sFrMmp9gt+rNZsT+EhrdwB0KmLcwkqunrp2jU2j14SeAb64Ol/srWo4rHyNaWf20+bPzFbvg==}
     engines: {vscode: ^1.0.0}
 
   '@pierre/theming@1.0.2':
@@ -532,6 +535,31 @@ packages:
       react-dom:
         optional: true
       shiki:
+        optional: true
+
+  '@pierre/trees@1.0.0':
+    resolution: {integrity: sha512-skHNPs4LK1nScFrSvMwN4LnZyHfFf1M7I9ivWePecFqWSYYJYdgKUFCaxPBL0MPY/Z8c3q0yhl8bkkzdDfotug==}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+
+  '@pierre/words@0.3.0':
+    resolution: {integrity: sha512-k38qoYj0eUCr+vGQlXlSer78q5EeG7rSge9b2ADBFvLQ0L+OJH5zAdgdgm1jqkFq2Q6zXUuBkZWB5nQgPy2iUQ==}
+    peerDependencies:
+      '@pierre/highlights': '>=0.5.1'
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+    peerDependenciesMeta:
+      '@pierre/highlights':
+        optional: true
+      react:
+        optional: true
+      react-dom:
         optional: true
 
   '@poppinss/colors@4.1.6':
@@ -1079,9 +1107,6 @@ packages:
     resolution: {integrity: sha512-yhRLQ21U6qa9Hsu2N7Qcbh8tE+WKEcoErjIo56LeSGiGXGp9sA7UpE86Ui9uexb61KakiGwuHMn2QdV7w6i6kQ==}
     engines: {node: '>=16.9.0'}
 
-  html-url-attributes@3.0.1:
-    resolution: {integrity: sha512-ol6UPyBWqsrO6EJySPz2O7ZSr856WDrEzM5zMqp+FJJLGMW35cLYmmZnl0vztAZxRUoNZJFTCohfjuIJ8I4QBQ==}
-
   html-void-elements@3.0.0:
     resolution: {integrity: sha512-bEqo66MRXsUGxWHV5IP0PUiAWwoEjba4VCzg0LjFJBpchPaTfyfCKTG6bc5F8ucKec3q5y6qOdGyYTSBEvhCrg==}
 
@@ -1548,6 +1573,14 @@ packages:
     resolution: {integrity: sha512-LJlKCCAUFKOuZxipUdYw1NzIITEsPcgyOG9LkvRJvuKj/bRzbuRY0ARXvL0pWGpsZvn8jku+LMep2eU0seHp8g==}
     engines: {node: ^10 || ^12 || >=14}
 
+  preact-render-to-string@6.6.5:
+    resolution: {integrity: sha512-O6MHzYNIKYaiSX3bOw0gGZfEbOmlIDtDfWwN1JJdc/T3ihzRT6tGGSEWE088dWrEDGa1u7101q+6fzQnO9XCPA==}
+    peerDependencies:
+      preact: '>=10 || >= 11.0.0-0'
+
+  preact@11.0.0-beta.0:
+    resolution: {integrity: sha512-IcODoASASYwJ9kxz7+MJeiJhvLriwSb4y4mHIyxdgaRZp6kPUud7xytrk/6GZw8U3y6EFJaRb5wi9SrEK+8+lg==}
+
   property-information@7.2.0:
     resolution: {integrity: sha512-IAtzIB6sUiWaJYrX9smp3V46pBGbBeLFRGdh25kg1334VcBlD8HzhPeNIWQH9zhGmo2itIe25EHt9dQP7G5hmg==}
 
@@ -1571,12 +1604,6 @@ packages:
     resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
     peerDependencies:
       react: ^19.3.1
-
-  react-markdown@10.1.0:
-    resolution: {integrity: sha512-qKxVopLT/TyA6BX3Ue5NwabOsAzm0Q7kAPwq6L+wWDwisYs7R8vZ0nRXqq6rkueboxpkjvLGU9fWifiX/ZZFxQ==}
-    peerDependencies:
-      '@types/react': '>=18'
-      react: '>=18'
 
   react@19.3.1:
     resolution: {integrity: sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==}
@@ -2184,11 +2211,12 @@ snapshots:
 
   '@oxc-project/types@0.156.0': {}
 
-  '@pierre/diffs@1.6.2(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@pierre/diffs@1.7.1(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@pierre/highlights': 0.3.0
-      '@pierre/theme': 2.0.0
-      '@pierre/theming': 1.0.2(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)
+      '@pierre/highlights': 0.5.2
+      '@pierre/patches': 0.0.1
+      '@pierre/theme': 2.1.0
+      '@pierre/theming': 1.0.2(@pierre/theme@2.1.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)
       diff: 9.0.0
       hast-util-to-html: 9.0.5
       lru_map: 0.4.1
@@ -2199,17 +2227,38 @@ snapshots:
     transitivePeerDependencies:
       - '@shikijs/themes'
 
-  '@pierre/highlights@0.3.0': {}
+  '@pierre/highlights@0.5.2': {}
 
-  '@pierre/theme@2.0.0': {}
+  '@pierre/patches@0.0.1': {}
 
-  '@pierre/theming@1.0.2(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)':
+  '@pierre/theme@2.1.0': {}
+
+  '@pierre/theming@1.0.2(@pierre/theme@2.1.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)':
     optionalDependencies:
-      '@pierre/theme': 2.0.0
+      '@pierre/theme': 2.1.0
       '@shikijs/themes': 4.5.0
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
       shiki: 4.5.0
+
+  '@pierre/trees@1.0.0(@pierre/theme@2.1.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)':
+    dependencies:
+      '@pierre/theming': 1.0.2(@pierre/theme@2.1.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)
+      preact: 11.0.0-beta.0
+      preact-render-to-string: 6.6.5(preact@11.0.0-beta.0)
+    optionalDependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@pierre/theme'
+      - '@shikijs/themes'
+      - shiki
+
+  '@pierre/words@0.3.0(@pierre/highlights@0.5.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    optionalDependencies:
+      '@pierre/highlights': 0.5.2
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   '@poppinss/colors@4.1.6':
     dependencies:
@@ -2720,8 +2769,6 @@ snapshots:
       '@types/hast': 3.0.5
 
   hono@4.13.14: {}
-
-  html-url-attributes@3.0.1: {}
 
   html-void-elements@3.0.0: {}
 
@@ -3238,7 +3285,7 @@ snapshots:
 
   ms@2.1.3: {}
 
-  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7):
+  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7):
     dependencies:
       accounts: 1.0.0-alpha.20261117214203-d38fbea(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7)
       hast-util-to-jsx-runtime: 2.3.6(supports-color@10.2.2)
@@ -3253,6 +3300,7 @@ snapshots:
       unified: 11.0.5
       viem: 2.57.19(mppx@0.20.1)(typescript@6.0.2)(zod@4.6.7)
     optionalDependencies:
+      '@pierre/highlights': 0.5.2
       react: 19.3.1
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
@@ -3364,6 +3412,12 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.2
 
+  preact-render-to-string@6.6.5(preact@11.0.0-beta.0):
+    dependencies:
+      preact: 11.0.0-beta.0
+
+  preact@11.0.0-beta.0: {}
+
   property-information@7.2.0: {}
 
   proxy-addr@2.0.8:
@@ -3389,24 +3443,6 @@ snapshots:
     dependencies:
       react: 19.3.1
       scheduler: 0.28.0
-
-  react-markdown@10.1.0(@types/react@19.3.0)(react@19.3.1)(supports-color@10.2.2):
-    dependencies:
-      '@types/hast': 3.0.5
-      '@types/mdast': 4.0.4
-      '@types/react': 19.3.0
-      devlop: 1.1.0
-      hast-util-to-jsx-runtime: 2.3.6(supports-color@10.2.2)
-      html-url-attributes: 3.0.1
-      mdast-util-to-hast: 13.2.1
-      react: 19.3.1
-      remark-parse: 11.0.0(supports-color@10.2.2)
-      remark-rehype: 11.1.2
-      unified: 11.0.5
-      unist-util-visit: 5.2.0
-      vfile: 6.0.3
-    transitivePeerDependencies:
-      - supports-color
 
   react@19.3.1: {}
 

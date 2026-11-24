@@ -81,14 +81,25 @@ export function local(text: string, at: number, format: (at: number) => string) 
   })
 }
 
-export function excerpt(text: string, length = 220) {
-  const plain = unround(text)
+function flat(text: string, keep: boolean) {
+  return unround(text)
     .split('\n')
-    .filter((line) => !/^\s*(\||[-:| ]{3,}$|#{1,6}\s*$)/.test(line))
-    .map((line) => line.replace(/^\s*(#{1,6}|>|[-*+]|\d+\.)\s+/, '').replace(/[*_`]/g, '').trim())
+    .filter((line) => !/^\s*(\||[-:| ]{3,}$|#{1,6}\s*$)/.test(line) && !(keep && /^\s*(```|~~~)/.test(line)))
+    .map((line) => (keep ? line : line.replace(/[*_`]/g, '')).replace(/^\s*(#{1,6}|>|[-*+]|\d+\.)\s+/, '').trim())
     .filter(Boolean)
     .join(' ')
-  return plain.length > length ? plain.slice(0, length - 1).trimEnd() + '…' : plain
+}
+
+function cut(text: string, length: number) {
+  return text.length > length ? text.slice(0, length - 1).trimEnd() + '…' : text
+}
+
+export function excerpt(text: string, length = 220) {
+  return cut(flat(text, false), length)
+}
+
+export function brief(text: string, length = 220) {
+  return cut(flat(text, true), length)
 }
 
 function plain(line: string) {

@@ -9,6 +9,7 @@ import { seeded } from './boot.ts'
 import { code } from './pay.ts'
 import { day, minute, usd } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
+import { Inline, Markdown } from './Markdown.tsx'
 import { gate as gated, steerer, useRoster } from './Steering.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
@@ -113,6 +114,23 @@ function Words(props: { handles: ReadonlySet<string>; me: ReadonlySet<string>; t
       })}
     </>
   )
+}
+
+function marked(text: string, handles: ReadonlySet<string>, me: ReadonlySet<string>) {
+  return text
+    .split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/)
+    .map((part, index) =>
+      index % 2
+        ? part
+        : Mention.pieces(part)
+            .map((piece) => {
+              const name = piece.slice(1).toLowerCase()
+              if (!piece.startsWith('@') || (name !== 'swarm' && !handles.has(name))) return piece
+              return `<mark class="mention" data-me="${me.has(name)}" data-swarm="${name === 'swarm'}">${name === 'swarm' ? '@AI' : piece}</mark>`
+            })
+            .join(''),
+    )
+    .join('')
 }
 
 export const Room = memo(function Room(props: {
@@ -564,7 +582,7 @@ export const Room = memo(function Room(props: {
                     </button>
                   ) : (
                     <button className="msg-bubble msg-update" disabled={!props.onResults} onClick={props.onResults} type="button">
-                      <span>{Answer.excerpt(row.text, 320)}</span>
+                      <Inline text={Answer.brief(row.text, 320)} />
                       <small>See results →</small>
                     </button>
                   )}
@@ -580,9 +598,9 @@ export const Room = memo(function Room(props: {
               {!self && (row.last ? <Avatar address={author} handle={handle} /> : <span className="avatar-gap" />)}
               <div className="msg-col">
                 {row.first && !self && <p className="msg-who"><b style={{ color: tint(author) }}>{handle.startsWith('0x') ? Mention.short(author) : handle}</b><time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time></p>}
-                <p className="msg-bubble">
-                  <Words handles={handles} me={myNames} text={item.text} />
-                </p>
+                <div className="msg-bubble">
+                  <Markdown compact marks text={marked(item.text, handles, myNames)} />
+                </div>
                 {item.steer && (
                   <p className="msg-steer">
                     <span>✦ Told the AI · {usd(item.steer.amount)}</span>

@@ -438,7 +438,7 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   )
   if (attempt.finished && Follow.cued(self, 'artifacts', self.kv.get<number>('shelvedAt') ?? 0)) await self.publish(row.id)
   self.changed('detail')
-  if (answer?.text) Chat.announce(self, `Update: ${Answer.excerpt(answer.text, 280)}`)
+  if (answer?.text) Chat.announce(self, `Update: ${Answer.brief(answer.text, 280)}`)
 
   const stored = self.ctx.storage.sql
     .exec<{ bucket: number; git: number; kv: number }>(

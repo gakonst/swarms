@@ -328,6 +328,11 @@ html[data-viewing] body { overflow:hidden; }
 .msg[data-me='true'][data-last='false'] .msg-bubble { border-bottom-right-radius:6px; }
 .msg[data-mentioned='true'] .msg-bubble { box-shadow:inset 3px 0 0 var(--green); }
 .msg[data-me='true'] .mention { background:rgba(255,255,255,0.18); color:var(--bg); }
+.msg-bubble .markdown { max-width:none; padding:0; font-size:inherit; line-height:inherit; white-space:normal; }
+.msg-bubble .markdown :is(p, li) { white-space:pre-line; }
+.msg-bubble .markdown [data-markdown='code-block'] { color:var(--fg); }
+.msg[data-me='true'] .markdown code { background:rgba(255,255,255,0.18); }
+.msg[data-me='true'] .markdown [data-markdown='code-block'] code { background:none; }
 .msg-update { display:grid; gap:6px; border:0; text-align:left; font:inherit; font-size:15px; cursor:pointer; white-space:normal; }
 .msg-update:disabled { cursor:default; }
 .msg-update small,.msg-card span { font:11.5px var(--mono); color:var(--fg); }

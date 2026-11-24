@@ -799,22 +799,18 @@ kbd::after {
   padding-bottom: var(--space-3);
   font-size: var(--size-large);
   line-height: 1.45;
-  overflow-wrap: anywhere;
 }
 
-.markdown > * + * {
-  margin-top: 0.75em;
+.markdown :where(p, ul, ol, blockquote, table, [data-markdown='code-block'], [data-markdown='math-display']) {
+  margin-block: 0.75em;
 }
 
-.markdown h1,
-.markdown h2,
-.markdown h3,
-.markdown h4 {
+.markdown :is(h1, h2, h3, h4, h5, h6) {
   font-family: var(--serif);
   font-weight: 400;
   letter-spacing: -0.02em;
   line-height: 1.15;
-  margin-top: 1.2em;
+  margin-block: 1.2em 0.5em;
 }
 
 .markdown h1 {
@@ -825,13 +821,21 @@ kbd::after {
   font-size: var(--size-headline);
 }
 
-.markdown h3,
-.markdown h4 {
+.markdown :is(h3, h4, h5, h6) {
   font-size: var(--size-large);
+}
+
+.markdown[data-compact] :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1.05em;
+  margin-block: 0.9em 0.3em;
 }
 
 .markdown > :first-child {
   margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
 }
 
 .markdown strong {
@@ -839,8 +843,7 @@ kbd::after {
   background: linear-gradient(transparent 62%, var(--green-wash) 62%);
 }
 
-.markdown ul,
-.markdown ol {
+.markdown :is(ul, ol) {
   padding-left: 1.3em;
 }
 
@@ -848,8 +851,16 @@ kbd::after {
   margin-top: 0.3em;
 }
 
+.markdown li:has(> input[type='checkbox']) {
+  list-style: none;
+}
+
+.markdown li > input[type='checkbox'] {
+  margin: 0 0.4em 0 -1.3em;
+  accent-color: var(--fg);
+}
+
 .markdown code {
-  overflow-wrap: anywhere;
   font-family: var(--mono);
   font-size: 0.82em;
   padding: 1px 4px;
@@ -857,25 +868,49 @@ kbd::after {
   border-radius: 3px;
 }
 
-.markdown pre {
-  padding: 12px 14px;
+.markdown [data-markdown='code-block'] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-small);
-  overflow-x: auto;
 }
 
-.markdown pre code {
+.markdown [data-markdown='code-header'] {
+  align-items: center;
+  padding: 2px 6px 2px 14px;
+  font: var(--size-small) / 1.4 var(--mono);
+  color: var(--faint);
+  border-bottom-color: var(--line);
+}
+
+.markdown [data-markdown='code-header'] button {
+  min-height: 28px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: 0;
+}
+
+.markdown [data-markdown='code-header'] button:hover {
+  color: var(--fg);
+}
+
+.markdown [data-markdown='code-block'] pre {
+  padding: 12px 14px;
+  font: var(--size-small) / 1.6 var(--mono);
+}
+
+.markdown [data-markdown='code-block'] pre code {
   padding: 0;
   background: none;
-  font-size: var(--size-small);
-  line-height: 1.6;
+  font: inherit;
 }
 
 .markdown blockquote {
   padding-left: 12px;
   border-left: 2px solid var(--rule);
   color: var(--muted);
+  opacity: 1;
 }
 
 .markdown a {
@@ -883,21 +918,17 @@ kbd::after {
   text-underline-offset: 2px;
 }
 
-.markdown-table {
-  overflow-x: auto;
-}
-
 .markdown table {
-  border-collapse: collapse;
+  max-width: 100%;
   font-family: var(--mono);
   font-size: var(--size-small);
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
 
-.markdown th,
-.markdown td {
+.markdown :is(th, td) {
   padding: 6px 14px 6px 0;
+  border: 0;
   border-bottom: 1px solid var(--line);
   text-align: left;
 }
@@ -908,15 +939,13 @@ kbd::after {
   border-bottom-color: var(--edge);
 }
 
-.markdown[data-streaming='true'] > :last-child::after {
-  content: '';
-  display: inline-block;
-  width: 0.5em;
-  height: 1em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  background: var(--fg);
-  animation: blink 1s steps(1) infinite;
+.inline code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+}
+
+.inline strong {
+  font-weight: inherit;
 }
 
 .code {
@@ -1137,12 +1166,6 @@ kbd::after {
   }
   to {
     stroke-dashoffset: -100;
-  }
-}
-
-@keyframes blink {
-  50% {
-    opacity: 0.15;
   }
 }
 
