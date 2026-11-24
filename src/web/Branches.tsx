@@ -2,6 +2,7 @@ import type { CSSProperties, MouseEvent } from 'react'
 import type * as Tree from '../shared/Tree.ts'
 import { ago, usd } from './format.ts'
 import * as Grove from './grove.ts'
+import { Inline } from './Markdown.tsx'
 import { Avatar } from './Room.tsx'
 import { why } from './Node.tsx'
 import { href, Link } from './router.tsx'
@@ -88,7 +89,7 @@ function Bud(props: Props & { depth: number; node: Tree.Node }) {
           props.onPick(node)
         }}
       >
-        {node.title}
+        <Inline text={node.title} />
       </a>
       <span className="bud-meta">
         <span className="bud-money">{cash(node.money.subtree.pledged)}</span>
@@ -101,7 +102,7 @@ function Bud(props: Props & { depth: number; node: Tree.Node }) {
         )}
       </span>
       {live ? (
-        <span className="bud-doing">{live.text}<time>{ago(live.at, props.now)}</time></span>
+        <span className="bud-doing"><Inline text={live.text} /><time>{ago(live.at, props.now)}</time></span>
       ) : node.status === 'in flight' && node.run ? (
         <span className="bud-doing">{node.run.checking ? 'The verifier is building it' : `Run ${node.run.k} · ${usd(node.run.spent)} of ${usd(node.run.budget)}`}</span>
       ) : null}

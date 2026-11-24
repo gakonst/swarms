@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Config, Detail, Member, NodeUpdates, NodeView, ProofsView, Said, TreeView } from '../shared/Api.ts'
+import * as Prose from '../shared/Prose.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
@@ -10,6 +11,7 @@ import { ago } from './format.ts'
 import { Headline, Since } from './Headline.tsx'
 import { useMedia, useNow, usePoll } from './hooks.ts'
 import { Lost } from './Lost.tsx'
+import { Inline } from './Markdown.tsx'
 import { NodePanel, Ride } from './Node.tsx'
 import { Room } from './Room.tsx'
 import { Link, navigate, useBase, useQuery } from './router.tsx'
@@ -114,7 +116,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   }, [tree.data])
 
   useEffect(() => {
-    document.title = `${swarm.title} · Swarms`
+    document.title = `${Prose.plain(swarm.title)} · Swarms`
   }, [swarm.title])
 
   const nodes = grove?.nodes ?? {}
@@ -211,7 +213,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
     <article className="grove" data-node={view === 'board' && phone && props.nid !== undefined ? 'open' : undefined} data-tab={view} data-wire={wired}>
       <Strip
         backers={top}
-        latest={last ? <>Last proven <Link keep to={path(last.node)}>{last.title}</Link> · {ago(last.check.at, now)}</> : head.proven > 0 ? 'Checked by Lean' : 'Nothing proven yet. Lean decides what is proven.'}
+        latest={last ? <>Last proven <Link keep to={path(last.node)}><Inline text={last.title} /></Link> · {ago(last.check.at, now)}</> : head.proven > 0 ? 'Checked by Lean' : 'Nothing proven yet. Lean decides what is proven.'}
         onRide={root ? ride : undefined}
         raised={swarm.balance}
         riders={swarm.contributors}
@@ -278,7 +280,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
             <ol className="proofs">
               {proofs.data.proofs.map((proof) => (
                 <li key={proof.node}>
-                  <Link className="proof" keep to={path(proof.node)}><Mark status="proven" /><span>{proof.title}</span><time>{ago(proof.check.at, now)}</time></Link>
+                  <Link className="proof" keep to={path(proof.node)}><Mark status="proven" /><Inline text={proof.title} /><time>{ago(proof.check.at, now)}</time></Link>
                 </li>
               ))}
             </ol>

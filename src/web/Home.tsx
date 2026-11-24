@@ -11,6 +11,7 @@ import { lead } from './Card.tsx'
 import { type Cell, Spiral } from './Field.tsx'
 import { ago } from './format.ts'
 import { useNow } from './hooks.ts'
+import { Inline } from './Markdown.tsx'
 import { open as openProblems, problems } from './research.ts'
 import { href, Link } from './router.tsx'
 import * as Wire from './wire.ts'
@@ -101,7 +102,7 @@ function Activity(props: { doing: Doing | undefined; head: Tree.Headline | undef
   const said = told(swarm, props.head, props.doing)
   return (
     <span className="lot-line" data-live="true">
-      <span>{said?.text || 'Working now'}</span>
+      <Inline text={said?.text || 'Working now'} />
       <time>{ago(said?.at ?? swarm.updatedAt, props.now)}</time>
     </span>
   )
@@ -114,7 +115,7 @@ function Lot(props: { doing: Doing | undefined; funders: readonly Tree.Funder[];
     <li className="limb lot" data-old={!!swarm.archivedAt || undefined} data-status={working ? 'in flight' : undefined}>
       <Link className="lot-link" to={Nickname.path(swarm)}>
         <Spiral cells={sown(swarm, props.head)} id={swarm.id} live={working} />
-        <span className="lot-title">{swarm.title}</span>
+        <Inline className="lot-title" text={swarm.title} />
         <span className="lot-money">{cash(swarm.balance)}</span>
         <span className="lot-faces"><Faces funders={props.funders} riders={swarm.contributors} /></span>
         <Activity doing={props.doing} head={props.head} now={props.now} swarm={swarm} />
@@ -186,8 +187,8 @@ function Seed(props: { problem: Problem }) {
     <li className="limb lot" data-idea="true">
       <Link className="lot-link" to={Nickname.usable(problem.id) ? `/${problem.id}` : `/new?q=${problem.id}`}>
         <Spiral cells={{ dead: 0, flight: 0, open: 8, proven: 0, spent: 0 }} id={problem.id} live={false} />
-        <span className="lot-title">{problem.label}</span>
-        <span className="lot-line"><span>{problem.hint}</span></span>
+        <Inline className="lot-title" text={problem.label} />
+        <span className="lot-line"><Inline text={problem.hint} /></span>
       </Link>
     </li>
   )

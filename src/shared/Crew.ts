@@ -1,4 +1,5 @@
 import type { Branch } from './Api.ts'
+import * as Prose from './Prose.ts'
 
 export type State = 'working' | 'done' | 'failed' | 'stopped' | 'starved'
 
@@ -7,12 +8,7 @@ export type Member = { blockers: string | null; id: number; metric: string | nul
 const words = ['summary', 'result', 'outcome', 'finding', 'findings', 'conclusion', 'answer', 'status', 'notes'] as const
 
 function clean(text: string) {
-  return text
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/[*`#>]/g, '')
-    .replace(/(^|\s)_([^_]+)_(?=[\s.,;:]|$)/g, '$1$2')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return Prose.line(text)
 }
 
 function record(value: unknown) {
@@ -30,8 +26,8 @@ function parsed(text: string) {
 }
 
 function sentence(text: string) {
-  const parts = clean(text).split(/(?<=[.!?])\s+(?=[A-Z0-9"'(])/)
-  const ledger = (part: string) => /\bcommit [0-9a-f]{7,40}\b/i.test(part) || /(^|\s)\/\w[\w.-]*\//.test(part)
+  const parts = Prose.sentences(clean(text))
+  const ledger = (part: string) => /\bcommit [0-9a-f]{7,40}\b/i.test(Prose.plain(part)) || /(^|\s)\/\w[\w.-]*\//.test(Prose.plain(part))
   return parts.find((part) => !ledger(part)) ?? parts[0] ?? null
 }
 

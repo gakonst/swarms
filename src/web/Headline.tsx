@@ -4,6 +4,7 @@ import { scene } from './stage.ts'
 import { fixture } from './api.ts'
 import { ago, usd } from './format.ts'
 import * as Grove from './grove.ts'
+import { Inline } from './Markdown.tsx'
 import { Link, useBase } from './router.tsx'
 
 export type Last = { check: Tree.Check; node: string; title: string }
@@ -58,7 +59,7 @@ export function Headline(props: { burn: Tree.Burn | undefined; headline: Tree.He
       <p className="headline-last">
         {props.last ? (
           <>
-            Last proven <Link keep to={`${base}/n/${props.last.node}`}>{props.last.title}</Link> · {ago(props.last.check.at, props.now)} · <a href={props.last.check.url} rel="noreferrer" target="_blank">checked record ↗</a>
+            Last proven <Link keep to={`${base}/n/${props.last.node}`}><Inline text={props.last.title} /></Link> · {ago(props.last.check.at, props.now)} · <a href={props.last.check.url} rel="noreferrer" target="_blank">checked record ↗</a>
           </>
         ) : head.proven > 0 ? 'Checked by Lean' : 'Nothing proven yet. Lean decides what is proven.'}
       </p>
@@ -108,7 +109,7 @@ export function Since(props: { id: string; nodes: Readonly<Record<string, Tree.N
       <p className="since-counts">{changed.proven.length} proven · {changed.dead.length} dead ends · {changed.posted.length} new</p>
       <ul>
         {[...changed.proven, ...changed.dead].slice(0, 3).map((node) => (
-          <li key={node.id}><Link keep to={`${base}/n/${node.id}`}>{node.status === 'proven' ? '● ' : '⊘ '}{node.title}</Link></li>
+          <li key={node.id}><Link keep to={`${base}/n/${node.id}`}>{node.status === 'proven' ? '● ' : '⊘ '}<Inline text={node.title} /></Link></li>
         ))}
       </ul>
       <button className="since-close" onClick={dismiss} type="button">Got it</button>

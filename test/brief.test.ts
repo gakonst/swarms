@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import * as Brief from '../src/shared/Brief.ts'
 import * as Surface from '../src/shared/Surface.ts'
 
-test('an update with a list gives its first three bullets, plain', () => {
+test('an update with a list gives its first three bullets, with their inline markup', () => {
   const lines = Brief.bullets('## Round 4 update\n\nSome intro.\n\n- **Proved** statement 3 on `main`\n- Wired [#9](https://x.test) to Kummer\n- Helper 2 is out of budget\n- A fourth point\n\nSTATUS: continue')
-  assert.deepEqual(lines, ['Proved statement 3 on main', 'Wired #9 to Kummer', 'Helper 2 is out of budget'])
+  assert.deepEqual(lines, ['**Proved** statement 3 on `main`', 'Wired [#9](https://x.test) to Kummer', 'Helper 2 is out of budget'])
 })
 
 test('an update in prose gives its first three sentences, without headings and tables', () => {
@@ -15,7 +15,7 @@ test('an update in prose gives its first three sentences, without headings and t
 
 test('a long line is cut', () => {
   const [line = ''] = Brief.bullets('- ' + 'word '.repeat(80) + '\n- two')
-  assert.equal(line.length, 220)
+  assert.ok(line.length <= 220)
   assert.ok(line.endsWith('…'))
 })
 

@@ -4,7 +4,7 @@ import * as Surface from '../shared/Surface.ts'
 import * as Wishlist from '../shared/Wishlist.ts'
 import { seeded } from './boot.ts'
 import { message } from './hooks.ts'
-import { Markdown } from './Markdown.tsx'
+import { Inline, Markdown } from './Markdown.tsx'
 
 function source(artifact: Artifact) {
   return /^https?:/.test(artifact.url) ? `${artifact.url}?v=${artifact.version}` : artifact.url
@@ -150,7 +150,7 @@ export function Viewer(props: { artifact: Artifact; onClose: () => void }) {
     <section aria-label={artifact.title} aria-modal="true" className="viewer" data-form={artifact.form} role="dialog">
       <header className="viewer-bar">
         <button aria-label="Close" className="viewer-close" onClick={props.onClose} type="button">←</button>
-        <h2>{artifact.title}</h2>
+        <h2><Inline text={artifact.title} /></h2>
         {link && <a className="viewer-open" href={source(artifact)} rel="noreferrer" target="_blank">Open ↗</a>}
       </header>
       <div className="viewer-body">

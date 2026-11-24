@@ -40,7 +40,7 @@ test('a list keeps only the lines up to an answer gist, and the gist stays the s
   const text = '# Round 3\n\n| a | b |\n|---|---|\n**The fastest parser was simdjson at 4.1 GiB/s.**\n\nMore detail follows here.\n'.repeat(3)
   assert.equal(Answer.lead(text), '# Round 3\n\n| a | b |\n|---|---|\n**The fastest parser was simdjson at 4.1 GiB/s.**')
   assert.equal(Answer.gist(Answer.lead(text)), Answer.gist(text))
-  assert.equal(Answer.gist(text), 'The fastest parser was simdjson at 4.1 GiB/s.')
+  assert.equal(Answer.gist(text), '**The fastest parser was simdjson at 4.1 GiB/s.**')
   assert.equal(Answer.lead('short\n---'), '')
 })
 

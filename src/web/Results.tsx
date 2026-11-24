@@ -6,7 +6,7 @@ import type * as Wishlist from '../shared/Wishlist.ts'
 import { Explored } from './Explored.tsx'
 import { ago, short, usd } from './format.ts'
 import { useNow } from './hooks.ts'
-import { Markdown } from './Markdown.tsx'
+import { Inline, Markdown } from './Markdown.tsx'
 
 type Item = { at: number; key: string } & ({ kind: 'backed'; amount: string; note: string | null; who: string } | { kind: 'update'; text: string })
 
@@ -65,8 +65,8 @@ export function Results(props: {
                 <button onClick={() => props.onOpen(artifact.slug)} type="button">
                   <Preview artifact={artifact} />
                   <span className="made-text">
-                    <b>{artifact.title}</b>
-                    {artifact.summary && <span>{artifact.summary}</span>}
+                    <b><Inline text={artifact.title} /></b>
+                    {artifact.summary && <Inline text={artifact.summary} />}
                     {artifact.updatedAt && <small>Updated {ago(artifact.updatedAt, now)}</small>}
                   </span>
                 </button>
@@ -81,8 +81,8 @@ export function Results(props: {
                 <button onClick={() => props.onOpen(artifact.slug)} type="button">
                   <i aria-hidden="true">{marks[artifact.form]}</i>
                   <span>
-                    <b>{artifact.title}</b>
-                    {artifact.summary && <span>{artifact.summary}</span>}
+                    <b><Inline text={artifact.title} /></b>
+                    {artifact.summary && <Inline text={artifact.summary} />}
                   </span>
                   {artifact.updatedAt && <small>{ago(artifact.updatedAt, now)}</small>}
                 </button>
@@ -104,7 +104,7 @@ export function Results(props: {
           <ul className="asked">
             {asked.map((note) => (
               <li key={note.id}>
-                <span className="asked-text">“{note.note}”</span>
+                <span className="asked-text">“<Inline text={note.note} />”</span>
                 <span className="asked-weight">{usd(note.weight)} · {note.backers} rider{note.backers === 1 ? '' : 's'}</span>
                 {props.onSteer && <button onClick={() => props.onSteer?.(note.note)} type="button">+ Steer this</button>}
               </li>
@@ -121,10 +121,10 @@ export function Results(props: {
               <li data-kind={item.kind} key={item.key}>
                 <span className="news-when">{ago(item.at, now)}</span>
                 {item.kind === 'backed' ? (
-                  <p><b>{item.who}</b> rode in · {usd(item.amount)}{item.note ? <span className="news-note"> “{item.note}”</span> : null}</p>
+                  <p><b>{item.who}</b> rode in · {usd(item.amount)}{item.note ? <span className="news-note"> “<Inline text={item.note} />”</span> : null}</p>
                 ) : (
                   <details>
-                    <summary>{Answer.gist(item.text) || 'An update'}</summary>
+                    <summary><Inline text={Answer.gist(item.text) || 'An update'} /></summary>
                     <Markdown text={item.text} />
                   </details>
                 )}

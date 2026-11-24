@@ -1,5 +1,6 @@
 import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
+import * as Prose from '../shared/Prose.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
 import type { Mood } from '../shared/Status.ts'
 import type * as Tree from '../shared/Tree.ts'
@@ -33,7 +34,7 @@ export const shades: Record<Cell, string> = { dead: '#999999', flight: '#000000'
 
 export function item(swarm: Summary): Swarm {
   const stood = Status.standing(swarm)
-  const pitch = Answer.opening(swarm.goal, swarm.title) || Status.line(stood.word)
+  const pitch = Prose.plain(Answer.opening(swarm.goal, swarm.title)) || Status.line(stood.word)
   return { backers: swarm.contributors, balance: Number(swarm.balance), id: swarm.id, left: Number(swarm.remaining), mood: stood.mood, pitch, title: swarm.title, word: stood.word }
 }
 

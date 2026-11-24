@@ -2,7 +2,7 @@ import type { MouseEvent, ReactNode } from 'react'
 import type { Contribution, Detail } from '../shared/Api.ts'
 import { decimal, units } from '../shared/Memo.ts'
 import { usd } from './format.ts'
-import { Markdown } from './Markdown.tsx'
+import { Inline, Markdown } from './Markdown.tsx'
 import { Avatar } from './Room.tsx'
 import { href, Link } from './router.tsx'
 import { stamp } from './format.ts'
@@ -77,7 +77,7 @@ export function Strip(props: { backers: readonly Backer[]; children?: ReactNode;
   return (
     <header aria-label="The swarm" className="strip">
       <div className="strip-head">
-        <h1 className="strip-title">{props.title}</h1>
+        <h1 className="strip-title"><Inline text={props.title} /></h1>
         {props.onRide && <button className="btn btn-high strip-ride" onClick={props.onRide} type="button">Ride it</button>}
       </div>
       <div className="strip-line">

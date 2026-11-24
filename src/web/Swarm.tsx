@@ -8,10 +8,12 @@ import * as Api from './api.ts'
 import { useSurface, useWishes, Viewer } from './Artifacts.tsx'
 import { here, seeded } from './boot.ts'
 import { Box } from './Box.tsx'
+import * as Prose from '../shared/Prose.ts'
 import { lead, pill } from './Card.tsx'
 import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
 import { useMedia, usePoll, useWallet } from './hooks.ts'
+import { Inline } from './Markdown.tsx'
 import { Lost } from './Lost.tsx'
 import * as Names from './names.ts'
 import { Now } from './Now.tsx'
@@ -77,7 +79,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   }, [answered])
 
   useEffect(() => {
-    if (detail.data) document.title = `${detail.data.title} · Swarms`
+    if (detail.data) document.title = `${Prose.plain(detail.data.title)} · Swarms`
   }, [detail.data?.title])
 
   useEffect(() => {
@@ -109,7 +111,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   const artifacts = shelf.data?.artifacts ?? []
   const viewing = opened ? artifacts.find((artifact) => artifact.slug === opened) : undefined
   const told = news.data ? news.data.updates.filter((update) => update.text.trim() && !Chatter.idle(update.text)).at(-1)?.text : swarm.answer && !Chatter.idle(swarm.answer.text) ? swarm.answer.text : undefined
-  const latest = told ? lead(told, swarm.title) : undefined
+  const latest = told ? <Inline text={lead(told, swarm.title)} /> : undefined
   const names = new Map(members.map((member) => [member.address.toLowerCase(), member.handle] as const))
   const named = (renamed: Summary) => {
     setDetail((data) => data && { ...data, nickname: renamed.nickname })

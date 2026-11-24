@@ -9,7 +9,7 @@ import { asked, Fuel, valid } from './Contribute.tsx'
 import { ago, duration, short, stamp, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { message, useWallet } from './hooks.ts'
-import { Markdown } from './Markdown.tsx'
+import { Inline, Markdown } from './Markdown.tsx'
 import * as Pay from './pay.ts'
 import { Back, Link, navigate, useBase, useQuery } from './router.tsx'
 import { Mark, word } from './Tree.tsx'
@@ -226,13 +226,13 @@ export function NodePanel(props: {
       {trail.length > 1 && (
         <nav aria-label="Where it sits" className="crumbs node-crumbs">
           {trail.slice(0, -1).map((step, index) => (
-            <span key={step.id}>{index > 0 && <i aria-hidden="true">›</i>}<Link keep to={path(step.id)}>{step.title}</Link></span>
+            <span key={step.id}>{index > 0 && <i aria-hidden="true">›</i>}<Link keep to={path(step.id)}><Inline text={step.title} /></Link></span>
           ))}
         </nav>
       )}
-      <h2 className="node-title">{node.title}</h2>
+      <h2 className="node-title"><Inline text={node.title} /></h2>
       <p className="node-status" data-status={node.status}><Mark checking={node.run?.checking} status={node.status} /><b>{node.run?.checking ? 'Checking' : word(node.status)}</b> {why(node, props.nodes)}</p>
-      {node.status === 'in flight' && !node.run?.checking && node.run?.doing && <p className="node-doing" aria-live="polite"><i aria-hidden="true" />{node.run.doing.text}</p>}
+      {node.status === 'in flight' && !node.run?.checking && node.run?.doing && <p className="node-doing" aria-live="polite"><i aria-hidden="true" /><Inline text={node.run.doing.text} /></p>}
       <p className="node-money">
         <b>{usd(node.money.pledged)}</b> ridden by {node.riders} rider{node.riders === 1 ? '' : 's'} · {usd(node.money.spent)} spent · {usd(node.money.left)} left
         {node.children.length > 0 && <> · subtree {usd(node.money.subtree.spent)} spent</>}
@@ -255,7 +255,7 @@ export function NodePanel(props: {
           <ul className="node-list">
             {node.needs.map((need) => {
               const found = props.nodes[need]
-              return <li key={need}>{found ? <Link keep to={path(need)}><Mark status={found.status} /> {found.title}</Link> : <Link keep to={path(need)}>{need}</Link>}</li>
+              return <li key={need}>{found ? <Link keep to={path(need)}><Mark status={found.status} /> <Inline text={found.title} /></Link> : <Link keep to={path(need)}>{need}</Link>}</li>
             })}
           </ul>
         </section>
@@ -276,7 +276,7 @@ export function NodePanel(props: {
             {view.runs.map((run) => (
               <li key={run.task}>
                 <span className="node-run-head">Run {run.k} · {usd(run.spent)} of {usd(run.budget)}{run.outcome ? ` · ${run.outcome}` : ' · working'}{run.commit && <> · <code>{run.commit.slice(0, 7)}</code></>}</span>
-                <span>{run.summary}</span>
+                <Inline text={run.summary} />
               </li>
             ))}
           </ol>
@@ -286,7 +286,7 @@ export function NodePanel(props: {
         <section className="node-part">
           <h3>Updates</h3>
           <ol className="node-updates">
-            {props.updates.slice(0, 12).map((delta) => <li key={`${delta.seq}:${delta.at}:${delta.event}`}><span>{delta.text}</span><time>{ago(delta.at, props.now)}</time></li>)}
+            {props.updates.slice(0, 12).map((delta) => <li key={`${delta.seq}:${delta.at}:${delta.event}`}><Inline text={delta.text} /><time>{ago(delta.at, props.now)}</time></li>)}
           </ol>
         </section>
       )}
@@ -295,7 +295,7 @@ export function NodePanel(props: {
         <section className="node-part">
           <h3>Suggestions</h3>
           <ol className="node-updates">
-            {view.suggestions.map((idea) => <li key={idea.id}><span>{idea.text} · @{idea.who.handle}</span><time>{ago(idea.at, props.now)}</time></li>)}
+            {view.suggestions.map((idea) => <li key={idea.id}><span><Inline text={idea.text} /> · @{idea.who.handle}</span><time>{ago(idea.at, props.now)}</time></li>)}
           </ol>
         </section>
       )}

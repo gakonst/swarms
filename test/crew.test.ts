@@ -23,7 +23,7 @@ test('a summary skips sentences that only file commits and paths', () => {
 })
 
 test('a branch without JSON shows its first plain line, its error or its task', () => {
-  assert.equal(Crew.member(branch({ result: '**Seven** of nine allow commercial use.\nDetails in licenses.md.' })).summary, 'Seven of nine allow commercial use.')
+  assert.equal(Crew.member(branch({ result: '**Seven** of nine allow commercial use.\nDetails in licenses.md.' })).summary, '**Seven** of nine allow commercial use.')
   assert.equal(Crew.member(branch({ error: 'subagent 4 could not resume after a runtime restart\n\nTool calls observed', result: '', state: 'failed' })).summary, 'could not resume after a runtime restart')
   assert.equal(Crew.member(branch({ state: 'running', task: '\nCONTEXT. You are one branch of a swarm.' })).summary, 'You are one branch of a swarm.')
   assert.equal(Crew.member(branch({ result: '{"files_changed": []}' })).summary, null)

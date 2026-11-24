@@ -1,4 +1,5 @@
 import type { Answer } from './Api.ts'
+import * as Prose from './Prose.ts'
 
 const status = /^[*_>\s]*STATUS:\s*(done|continue)\b[\s:\u2014\u2013-]*(.*?)[*_\s]*$/i
 
@@ -81,25 +82,12 @@ export function local(text: string, at: number, format: (at: number) => string) 
   })
 }
 
-function flat(text: string, keep: boolean) {
-  return unround(text)
-    .split('\n')
-    .filter((line) => !/^\s*(\||[-:| ]{3,}$|#{1,6}\s*$)/.test(line) && !(keep && /^\s*(```|~~~)/.test(line)))
-    .map((line) => (keep ? line : line.replace(/[*_`]/g, '')).replace(/^\s*(#{1,6}|>|[-*+]|\d+\.)\s+/, '').trim())
-    .filter(Boolean)
-    .join(' ')
-}
-
-function cut(text: string, length: number) {
-  return text.length > length ? text.slice(0, length - 1).trimEnd() + '…' : text
+export function brief(text: string, length = 220) {
+  return Prose.clip(Prose.line(unround(text)), length)
 }
 
 export function excerpt(text: string, length = 220) {
-  return cut(flat(text, false), length)
-}
-
-export function brief(text: string, length = 220) {
-  return cut(flat(text, true), length)
+  return Prose.plain(brief(text, length))
 }
 
 function plain(line: string) {
@@ -141,8 +129,8 @@ export function gist(text: string) {
       continue
     }
     if (fenced || raw(line)) continue
-    const said = symbols(plain(line))
-    if (telling(said)) return said
+    const said = symbols(Prose.line(line))
+    if (telling(Prose.plain(said))) return said
   }
   return ''
 }
@@ -152,11 +140,12 @@ function bare(text: string) {
 }
 
 export function opening(text: string, title = '') {
-  const flat = text.trim().split(/\n\s*\n/)[0]?.replace(/\s+/g, ' ').trim() ?? ''
-  const sentences = flat.match(/[^.!?]+[.!?]*(\s|$)/g)?.map((part) => part.trim()).filter(Boolean) ?? [flat]
-  const fresh = sentences.filter((part) => bare(part) && !bare(title).startsWith(bare(part)) && !bare(part).startsWith(bare(title)))
-  const pick = fresh[0] ?? ''
-  return pick.length > 240 ? `${pick.slice(0, 237).trimEnd()}…` : pick
+  const first = Prose.line(text.trim().split(/\n\s*\n/)[0] ?? '')
+  const fresh = Prose.sentences(first).filter((part) => {
+    const said = bare(Prose.plain(part))
+    return said && !bare(title).startsWith(said) && !said.startsWith(bare(title))
+  })
+  return Prose.clip(fresh[0] ?? '', 240)
 }
 
 export function lead(text: string) {

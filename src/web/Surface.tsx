@@ -1,5 +1,5 @@
 import type * as Kinds from '../shared/Surface.ts'
-import { Markdown } from './Markdown.tsx'
+import { Inline, Markdown } from './Markdown.tsx'
 
 function fixed(value: number) {
   const size = Math.abs(value)
@@ -47,7 +47,7 @@ function Bars(props: { node: Extract<Kinds.Node, { kind: 'bars' }> }) {
     <ul className="surface-bars">
       {node.items.map((item, index) => (
         <li key={index}>
-          <span>{item.label}</span>
+          <Inline text={item.label} />
           <b>{item.note ?? fixed(item.value) + (node.unit ?? '')}</b>
           <i data-tone={item.tone ?? undefined}>
             <em style={{ width: at(item.value) }} />
@@ -76,7 +76,7 @@ function Range(props: { node: Extract<Kinds.Node, { kind: 'range' }> }) {
         <em style={{ left: at(node.low), right: 'calc(100% - ' + at(node.high) + ')' }} />
         <s style={{ left: at(node.mid) }} />
       </i>
-      {node.note && <small>{node.note}</small>}
+      {node.note && <small><Inline text={node.note} /></small>}
     </div>
   )
 }
@@ -90,9 +90,9 @@ function Body(props: { node: Kinds.Node; onChat: () => void; onSteer: (note: str
           {node.items.map((ask, index) => (
             <li key={index}>
               <span>
-                <b>{ask.text}</b>
+                <b><Inline text={ask.text} /></b>
                 {ask.amount && <em>{ask.amount}</em>}
-                {ask.why && <small>{ask.why}</small>}
+                {ask.why && <small><Inline text={ask.why} /></small>}
               </span>
               <button data-primary={index === 0 || undefined} onClick={() => (ask.action === 'chat' ? props.onChat() : props.onSteer(ask.text))} type="button">{ask.label}</button>
             </li>
@@ -104,8 +104,8 @@ function Body(props: { node: Kinds.Node; onChat: () => void; onSteer: (note: str
         <dl className="surface-stats">
           {node.items.map((stat, index) => (
             <div key={index}>
-              <dt>{stat.label}</dt>
-              <dd>{stat.value}</dd>
+              <dt><Inline text={stat.label} /></dt>
+              <dd><Inline text={stat.value} /></dd>
             </div>
           ))}
         </dl>
@@ -117,7 +117,7 @@ function Body(props: { node: Kinds.Node; onChat: () => void; onSteer: (note: str
           {node.items.map((item, index) => (
             <li data-state={item.state} key={index}>
               {item.group && item.group !== node.items[index - 1]?.group && <b>{item.group}</b>}
-              <span><i aria-hidden="true">{marks[item.state]}</i>{item.text}</span>
+              <span><i aria-hidden="true">{marks[item.state]}</i><Inline text={item.text} /></span>
             </li>
           ))}
         </ul>
@@ -134,8 +134,8 @@ function Body(props: { node: Kinds.Node; onChat: () => void; onSteer: (note: str
           {node.items.map((item, index) => (
             <li key={index}>
               <span>
-                {item.text}
-                {item.note && <small>{item.note}</small>}
+                <Inline text={item.text} />
+                {item.note && <small><Inline text={item.note} /></small>}
               </span>
               {item.state && <em data-tone={item.tone ?? undefined}>{item.state}</em>}
             </li>
@@ -148,7 +148,7 @@ function Body(props: { node: Kinds.Node; onChat: () => void; onSteer: (note: str
         <div className="surface-meter">
           <p>
             <b>{node.value.toLocaleString('en-US')} / {node.max.toLocaleString('en-US')}</b>
-            {node.label && <span>{node.label}</span>}
+            {node.label && <Inline text={node.label} />}
           </p>
           <i aria-hidden="true"><em style={{ width: (node.value / node.max) * 100 + '%' }} /></i>
         </div>
@@ -160,7 +160,7 @@ function Body(props: { node: Kinds.Node; onChat: () => void; onSteer: (note: str
         <ul className="surface-tiles">
           {node.items.map((tile, index) => (
             <li data-tone={tile.tone ?? undefined} key={index} title={tile.state ?? undefined}>
-              <b>{tile.label}</b>
+              <b><Inline text={tile.label} /></b>
               {tile.state && <small>{tile.state}</small>}
             </li>
           ))}
@@ -180,7 +180,7 @@ export function Surface(props: { nodes: readonly Kinds.Node[]; onChat: () => voi
     <div className="surface">
       {nodes.map((node) => (
         <section className="surface-card" data-kind={node.kind} data-wide={node.wide || node.kind === 'asks' || node.kind === 'stats' || undefined} key={node.id}>
-          {node.title && <h3>{node.title}</h3>}
+          {node.title && <h3><Inline text={node.title} /></h3>}
           <Body node={node} onChat={props.onChat} onSteer={props.onSteer} />
         </section>
       ))}

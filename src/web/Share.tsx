@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
+import * as Prose from '../shared/Prose.ts'
 import * as Site from '../shared/Site.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { usd } from './format.ts'
+import { Inline } from './Markdown.tsx'
 import { remember, remembered, usePoll } from './hooks.ts'
 import { navigate } from './router.tsx'
 
@@ -19,7 +21,8 @@ export function links(swarm: Shown, amount?: string) {
   const page = origin + Site.at(Nickname.path({ id: swarm.id, nickname: swarm.nickname }))
   const card = origin + Site.at(`/x/s/${encodeURIComponent(swarm.id)}`)
   const riders = `${swarm.contributors} rider${swarm.contributors === 1 ? '' : 's'}, ${cut(swarm.balance)} in`
-  const text = amount ? `I'm riding ${swarm.title} with ${cut(amount)}. ${riders}.` : `${swarm.title}: ${riders}.`
+  const title = Prose.plain(swarm.title)
+  const text = amount ? `I'm riding ${title} with ${cut(amount)}. ${riders}.` : `${title}: ${riders}.`
   return { intent: `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(card)}`, page }
 }
 
@@ -93,7 +96,7 @@ function Sheet(props: { cheer: Cheer }) {
         <button aria-label="Close" className="sheet-close" onClick={close} type="button">×</button>
         <p aria-hidden="true" className="cheer-mark">✓</p>
         <h3 className="cheer-head">You're riding · {cut(props.cheer.amount)}</h3>
-        {swarm && <p className="cheer-what">{swarm.title}</p>}
+        {swarm && <p className="cheer-what"><Inline text={swarm.title} /></p>}
         {swarm && <p className="cheer-stats"><b>{swarm.contributors}</b> rider{swarm.contributors === 1 ? '' : 's'} · <b>{cut(swarm.balance)}</b> in</p>}
         <div className="cheer-go">
           <a className="btn btn-high" href={shared?.intent} onClick={close} ref={go} rel="noreferrer" target="_blank">Share on X</a>

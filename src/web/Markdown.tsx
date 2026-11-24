@@ -16,7 +16,11 @@ const controls = { code: { copy: true, download: false } }
 
 const marks = { mark: ['class', 'data-me', 'data-swarm'] }
 
-const line = createHtmlRenderer({ allowedElements: ['strong', 'em', 'code', 'del', 'mark'], controls: false, unwrapDisallowed: true })
+const spans = ['strong', 'em', 'code', 'del', 'mark']
+
+const line = createHtmlRenderer({ allowedElements: spans, controls: false, unwrapDisallowed: true })
+
+const linked = createHtmlRenderer({ allowedElements: [...spans, 'a'], components, controls: false, unwrapDisallowed: true })
 
 export function highlighted(plugin: CodeHighlighterPlugin) {
   plugins = { code: plugin }
@@ -82,7 +86,7 @@ export function Markdown(props: { base?: string; compact?: boolean; marks?: bool
   )
 }
 
-export function Inline(props: { className?: string; text: string }) {
-  const html = useMemo(() => line.render(props.text, true).html.trim(), [props.text])
+export function Inline(props: { className?: string; links?: boolean; text: string }) {
+  const html = useMemo(() => (props.links ? linked : line).render(props.text, false).html.trim(), [props.links, props.text])
   return <span className={props.className ? `inline ${props.className}` : 'inline'} dangerouslySetInnerHTML={{ __html: html }} />
 }

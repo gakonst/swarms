@@ -5,6 +5,7 @@ import type { Problem } from '../shared/ResearchBrief.ts'
 import * as Status from '../shared/Status.ts'
 import { usd } from './format.ts'
 import { Tile } from './Cover.tsx'
+import { Inline } from './Markdown.tsx'
 import { Link } from './router.tsx'
 
 export type Idea = { archived?: boolean; backers: number; balance: number; cover: Cover | null; href: string; id: string; left: number; mood: Status.Mood; pitch: string; title: string; word: Status.Word }
@@ -49,8 +50,8 @@ export function Card(props: { idea: Idea }) {
       <Link className="card" data={{ 'data-mood': idea.archived ? 'new' : idea.mood }} to={idea.href}>
         <Tile className="card-art" cover={idea.cover} id={idea.id} mood={idea.mood} />
         <span className="card-body">
-          <b className="card-title">{idea.title}</b>
-          {idea.pitch && <span className="card-pitch">{idea.pitch}</span>}
+          <b className="card-title"><Inline text={idea.title} /></b>
+          {idea.pitch && <Inline className="card-pitch" text={idea.pitch} />}
           <span className="card-stats">
             <i />
             {idea.archived ? 'Archived' : pill(idea.word)}

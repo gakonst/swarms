@@ -1,4 +1,5 @@
 import { Go } from './Home.tsx'
+import { Inline } from './Markdown.tsx'
 
 const bands = [
   [
@@ -42,7 +43,7 @@ export function Faq() {
             {items.map(([question, answer], index) => (
               <li key={question}>
                 <b>[{index + 1}]</b>
-                <p><span>{question}</span> {answer}</p>
+                <p><span>{question}</span> <Inline links text={answer} /></p>
               </li>
             ))}
           </ol>

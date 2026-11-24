@@ -3,6 +3,7 @@ import type { Branch } from '../shared/Api.ts'
 import * as Crew from '../shared/Crew.ts'
 import type * as Tree from '../shared/Tree.ts'
 import { cash, Faces } from './Branches.tsx'
+import { Inline } from './Markdown.tsx'
 
 const first = 6
 
@@ -45,15 +46,15 @@ export function Board(props: { branches: readonly Branch[] }) {
             <li className="crew-row" data-open={opened || undefined} data-state={member.state} key={member.id}>
               <Bud {...(Bud === 'button' ? { 'aria-expanded': opened, onClick: () => setOpen(opened ? undefined : member.id), type: 'button' as const } : {})} className="crew-bud">
                 <i aria-label={word} className="mark" data-checking={member.state === 'starved' || undefined} data-status={status} role="img" />
-                <span className="crew-title">{member.title}</span>
+                <Inline className="crew-title" text={member.title} />
                 <span className="crew-meta">
                   {member.metric && <b className="crew-metric">{member.metric}</b>}
                   <Faces funders={funders(branch)} riders={branch?.funders.length ?? 0} />
                   <span className="bud-money">{cash(String(member.spent))}</span>
                 </span>
-                <span className="crew-line">{opened && more ? more : (member.summary ?? word)}</span>
+                <Inline className="crew-line" text={opened && more ? more : (member.summary ?? word)} />
               </Bud>
-              {opened && member.blockers && <p className="crew-open"><b>Blockers</b>{member.blockers}</p>}
+              {opened && member.blockers && <p className="crew-open"><b>Blockers</b><Inline text={member.blockers} /></p>}
             </li>
           )
         })}

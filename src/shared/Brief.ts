@@ -1,30 +1,24 @@
 import * as Answer from './Answer.ts'
+import * as Prose from './Prose.ts'
 
 export type Brief = { at: number | null; lines: string[] }
 
 const most = 3
 
 function clean(line: string) {
-  const plain = line
-    .replace(/^\s*(#{1,6}|>|[-*+]|\d+[.)])\s+/, '')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/[*_`]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return plain.length > 220 ? plain.slice(0, 219).trimEnd() + '…' : plain
+  return Prose.clip(Prose.line(line), 220)
 }
 
 function sentences(text: string) {
-  return text.split(/(?<=[.!?])\s+(?=[A-Z0-9"'(#])/).map(clean).filter(Boolean)
+  return Prose.sentences(Prose.line(text)).map(clean).filter(Boolean)
 }
 
 export function bullets(text: string) {
   const lines = Answer.unround(text)
     .split('\n')
-    .filter((line) => !/^\s*(\||[-:| ]{3,}$|```)/.test(line))
   const listed = lines.filter((line) => /^ ?([-*+]|\d+[.)])\s+\S/.test(line)).map(clean).filter(Boolean)
   if (listed.length >= 2) return listed.slice(0, most)
-  return sentences(lines.filter((line) => !/^\s*#{1,6}\s/.test(line)).join(' ')).slice(0, most)
+  return sentences(lines.filter((line) => !/^\s*#{1,6}\s/.test(line)).join('\n')).slice(0, most)
 }
 
 export function brief(input: {

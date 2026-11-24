@@ -577,7 +577,7 @@ export const Room = memo(function Room(props: {
                   {row.artifact ? (
                     <button className="msg-card" onClick={() => row.artifact && props.onArtifact(row.artifact.slug)} type="button">
                       <small>New result</small>
-                      <b>{row.artifact.title}</b>
+                      <b><Inline text={row.artifact.title} /></b>
                       <span>Open →</span>
                     </button>
                   ) : (

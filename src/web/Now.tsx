@@ -6,6 +6,7 @@ import * as Kinds from '../shared/Surface.ts'
 import { Board } from './Crew.tsx'
 import { ago } from './format.ts'
 import { useNow } from './hooks.ts'
+import { Inline } from './Markdown.tsx'
 import { Surface } from './Surface.tsx'
 import { Traces } from './Traces.tsx'
 
@@ -35,7 +36,7 @@ export function Now(props: {
       <section aria-labelledby="now-title" className="now-status">
         <h2 id="now-title">Latest from the lead{brief?.at ? <small>{ago(brief.at, now)}</small> : null}</h2>
         {brief ? (
-          <ul>{brief.lines.map((line, index) => <li key={index}>{line}</li>)}</ul>
+          <ul>{brief.lines.map((line, index) => <li key={index}><Inline text={line} /></li>)}</ul>
         ) : (
           <p className="result-quiet">{settled ? (running ? 'No status yet. The lead posts one as it works.' : 'No status yet.') : ' '}</p>
         )}

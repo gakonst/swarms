@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import type { Branch } from '../shared/Api.ts'
+import * as Crew from '../shared/Crew.ts'
 import type * as Progress from '../shared/Progress.ts'
-
-function clip(text: string, most: number) {
-  return text.length > most ? `${text.slice(0, most - 1).trimEnd()}…` : text
-}
+import * as Prose from '../shared/Prose.ts'
+import { Inline } from './Markdown.tsx'
 
 function tidy(text: string) {
   return text
@@ -15,7 +14,7 @@ function tidy(text: string) {
 }
 
 function sentence(text: string) {
-  const plain = tidy(text)
+  const plain = tidy(Prose.line(text))
   return plain ? plain.charAt(0).toUpperCase() + plain.slice(1) : ''
 }
 
@@ -145,8 +144,8 @@ function Node(props: { row: Row; progress: Progress.Progress }) {
           <b>{title}</b>
           {value !== null && <span className="flow-value">{amount(value, progress.metric)}{delta && <small>{delta}</small>}</span>}
         </span>
-        {said && <span className="flow-said">{clip(said, open ? 600 : 170)}</span>}
-        {open && more && <span className="flow-more">{sentence(more)}</span>}
+        {said && <Inline className="flow-said" text={Prose.clip(said, open ? 600 : 170)} />}
+        {open && more && <Inline className="flow-more" text={sentence(more)} />}
       </button>
     </li>
   )
@@ -209,13 +208,13 @@ function Flat(props: { branches: readonly Branch[]; running: boolean }) {
       <ol className="flow-list">
         {branches.map((branch) => {
           const state = look(branch)
-          const said = state === 'done' ? branch.result ?? '' : state === 'exploring' ? branch.task.replace(/^\s*CONTEXT\.[\s\S]*?\n\n/, '') : ''
+          const said = state === 'done' ? Crew.member(branch).told ?? '' : state === 'exploring' ? branch.task.replace(/^\s*CONTEXT\.[\s\S]*?\n\n/, '') : ''
           return (
             <li className="flow-row" data-kind={state === 'exploring' ? 'live' : state === 'done' ? 'branch' : 'tried'} key={branch.id}>
               <i aria-hidden="true" className="flow-dot" />
               <div className="flow-card">
                 <span className="flow-top"><b>{named(branch.role)}</b><span className="flow-state">{looks[state]}</span></span>
-                {said && <span className="flow-said">{clip(sentence(said), 170)}</span>}
+                {said && <Inline className="flow-said" text={Prose.clip(sentence(said), 170)} />}
               </div>
             </li>
           )
