@@ -18,6 +18,7 @@ import { Divider } from './Divider.tsx'
 import { useMedia, useNow, usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Overlay } from './Overlay.tsx'
+import { Host } from './OwnAi.tsx'
 import * as Names from './names.ts'
 import { Now } from './Now.tsx'
 import { Results } from './Results.tsx'
@@ -144,6 +145,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span><b>{dollars(swarm.remaining)}</b> left</span>
         <span className="strip-mood" data-mood={stood.mood} title={line(stood.word)}><i />{pill(stood.word)}</span>
+        {swarm.ai && <span className="strip-ai">on ${swarm.ai.handle}'s own AI</span>}
       </Strip>}
       {!branch && <Tabs base={base} board="Board" onShow={show} unread={unread} view={view} />}
       {branch && (
@@ -211,6 +213,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
             swarm={swarm}
             target={() => Promise.resolve({ id: swarm.id })}
           />
+          <Host onChange={reload} swarm={swarm} />
         </Overlay>
       )}
       {viewing && <Viewer artifact={viewing} onClose={() => back(at(base, view))} />}

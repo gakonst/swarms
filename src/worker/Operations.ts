@@ -41,6 +41,7 @@ import type {
   Ledgered,
   NodeUpdates,
   NodeView,
+  OwnAi,
   ProgressView,
   ProofsView,
   Proposed,
@@ -97,6 +98,8 @@ export const sources = ['swarm', 'update', 'note', 'feed'] as const satisfies re
 export const maxWait = 55
 
 const id = z.string().trim().min(1).max(64).describe('The swarm id, the last part of its page URL /s/<id>.')
+
+const providers = z.enum(['anthropic', 'openai']).describe('Whose API key: anthropic or openai.')
 
 const nid = z.string().trim().regex(/^(root|triage|[0-9a-f]{10})$/, 'A node id is root, triage or 10 hex characters.').describe('A node id, as in /s/<id>/n/<nid>.')
 
@@ -396,6 +399,10 @@ export const schema = {
     to: free.describe('Where it goes: a node id, or "" for your free money.'),
   }),
   nodeEnd: z.object({ node: nid, swarm: id, why: z.string().trim().min(1).max(500) }),
+  ownAi: z.object({ on: z.boolean().describe("true runs the swarm's agent on your own AI from now on, false hands it back to the swarm's money."), swarm: id }),
+  ownCode: z.object({ code: z.string().trim().min(1).max(2048).describe('The code the Claude sign-in page shows.') }),
+  ownKey: z.object({ key: z.string().trim().min(1).max(512).describe('An Anthropic or OpenAI API key. It is checked with the provider, kept encrypted by the gateway and never shown again.'), provider: providers }),
+  ownProvider: z.object({ provider: providers }),
   triage: z.object({ action: z.record(z.string(), z.unknown()).describe('One triage action: approve, adopt, merge, reject, grant or restate, as the triage node returns them.'), swarm: id }),
   wait: z.object({
     after: z.coerce
@@ -816,6 +823,91 @@ export async function rename(env: Cloudflare.Env, input: Input<'rename'>, addres
   if (wrong) return Problem.fail(400, 'invalid_request', wrong)
   if (!(await Store.rename(env, address, name))) return Problem.fail(409, 'conflict', `@${name} is taken. Pick another.`)
   return Problem.ok(await Store.account(env, address))
+}
+
+function relayed<value>(answered: Gateway.Result<value>): Problem.Result<value> {
+  if (answered.ok) return Problem.ok(answered.value)
+  if (answered.status === 400) return Problem.fail(400, 'invalid_request', answered.detail)
+  if (answered.status === 404) return Problem.fail(404, 'not_found', answered.detail)
+  if (answered.status === 409) return Problem.fail(409, 'conflict', answered.detail)
+  return Problem.fail(502, 'upstream_failed', answered.detail)
+}
+
+const unsigned = () => Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to use your own AI.')
+
+export async function ownAi(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<OwnAi>> {
+  if (!address) return unsigned()
+  return relayed(await Gateway.ai(env, address))
+}
+
+export async function ownKey(env: Cloudflare.Env, input: Input<'ownKey'>, address?: Address): Promise<Problem.Result<OwnAi>> {
+  const parsed = parse(schema.ownKey, input)
+  if (!parsed.ok) return parsed
+  if (!address) return unsigned()
+  const attached = relayed(await Gateway.attach(env, address, parsed.value.provider, parsed.value.key))
+  if (!attached.ok) return attached
+  return ownAi(env, address)
+}
+
+export async function ownDrop(env: Cloudflare.Env, input: Input<'ownProvider'>, address?: Address): Promise<Problem.Result<OwnAi>> {
+  const parsed = parse(schema.ownProvider, input)
+  if (!parsed.ok) return parsed
+  if (!address) return unsigned()
+  const dropped = relayed(await Gateway.unattach(env, address, parsed.value.provider))
+  if (!dropped.ok) return dropped
+  return ownAi(env, address)
+}
+
+export async function ownSignIn(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<{ url: string }>> {
+  if (!address) return unsigned()
+  const started = relayed(await Gateway.signIn(env, address))
+  return started.ok ? Problem.ok({ url: started.value.authorization_url }) : started
+}
+
+export async function ownSignedIn(env: Cloudflare.Env, input: Input<'ownCode'>, address?: Address): Promise<Problem.Result<OwnAi>> {
+  const parsed = parse(schema.ownCode, input)
+  if (!parsed.ok) return parsed
+  if (!address) return unsigned()
+  const done = relayed(await Gateway.signedIn(env, address, parsed.value.code))
+  if (!done.ok) return done
+  return ownAi(env, address)
+}
+
+export async function ownSignOut(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<OwnAi>> {
+  if (!address) return unsigned()
+  const done = relayed(await Gateway.signOut(env, address))
+  if (!done.ok) return done
+  return ownAi(env, address)
+}
+
+export function runsOn(own: OwnAi, harness: Setup.Harness) {
+  if (harness === 'claude') return own.plans.claude.state === 'authenticated' || own.keys.some((key) => key.provider === 'anthropic')
+  return own.keys.some((key) => key.provider === 'openai')
+}
+
+export async function hostAi(env: Cloudflare.Env, input: Input<'ownAi'>, address?: Address): Promise<Problem.Result<Summary>> {
+  const parsed = parse(schema.ownAi, input)
+  if (!parsed.ok) return parsed
+  if (!address) return unsigned()
+  const row = await Store.find(env, parsed.value.swarm)
+  if (!row) return missing()
+  if (row.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived: nothing runs on it.')
+  const rider = address.toLowerCase() as Address
+  if (!parsed.value.on) {
+    if (row.ai !== rider) return Problem.fail(403, 'access_denied', "Only the rider whose AI runs this swarm hands it back.")
+    await Store.host(env, row.id, null)
+    return Problem.ok(Store.summary({ ...row, ai: null }))
+  }
+  const members = await Store.members(env, row.id)
+  if (row.creator?.toLowerCase() !== rider && !members.some((member) => member.address.toLowerCase() === rider))
+    return Problem.fail(403, 'not_member', 'Ride this swarm first: your own AI runs only swarms you ride or started.')
+  const own = await Gateway.ai(env, rider)
+  if (!own.ok) return relayed(own)
+  const harness = Store.setup(row)?.harness ?? 'claude'
+  if (!runsOn(own.value, harness))
+    return Problem.fail(409, 'conflict', `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect an Anthropic key or your Claude plan' : 'Codex: connect an OpenAI key'} under Use your own AI first.`)
+  await Store.host(env, row.id, rider)
+  return Problem.ok(Store.summary({ ...row, ai: rider, ai_name: (await Store.account(env, rider)).name }))
 }
 
 export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Address): Promise<Problem.Result<Posted>> {

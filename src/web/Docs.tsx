@@ -47,6 +47,13 @@ const routes = [
   ['POST', '/v1/auth', 'Verify the signature; answers a session token.', '{ address, id, message, signature }'],
   ['GET', '/v1/me', 'Your account: address, username and the handle rooms show.', ''],
   ['POST', '/v1/me', 'Set your username, which posting and proposing need.', '{ name }'],
+  ['GET', '/v1/me/ai', 'Your own AI: the API keys you attached, shown by their last four characters, and whether your Claude plan is connected.', ''],
+  ['PUT', '/v1/me/ai/keys/:provider', 'Attach an anthropic or openai API key. The gateway checks it with the provider, keeps it encrypted and never shows it again.', '{ key }'],
+  ['DELETE', '/v1/me/ai/keys/:provider', 'Remove a key.', ''],
+  ['POST', '/v1/me/ai/claude', 'Start connecting your Claude plan: answers the sign-in page to open.', '{}'],
+  ['POST', '/v1/me/ai/claude/complete', 'Finish with the code the Claude page shows.', '{ code }'],
+  ['DELETE', '/v1/me/ai/claude', 'Disconnect your Claude plan.', ''],
+  ['POST', '/v1/swarms/:id/ai', "Run a swarm you ride on your own AI, so its agent's model calls cost the swarm nothing, or hand it back.", '{ on }'],
   ['GET', '/v1/config', 'Where rides go: the gateway credit recipient and owner.', ''],
 ] as const
 

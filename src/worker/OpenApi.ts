@@ -512,6 +512,64 @@ export function document(origin: string) {
           summary: 'Set your username',
         },
       },
+      '/v1/me/ai': {
+        get: {
+          description: "The signed-in rider's own AI: the Anthropic and OpenAI API keys they attached, each shown only by its last four characters, and the state of their Claude plan sign-in. The Tempo gateway keeps them encrypted.",
+          operationId: 'ownAi',
+          responses: { ...ok(object({ keys: { items: object({ added_at: integer, hint: string, provider: string }), type: 'array' }, plans: { type: 'object' }, subject: string }), 'Your own AI.'), ...failures(401, 502) },
+          summary: 'Your own AI',
+        },
+      },
+      '/v1/me/ai/keys/{provider}': {
+        put: {
+          description: "Attach an API key. The gateway checks it against the provider's model list, keeps it encrypted and never answers it again. A swarm you run on your own AI then makes its model calls with it.",
+          operationId: 'ownKey',
+          parameters: [parameter('provider', 'path', string, 'anthropic or openai.')],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.ownProvider.extend({ key: Operations.schema.ownKey.shape.key }).omit({ provider: true })) } }, required: true },
+          responses: { ...ok({ type: 'object' }, 'Your own AI.'), ...failures(400, 401, 502) },
+          summary: 'Attach an API key',
+        },
+        delete: {
+          description: 'Remove an API key.',
+          operationId: 'ownDrop',
+          parameters: [parameter('provider', 'path', string, 'anthropic or openai.')],
+          responses: { ...ok({ type: 'object' }, 'Your own AI.'), ...failures(401, 404, 502) },
+          summary: 'Remove an API key',
+        },
+      },
+      '/v1/me/ai/claude': {
+        post: {
+          description: 'Start connecting your Claude plan: answers url, the Claude sign-in page. Open it, sign in and send the code it shows to POST /v1/me/ai/claude/complete.',
+          operationId: 'ownSignIn',
+          responses: { ...ok(object({ url: string }), 'The sign-in page.'), ...failures(401, 502) },
+          summary: 'Connect your Claude plan',
+        },
+        delete: {
+          description: 'Disconnect your Claude plan.',
+          operationId: 'ownSignOut',
+          responses: { ...ok({ type: 'object' }, 'Your own AI.'), ...failures(401, 502) },
+          summary: 'Disconnect your Claude plan',
+        },
+      },
+      '/v1/me/ai/claude/complete': {
+        post: {
+          description: 'Finish connecting your Claude plan with the code its sign-in page showed.',
+          operationId: 'ownSignedIn',
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.ownCode) } }, required: true },
+          responses: { ...ok({ type: 'object' }, 'Your own AI.'), ...failures(400, 401, 502) },
+          summary: 'Finish connecting your Claude plan',
+        },
+      },
+      '/v1/swarms/{id}/ai': {
+        post: {
+          description: "Run a swarm you ride or started on your own AI: from its next turn its agent's model calls use your Claude plan or API key and cost the swarm nothing, while its tools are paid from its money as before. on: false hands it back. A swarm on Claude needs the plan or an Anthropic key, one on Codex an OpenAI key; if they are gone at a turn, the swarm runs on its money again.",
+          operationId: 'hostAi',
+          parameters: [parameter('id', 'path', string, 'The swarm id.')],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.ownAi.omit({ swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Summary'), 'The swarm.'), ...failures(400, 401, 403, 404, 409, 410, 502) },
+          summary: 'Run on your own AI',
+        },
+      },
       '/v1/names/{name}': {
         get: {
           description: 'Which swarm a nickname names: the swarm that has it now, or the one that had it, with that swarm\'s nickname now (null when it dropped it).',

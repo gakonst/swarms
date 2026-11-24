@@ -130,6 +130,22 @@ app.get('/api/me', async (c) => Problem.respond(await Operations.account(c.env, 
 
 app.post('/api/me', async (c) => Problem.respond(await Operations.rename(c.env, await Rest.body(c.req.raw), await Sessions.who(c.env, c.req.raw))))
 
+app.get('/api/me/ai', async (c) => Problem.respond(await Operations.ownAi(c.env, await Sessions.who(c.env, c.req.raw))))
+
+app.post('/api/me/ai/keys/:provider', async (c) =>
+  Problem.respond(await Operations.ownKey(c.env, { ...(await Rest.body(c.req.raw)), provider: c.req.param('provider') }, await Sessions.who(c.env, c.req.raw))),
+)
+
+app.delete('/api/me/ai/keys/:provider', async (c) => Problem.respond(await Operations.ownDrop(c.env, { provider: c.req.param('provider') }, await Sessions.who(c.env, c.req.raw))))
+
+app.post('/api/me/ai/claude', async (c) => Problem.respond(await Operations.ownSignIn(c.env, await Sessions.who(c.env, c.req.raw))))
+
+app.post('/api/me/ai/claude/complete', async (c) => Problem.respond(await Operations.ownSignedIn(c.env, await Rest.body(c.req.raw), await Sessions.who(c.env, c.req.raw))))
+
+app.delete('/api/me/ai/claude', async (c) => Problem.respond(await Operations.ownSignOut(c.env, await Sessions.who(c.env, c.req.raw))))
+
+app.post('/api/swarms/:id/ai', async (c) => Problem.respond(await Operations.hostAi(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
+
 app.get('/api/swarms', async (c) => {
   const listed = await Operations.list(c.env, {})
   return Problem.respond(listed.ok ? Problem.ok(Operations.listed(listed.value)) : listed)

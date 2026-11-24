@@ -9,6 +9,8 @@ import * as Search from './Search.ts'
 const ways = ['transfer', 'machine'] as const satisfies readonly Way[]
 
 export type Row = {
+  ai?: `0x${string}` | null
+  ai_name?: string | null
   answer: string | null
   archived_at?: number | null
   form?: 'agent' | 'tree'
@@ -68,7 +70,8 @@ const totals = `select s.*,
   s.pool_spent + s.sponsor_spent + s.spent_before as spent,
   coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining,
   (select count(distinct contributor) from contributions where swarm = s.id) as contributors,
-  (select name from swarm_names where swarm = s.id and current = 1) as nickname
+  (select name from swarm_names where swarm = s.id and current = 1) as nickname,
+  (select name from names where address = s.ai) as ai_name
   from swarms s`
 
 function answer(text: string | null): Answer | null {
@@ -98,6 +101,7 @@ export function setup(row: Pick<Row, 'setup'>): Setup.Setup | null {
 
 export function summary(row: Row): Summary {
   return {
+    ai: row.ai ? { address: row.ai, handle: row.ai_name ?? Mention.short(row.ai) } : null,
     answer: answer(row.answer),
     archivedAt: row.archived_at ?? null,
     form: row.form ?? 'agent',
@@ -124,7 +128,7 @@ export function summary(row: Row): Summary {
 
 export async function list(env: Cloudflare.Env, status?: Summary['status']) {
   const { results } = await env.DB.prepare(
-    `select s.*, coalesce(c.balance, 0) as balance, s.pool_spent + s.sponsor_spent + s.spent_before as spent, coalesce(c.balance, 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining, coalesce(c.contributors, 0) as contributors, (select name from swarm_names where swarm = s.id and current = 1) as nickname
+    `select s.*, coalesce(c.balance, 0) as balance, s.pool_spent + s.sponsor_spent + s.spent_before as spent, coalesce(c.balance, 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining, coalesce(c.contributors, 0) as contributors, (select name from swarm_names where swarm = s.id and current = 1) as nickname, (select name from names where address = s.ai) as ai_name
     from swarms s left join (select swarm, sum(cast(amount as integer)) as balance, count(distinct contributor) as contributors from contributions group by swarm) c on c.swarm = s.id
     where s.hidden = 0 and (c.balance > 0 or s.form = 'tree')${status ? ' and s.status = ?' : ''} order by s.form = 'tree' desc, s.archived_at is not null, s.updated_at desc limit 100`,
   )
@@ -449,6 +453,10 @@ function backers(env: Cloudflare.Env, swarm: string) {
       group_concat(distinct b.way) as ways, min(b.at) as since, (select name from names where address = b.contributor) as name
     from (${backing}) b group by b.contributor order by min(b.at)`,
   ).bind(swarm)
+}
+
+export async function host(env: Cloudflare.Env, swarm: string, rider: `0x${string}` | null) {
+  await env.DB.prepare('update swarms set ai = ? where id = ?').bind(rider && rider.toLowerCase(), swarm).run()
 }
 
 export async function members(env: Cloudflare.Env, swarm: string): Promise<Member[]> {

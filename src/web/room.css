@@ -323,3 +323,15 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 @media (max-width:799px) { .rider { gap:20px; padding-top:20px; } .rider-name h1 { font-size:28px; } .rider-stats { gap:20px; } .rider-stats dd { font-size:26px; } }
 .node-who { color:inherit; font-weight:inherit; text-decoration:none; }
 .node-who:hover { text-decoration:underline; }
+.own-row { grid-template-columns:minmax(0,1fr) auto; align-items:center; }
+.own-row .own-input { grid-column:1; }
+.own-act { grid-column:2; grid-row:1 / span 2; align-self:center; }
+.own-form { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--rule); }
+.own-form .own-link { grid-column:1 / -1; font:12px var(--mono); color:var(--fg); }
+.own-input { width:100%; min-height:40px; padding:0 12px; border:1px solid var(--line); border-radius:10px; background:none; color:var(--fg); font:16px var(--mono); }
+.own-error { margin:0; font:13px var(--mono); color:var(--bad, #c0392b); }
+.own-host { display:grid; gap:6px; margin-top:12px; }
+.own-toggle { display:flex; align-items:center; gap:10px; min-height:32px; font:13px var(--mono); cursor:pointer; }
+.own-toggle input { width:18px; height:18px; margin:0; }
+.own-free { color:var(--muted); }
+.strip-ai { color:var(--muted); }

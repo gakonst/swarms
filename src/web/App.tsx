@@ -16,6 +16,7 @@ import * as Names from './names.ts'
 import { Cheered, ShareSwarm } from './Share.tsx'
 import { Shell } from './Shell.tsx'
 import { Me, mine, Profile } from './Profile.tsx'
+import { OwnAi } from './OwnAi.tsx'
 import { page, preload } from './pages.ts'
 import { problems } from './research.ts'
 import * as Wallet from './wallet.ts'
@@ -144,6 +145,7 @@ function WalletButton(props: { config: Config | undefined }) {
               {funding ? 'Adding funds…' : 'Add funds'}
             </button>
             <Link className="wallet-out" to={mine(wallet.account, wallet.address)}>Your profile</Link>
+            <Link className="wallet-out" to="/me/ai">Use your own AI</Link>
             <button className="wallet-out" onClick={() => Wallet.disconnect()} role="menuitem" type="button">Sign out</button>
           </div>
         </div>
@@ -275,7 +277,7 @@ export function App() {
     if (free) {
       const problem = problems.find((each) => each.id === named?.name)
       document.title = `${problem ? problem.title : `Start a swarm on ${Nickname.topic(named?.name ?? '')}`} · Swarms`
-    } else if (!swarm && !named && path !== '/board' && !rider && path !== '/me') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/faq' ? 'Questions · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
+    } else if (!swarm && !named && path !== '/board' && !rider && path !== '/me' && path !== '/me/ai') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/faq' ? 'Questions · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
   }, [path, swarm, free])
 
   useEffect(() => {
@@ -313,6 +315,8 @@ export function App() {
           <Profile key={rider} who={rider} />
         ) : path === '/me' ? (
           <Me config={config} />
+        ) : path === '/me/ai' ? (
+          <OwnAi config={config} />
         ) : path === '/faq' ? (
           <Faq />
         ) : swarm ? (

@@ -1,4 +1,4 @@
-import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Hall, Heard, Issued, Lent, Listing, Live, Lobby, Named, NodeUpdates, NodeView, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Room, Roster, Shouted, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Hall, Heard, Issued, Lent, Listing, Live, Lobby, Named, NodeUpdates, NodeView, OwnAi, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Room, Roster, Shouted, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
@@ -236,6 +236,34 @@ export function rider(who: string) {
 
 export function account() {
   return fixture ? staged((fixtures) => fixtures.account(bearer ? visitor : undefined)) : request<Account>('/api/me')
+}
+
+export function ownAi() {
+  return signed(() => request<OwnAi>('/api/me/ai'))
+}
+
+export function ownKey(provider: 'anthropic' | 'openai', key: string) {
+  return signed(() => request<OwnAi>('/api/me/ai/keys/' + provider, { key }))
+}
+
+export function ownDrop(provider: 'anthropic' | 'openai') {
+  return signed(() => request<OwnAi>('/api/me/ai/keys/' + provider, undefined, 'DELETE'))
+}
+
+export function ownSignIn() {
+  return signed(() => request<{ url: string }>('/api/me/ai/claude', {}))
+}
+
+export function ownSignedIn(code: string) {
+  return signed(() => request<OwnAi>('/api/me/ai/claude/complete', { code }))
+}
+
+export function ownSignOut() {
+  return signed(() => request<OwnAi>('/api/me/ai/claude', undefined, 'DELETE'))
+}
+
+export function hostAi(swarm: string, on: boolean) {
+  return signed(() => request<Summary>(path(swarm) + '/ai', { on }))
 }
 
 export function rename(name: string | null) {

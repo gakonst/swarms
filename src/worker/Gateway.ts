@@ -1,3 +1,4 @@
+import type { OwnAi } from '../shared/Api.ts'
 import * as Credit from '../shared/Credit.ts'
 import * as Setup from '../shared/Setup.ts'
 import { redact } from '../shared/Trail.ts'
@@ -243,8 +244,40 @@ export function fund(env: Cloudflare.Env, swarm: string, agent: string) {
   return send<unknown>(env, `/v1/agents/${agent}`, { app: app(swarm), body: { payer: 'backers' }, method: 'PATCH' })
 }
 
-export function prompt(env: Cloudflare.Env, swarm: string, agent: string, input: { id?: string; prompt: string; steer: boolean }) {
+export function prompt(env: Cloudflare.Env, swarm: string, agent: string, input: { credentials?: string; id?: string; prompt: string; steer: boolean }) {
   return send<{ request_id: string; status: string }>(env, `/v1/agents/${agent}/turns`, { app: app(swarm), body: input })
+}
+
+export function subject(rider: string) {
+  return 'rider:' + rider.toLowerCase()
+}
+
+function credentials(rider: string) {
+  return '/v1/credentials/' + encodeURIComponent(subject(rider))
+}
+
+export function ai(env: Cloudflare.Env, rider: string) {
+  return send<OwnAi>(env, credentials(rider))
+}
+
+export function attach(env: Cloudflare.Env, rider: string, provider: 'anthropic' | 'openai', key: string) {
+  return send<{ added_at: number; hint: string; provider: string }>(env, credentials(rider) + '/keys/' + provider, { body: { key }, method: 'PUT' })
+}
+
+export function unattach(env: Cloudflare.Env, rider: string, provider: 'anthropic' | 'openai') {
+  return send<{ deleted: boolean }>(env, credentials(rider) + '/keys/' + provider, { method: 'DELETE' })
+}
+
+export function signIn(env: Cloudflare.Env, rider: string) {
+  return send<{ authorization_url: string; expires_at: number }>(env, credentials(rider) + '/plans/claude', { body: {} })
+}
+
+export function signedIn(env: Cloudflare.Env, rider: string, code: string) {
+  return send<{ state: string }>(env, credentials(rider) + '/plans/claude/complete', { body: { code } })
+}
+
+export function signOut(env: Cloudflare.Env, rider: string) {
+  return send<{ deleted: boolean }>(env, credentials(rider) + '/plans/claude', { method: 'DELETE' })
 }
 
 export function side(env: Cloudflare.Env, swarm: string, agent: string, question: string) {

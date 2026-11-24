@@ -14,6 +14,7 @@ export type Cover = { form: 'image' | 'page'; url: string }
 export type SwarmForm = 'agent' | 'tree'
 
 export type Summary = {
+  ai?: { address: `0x${string}`; handle: string } | null
   answer: Answer | null
   archivedAt: number | null
   form: SwarmForm
@@ -38,6 +39,12 @@ export type Summary = {
 }
 
 export type Steering = 'open' | 'team'
+
+export type OwnAi = {
+  keys: { added_at: number; hint: string; provider: 'anthropic' | 'openai' }[]
+  plans: { claude: { expires_at?: number; state: string } }
+  subject: string
+}
 
 export type Listing = { funders: Record<string, Tree.Funder[]>; heads: Record<string, Tree.Headline>; riders: number; swarms: Summary[] }
 

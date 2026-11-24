@@ -302,7 +302,12 @@ export async function advance(self: Swarm, found: Store.Row) {
       : { ...(Phase.again(run) ? { again: true } : {}), balance: String(money.row.balance), id: claim, n, prompt: again?.prompt ?? text, since, state: 'starting', told: again?.told ?? included.map((note) => [note.id, String(Memo.units(note.weight))]) }
   const prompt = start.prompt ?? text
   await self.move(money.row, start)
-  const sent = await Gateway.prompt(self.env, row.id, agent.id, { id: claim, prompt, steer: false })
+  const credentials = money.row.ai ? Gateway.subject(money.row.ai) : undefined
+  const sent = await Gateway.prompt(self.env, row.id, agent.id, { ...(credentials ? { credentials } : {}), id: claim, prompt, steer: false })
+  if (!sent.ok && credentials && sent.status === 400) {
+    await Store.host(self.env, row.id, null)
+    return Date.now()
+  }
   if (!sent.ok && sent.status !== 409) {
     if (sent.status === 404) self.kv.delete('agent')
     if (sent.status < 500) return fail(self, money.row, task, claim, 'The gateway did not take the next message for the agent.', sent.detail)
