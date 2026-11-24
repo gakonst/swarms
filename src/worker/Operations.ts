@@ -68,6 +68,7 @@ import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Reaction from '../shared/Reaction.ts'
 import * as Nickname from '../shared/Nickname.ts'
+import * as Pictures from '../shared/Picture.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Clock from './Clock.ts'
@@ -117,6 +118,20 @@ const alias = z
     if (why) context.addIssue({ code: 'custom', message: why })
   })
   .describe(`The swarm's nickname, its page at /<nickname>: ${Nickname.least} to ${Nickname.most} lowercase letters, digits and hyphens, starting and ending with a letter or digit, unique across swarms. Route names (such as new, ideas, docs, api and v1) and hex strings of 8 or more characters are reserved.`)
+
+export const edits = z.object({
+  nickname: alias.nullable().optional().describe('The new nickname, or null to drop it. The old one keeps sending its visitors to the new page until another swarm takes it.'),
+  picture: z
+    .object({
+      color: z.enum(Pictures.colors).describe('The color behind the emoji.'),
+      emoji: z.string().trim().refine(Pictures.emoji, 'One emoji.').describe('One emoji, drawn on the color.'),
+    })
+    .nullable()
+    .optional()
+    .describe("The swarm's picture as an emoji on a color, or null to go back to its pattern. PUT /v1/swarms/:id/picture uploads an image instead."),
+  swarm: id,
+  title: z.string().trim().min(1).max(80).optional().describe('A short name for the swarm.'),
+})
 
 const lean = z.string().trim().min(1).max(8000)
 
@@ -375,6 +390,8 @@ export const schema = {
   }),
   swarm: z.object({ swarm: id }),
   nickname: z.object({ nickname: alias.nullable().describe('The new nickname, or null to drop it. The old one keeps sending its visitors to the new page until another swarm takes it.'), swarm: id }),
+  edit: edits.refine((edit) => edit.nickname !== undefined || edit.picture !== undefined || edit.title !== undefined, 'Send a title, a nickname or a picture.'),
+  paint: z.object({ data: z.instanceof(Uint8Array), swarm: id }),
   named: z.object({ name: z.string().trim().toLowerCase().max(64) }),
   rider: z.object({ who: z.string().trim().toLowerCase().max(64).describe('A rider\'s username, with or without @, or their 0x address.') }),
   tree: z.object({
@@ -1952,6 +1969,64 @@ export async function nickname(env: Cloudflare.Env, input: Input<'nickname'>, ad
   }
   const updated = await Store.find(env, row.id)
   return Problem.ok(Store.summary(updated ?? { ...row, nickname: name }))
+}
+
+export async function edit(env: Cloudflare.Env, input: Input<'edit'>, address?: Address, operated = false): Promise<Problem.Result<Summary>> {
+  const parsed = parse(schema.edit, input)
+  if (!parsed.ok) return parsed
+  const row = await Store.find(env, parsed.value.swarm)
+  if (!row) return missing()
+  if (row.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived and read-only.')
+  const allowed = await owned(env, row, address, operated)
+  if (!allowed.ok) return allowed
+  const { nickname: name, picture, title } = parsed.value
+  const renaming = name !== undefined && name !== (row.nickname ?? null) ? name : undefined
+  if (renaming && (await Store.called(env, renaming))?.current === renaming) return taken(renaming)
+  const retitling = title !== undefined && title !== row.title ? title : undefined
+  return restyle(env, row, { nickname: renaming, picture, title: retitling })
+}
+
+export async function paint(env: Cloudflare.Env, input: Input<'paint'>, address?: Address, operated = false): Promise<Problem.Result<Summary>> {
+  const parsed = parse(schema.paint, input)
+  if (!parsed.ok) return parsed
+  const row = await Store.find(env, parsed.value.swarm)
+  if (!row) return missing()
+  if (row.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived and read-only.')
+  const allowed = await owned(env, row, address, operated)
+  if (!allowed.ok) return allowed
+  const bytes = parsed.value.data
+  if (bytes.byteLength > Pictures.most) return Problem.fail(400, 'invalid_request', `The picture is ${Math.ceil(bytes.byteLength / 1024)} KB; send one of at most ${Pictures.most / 1024} KB.`)
+  const type = Pictures.sniff(bytes)
+  if (!type) return Problem.fail(400, 'invalid_request', 'Send a PNG, JPEG, WebP or GIF image.')
+  return restyle(env, row, { picture: { data: base64(bytes), type } })
+}
+
+export async function picture(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ at: number; bytes: Uint8Array; type: Pictures.Type }>> {
+  const parsed = parse(schema.swarm, input)
+  if (!parsed.ok) return parsed
+  const held = await Store.painting(env, parsed.value.swarm)
+  if (!held) return Problem.fail(404, 'not_found', 'This swarm has no uploaded picture.')
+  return Problem.ok({ at: held.at, bytes: Uint8Array.from(atob(held.data), (char) => char.charCodeAt(0)), type: held.type })
+}
+
+function base64(bytes: Uint8Array) {
+  let text = ''
+  for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
+  return btoa(text)
+}
+
+async function restyle(env: Cloudflare.Env, row: Store.Row, edits: Store.Edits): Promise<Problem.Result<Summary>> {
+  if (edits.nickname === undefined && edits.picture === undefined && edits.title === undefined) return Problem.ok(Store.summary(row))
+  try {
+    await Store.edit(env, row.id, edits)
+  } catch (error) {
+    if (error instanceof Store.Taken) return taken(edits.nickname ?? '')
+    throw error
+  }
+  if (edits.title !== undefined) await Search.retitled(env, { goal: row.goal, id: row.id, title: edits.title })
+  await stub(env, row.id).restyled(row.id).catch((error: unknown) => console.error('Telling the swarm about its edit failed', error))
+  const updated = await Store.find(env, row.id)
+  return Problem.ok(Store.summary(updated ?? row))
 }
 
 export async function rider(env: Cloudflare.Env, input: Input<'rider'>): Promise<Problem.Result<Profile>> {

@@ -777,6 +777,13 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.changed('detail')
   }
 
+  async restyled(swarm: string) {
+    this.marked += 1
+    const row = await this.found(swarm)
+    if (row) this.beacon(row)
+    this.changed('detail')
+  }
+
   chat(query: { after: number; before?: number | undefined; limit: number }) {
     const stamp = this.stamp()
     return { messages: Chat.messages(this, query), stamp }

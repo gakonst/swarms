@@ -24,7 +24,7 @@ function listed(summary: Summary): Summary {
 }
 
 function gist(summary: Summary) {
-  return JSON.stringify([summary.status, summary.why, summary.title, summary.goal, summary.problem, summary.steering, summary.answer?.at ?? null, summary.answer?.done ?? null, summary.cover?.url ?? null])
+  return JSON.stringify([summary.status, summary.why, summary.title, summary.goal, summary.problem, summary.steering, summary.answer?.at ?? null, summary.answer?.done ?? null, summary.cover?.url ?? null, summary.nickname, summary.picture ?? null])
 }
 
 export class Lobby extends DurableObject<Cloudflare.Env> {

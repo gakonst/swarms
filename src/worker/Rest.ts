@@ -123,8 +123,25 @@ app.get('/v1/search', async (c) =>
 app.get('/v1/swarms/:id', async (c) => Problem.respond(await Operations.get(c.env, { swarm: c.req.param('id') })))
 
 app.patch('/v1/swarms/:id', async (c) =>
-  Problem.respond(await Operations.nickname(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, '')))),
+  Problem.respond(await Operations.edit(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, '')))),
 )
+
+app.put('/v1/swarms/:id/picture', async (c) =>
+  Problem.respond(await Operations.paint(c.env, { data: new Uint8Array(await c.req.raw.arrayBuffer()), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, '')))),
+)
+
+app.delete('/v1/swarms/:id/picture', async (c) =>
+  Problem.respond(await Operations.edit(c.env, { picture: null, swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, '')))),
+)
+
+app.get('/v1/swarms/:id/picture', async (c) => {
+  const found = await Operations.picture(c.env, { swarm: c.req.param('id') })
+  if (!found.ok) return Problem.json(found)
+  const current = c.req.query('v') === found.value.at.toString(36)
+  return new Response(found.value.bytes, {
+    headers: { 'cache-control': current ? 'public, max-age=31536000, immutable' : 'public, max-age=60', 'content-security-policy': "default-src 'none'", 'content-type': found.value.type, 'x-content-type-options': 'nosniff' },
+  })
+})
 
 app.get('/v1/names/:name', async (c) => Problem.respond(await Operations.named(c.env, { name: c.req.param('name') })))
 

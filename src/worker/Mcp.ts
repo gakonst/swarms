@@ -288,6 +288,16 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, addre
   )
 
   server.registerTool(
+    'swarm_edit',
+    {
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false, readOnlyHint: false },
+      description: "Change a swarm's title, nickname or picture (an emoji on a color, or null for its pattern), signed in as one of its admins or the operator; any of them in one call, all or none applied. Call it only when the user asks.",
+      inputSchema: Operations.edits.shape,
+    },
+    async (input) => reply(await Operations.edit(env, input, address)),
+  )
+
+  server.registerTool(
     'swarm_nickname',
     {
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false, readOnlyHint: false },

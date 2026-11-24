@@ -1,3 +1,4 @@
+import type { Picture } from './Picture.ts'
 import type * as Setup from './Setup.ts'
 import type * as Tree from './Tree.ts'
 
@@ -26,6 +27,7 @@ export type Summary = {
   id: string
   machines: number
   nickname: string | null
+  picture?: Picture | null
   pool: string
   problem: string | null
   remaining: string

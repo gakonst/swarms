@@ -176,7 +176,11 @@ app.get('/api/swarms/:id', async (c) => {
   return Edge.tagged(c.json(shown.value.detail), early || (shown.value.stamp.quiet ? Edge.tag('sd', c.req.raw, shown.value.stamp.version, salt) : undefined))
 })
 
-app.patch('/api/swarms/:id', async (c) => Problem.respond(await Operations.nickname(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
+app.patch('/api/swarms/:id', async (c) => Problem.respond(await Operations.edit(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
+
+app.put('/api/swarms/:id/picture', async (c) => Problem.respond(await Operations.paint(c.env, { data: new Uint8Array(await c.req.raw.arrayBuffer()), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
+
+app.delete('/api/swarms/:id/picture', async (c) => Problem.respond(await Operations.edit(c.env, { picture: null, swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
 
 app.get('/api/names/:name', async (c) => Problem.respond(await Operations.named(c.env, { name: c.req.param('name') })))
 

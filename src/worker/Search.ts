@@ -66,6 +66,10 @@ export async function swarm(env: Cloudflare.Env, input: { goal: string; id: stri
   await env.DB.batch(indexed(env, input.id, 'swarm', '', input.title, input.goal))
 }
 
+export async function retitled(env: Cloudflare.Env, input: { goal: string; id: string; title: string }) {
+  await env.DB.batch([...unindexed(env, input.id, 'swarm', ''), ...indexed(env, input.id, 'swarm', '', input.title, input.goal)])
+}
+
 export async function note(env: Cloudflare.Env, swarm: string, id: string, note: string) {
   await env.DB.batch([...unindexed(env, swarm, 'note', id), ...indexed(env, swarm, 'note', id, '', note)])
 }

@@ -344,6 +344,7 @@ const schemas = {
     id: string,
     machines: integer,
     nickname: nullable({ description: 'The swarm\'s nickname, its page at /<nickname>; null: none, and its page is /s/<id>.', type: 'string' }),
+    picture: nullable({ description: "The picture its admins chose: { emoji, color } for an emoji on a color, or { url } for an uploaded image, a path on this site. null: none, and the site draws its pattern.", type: 'object' }),
     pool: { ...usd, description: "What is left of the swarm's credit at the gateway." },
     remaining: { ...mach, description: 'The balance less what the swarm spent: what it has left to spend.' },
     setup: nullable(
@@ -649,18 +650,42 @@ export function document(origin: string) {
       },
       '/v1/swarms/{id}': {
         patch: {
-          description: "As one of the swarm's admins or the operator (signed in, or with the operator's gateway key as the bearer token): set the swarm's nickname, which makes its page /<nickname>; /s/<id> then sends its visitors there. A new nickname frees the old one, which keeps sending its visitors to the new page until another swarm takes it. null drops the nickname. 409 when another swarm has it.",
-          operationId: 'nameSwarm',
+          description: "As one of the swarm's admins or the operator (signed in, or with the operator's gateway key as the bearer token): change the swarm's title, nickname or picture, any of them in one call, all or none applied. A nickname makes its page /<nickname>; /s/<id> then sends its visitors there. A new nickname frees the old one, which keeps sending its visitors to the new page until another swarm takes it. null drops the nickname, or the picture. 409 when another swarm has the nickname.",
+          operationId: 'editSwarm',
           parameters: [swarm],
-          requestBody: { content: { 'application/json': { schema: input(Operations.schema.nickname.omit({ swarm: true })) } }, required: true },
-          responses: { ...ok(ref('Summary'), 'The swarm with its nickname.'), ...failures(400, 401, 403, 404, 409, 410, 502) },
-          summary: 'Name a swarm',
+          requestBody: { content: { 'application/json': { schema: input(Operations.edits.omit({ swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Summary'), 'The swarm as edited.'), ...failures(400, 401, 403, 404, 409, 410, 502) },
+          summary: 'Edit a swarm',
         },
         get: {
           operationId: 'getSwarm',
           parameters: [swarm],
           responses: { ...ok(ref('Overview'), 'The swarm with its notes, transfers, machines and updates.'), ...failures(404) },
           summary: 'Get a swarm',
+        },
+      },
+      '/v1/swarms/{id}/picture': {
+        get: {
+          description: "The swarm's uploaded picture, as uploaded. With v at its current version (the url in Summary.picture) it is cached for a year.",
+          operationId: 'getPicture',
+          parameters: [swarm, parameter('v', 'query', string, "The picture's version, from Summary.picture.url.")],
+          responses: { 200: { content: { 'image/gif': {}, 'image/jpeg': {}, 'image/png': {}, 'image/webp': {} }, description: 'The image.' }, ...failures(404) },
+          summary: "A swarm's picture",
+        },
+        put: {
+          description: "As one of the swarm's admins or the operator: upload the swarm's picture, the image its pill and channel show instead of its pattern. The body is the image itself, a PNG, JPEG, WebP or GIF of at most 64 KB, checked by its bytes; 128 by 128 pixels is what the site shows.",
+          operationId: 'paintSwarm',
+          parameters: [swarm],
+          requestBody: { content: { 'image/gif': {}, 'image/jpeg': {}, 'image/png': {}, 'image/webp': {} }, required: true },
+          responses: { ...ok(ref('Summary'), 'The swarm with its picture.'), ...failures(400, 401, 403, 404, 410, 502) },
+          summary: 'Upload a picture',
+        },
+        delete: {
+          description: "As one of the swarm's admins or the operator: drop the swarm's picture, so it shows its pattern again.",
+          operationId: 'unpaintSwarm',
+          parameters: [swarm],
+          responses: { ...ok(ref('Summary'), 'The swarm without a picture.'), ...failures(401, 403, 404, 410, 502) },
+          summary: 'Drop the picture',
         },
       },
       '/v1/swarms/{id}/answer': {

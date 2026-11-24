@@ -1,6 +1,7 @@
 import type { Account, Answer, Contribution, Cover, Currency, Member, Note, Summary, Way } from '../shared/Api.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
+import * as Pictures from '../shared/Picture.ts'
 import * as Setup from '../shared/Setup.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Replica from './Replica.ts'
@@ -23,6 +24,7 @@ export type Row = {
   id: string
   machines: number
   nickname?: string | null
+  picture?: string | null
   pool_left: number
   pool_spent: number
   problem: string | null
@@ -71,6 +73,7 @@ const totals = `select s.*,
   coalesce((select sum(cast(amount as integer)) from contributions where swarm = s.id), 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining,
   (select count(distinct contributor) from contributions where swarm = s.id) as contributors,
   (select name from swarm_names where swarm = s.id and current = 1) as nickname,
+  (select json_object('emoji', emoji, 'color', color, 'at', at) from swarm_pictures where swarm = s.id) as picture,
   (select name from names where address = s.ai) as ai_name
   from swarms s`
 
@@ -85,6 +88,16 @@ export function cover(row: Pick<Row, 'cover'>): Cover | null {
   try {
     const parsed = JSON.parse(row.cover) as Cover
     return typeof parsed.url === 'string' && (parsed.form === 'page' || parsed.form === 'image') ? { form: parsed.form, url: parsed.url } : null
+  } catch {
+    return null
+  }
+}
+
+export function picture(row: Pick<Row, 'id' | 'picture'>): Pictures.Picture | null {
+  if (!row.picture) return null
+  try {
+    const parsed = JSON.parse(row.picture) as { at: number; color: Pictures.Color | null; emoji: string | null }
+    return parsed.emoji && parsed.color ? { color: parsed.color, emoji: parsed.emoji } : { url: Pictures.path(row.id, parsed.at) }
   } catch {
     return null
   }
@@ -113,6 +126,7 @@ export function summary(row: Row): Summary {
     id: row.id,
     machines: row.machines,
     nickname: row.nickname ?? null,
+    picture: picture(row),
     pool: Memo.decimal(BigInt(row.pool_left)),
     problem: row.problem ?? null,
     remaining: Memo.decimal(BigInt(row.remaining)),
@@ -128,7 +142,7 @@ export function summary(row: Row): Summary {
 
 export async function list(env: Cloudflare.Env, status?: Summary['status']) {
   const { results } = await env.DB.prepare(
-    `select s.*, coalesce(c.balance, 0) as balance, s.pool_spent + s.sponsor_spent + s.spent_before as spent, coalesce(c.balance, 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining, coalesce(c.contributors, 0) as contributors, (select name from swarm_names where swarm = s.id and current = 1) as nickname, (select name from names where address = s.ai) as ai_name
+    `select s.*, coalesce(c.balance, 0) as balance, s.pool_spent + s.sponsor_spent + s.spent_before as spent, coalesce(c.balance, 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining, coalesce(c.contributors, 0) as contributors, (select name from swarm_names where swarm = s.id and current = 1) as nickname, (select json_object('emoji', emoji, 'color', color, 'at', at) from swarm_pictures where swarm = s.id) as picture, (select name from names where address = s.ai) as ai_name
     from swarms s left join (select swarm, sum(cast(amount as integer)) as balance, count(distinct contributor) as contributors from contributions group by swarm) c on c.swarm = s.id
     where s.hidden = 0 and (c.balance > 0 or s.form = 'tree')${status ? ' and s.status = ?' : ''} order by s.form = 'tree' desc, s.archived_at is not null, s.updated_at desc limit 100`,
   )
@@ -283,6 +297,34 @@ export async function nickname(env: Cloudflare.Env, swarm: string, name: string 
     forget(swarm)
     wrote(swarm)
   })
+}
+
+export type Painted = { color: Pictures.Color; emoji: string } | { data: string; type: Pictures.Type }
+
+export type Edits = { nickname?: string | null | undefined; picture?: Painted | null | undefined; title?: string | undefined }
+
+export async function edit(env: Cloudflare.Env, swarm: string, edits: Edits) {
+  const at = Date.now()
+  const statements: D1PreparedStatement[] = []
+  if (edits.title !== undefined) statements.push(env.DB.prepare('update swarms set title = ?, updated_at = ? where id = ?').bind(edits.title, at, swarm))
+  if (edits.picture === null) statements.push(env.DB.prepare('delete from swarm_pictures where swarm = ?').bind(swarm))
+  else if (edits.picture) {
+    const shown = 'emoji' in edits.picture ? [edits.picture.emoji, edits.picture.color, null, null] : [null, null, edits.picture.type, edits.picture.data]
+    statements.push(env.DB.prepare('insert or replace into swarm_pictures (swarm, emoji, color, type, data, at) values (?, ?, ?, ?, ?, ?)').bind(swarm, ...shown, at))
+  }
+  if (edits.nickname !== undefined) {
+    const letting = env.DB.prepare('update swarm_names set current = 0 where swarm = ? and current = 1').bind(swarm)
+    statements.push(...(edits.nickname ? [freeing(env, edits.nickname), letting, claiming(env, edits.nickname, swarm, at)] : [letting]))
+  }
+  if (!statements.length) return
+  await env.DB.batch(statements).catch(taken).finally(() => {
+    if (edits.nickname !== undefined) forget(swarm)
+    wrote(swarm)
+  })
+}
+
+export async function painting(env: Cloudflare.Env, swarm: string) {
+  return fresh(env, (db) => db.prepare('select type, data, at from swarm_pictures where swarm = ? and data is not null').bind(swarm).first<{ at: number; data: string; type: Pictures.Type }>())
 }
 
 export async function archive(env: Cloudflare.Env, id: string, at: number) {
