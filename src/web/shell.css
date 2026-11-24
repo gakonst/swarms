@@ -204,10 +204,11 @@
 .node-more[open] > summary::after { content:'–'; }
 .node-more[open] { padding-bottom:14px; }
 .thread .talk { margin-top:10px; }
+.swarm-shell > .channel { padding:0; }
 .thread > .talk-foot { padding:8px 20px max(12px, env(safe-area-inset-bottom)); border-top:1px solid var(--line); }
 
 @media (min-width:900px) {
-  .grove[data-room] > .channel { grid-column:1; grid-row:1 / -1; }
+  :is(.grove, .swarm-shell)[data-room] > .channel { grid-column:1; grid-row:1 / -1; }
 }
 
 @media (max-width:899px) {

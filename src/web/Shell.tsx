@@ -164,21 +164,21 @@ function Home(props: { channel: string | undefined; items: readonly Summary[]; l
   )
 }
 
-function ThreadRow(props: { base: string; lit: boolean; thread: Thread }) {
+function ThreadRow(props: { base: string; leaf: 't' | 'c'; lit: boolean; thread: Thread }) {
   const thread = props.thread
   return (
     <li>
-      <Link className="rail-thread" data={{ 'data-live': String(thread.live) }} lit={props.lit} to={`${props.base}/t/${thread.id}`}>
+      <Link className="rail-thread" data={{ 'data-live': String(thread.live) }} lit={props.lit} to={`${props.base}/${props.leaf}/${thread.id}`}>
         <Mark checking={thread.checking} status={thread.status} />
         <Inline className="rail-thread-name" text={thread.title} />
-        <span className="rail-thread-money">{cash(thread.money)}</span>
+        {Number(thread.money) > 0 && <span className="rail-thread-money">{cash(thread.money)}</span>}
         {thread.doing && <Inline className="rail-thread-doing" text={thread.doing} />}
       </Link>
     </li>
   )
 }
 
-function ChannelRow(props: { base: string; channel: Room; lit: boolean; open: boolean; thread: string | undefined }) {
+function ChannelRow(props: { base: string; channel: Room; leaf: 't' | 'c'; lit: boolean; open: boolean; thread: string | undefined }) {
   const channel = props.channel
   const threads = props.open ? channel.threads : channel.threads.slice(0, shown)
   const rest = channel.threads.length - threads.length
@@ -187,11 +187,11 @@ function ChannelRow(props: { base: string; channel: Room; lit: boolean; open: bo
       <Link className="rail-row rail-channel" data={{ 'data-live': String(channel.live) }} lit={props.lit} to={`${props.base}/c/${channel.id}`}>
         <i aria-hidden="true" className="rail-hash">#</i>
         <Inline className="rail-name" text={channel.title} />
-        <span className="rail-money">{cash(channel.money)}</span>
+        {Number(channel.money) > 0 && <span className="rail-money">{cash(channel.money)}</span>}
       </Link>
       {threads.length > 0 && (
         <ol aria-label="Threads" className="rail-threads">
-          {threads.map((each) => <ThreadRow base={props.base} key={each.id} lit={props.thread === each.id} thread={each} />)}
+          {threads.map((each) => <ThreadRow base={props.base} key={each.id} leaf={props.leaf} lit={props.thread === each.id} thread={each} />)}
           {rest > 0 && (
             <li>
               <Link className="rail-thread rail-thread-all" to={`${props.base}/c/${channel.id}`}>{rest} more</Link>
@@ -207,7 +207,7 @@ function SwarmSide(props: { general: boolean; id: string; room: string | undefin
   const shape = useShape(props.id)
   const swarm = props.swarm
   const base = swarm ? Nickname.path(swarm) : `/s/${encodeURIComponent(props.id)}`
-  const held = props.room ?? holding(shape, props.thread)?.id
+  const held = (shape?.form === 'agent' ? holding(shape, props.room)?.id : props.room) ?? holding(shape, props.thread)?.id
   const list = shape?.channels ?? []
   const spent = list.reduce((sum, channel) => sum + Number(channel.money), 0)
   return (
@@ -226,10 +226,10 @@ function SwarmSide(props: { general: boolean; id: string; room: string | undefin
           <>
             <p className="rail-label">
               <span>{shape?.form === 'tree' ? 'Programs' : 'Branches'}</span>
-              <span>{list.length} · {cash(String(spent))}{shape?.form === 'agent' ? ' spent' : ''}</span>
+              <span>{list.length}{spent > 0 && <> · {cash(String(spent))}{shape?.form === 'agent' ? ' spent' : ''}</>}</span>
             </p>
             <ol className="rail-list">
-              {list.map((channel) => <ChannelRow base={base} channel={channel} key={channel.id} lit={held === channel.id && props.thread !== channel.id} open={held === channel.id} thread={props.thread} />)}
+              {list.map((channel) => <ChannelRow base={base} channel={channel} key={channel.id} leaf={shape?.form === 'tree' ? 't' : 'c'} lit={held === channel.id && props.thread !== channel.id} open={held === channel.id} thread={props.thread ?? (shape?.form === 'agent' ? props.room : undefined)} />)}
             </ol>
           </>
         )}

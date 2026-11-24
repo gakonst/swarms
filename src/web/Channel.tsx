@@ -1,9 +1,12 @@
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from 'react'
-import type { Config, NodeView } from '../shared/Api.ts'
+import type { Branch, Config, NodeView, Said } from '../shared/Api.ts'
+import * as Crew from '../shared/Crew.ts'
+import * as Mention from '../shared/Mention.ts'
 import { maxNote } from '../shared/Memo.ts'
 import type * as Tree from '../shared/Tree.ts'
 import { cash, Faces } from './Branches.tsx'
 import { Compose } from './Compose.tsx'
+import { crewMarks } from './channels.ts'
 import { ago, day, minute, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { message, useWallet } from './hooks.ts'
@@ -57,7 +60,7 @@ function Spoken(props: { first: boolean; line: Line; now: number }) {
     <li className="msg" data-first={first}>
       {first ? <Face who={line.who} /> : <span className="avatar-gap" />}
       <div className="msg-col">
-        {first && <p className="msg-who"><b style={line.who.bot ? undefined : { color: tint(line.who.address ?? line.who.name) }}>{line.who.name}</b><time dateTime={new Date(line.at).toISOString()}>{day(line.at, props.now) === day(props.now, props.now) ? minute(line.at) : `${day(line.at, props.now)} ${minute(line.at)}`}</time></p>}
+        {first && <p className="msg-who"><b style={line.who.bot ? undefined : { color: tint(line.who.address ?? line.who.name) }}>{line.who.name}</b>{line.at > 1e9 && <time dateTime={new Date(line.at).toISOString()}>{day(line.at, props.now) === day(props.now, props.now) ? minute(line.at) : `${day(line.at, props.now)} ${minute(line.at)}`}</time>}</p>}
         {line.tag && <span className="talk-tag">{line.tag}</span>}
         {line.text && <div className="msg-bubble"><Markdown compact text={line.text} /></div>}
       </div>
@@ -74,7 +77,7 @@ export function Talk(props: { doing?: Tree.Doing | null | undefined; empty: stri
         <li className="msg talk-doing" data-first="true" aria-live="polite">
           <span aria-hidden="true" className="avatar avatar-ai">✦</span>
           <div className="msg-col">
-            <p className="msg-who"><b>AI</b><time>working · {ago(props.doing.at, props.now)}</time></p>
+            <p className="msg-who"><b>AI</b><time>{props.doing.at > props.now - 5_000 ? 'working' : `working · ${ago(props.doing.at, props.now)}`}</time></p>
             <div className="msg-bubble"><i aria-hidden="true" className="talk-pulse" /><Inline text={props.doing.text} /></div>
           </div>
         </li>
@@ -186,7 +189,7 @@ function Starter(props: { lit: boolean; node: Tree.Node; nodes: Readonly<Record<
           <span className="starter-why"><b>{node.run?.checking ? 'Checking' : word(node.status)}</b> {why(node, props.nodes)}</span>
           {said && <span className="starter-doing"><i aria-hidden="true" className="talk-pulse" /><Inline text={said.text} /><time>{ago(said.at, props.now)}</time></span>}
           <span className="starter-foot">
-            <span className="starter-money">{cash(node.money.subtree.pledged)}</span>
+            {Number(node.money.subtree.pledged) > 0 && <span className="starter-money">{cash(node.money.subtree.pledged)}</span>}
             <Faces funders={node.funders} riders={node.riders} />
             {kids > 0 && <span>{kids} sub-item{kids === 1 ? '' : 's'}</span>}
             <span className="starter-open">Open thread ›</span>
@@ -215,7 +218,7 @@ export function TreeChannel(props: { children?: ReactNode; config: Config | unde
         <div className="channel-top">
           <h1 className="channel-title"><i aria-hidden="true">#</i><Inline text={node.title} /></h1>
           <p className="channel-stats">
-            <span><b>{cash(node.money.subtree.pledged)}</b> ridden</span>
+            {Number(node.money.subtree.pledged) > 0 && <span><b>{cash(node.money.subtree.pledged)}</b> ridden</span>}
             <span><b>{node.counts.proven}</b> proven</span>
             <span data-live={node.counts['in flight'] > 0 || undefined}><b>{node.counts['in flight']}</b> in flight</span>
           </p>
@@ -244,6 +247,80 @@ export function TreeChannel(props: { children?: ReactNode; config: Config | unde
         {props.children}
       </div>
       <Composer config={props.config} disabled={open ? undefined : 'This program has ended.'} fine="A note on this program, free. Five a day; triage may turn it into an item." label={`Message #${node.title}`} onPost={props.onPost} placeholder={`Message #${node.title.length > 40 ? `${node.title.slice(0, 40)}…` : node.title}`} />
+    </section>
+  )
+}
+
+function backersOf(branch: Branch): Tree.Funder[] {
+  return branch.funders.map((funder) => ({ amount: funder.amount, since: 0, who: { address: funder.address, agent: null, handle: funder.handle } }))
+}
+
+export function tagged(title: string) {
+  return `**#${title}** `
+}
+
+const crewWords: Record<Crew.State, string> = { done: 'Done', failed: 'Failed', starved: 'Out of budget', stopped: 'Stopped', working: 'Working' }
+
+export function BranchChannel(props: { base: string; branch: Branch; branches: readonly Branch[]; config: Config | undefined; names: ReadonlyMap<string, string>; now: number; onPost: (text: string) => Promise<void>; onRide: ((anchor: HTMLElement) => void) | undefined; said: readonly Said[]; swarmTitle: string }) {
+  const branch = props.branch
+  const member = Crew.member(branch)
+  const status = crewMarks[member.state]
+  const kids = props.branches.filter((each) => each.parent === branch.id).map(Crew.member)
+  const prefix = tagged(member.title)
+  const scroller = useRef<HTMLDivElement>(null)
+  const posts: Line[] = props.said
+    .filter((said) => said.text.startsWith(prefix))
+    .map((said) => ({ at: said.at, id: `m${said.id}`, text: said.text.slice(prefix.length), who: { address: said.author, bot: false, name: said.author ? (props.names.get(said.author.toLowerCase()) ? `@${props.names.get(said.author.toLowerCase())}` : Mention.short(said.author)) : 'Someone' } }))
+  const told: Line[] = [{ at: 0, id: 'task', tag: 'Task from the lead', text: branch.task, who: { address: null, bot: true, name: 'Lead' } }]
+  if (branch.funders.length) told.push({ at: 1, id: 'riders', text: `Ridden by ${branch.funders.map((funder) => `@${funder.handle} ${cash(funder.amount)}`).join(', ')}`, who: { address: null, bot: true, name: 'Swarm' } })
+  const result = member.told ?? (member.state === 'failed' ? branch.error : null)
+  if (result && member.state !== 'working') told.push({ at: 2, id: 'result', tag: `${crewWords[member.state]}${member.metric ? ` · ${member.metric}` : ''} · ${cash(String(member.spent))} spent`, text: result, who: { address: null, bot: true, name: 'AI' } })
+  if (member.blockers) told.push({ at: 3, id: 'blockers', tag: 'Blockers', text: member.blockers, who: { address: null, bot: true, name: 'AI' } })
+  const lines = [...told, ...posts]
+  useLayoutEffect(() => {
+    const element = scroller.current
+    if (element) element.scrollTop = element.scrollHeight
+  }, [branch.id, lines.length])
+  return (
+    <section aria-label={`#${member.title}`} className="channel">
+      <header className="channel-head">
+        <div className="channel-top">
+          <h1 className="channel-title"><i aria-hidden="true">#</i><Inline text={member.title} /></h1>
+          <p className="channel-stats">
+            {member.metric && <span><b>{member.metric}</b> best</span>}
+            <span><b>{cash(String(member.spent))}</b> spent</span>
+            {kids.length > 0 && <span><b>{kids.length}</b> sub-branch{kids.length === 1 ? '' : 'es'}</span>}
+          </p>
+          {props.onRide && <div className="channel-acts"><button className="btn btn-high channel-ride" onClick={(event) => props.onRide?.(event.currentTarget)} type="button">Ride it</button></div>}
+        </div>
+        <p className="channel-topic"><Mark checking={member.state === 'starved'} status={status} /><span>{crewWords[member.state]}</span><i aria-hidden="true">·</i><Inline text={props.swarmTitle} /><Faces funders={backersOf(branch)} riders={branch.funders.length} /></p>
+      </header>
+      <div className="channel-list" ref={scroller}>
+        <div className="channel-intro">
+          <p className="welcome-mark" aria-hidden="true">#</p>
+          <h2><Inline text={member.title} /></h2>
+          <p className="channel-note">A branch of the swarm's work: its task, what its agent found and what riders said about it.</p>
+        </div>
+        <Talk doing={member.state === 'working' ? { at: props.now, text: `Working on it · ${cash(String(member.spent))} spent so far` } : null} empty="Nothing here yet." lines={lines} now={props.now} />
+        {kids.length > 0 && (
+          <ol aria-label="Threads" className="talk">
+            {kids.map((kid) => (
+              <li className="msg starter" data-first="true" key={kid.id}>
+                <span aria-hidden="true" className="avatar avatar-ai">✦</span>
+                <div className="msg-col">
+                  <p className="msg-who"><b>AI</b><time>sub-branch</time></p>
+                  <Link className="starter-card" keep to={`${props.base}/c/${kid.id}`}>
+                    <span className="starter-title"><Mark status={crewMarks[kid.state]} /><Inline text={kid.title} /></span>
+                    {kid.summary && <span className="starter-why"><b>{crewWords[kid.state]}</b> <Inline text={kid.summary} /></span>}
+                    <span className="starter-foot"><span className="starter-money">{cash(String(kid.spent))}</span>{kid.metric && <span>{kid.metric}</span>}<span className="starter-open">Open ›</span></span>
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+      <Composer config={props.config} disabled={undefined} fine={`Posts in the swarm's #general too, starting with #${member.title}.`} label={`Message #${member.title}`} onPost={props.onPost} placeholder={`Message #${member.title.length > 40 ? `${member.title.slice(0, 40)}…` : member.title}`} />
     </section>
   )
 }

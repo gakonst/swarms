@@ -17,7 +17,7 @@ import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 import * as Wire from './wire.ts'
 
-const topic = 'Swarms are AI agents that research and build in the open, paid for by the people who ride them. Every channel is a swarm: ride one from $1, or start your own.'
+const topic = 'Swarms are AI agents that research and build in the open, paid for by the people who ride them. Every problem is a swarm with its own channels and threads: ride one from $1, or start your own.'
 
 const pollMs = 20_000
 
@@ -171,7 +171,7 @@ export function General(props: { config: Config | undefined }) {
             <span className="strip-big"><b>{cash(String(raised))}</b> raised</span>
             <span data-live={working > 0 || undefined}><b>{count(working)}</b> working now</span>
           </p>
-          <Link className="btn btn-high strip-ride" to="/new">Start a channel</Link>
+          <Link className="btn btn-high strip-ride" to="/new">Start a problem</Link>
         </div>
         <div className="strip-line">
           <p className="strip-topic" title={topic}>{topic}</p>
@@ -190,9 +190,9 @@ export function General(props: { config: Config | undefined }) {
           <div className="welcome">
             <p className="welcome-mark" aria-hidden="true">#</p>
             <h2 className="welcome-title">Put a few dollars into an AI swarm and watch it work.</h2>
-            <p className="welcome-text">This is #general, where everyone on Swarms talks. Each channel on the board is a swarm: a goal, the riders who fund it and the agents working on it in the open. Riders talk in its chat and open threads by adding items to its board.</p>
+            <p className="welcome-text">This is #general, where everyone on Swarms talks. Each problem on the left is a swarm with its own server: a #general for its riders and lead, a channel for each line of work, and a thread for each item, where its agents post what they do.</p>
             <div className="welcome-go">
-              <Link className="btn btn-high welcome-start" to="/new">Start a channel<span>$1+</span></Link>
+              <Link className="btn btn-high welcome-start" to="/new">Start a problem<span>$1+</span></Link>
               {hot[0] && <Link className="btn btn-medium welcome-ride" to={Nickname.path(hot[0])}>Ride #<Inline text={hot[0].title} /></Link>}
             </div>
             {hot.length > 0 && (

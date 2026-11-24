@@ -11,7 +11,7 @@ export type Channel = { at: number; id: string; live: boolean; money: string; st
 
 export type Shape = { form: 'tree' | 'agent'; channels: readonly Channel[] }
 
-const states: Record<Crew.State, Tree.Status> = { done: 'proven', failed: 'dead end', starved: 'proposed', stopped: 'proposed', working: 'in flight' }
+export const crewMarks: Record<Crew.State, Tree.Status> = { done: 'proven', failed: 'dead end', starved: 'proposed', stopped: 'proposed', working: 'in flight' }
 
 function busy(node: Tree.Node) {
   return node.status === 'in flight' || node.counts['in flight'] > 0
@@ -57,14 +57,14 @@ export function fromTree(nodes: readonly Tree.Node[]): Shape {
 
 function branchThread(branch: Branch): Thread {
   const member = Crew.member(branch)
-  return { at: 0, checking: member.state === 'starved', doing: member.state === 'working' ? member.summary : null, id: String(branch.id), live: member.state === 'working', money: String(member.spent), status: states[member.state], title: member.title }
+  return { at: 0, checking: member.state === 'starved', doing: member.state === 'working' ? member.summary : null, id: String(branch.id), live: member.state === 'working', money: String(member.spent), status: crewMarks[member.state], title: member.title }
 }
 
 export function fromBranches(branches: readonly Branch[]): Shape {
   return {
     channels: Crew.board(branches).map((member) => {
       const children = branches.filter((branch) => branch.parent === member.id).map(branchThread).sort(order)
-      return { at: 0, id: String(member.id), live: member.state === 'working' || children.some((child) => child.live), money: String(member.spent), status: states[member.state], threads: children, title: member.title, topic: member.summary ?? '' }
+      return { at: 0, id: String(member.id), live: member.state === 'working' || children.some((child) => child.live), money: String(member.spent), status: crewMarks[member.state], threads: children, title: member.title, topic: member.summary ?? '' }
     }),
     form: 'agent',
   }

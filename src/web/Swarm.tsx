@@ -2,17 +2,19 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Config, Detail, Me, Member, Room as RoomState, Said, Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
+import * as Crew from '../shared/Crew.ts'
 import * as Status from '../shared/Status.ts'
 import * as Api from './api.ts'
 import { useSurface, useWishes, Viewer } from './Artifacts.tsx'
 import { here, seeded } from './boot.ts'
 import { Box } from './Box.tsx'
+import { BranchChannel, tagged } from './Channel.tsx'
 import { shareBranches } from './channels.ts'
 import * as Prose from '../shared/Prose.ts'
 import { line, pill } from './Card.tsx'
 import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
-import { usePoll, useWallet } from './hooks.ts'
+import { useNow, usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Overlay } from './Overlay.tsx'
 import * as Names from './names.ts'
@@ -44,12 +46,15 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
     }
     if (Wire.stirred(signal, 'branches')) rebranch()
     if (Wire.stirred(signal, 'feed')) setStir((count) => count + 1)
+    if (signal.type === 'said' && props.channel) rechat()
   })
   const [detail, reload, setDetail] = usePoll(() => Api.swarm(id, false), wired === 'down' ? detailMs : null, id)
   const [shelf, reshelve, setShelf] = usePoll(() => Api.artifacts(id), wired === 'down' ? shelfMs : null, `artifacts:${id}`)
   const [news, renews] = usePoll(() => Api.updates(id), null, `updates:${id}`)
   const [progress, reprogress] = usePoll(() => Api.progress(id), null, `progress:${id}`)
   const [tree, rebranch] = usePoll(() => Api.branches(id), wired === 'down' && detail.data?.status === 'running' ? 30_000 : null, `branches:${id}`)
+  const [chat, rechat] = usePoll(() => Api.room(id), null, `room:${id}`)
+  const now = useNow(30_000)
   const wishes = useWishes(shelf.data?.artifacts)
   const surface = useSurface(shelf.data?.artifacts, id)
   const opened = useQuery('r')
@@ -126,17 +131,35 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   const show = (next: Tab) => {
     if (next !== view) navigate(at(base, next), { keep: true, replace: true })
   }
+  const branch = props.channel ? tree.data?.branches.find((each) => String(each.id) === props.channel) : undefined
 
 
   return (
-    <article className="swarm-shell" data-tab={view}>
-      <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
+    <article className="swarm-shell" data-room={branch ? '' : undefined} data-tab={view}>
+      {!branch && <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span><b>{dollars(swarm.remaining)}</b> left</span>
         <span className="strip-mood" data-mood={stood.mood} title={line(stood.word)}><i />{pill(stood.word)}</span>
-      </Strip>
-      <Tabs base={base} board="Board" onShow={show} unread={unread} view={view} />
-      <div className="panel panel-chat" hidden={view !== 'chat'}>
+      </Strip>}
+      {!branch && <Tabs base={base} board="Board" onShow={show} unread={unread} view={view} />}
+      {branch && (
+        <BranchChannel
+          base={base}
+          branch={branch}
+          branches={tree.data?.branches ?? []}
+          config={props.config}
+          names={names}
+          now={now}
+          onPost={async (text) => {
+            await Api.say(id, { text: tagged(Crew.title(branch)) + text })
+            rechat()
+          }}
+          onRide={archived ? undefined : (anchor) => steer('', anchor)}
+          said={chat.data?.messages ?? []}
+          swarmTitle={swarm.title}
+        />
+      )}
+      <div className="panel panel-chat" hidden={view !== 'chat' || !!branch}>
         <Room
           config={props.config}
           onArtifact={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`)}
@@ -148,17 +171,17 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           visible={view === 'chat'}
         />
       </div>
-      <div className="panel panel-page" hidden={view !== 'board'}>
+      <div className="panel panel-page" hidden={view !== 'board' || !!branch}>
         <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'board'} />
       </div>
       {seen.has('results') && (
-        <div className="panel panel-page" hidden={view !== 'results'}>
+        <div className="panel panel-page" hidden={view !== 'results' || !!branch}>
           <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show('chat')} onOpen={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steers ? steer : undefined} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
         </div>
       )}
-      {seen.has('code') && <div className="panel panel-page" hidden={view !== 'code'}><Code repo={swarm.code} swarm={swarm.id} /></div>}
+      {seen.has('code') && <div className="panel panel-page" hidden={view !== 'code' || !!branch}><Code repo={swarm.code} swarm={swarm.id} /></div>}
       {seen.has('about') && (
-        <div className="panel panel-page" hidden={view !== 'about'}>
+        <div className="panel panel-page" hidden={view !== 'about' || !!branch}>
           <Explainer swarm={swarm} />
           {archived ? <Archived swarm={swarm} /> : <Reins onNamed={named} swarm={swarm} />}
         </div>
