@@ -425,11 +425,11 @@ html[data-viewing] body { overflow:hidden; }
 .surface-checks { display:grid; gap:4px; margin:0; padding:0; list-style:none; }
 .surface-checks b { display:block; margin:6px 0 2px; font:12px var(--mono); color:var(--fg); }
 .surface-checks li:first-child b { margin-top:0; }
-.surface-checks span { display:grid; grid-template-columns:20px minmax(0,1fr); font-size:14.5px; line-height:1.4; }
+.surface-checks li > span { display:grid; grid-template-columns:20px minmax(0,1fr); font-size:14.5px; line-height:1.4; }
 .surface-checks i { font-style:normal; color:var(--faint); }
 .surface-checks [data-state='done'] i { color:var(--green-ink); }
 .surface-checks [data-state='doing'] i { color:var(--warn-ink); }
-.surface-checks [data-state='failed'] span { color:var(--faint); text-decoration:line-through; }
+.surface-checks [data-state='failed'] > span { color:var(--faint); text-decoration:line-through; }
 .surface-checks [data-state='todo'] span { color:var(--muted); }
 .surface-chart { position:relative; margin:0; }
 .surface-chart figcaption { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; margin-bottom:6px; }
