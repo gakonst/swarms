@@ -102,6 +102,8 @@ button.swarm-home { border:0; background:none; cursor:pointer; }
   .browse { padding-top:var(--space-9); }
   .browse > * { grid-column:1 / span 8; grid-row:1; }
   .browse > .browse-head { position:sticky; top:calc(var(--header-height) + var(--space-3)); grid-column:9 / -1; align-self:start; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:var(--space-2); }
+  .hub-main > .browse { padding-top:var(--space-6); }
+  .hub-main > .browse > .browse-head { top:0; }
 }
 
 .idea-page { max-width:1752px; padding-bottom:var(--space-9); }
