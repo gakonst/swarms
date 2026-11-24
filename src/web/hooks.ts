@@ -2,7 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExter
 import type { Config, Entry } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import * as Attempt from './attempt.ts'
-import { boot, here, seeded, server } from './boot.ts'
+import { boot, seeded } from './boot.ts'
+import * as Local from './local.ts'
 import * as Wallet from './wallet.ts'
 
 export function message(error: unknown) {
@@ -38,39 +39,12 @@ export function useConfig() {
   return config
 }
 
-const kept = new Map<string, unknown>()
-
-function shelf(key: string) {
-  const search = here().searchParams
-  return `poll:${search.has('fixture') ? `fixture:${search.get('scene') ?? ''}:` : ''}${key}`
-}
-
-function recall<T>(key: string): T | undefined {
-  const name = shelf(key)
-  if (kept.has(name)) return kept.get(name) as T
-  try {
-    if (server) return undefined
-    const saved = sessionStorage.getItem(name)
-    return saved ? (JSON.parse(saved) as T) : undefined
-  } catch {
-    return undefined
-  }
-}
-
 export function remembered<T>(key: string) {
-  return kept.get(shelf(key)) as T | undefined
+  return Local.value<T>(key)
 }
 
 export function remember(key: string, data: unknown) {
-  kept.set(shelf(key), data)
-}
-
-function keep(key: string, data: unknown) {
-  const name = shelf(key)
-  kept.set(name, data)
-  try {
-    sessionStorage.setItem(name, JSON.stringify(data))
-  } catch {}
+  Local.put(key, data)
 }
 
 function watch(listener: () => void) {
@@ -94,100 +68,60 @@ export function useStable<A extends unknown[], R>(run: (...args: A) => R) {
   return useCallback((...args: A) => current.current(...args), [])
 }
 
-export function usePoll<T>(load: () => Promise<T>, ms: number | null | ((data: T | undefined) => number | null), key: string, options: { keep?: boolean } = {}) {
-  const [state, setState] = useState<{ data?: T | undefined; error?: string }>(() => {
-    const data = remembered<T>(key) ?? seeded<T>(key) ?? (options.keep ? recall<T>(key) : undefined)
+export function usePoll<T>(load: () => Promise<T>, ms: number | null | ((data: T | undefined) => number | null), key: string) {
+  const listen = useCallback((listener: () => void) => Local.subscribe(key, listener), [key])
+  const data = useSyncExternalStore(
+    listen,
+    () => Local.value<T>(key),
+    () => seeded<T>(key),
+  )
+  const [failure, setFailure] = useState<{ error: string; key: string } | undefined>(() => {
     const failed = seeded<string>(`!${key}`)
-    return data === undefined ? (failed ? { error: failed } : {}) : { data }
+    return failed === undefined ? undefined : { error: failed, key }
   })
-  const [version, setVersion] = useState(0)
   const [landed, setLanded] = useState(0)
   const current = useRef(load)
-  const pace = useRef(ms)
-  const held = useRef(state)
-  const keyed = useRef(key)
-  const text = useRef<string | undefined>(undefined)
-  const started = useRef(remembered(key) !== undefined ? 0 : seeded(key) !== undefined || seeded(`!${key}`) !== undefined ? (boot()?.now ?? Date.now()) : undefined)
-  const asked = useRef(false)
-  const flight = useRef<Promise<void> | undefined>(undefined)
   const visible = useVisible()
-  const every = typeof ms === 'function' ? ms(state.data) : ms
+  const every = typeof ms === 'function' ? ms(data) : ms
 
   useEffect(() => {
     current.current = load
-    pace.current = ms
-    held.current = state
-  })
-
-  const store = useStable((data: T) => {
-    if (options.keep) keep(key, data)
-    else remember(key, data)
   })
 
   const fetched = useStable(() => {
-    if (flight.current) return flight.current
-    const wanted = keyed.current
-    started.current = Date.now()
-    const promise = current
-      .current()
-      .then(
-        (data) => {
-          if (keyed.current !== wanted) return
-          const json = JSON.stringify(data)
-          const before = text.current ?? (held.current.data === undefined ? undefined : JSON.stringify(held.current.data))
-          text.current = json
-          if (json === before && held.current.error === undefined) return
-          store(data)
-          setState({ data })
-        },
-        (error: unknown) => {
-          if (keyed.current === wanted) setState((previous) => ({ ...previous, error: message(error) }))
-        },
-      )
-      .finally(() => {
-        flight.current = undefined
-        setLanded((count) => count + 1)
-      })
-    flight.current = promise
-    return promise
+    const wanted = key
+    return Local.load(wanted, () => current.current()).then(
+      () => setFailure((previous) => (previous?.key === wanted ? undefined : previous)),
+      (error: unknown) => setFailure({ error: message(error), key: wanted }),
+    ).finally(() => setLanded((count) => count + 1))
   })
 
   useEffect(() => {
-    if (keyed.current !== key) {
-      keyed.current = key
-      text.current = undefined
-      asked.current = true
-    }
-    if (!visible || flight.current) return
-    if (asked.current || (started.current === undefined && held.current.data === undefined)) {
-      asked.current = false
-      void fetched()
-      return
-    }
-    const wait = typeof pace.current === 'function' ? pace.current(held.current.data) : pace.current
-    if (wait === null) return
-    const timer = setTimeout(() => void fetched(), Math.max(0, (started.current ?? 0) + wait - Date.now()))
+    if (visible && !Local.fresh(key)) void fetched()
+  }, [key, visible])
+
+  useEffect(() => {
+    if (!visible) return
+    return Local.subscribe(key, () => {
+      if (Local.row(key)?.state === 'stale') void fetched()
+    })
+  }, [key, visible])
+
+  useEffect(() => {
+    if (!visible || every === null) return
+    const timer = setTimeout(() => void fetched(), Math.max(0, (Local.row(key)?.at ?? 0) + every - Date.now()))
     return () => clearTimeout(timer)
-  }, [key, every, version, visible, landed])
+  }, [key, every, visible, landed])
 
   const reload = useCallback(() => {
-    asked.current = true
-    setVersion((value) => value + 1)
-  }, [])
+    if (document.visibilityState === 'hidden') Local.stale(key)
+    else void fetched()
+  }, [key, fetched])
 
-  const set = useCallback(
-    (change: (data: T | undefined) => T | undefined) =>
-      setState((previous) => {
-        const data = change(previous.data)
-        if (data === undefined || data === previous.data) return previous
-        text.current = JSON.stringify(data)
-        store(data)
-        return { data }
-      }),
-    [store],
-  )
+  const set = useCallback((change: (data: T | undefined) => T | undefined) => Local.change<T>(key, change), [key])
 
-  return [state, reload, set] as const
+  const error = failure?.key === key ? failure.error : undefined
+  return [error === undefined ? { data } : { data, error }, reload, set] as const
 }
 
 export type Stream = { at: number; input: string; inputItem: string; text: string; textItem: string; thinking: string; thinkingItem: string }

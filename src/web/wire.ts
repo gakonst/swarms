@@ -1,7 +1,8 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
-import type { Chatter, Detail, Lobby, Part, Pulse } from '../shared/Api.ts'
+import type { Chatter, Detail, Lobby, Part, Pulse, Said } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { usePoll } from './hooks.ts'
+import * as Local from './local.ts'
 
 export type Mode = 'listen' | 'room'
 
@@ -13,6 +14,8 @@ export type State = 'opening' | 'live' | 'down'
 
 export const parts = ['artifacts', 'branches', 'code', 'detail', 'feed', 'hands', 'members', 'roster'] as const satisfies readonly Part[]
 
+const unversioned = ['artifacts', 'branches', 'code', 'hands', 'roster'] as const satisfies readonly Part[]
+
 const lingerMs = 5000
 
 const welcomeMs = 4000
@@ -20,6 +23,7 @@ const welcomeMs = 4000
 type Wire = {
   applied: string | undefined
   held: Map<Part, Cause>
+  id: string
   line: Api.Line
   linger: ReturnType<typeof setTimeout> | undefined
   listeners: Set<(signal: Signal) => void>
@@ -56,6 +60,7 @@ function stir(wire: Wire, stirred: readonly Part[], cause: Cause) {
 function heard(wire: Wire, event: Chatter | { type: 'open' | 'closed' }) {
   if (event.type === 'open' || event.type === 'closed') wire.open = event.type === 'open'
   if (event.type === 'closed') {
+    Local.link(wire.id, false)
     if (wire.state !== 'down') {
       wire.state = 'down'
       notify()
@@ -67,15 +72,39 @@ function heard(wire: Wire, event: Chatter | { type: 'open' | 'closed' }) {
       wire.state = 'live'
       notify()
     }
-    const known = wire.applied
     wire.applied = event.version
-    if (wire.welcomed > 1 || event.version !== known) stir(wire, parts, 'welcome')
+    Local.link(wire.id, true)
+    if (Local.welcome(wire.id, event.version) === 'moved') {
+      stir(wire, parts, 'welcome')
+      const from = Local.cursor(wire.id)
+      if (from !== undefined) void caught(wire.id, from)
+    } else stir(wire, unversioned, 'welcome')
     return
   }
-  if (event.type === 'pulse' || event.type === 'changed') wire.applied = event.version
+  if (event.type === 'pulse' || event.type === 'changed') {
+    wire.applied = event.version
+    Local.advance(wire.id, event.version, event.type === 'changed')
+  }
+  if (event.type === 'pulse') Local.patch<Detail>(wire.id, (detail) => pulsed(detail, event) ?? detail)
+  if (event.type === 'delta') Local.delta(wire.id, event.delta)
+  if (event.type === 'said') Local.patch<{ messages: readonly Said[] }>(`room:${wire.id}`, (room) => (room.messages.some((each) => each.id === event.message.id) ? room : { ...room, messages: [...room.messages, event.message].sort((a, b) => a.id - b.id) }))
   if (!wire.listeners.size && (event.type === 'pulse' || event.type === 'said' || event.type === 'artifacts' || event.type === 'roster')) return stir(wire, parts, 'welcome')
   dispatch(wire, event)
   if (event.type === 'changed') stir(wire, event.parts, 'changed')
+}
+
+const pageMax = 500
+
+async function caught(id: string, from: number) {
+  let after = from
+  for (let page = 0; page < 4; page++) {
+    const got = await Api.deltas(id, after, pageMax).catch(() => undefined)
+    if (!got) return Local.lost(id)
+    for (const delta of got.deltas) Local.delta(id, delta)
+    if (got.deltas.length < pageMax) return Local.caught(id, got.next)
+    after = got.next
+  }
+  Local.lost(id)
 }
 
 function released() {
@@ -98,7 +127,7 @@ function open(id: string, mode: Mode) {
     watching = true
     document.addEventListener('visibilitychange', released)
   }
-  const wire: Wire = { applied: undefined, held: new Map(), line: Api.chatter(id, mode === 'listen', (event) => heard(wire, event)), linger: undefined, listeners: new Set(), open: false, state: 'opening', users: 0, welcomed: 0 }
+  const wire: Wire = { applied: undefined, held: new Map(), id, line: Api.chatter(id, mode === 'listen', (event) => heard(wire, event)), linger: undefined, listeners: new Set(), open: false, state: 'opening', users: 0, welcomed: 0 }
   setTimeout(() => {
     if (wire.state !== 'opening') return
     wire.state = 'down'
@@ -122,6 +151,7 @@ export function join(id: string, mode: Mode, listener: (signal: Signal) => void)
     wire.linger = setTimeout(() => {
       if (wire.users > 0) return
       wire.line.close()
+      Local.link(id, false)
       wires.delete(name)
       notify()
     }, lingerMs)
@@ -225,7 +255,7 @@ export function useSwarms() {
     if (event.type === 'welcome') reload()
     else set((data) => data && { ...data, swarms: [event.swarm, ...data.swarms.filter((swarm) => swarm.id !== event.swarm.id)] })
   })
-  const [list, reload, set] = usePoll(() => Api.swarms(), lobby === 'down' ? listMs : null, 'swarms', { keep: true })
+  const [list, reload, set] = usePoll(() => Api.swarms(), lobby === 'down' ? listMs : null, 'swarms')
   return list
 }
 

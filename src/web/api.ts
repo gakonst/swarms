@@ -367,6 +367,10 @@ export function nodeUpdates(id: string, node: string, after = 0) {
   return fixture ? staged((fixtures) => fixtures.nodeUpdates(id, node)) : request<NodeUpdates>(`${noded(id, node)}/updates?after=${after}`)
 }
 
+export function deltas(id: string, after: number, limit: number) {
+  return fixture ? Promise.resolve<NodeUpdates>({ deltas: [], next: after }) : request<NodeUpdates>(`${v1(id)}/deltas?after=${after}&limit=${limit}`)
+}
+
 export function burn(id: string) {
   return fixture ? staged((fixtures) => fixtures.burn(id)) : request<ProgressView>(`${v1(id)}/progress?every=hour`)
 }

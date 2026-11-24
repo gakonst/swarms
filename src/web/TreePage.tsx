@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Config, Detail, Member, NodeUpdates, NodeView, ProofsView, Said, TreeView } from '../shared/Api.ts'
+import type { Config, Detail, Member, ProofsView, Said, TreeView } from '../shared/Api.ts'
 import * as Prose from '../shared/Prose.ts'
 import * as Status from '../shared/Status.ts'
 import type * as Tree from '../shared/Tree.ts'
@@ -69,12 +69,12 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const [detail, redetail] = usePoll(() => Api.swarm(id, false), null, id)
   const [tree, retree] = usePoll(() => Api.tree(id, { depth: 2 }), () => (Wire.state(id, 'room') === 'down' ? downMs : null), `tree:${id}`)
   const [grove, setGrove] = useState<Grove.Grove | undefined>(() => tree.data && Grove.grow(tree.data))
-  const [node, review, setView] = usePoll(() => Api.node(id, selected), null, `node:${id}:${selected}`)
-  const [updates, reupdate, setUpdates] = usePoll(() => Api.nodeUpdates(id, selected), null, `updates:${id}:${selected}`)
+  const [node, review] = usePoll(() => Api.node(id, selected), null, `node:${id}:${selected}`)
+  const [updates, reupdate] = usePoll(() => Api.nodeUpdates(id, selected), null, `updates:${id}:${selected}`)
   const held = props.channel ?? (thread && grove ? Grove.trail(grove.nodes, selected).find((node) => node.parent === 'root')?.id : undefined)
   const room = held ?? selected
   const [roomNode, reroom] = usePoll(() => Api.node(id, room), null, `node:${id}:${room}`)
-  const [roomUpdates, reroomUpdates] = usePoll(() => Api.nodeUpdates(id, room), null, `updates:${id}:${room}`)
+  const [roomUpdates] = usePoll(() => Api.nodeUpdates(id, room), null, `updates:${id}:${room}`)
   const [burn, reburn] = usePoll(() => Api.burn(id), null, `burn:${id}`)
   const [proofs, reproof, setProofs] = usePoll(() => Api.proofs(id), null, `proofs:${id}`)
   const told = useRef(here().searchParams.has('open'))
@@ -101,27 +101,16 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
       const delta = signal.delta
       setGrove((current) => current && Grove.patch(current, delta))
       if (delta.event === 'funded') redetail()
-      if (delta.node.id === selected) {
-        setView((current: NodeView | undefined) => current && { ...current, ...delta.node, funders: current.funders, runs: current.runs })
-        if (delta.event !== 'doing') setUpdates((current: NodeUpdates | undefined) => current && { deltas: [delta, ...current.deltas.filter((each) => each.seq !== delta.seq)], next: Math.max(current.next, delta.seq) })
-        if (delta.event === 'proven' || delta.event === 'ended' || delta.event === 'started' || delta.event === 'funded' || delta.event === 'moved' || delta.event === 'steered') review()
-      }
-      if (held && delta.node.id === held && held !== selected && delta.event !== 'doing') {
-        reroom()
-        reroomUpdates()
-      }
       if (delta.event === 'proven' && delta.node.proof) {
         const check = delta.node.proof
         setProofs((current: ProofsView | undefined) => ({ proofs: [{ check, node: delta.node.id, title: delta.node.title }, ...(current?.proofs ?? []).filter((each) => each.node !== delta.node.id)] }))
       }
     }
-    if (signal.type === 'stir' && signal.cause === 'welcome') {
+    if (signal.type === 'stir' && signal.cause === 'welcome' && Wire.stirred(signal, 'detail')) {
       redetail()
       retree()
       reburn()
       reproof()
-      review()
-      reupdate()
     }
   })
 

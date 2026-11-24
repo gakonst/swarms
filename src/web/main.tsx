@@ -2,6 +2,8 @@ import { createRoot, hydrateRoot } from 'react-dom/client'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
 import { App } from './App.tsx'
+import { fixture } from './api.ts'
+import * as Local from './local.ts'
 import { highlight, read } from './Markdown.tsx'
 import { preload } from './pages.ts'
 import '@pierre/words/styles.css'
@@ -20,6 +22,8 @@ function fit() {
   document.documentElement.style.setProperty('--screen', `${Math.round(visualViewport?.height ?? innerHeight)}px`)
   if (scrollY) scrollTo(0, 0)
 }
+
+void Local.start({ data: globalThis.__SWARMS_BOOT__?.data ?? {}, now: globalThis.__SWARMS_BOOT__?.now ?? Date.now(), persist: !fixture })
 
 fit()
 visualViewport?.addEventListener('resize', fit)
