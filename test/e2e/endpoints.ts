@@ -23,6 +23,8 @@ export type World = {
   command?: number
   job?: number
   machine?: string
+  /** A throwaway swarm this sweep created itself: with SWARMS_SWEEP_WRITES=1, the only swarm a live site takes writes on. */
+  made?: string
   message?: number
   name?: string
   node?: string
@@ -40,6 +42,32 @@ export const target = 300
 
 export function base(given = process.env['SWARMS_BASE']) {
   return (given ?? 'https://swarms.new').replace(/\/+$/, '')
+}
+
+const loopback = new Set(['localhost', '127.0.0.1', '[::1]', '0.0.0.0'])
+
+/** Whether root is this machine: the only base every write goes to. */
+export function local(root: string) {
+  try {
+    const host = new URL(root).hostname
+    return loopback.has(host) || host.endsWith('.localhost')
+  } catch {
+    return false
+  }
+}
+
+export const mutating = new Set(['DELETE', 'PATCH', 'POST', 'PUT'])
+
+export const skippedWrite = 'skipped (write)'
+
+/**
+ * Why a write to path must not be sent to root, or undefined when it may be. A local base takes every write. A live site
+ * takes none, unless SWARMS_SWEEP_WRITES=1 and the write targets a throwaway swarm this sweep created itself (made).
+ */
+export function unwritable(root: string, path: string, made: string | undefined, writes = process.env['SWARMS_SWEEP_WRITES']) {
+  if (local(root)) return undefined
+  if (writes === '1' && made && /^[0-9a-z]+$/.test(made) && new RegExp(`^/(v1|api)/swarms/${made}(/|\\?|$)`).test(path)) return undefined
+  return skippedWrite
 }
 
 function now() {
@@ -194,9 +222,11 @@ async function socket(url: string) {
   })
 }
 
-export async function call(root: string, probe: Probe, token: string | undefined, spec: Spec | undefined, samples: number, sockets = root): Promise<Row> {
+export async function call(root: string, probe: Probe, token: string | undefined, spec: Spec | undefined, samples: number, sockets = root, made?: string): Promise<Row> {
   const signed = probe.signed ?? 'out'
   const route = probe.route ?? probe.path
+  if (mutating.has(probe.method.toUpperCase()) && unwritable(root, probe.path, made))
+    return { method: probe.method, ms: 0, note: skippedWrite, ok: true, route, samples: [], server: undefined, signed, status: 'skip' }
   const headers: Record<string, string> = { accept: probe.accept ?? (probe.kind === 'html' ? 'text/html' : 'application/json') }
   if (signed === 'in' && token) headers['authorization'] = `Bearer ${token}`
   const url = root + probe.path
@@ -502,8 +532,10 @@ export function probes(world: World): Probe[] {
     { body: {}, kind: 'json', method: 'POST', path: '/v1/general/chat', status: refused },
     { body: {}, kind: 'json', method: 'POST', path: `${v}/contributions`, route: '/v1/swarms/:id/contributions', status: [400] },
     { body: {}, kind: 'json', method: 'POST', path: `${v}/transfer`, route: '/v1/swarms/:id/transfer', schema: 'POST /v1/swarms/{id}/transfer', status: read },
-    { kind: 'json', method: 'POST', path: `${v}/hands`, route: '/v1/swarms/:id/hands', skip: 'anyone may issue a hand token, which lists a machine on the swarm', status: [201] },
-    { kind: 'json', method: 'POST', path: `/api/swarms/${s}/hands`, route: '/api/swarms/:id/hands', skip: 'anyone may issue a hand token, which lists a machine on the swarm', status: [201] },
+    { body: {}, kind: 'json', method: 'POST', path: `${v}/hands`, route: '/v1/swarms/:id/hands', status: [401] },
+    { body: {}, kind: 'json', method: 'POST', path: `/api/swarms/${s}/hands`, route: '/api/swarms/:id/hands', status: [401] },
+    { kind: 'json', method: 'DELETE', path: `${v}/hands/no-such-hand`, route: '/v1/swarms/:id/hands/:hand', status: [401] },
+    { kind: 'json', method: 'DELETE', path: `/api/swarms/${s}/hands/no-such-hand`, route: '/api/swarms/:id/hands/:hand', status: [401] },
     { body: {}, kind: 'json', method: 'POST', path: `${v}/chat`, route: '/v1/swarms/:id/chat', status: refused },
     ...(world.message ? [{ body: {}, kind: 'json' as const, method: 'POST', path: `${v}/chat/${world.message}/reactions`, route: '/v1/swarms/:id/chat/:message/reactions', status: refused }] : []),
     { body: {}, kind: 'json', method: 'POST', path: `${v}/team`, route: '/v1/swarms/:id/team', status: refused },
@@ -565,6 +597,8 @@ export function signedIn(world: World): Probe[] {
     { body: {}, kind: 'json', method: 'POST', path: `/v1/swarms/${s}/btw`, route: '/v1/swarms/:id/btw', signed: 'in', status: [400] },
     { body: {}, kind: 'json', method: 'POST', path: '/v1/general/chat', signed: 'in', status: [400] },
     { body: { nickname: 5 }, kind: 'json', method: 'PATCH', path: `/v1/swarms/${s}`, route: '/v1/swarms/:id', signed: 'in', status: [400] },
+    { body: { label: 'bad label!' }, kind: 'json', method: 'POST', path: `/v1/swarms/${s}/hands`, route: '/v1/swarms/:id/hands', signed: 'in', status: [400] },
+    { kind: 'json', method: 'DELETE', path: `/v1/swarms/${s}/hands/no-such-hand`, route: '/v1/swarms/:id/hands/:hand', signed: 'in', status: [403, 404] },
   ]
 }
 
@@ -634,6 +668,10 @@ export async function mcp(root: string, world: World): Promise<Row[]> {
       skip(`/mcp ${tool.name}`, 'skipped: a write with no required input')
       continue
     }
+    if (!reading && unwritable(root, '/mcp', world.made)) {
+      skip(`/mcp ${tool.name}`, skippedWrite)
+      continue
+    }
     id += 1
     const called = await rpc(root, opened.session, id, 'tools/call', { arguments: reading ? args : {}, name: tool.name })
     const result = called.body.result as { content?: { text?: string }[]; isError?: boolean } | undefined
@@ -645,15 +683,16 @@ export async function mcp(root: string, world: World): Promise<Row[]> {
   return rows
 }
 
-export async function run(options: { root?: string | undefined; samples?: number; token?: string | undefined } = {}) {
+export async function run(options: { made?: string | undefined; root?: string | undefined; samples?: number; token?: string | undefined } = {}) {
   const root = base(options.root)
   const samples = options.samples ?? Number(process.env['SWARMS_SAMPLES'] ?? 3)
   const token = options.token ?? process.env['SWARMS_TOKEN']
   const spec = await json<Spec>(root, '/openapi.json')
-  const world = await discover(root)
+  const found = await discover(root)
+  const world: World = options.made ? { ...found, made: options.made, swarm: options.made } : found
   const list = [...probes(world), ...(token ? signedIn(world) : [])]
   const rows: Row[] = []
-  for (const probe of list) rows.push(await call(root, probe, token, spec, samples, world.socket))
+  for (const probe of list) rows.push(await call(root, probe, token, spec, samples, world.socket, world.made))
   rows.push(...(await mcp(root, world)))
   return { root, rows, spec: !!spec, world }
 }
