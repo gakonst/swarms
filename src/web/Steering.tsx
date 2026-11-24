@@ -5,8 +5,9 @@ import * as Mention from '../shared/Mention.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
+import * as Attempt from './attempt.ts'
 import { seeded } from './boot.ts'
-import { message, useWallet } from './hooks.ts'
+import { useAttempt, useWallet } from './hooks.ts'
 import type { State } from './wallet.ts'
 import * as Wire from './wire.ts'
 
@@ -158,22 +159,16 @@ export function Reins(props: { onNamed: (swarm: Summary) => void; swarm: Pick<De
 
 function Naming(props: { id: string; nickname: string | null; onNamed: (swarm: Summary) => void }) {
   const [name, setName] = useState(props.nickname ?? '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
+  const [attempt, run] = useAttempt()
+  const busy = Attempt.busy(attempt)
+  const error = Attempt.error(attempt)
   const wanted = name.trim().toLowerCase()
   const why = wanted ? Nickname.invalid(wanted) : undefined
 
   const save = async (event: FormEvent) => {
     event.preventDefault()
-    setBusy(true)
-    setError(undefined)
-    try {
-      props.onNamed(await Api.nickname(props.id, wanted || null))
-    } catch (reason) {
-      setError(message(reason))
-    } finally {
-      setBusy(false)
-    }
+    const named = await run(() => Api.nickname(props.id, wanted || null))
+    if (named) props.onNamed(named.value)
   }
 
   return (
@@ -188,25 +183,18 @@ function Naming(props: { id: string; nickname: string | null; onNamed: (swarm: S
 
 function Who(props: { id: string; me: string | undefined; roster: Roster | undefined; team: boolean }) {
   const [member, setMember] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
+  const [attempt, run] = useAttempt()
+  const busy = Attempt.busy(attempt)
+  const error = Attempt.error(attempt)
   const roster = props.roster
   const admin = !!props.me && !!roster?.admins.includes(props.me as `0x${string}`)
   const who = member.trim()
   const valid = /^0x[0-9a-fA-F]{40}$/.test(who) || !Mention.invalid(who.replace(/^@/, ''))
 
-  const act = async (run: () => Promise<Roster>) => {
-    setBusy(true)
-    setError(undefined)
-    try {
-      share(props.id, await run())
-      return true
-    } catch (reason) {
-      setError(message(reason))
-      return false
-    } finally {
-      setBusy(false)
-    }
+  const act = async (work: () => Promise<Roster>) => {
+    const done = await run(work)
+    if (done) share(props.id, done.value)
+    return !!done
   }
 
   const add = (event: FormEvent) => {

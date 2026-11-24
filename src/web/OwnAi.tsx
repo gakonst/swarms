@@ -1,7 +1,8 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import type { Config, OwnAi as Read } from '../shared/Api.ts'
 import * as Api from './api.ts'
-import { message, useWallet } from './hooks.ts'
+import * as Attempt from './attempt.ts'
+import { useAttempt, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Link } from './router.tsx'
 import * as Wallet from './wallet.ts'
@@ -14,8 +15,10 @@ const providers = [
 export function OwnAi(props: { config: Config | undefined }) {
   const wallet = useWallet()
   const [read, setRead] = useState<Read>()
-  const [error, setError] = useState<string>()
-  const [busy, setBusy] = useState(false)
+  const [attempt, run] = useAttempt()
+  const [entry, enter] = useAttempt()
+  const busy = Attempt.busy(attempt)
+  const error = Attempt.error(attempt)
   const [typed, setTyped] = useState<Record<string, string>>({})
   const [link, setLink] = useState<string>()
   const [code, setCode] = useState('')
@@ -24,21 +27,17 @@ export function OwnAi(props: { config: Config | undefined }) {
     document.title = 'Your own AI · Swarms'
   }, [])
   useEffect(() => {
-    if (address) Api.ownAi().then(setRead, (reason: unknown) => setError(message(reason)))
-  }, [address])
-  const run = (work: () => Promise<Read | undefined>) => {
-    setBusy(true)
-    setError(undefined)
-    work()
-      .then((next) => next && setRead(next), (reason: unknown) => setError(message(reason)))
-      .finally(() => setBusy(false))
+    if (address) void run(Api.ownAi).then((done) => done && setRead(done.value))
+  }, [address, run])
+  const act = (work: () => Promise<Read | undefined>) => {
+    void run(work).then((done) => done?.value && setRead(done.value))
   }
   if (!address)
     return wallet.pending ? (
       <section aria-busy="true" className="page lost"><span className="lost-orbit" aria-hidden="true"><i /><i /><i /></span></section>
     ) : (
-      <Lost title={error ?? 'Sign in to use your own AI.'}>
-        <button className="lost-row" onClick={() => props.config && Wallet.signIn(props.config).catch((reason: unknown) => setError(message(reason)))} type="button">Sign in <span aria-hidden="true">→</span></button>
+      <Lost title={Attempt.error(entry) ?? 'Sign in to use your own AI.'}>
+        <button className="lost-row" onClick={() => { const config = props.config; if (config) void enter(() => Wallet.signIn(config)) }} type="button">Sign in <span aria-hidden="true">→</span></button>
       </Lost>
     )
   const plan = read?.plans.claude.state
@@ -46,7 +45,7 @@ export function OwnAi(props: { config: Config | undefined }) {
     event.preventDefault()
     const key = typed[provider]?.trim()
     if (!key) return
-    run(async () => {
+    act(async () => {
       const next = await Api.ownKey(provider, key)
       setTyped((now) => ({ ...now, [provider]: '' }))
       return next
@@ -55,7 +54,7 @@ export function OwnAi(props: { config: Config | undefined }) {
   const complete = (event: FormEvent) => {
     event.preventDefault()
     if (!code.trim()) return
-    run(async () => {
+    act(async () => {
       const next = await Api.ownSignedIn(code.trim())
       setLink(undefined)
       setCode('')
@@ -76,9 +75,9 @@ export function OwnAi(props: { config: Config | undefined }) {
             <span className="rider-title">Claude plan</span>
             <span className="rider-meta">{plan === 'authenticated' ? 'Connected' : 'Pro or Max, for swarms on Claude'}</span>
             {plan === 'authenticated' ? (
-              <button className="btn btn-medium own-act" disabled={busy} onClick={() => run(Api.ownSignOut)} type="button">Disconnect</button>
+              <button className="btn btn-medium own-act" disabled={busy} onClick={() => act(Api.ownSignOut)} type="button">Disconnect</button>
             ) : (
-              !link && <button className="btn btn-medium own-act" disabled={busy || !read} onClick={() => run(async () => { setLink((await Api.ownSignIn()).url); return undefined })} type="button">Connect</button>
+              !link && <button className="btn btn-medium own-act" disabled={busy || !read} onClick={() => act(async () => { setLink((await Api.ownSignIn()).url); return undefined })} type="button">Connect</button>
             )}
           </div>
           {link && plan !== 'authenticated' && (
@@ -99,7 +98,7 @@ export function OwnAi(props: { config: Config | undefined }) {
               <div className="rider-row own-row" key={provider}>
                 <span className="rider-title">{name}</span>
                 <span className="rider-meta">••••{kept.hint}</span>
-                <button className="btn btn-medium own-act" disabled={busy} onClick={() => run(() => Api.ownDrop(provider))} type="button">Remove</button>
+                <button className="btn btn-medium own-act" disabled={busy} onClick={() => act(() => Api.ownDrop(provider))} type="button">Remove</button>
               </div>
             ) : (
               <form className="rider-row own-row" key={provider} onSubmit={add(provider)}>
@@ -118,16 +117,13 @@ export function OwnAi(props: { config: Config | undefined }) {
 
 export function Host(props: { onChange: () => void; swarm: { ai?: { address: string } | null | undefined; id: string } }) {
   const wallet = useWallet()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
+  const [attempt, run] = useAttempt()
+  const busy = Attempt.busy(attempt)
+  const error = Attempt.error(attempt)
   if (!wallet.address) return null
   const mine = props.swarm.ai?.address.toLowerCase() === wallet.address.toLowerCase()
   const flip = () => {
-    setBusy(true)
-    setError(undefined)
-    Api.hostAi(props.swarm.id, !mine)
-      .then(props.onChange, (reason: unknown) => setError(message(reason)))
-      .finally(() => setBusy(false))
+    void run(() => Api.hostAi(props.swarm.id, !mine)).then((done) => done && props.onChange())
   }
   return (
     <div className="own-host">

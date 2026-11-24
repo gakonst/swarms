@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Config, Entry } from '../shared/Api.ts'
 import * as Api from './api.ts'
+import * as Attempt from './attempt.ts'
 import { boot, here, seeded, server } from './boot.ts'
 import * as Wallet from './wallet.ts'
 
@@ -282,4 +283,30 @@ export function useMedia(query: string) {
 
 export function useWallet() {
   return useSyncExternalStore(Wallet.subscribe, Wallet.snapshot, Wallet.initial)
+}
+
+export function useAttempt() {
+  const [now, setNow] = useState<Attempt.Attempt>(Attempt.idle)
+  const live = useRef(now)
+  const move = useCallback((next: Attempt.Attempt) => {
+    live.current = next
+    setNow(next)
+  }, [])
+  const run = useCallback(
+    async <T>(work: () => Promise<T>): Promise<{ value: T } | undefined> => {
+      const next = Attempt.start(live.current)
+      if (!next) return undefined
+      move(next)
+      try {
+        const value = await work()
+        move(Attempt.settle(live.current))
+        return { value }
+      } catch (reason) {
+        move(Attempt.fail(live.current, message(reason)))
+        return undefined
+      }
+    },
+    [move],
+  )
+  return [now, run] as const
 }

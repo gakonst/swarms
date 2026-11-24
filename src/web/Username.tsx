@@ -1,25 +1,19 @@
 import { useState } from 'react'
 import * as Mention from '../shared/Mention.ts'
-import { message } from './hooks.ts'
+import * as Attempt from './attempt.ts'
+import { useAttempt } from './hooks.ts'
 import * as Wallet from './wallet.ts'
 
 export function Username(props: { why: string }) {
   const [name, setName] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
+  const [attempt, run] = useAttempt()
+  const busy = Attempt.busy(attempt)
+  const error = Attempt.error(attempt)
   const wrong = name.length >= 3 ? Mention.invalid(name) : undefined
 
   const save = async () => {
-    if (busy || name.length < 3 || wrong) return
-    setBusy(true)
-    setError(undefined)
-    try {
-      await Wallet.rename(name)
-    } catch (reason) {
-      setError(message(reason))
-    } finally {
-      setBusy(false)
-    }
+    if (name.length < 3 || wrong) return
+    await run(() => Wallet.rename(name))
   }
 
   return (
