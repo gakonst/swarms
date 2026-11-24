@@ -70,7 +70,7 @@ async function transfer(config: Config, target: Target, amount: bigint, note: st
   if (!config.credit) throw new Error('Riding is not available right now. Try again in a moment.')
   const { memo } = await import('../shared/Credit.ts')
   const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, target.node ? `n:${target.node}` : note), to: config.credit.recipient, token })
-  return { amount: decimal(amount), hash, note, swarm: target.id, ...(target.node ? { node: target.node } : {}), ...(target.parent ? { parent: target.parent, title: target.title } : {}) }
+  return { amount: decimal(amount), hash, note, swarm: target.id, ...(target.node ? { node: target.node } : {}), ...(target.parent ? { parent: target.parent } : {}), ...(target.title ? { title: target.title } : {}) }
 }
 
 export function dollars(amount: string) {

@@ -13,7 +13,7 @@ export type Act =
   | { at: 'paying' }
   | { at: 'counting'; owed: Owed; tries: number }
   | { at: 'owed'; owed: Owed; tries: number }
-  | { amount: string; at: 'counted'; node?: string | undefined; parent?: string | undefined; swarm: string }
+  | { amount: string; at: 'counted'; node?: string | undefined; parent?: string | undefined; swarm: string; title?: string | undefined }
   | { at: 'failed'; error: string; why: Why }
   | { at: 'refused'; error: string; owed: Owed }
 
@@ -69,7 +69,7 @@ export function next(act: Act, event: Event): Act | null {
     case 'sent':
       return act.at === 'paying' ? { at: 'counting', owed: event.owed, tries: 0 } : null
     case 'counted':
-      return act.at === 'counting' ? { amount: act.owed.amount, at: 'counted', node: act.owed.node, parent: act.owed.parent, swarm: act.owed.swarm } : null
+      return act.at === 'counting' ? { amount: act.owed.amount, at: 'counted', node: act.owed.node, parent: act.owed.parent, swarm: act.owed.swarm, title: act.owed.title } : null
     case 'later':
       return act.at === 'counting' ? { at: 'owed', owed: act.owed, tries: act.tries } : null
     case 'refused':

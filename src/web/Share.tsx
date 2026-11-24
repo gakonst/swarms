@@ -36,7 +36,7 @@ async function copy(text: string) {
   }
 }
 
-export type Cheer = { amount: string; node?: string | undefined; swarm: string }
+export type Cheer = { amount: string; node?: string | undefined; swarm: string; title?: string | undefined }
 
 let cheer: Cheer | undefined
 
@@ -52,7 +52,7 @@ export function celebrate(next: Cheer) {
 }
 
 Pay.listen((_slot, act) => {
-  if (act.at === 'counted') celebrate({ amount: act.amount, node: act.node, swarm: act.swarm })
+  if (act.at === 'counted') celebrate({ amount: act.amount, node: act.node, swarm: act.swarm, title: act.title })
 })
 
 function subscribe(listener: () => void) {
@@ -101,7 +101,7 @@ function Sheet(props: { cheer: Cheer }) {
         <button aria-label="Close" className="sheet-close" onClick={close} type="button">×</button>
         <p aria-hidden="true" className="cheer-mark">✓</p>
         <h3 className="cheer-head">You're riding · {cut(props.cheer.amount)}</h3>
-        {swarm && <p className="cheer-what"><Inline text={swarm.title} /></p>}
+        {(props.cheer.title ?? swarm) && <p className="cheer-what"><Inline text={props.cheer.title ?? swarm?.title ?? ''} /></p>}
         {swarm && <p className="cheer-stats"><b>{swarm.contributors}</b> rider{swarm.contributors === 1 ? '' : 's'} · <b>{cut(swarm.balance)}</b> in</p>}
         <div className="cheer-go">
           <a className="btn btn-high" href={shared?.intent} onClick={close} ref={go} rel="noreferrer" target="_blank">Share on X</a>

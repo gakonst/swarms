@@ -79,7 +79,7 @@ export function RideFuel(props: { compact?: boolean; config: Config | undefined;
       prefill={prefill}
       slot={Pay.slot(props.swarm, props.node.id)}
       steers={false}
-      target={() => Promise.resolve({ id: props.swarm, node: props.node.id })}
+      target={() => Promise.resolve({ id: props.swarm, node: props.node.id, ...(props.node.form === 'goal' ? {} : { title: props.node.title }) })}
       verb="Ride it"
     />
   )
