@@ -40,8 +40,9 @@ const route = /^\/s\/[^/]+(\/chat|\/code|\/results|\/board|\/about|\/[ntc]\/[^/]
         : path === '/docs'
           ? import('./Docs.tsx').then((module) => preload('docs', module.Docs))
           : undefined
+const coding = route && /\/code\/?$/.test(path) ? import('./Code.tsx').then((module) => preload('code', module.Code)) : undefined
 const root = document.getElementById('root')!
 const coded = root.querySelector('[data-markdown="code-block"]') ? highlight() : undefined
 
-if (root.firstChild && globalThis.__SWARMS_BOOT__) void Promise.all([route, coded]).catch(() => {}).then(() => hydrateRoot(root, <App />, { onRecoverableError: (error) => console.warn('Hydration', error) }))
+if (root.firstChild && globalThis.__SWARMS_BOOT__) void Promise.all([route, coded, coding]).catch(() => {}).then(() => hydrateRoot(root, <App />, { onRecoverableError: (error) => console.warn('Hydration', error) }))
 else createRoot(root).render(<App />)

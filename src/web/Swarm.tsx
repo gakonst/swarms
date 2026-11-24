@@ -12,7 +12,7 @@ import { BranchChannel, tagged } from './Channel.tsx'
 import { shareBranches } from './channels.ts'
 import * as Prose from '../shared/Prose.ts'
 import { line, pill } from './Card.tsx'
-import { Code } from './Code.tsx'
+import { Code, useWarmCode } from './Repo.tsx'
 import { asked } from './Contribute.tsx'
 import { Divider } from './Divider.tsx'
 import { useMedia, useNow, usePoll, useWallet } from './hooks.ts'
@@ -39,6 +39,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   const id = props.id
   const view = props.view
   const base = useBase(id)
+  useWarmCode()
   const wired = Wire.useWire(id, 'room', (signal) => {
     if (signal.type === 'pulse') setDetail((data) => Wire.pulsed(data, signal))
     if (signal.type === 'artifacts') setShelf(() => ({ artifacts: signal.artifacts.map((artifact) => (artifact.url.startsWith('/') ? { ...artifact, url: location.origin + Site.at(artifact.url) } : artifact)) }))

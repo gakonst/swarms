@@ -2,7 +2,7 @@ import { preloadFileTree } from '@pierre/trees/ssr'
 import { renderToReadableStream } from 'react-dom/server'
 import { About } from './About.tsx'
 import { App } from './App.tsx'
-import { preloads } from './Code.tsx'
+import { Code, preloads } from './Code.tsx'
 import { Docs } from './Docs.tsx'
 import { Faq } from './Faq.tsx'
 import { code } from './highlight.ts'
@@ -15,6 +15,7 @@ import { TreePage } from './TreePage.tsx'
 highlighted(code)
 preloads(preloadFileTree)
 preload('about', About)
+preload('code', Code)
 preload('docs', Docs)
 preload('faq', Faq)
 preload('new', New)

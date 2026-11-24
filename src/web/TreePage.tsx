@@ -8,7 +8,7 @@ import { here, seeded } from './boot.ts'
 import * as Grove from './grove.ts'
 import { Branches } from './Branches.tsx'
 import { Composer, lines, TreeChannel } from './Channel.tsx'
-import { Code } from './Code.tsx'
+import { Code, useWarmCode } from './Repo.tsx'
 import { Divider } from './Divider.tsx'
 import { ago } from './format.ts'
 import { Headline, Since } from './Headline.tsx'
@@ -58,6 +58,7 @@ function carried(to: string) {
 export function TreePage(props: { channel?: string | undefined; config: Config | undefined; detail: Detail; id: string; nid: string | undefined; view: Tab }) {
   const id = props.id
   const view = props.view
+  useWarmCode()
   const selected = props.nid ?? props.channel ?? 'root'
   const thread = props.nid !== undefined && props.nid !== 'root'
   const base = useBase(id)
