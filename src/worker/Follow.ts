@@ -1,6 +1,6 @@
 import * as Turns from './Turns.ts'
 import * as Repo from './Repo.ts'
-import type { Hand, Live } from '../shared/Api.ts'
+import type { Failure, Hand, Live } from '../shared/Api.ts'
 import { type Buffers, type Crew, type Thinking, appended, clip, crew, narrate, placed, redact, spoken, subagent, thought, tool } from '../shared/Trail.ts'
 import * as Gateway from './Gateway.ts'
 import * as Store from './Store.ts'
@@ -260,7 +260,7 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
 
   const inner = outer.event
   advanced(self, inner?.type, at)
-  refused(self, inner?.type, inner?.payload ?? {})
+  refused(self, inner?.type, inner?.payload ?? {}, at)
   if (inner?.type === 'tool.call') for (const found of cues(inner.payload ?? {})) self.cue(found)
   for (const delta of streamed(null, inner?.type, inner?.payload ?? {})) Relay.relay(self, delta)
   record(self, null, inner?.type, inner?.payload ?? {}, event.seq, at)
@@ -276,8 +276,24 @@ export function advanced(self: Swarm, type: string | undefined, at: number) {
 
 const unpaidMost = 8
 
-export function refused(self: Swarm, type: string | undefined, payload: Record<string, unknown>) {
+export function failure(error: string, at: number): Failure {
+  const said = /^(\w+) (?:HTTPS? request was rejected with )?(?:HTTP (\d{3})|stream error (\w+)):?\s*([\s\S]*)$/.exec(error)
+  const body = said?.[4] ?? error
+  const parsed = (() => {
+    try {
+      return JSON.parse(body) as { code?: unknown; detail?: unknown; error?: { message?: unknown; type?: unknown }; message?: unknown }
+    } catch {
+      return undefined
+    }
+  })()
+  const message = [parsed?.error?.message, parsed?.detail, parsed?.message].find((value): value is string => typeof value === 'string') ?? body
+  const code = [parsed?.error?.type, parsed?.code, said?.[3]].find((value): value is string => typeof value === 'string') ?? null
+  return { at, code, message: clip(redact(message), 600), route: said?.[1] ?? 'model', status: said?.[2] ? Number(said[2]) : null }
+}
+
+export function refused(self: Swarm, type: string | undefined, payload: Record<string, unknown>, at = Date.now()) {
   const error = payload['error']
+  if (type === 'model.call.failed' && typeof error === 'string' && error !== 'the turn was cancelled') self.kv.put('failure', failure(error, at))
   if (type === 'model.call.failed' && typeof error === 'string' && Turns.broke(error)) self.kv.put('unpaid', { count: (self.kv.get<{ count: number }>('unpaid')?.count ?? 0) + 1, error: error.slice(0, 400) })
   else if (type !== undefined && progress.has(type) && self.kv.get('unpaid') !== undefined) self.kv.delete('unpaid')
 }

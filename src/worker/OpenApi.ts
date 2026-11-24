@@ -302,6 +302,7 @@ const schemas = {
         about: nullable({ description: "One paragraph on what the swarm is trying to do and why it matters, written once from its goal by the swarm's orchestrator and paid from the swarm's money; null until it is written.", type: 'string' }),
         code: nullable(ref('Code')),
         contributions: { items: ref('Contribution'), type: 'array' },
+        failure: nullable(object({ at: time, code: nullable(string), message: string, route: string, status: nullable(integer) }, "The last call of the swarm's agent that the gateway failed: the gateway route (Messages, Responses…), its HTTP status, the error code and message, and when. It stays after the agent goes on, so compare its time with the feed.")),
         hands: { items: ref('Hand'), type: 'array' },
         notes: { items: ref('Note'), type: 'array' },
         reason: nullable({ description: 'Why the swarm is waiting, when it is.', type: 'string' }),

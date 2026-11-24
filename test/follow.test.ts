@@ -91,7 +91,19 @@ test('eight model calls in a row that nothing could pay for starve the turn, and
   Follow.refused(object, 'model.call.failed', { error: 'HTTP 529 overloaded' })
   assert.equal(Follow.starved(object), undefined)
   Follow.refused(object, 'model.call.completed', {})
-  assert.equal(kept.size, 0)
+  assert.equal(kept.has('unpaid'), false)
   for (let count = 0; count < 8; count++) Follow.refused(object, 'model.call.failed', failed)
   assert.match(Follow.starved(object) ?? '', /Boundless was not paid/)
+})
+
+test("the last model call the gateway failed is kept with its route, status, code and message, and a cancelled call does not replace it", () => {
+  const kept = new Map<string, unknown>()
+  const object = { kv: { delete: (key: string) => kept.delete(key), get: (key: string) => kept.get(key), put: (key: string, value: unknown) => kept.set(key, value) } } as never
+  const error = 'Messages HTTP 503: {"error":{"message":"Tempo Agents cannot pay the network fee to open your key\'s channel right now: its fee sponsor is out of funds.","type":"api_error"},"type":"error"}'
+  Follow.refused(object, 'model.call.failed', { error }, 1_000)
+  Follow.refused(object, 'model.call.failed', { error: 'the turn was cancelled' }, 2_000)
+  assert.deepEqual(kept.get('failure'), { at: 1_000, code: 'api_error', message: "Tempo Agents cannot pay the network fee to open your key's channel right now: its fee sponsor is out of funds.", route: 'Messages', status: 503 })
+  assert.match(Follow.starved(object) ?? 'none', /none/)
+  assert.deepEqual(Follow.failure('Messages stream error api_error: Boundless was not paid: fetch failed', 3), { at: 3, code: 'api_error', message: 'Boundless was not paid: fetch failed', route: 'Messages', status: null })
+  assert.deepEqual(Follow.failure('Responses HTTPS request was rejected with HTTP 402: {"title":"x","code":"payment_failed","detail":"No money."}', 4), { at: 4, code: 'payment_failed', message: 'No money.', route: 'Responses', status: 402 })
 })

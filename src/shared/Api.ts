@@ -169,6 +169,7 @@ export type Detail = Summary & {
   about: string | null
   code: Code | null
   contributions: Contribution[]
+  failure: Failure | null
   feed: Entry[]
   hands: Hand[]
   notes: Note[]
@@ -195,12 +196,15 @@ export type Credit = { owner: `0x${string}`; recipient: `0x${string}` }
 
 export type Brief = Omit<Update, 'text'> & { excerpt: string }
 
+export type Failure = { at: number; code: string | null; message: string; route: string; status: number | null }
+
 export type Why = 'unfunded' | 'money' | 'costly' | 'rest' | 'idle' | 'stuck'
 
 export type Overview = Summary & {
   about: string | null
   code: Code | null
   contributions: Contribution[]
+  failure: Failure | null
   hands: Hand[]
   notes: Note[]
   reason: string | null

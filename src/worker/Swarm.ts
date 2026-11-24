@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { Address } from 'viem'
-import type { Artifact, Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
+import type { Artifact, Chatter, Code, Currency, Entry, Failure, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
 import { clip, redact } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
@@ -53,6 +53,7 @@ export type Contributed = {
 export type View = {
   about: string | null
   code: Code | null
+  failure: Failure | null
   feed: Entry[]
   hands: Hand[]
   reason: string | null
@@ -505,6 +506,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return {
       about: About.read(this),
       code: id && repo && owner ? { app: Gateway.app(id), clone: `${this.env.GATEWAY_URL}/p/${owner}/${Gateway.app(id)}/git/${repo}.git`, name: repo, owner } : null,
+      failure: this.kv.get<Failure>('failure') ?? null,
       feed,
       hands: this.kv.get<Hand[]>('hands') ?? [],
       reason: paused ? Phase.reason(paused) : null,
