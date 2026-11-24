@@ -68,7 +68,7 @@ app.get('*', async (c, next) => {
   const url = new URL(c.req.url)
   const path = url.pathname
   const moved = Page.moved(url) ?? (await Page.renamed(c.env, c.req.raw))
-  if (moved) return c.redirect(Site.at(moved), 301)
+  if (moved) return c.redirect(Site.at(moved, Site.prefix(url)), 301)
   const accept = c.req.header('accept') ?? ''
   if (!Page.rendered(path) || (accept !== '' && !/text\/html|\*\/\*/.test(accept))) return next()
   return Page.page(c.req.raw, c.env)
@@ -103,7 +103,10 @@ app.get('/tg/s/:id/n/:nid', (c) => Edge.page(c.req.raw, '', Og.frame(c.env, c.re
 
 app.post('/telegram', (c) => Telegram.hook(c.env, c.req.raw))
 
-app.get('/a/:id/:slug', (c) => c.redirect(Site.at(`${new URL(c.req.url).pathname}/`), 301))
+app.get('/a/:id/:slug', (c) => {
+  const url = new URL(c.req.url)
+  return c.redirect(Site.at(`${url.pathname}/`, Site.prefix(url)), 301)
+})
 
 app.on(['GET', 'HEAD'], '/a/:id/:slug/*', (c) => {
   const [, , id = '', slug = '', ...rest] = new URL(c.req.url).pathname.split('/')
@@ -292,14 +295,15 @@ function paged(path: string) {
 export default {
   fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext) {
     const url = new URL(request.url)
-    const inside = Site.under(url.pathname)
-    const path = Site.strip(url.pathname)
+    const www = Site.www(url)
+    if (www) return new Response(null, { headers: { location: www }, status: 301 })
+    const { path, stray } = Site.place(url)
     const accept = request.headers.get('accept') ?? ''
     const page = (request.method === 'GET' || request.method === 'HEAD') && paged(path) && (accept === '' || /text\/html|\*\/\*/.test(accept))
     const site = Site.url(env, url)
     if (page && new URL(site).origin !== url.origin && !request.headers.has('cf-worker')) return new Response(null, { headers: { location: site + path + url.search }, status: 301 })
-    if (page && !inside) return new Response(null, { headers: { location: Site.base + path + url.search }, status: 301 })
-    if (!inside) return app.fetch(request, env, context)
+    if (page && stray) return new Response(null, { headers: { location: Site.prefix(url) + path + url.search }, status: 301 })
+    if (path === url.pathname) return app.fetch(request, env, context)
     url.pathname = path
     return app.fetch(new Request(url, request), env, context)
   },

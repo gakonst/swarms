@@ -10,9 +10,9 @@ export function Tile(props: { className: string; cover: Cover | null | undefined
       {!cover ? (
         <Art id={props.id} mood={props.mood} wide />
       ) : cover.form === 'image' ? (
-        <img alt="" loading="lazy" src={Site.at(cover.url)} />
+        <img alt="" loading="lazy" src={Site.at(Site.strip(cover.url, Site.base))} />
       ) : (
-        <iframe aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" sandbox="allow-scripts" scrolling="no" src={Site.at(cover.url)} tabIndex={-1} title="" />
+        <iframe aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" sandbox="allow-scripts" scrolling="no" src={Site.at(Site.strip(cover.url, Site.base))} tabIndex={-1} title="" />
       )}
     </span>
   )

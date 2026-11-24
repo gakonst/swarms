@@ -232,12 +232,13 @@ export async function lost(request: Request, env: Cloudflare.Env) {
 }
 
 export async function page(request: Request, env: Cloudflare.Env) {
-  const own = new URL(request.url).pathname.replace(/\/$/, '') === '/me' ? face(request.headers.get('cookie')) : undefined
-  if (own) return new Response(null, { headers: { 'cache-control': 'no-store', location: Site.at(`/u/${own.account?.name ?? own.address.toLowerCase()}`) }, status: 302 })
-  if (Share.bot(request)) waitUntil(Og.warm(env, new URL(request.url)).catch((error: unknown) => console.error('Preview warm-up failed', error)))
+  const url = new URL(request.url)
+  const own = url.pathname.replace(/\/$/, '') === '/me' ? face(request.headers.get('cookie')) : undefined
+  if (own) return new Response(null, { headers: { 'cache-control': 'no-store', location: Site.at(`/u/${own.account?.name ?? own.address.toLowerCase()}`, Site.prefix(url)) }, status: 302 })
+  if (Share.bot(request)) waitUntil(Og.warm(env, url).catch((error: unknown) => console.error('Preview warm-up failed', error)))
   const cookie = request.headers.get('cookie')
-  const build = await built(env, new URL(request.url).origin).catch(() => '')
-  const named = Nickname.parse(new URL(request.url).pathname)
+  const build = await built(env, url.origin).catch(() => '')
+  const named = Nickname.parse(url.pathname)
   const swarm = named ? ((await lookup(env, request, named.name))?.swarm ?? '') : ''
   return Edge.page(request, `${build}|${mobile(request) ? 'm' : 'd'}|${zone(cookie) ?? ''}|${swarm}`, (given) => draw(given, env))
 }
@@ -275,7 +276,7 @@ async function draw(request: Request, env: Cloudflare.Env) {
 
   const work = (async () => {
     const { data, head, whole } = await gathering
-    const boot: Boot = { config: await configuring, data, face: face(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), site: Site.url(env, url), socket: `${url.protocol === 'https:' ? 'wss' : 'ws'}://${url.host}${Site.base}`, url: url.href, zone: zone(request.headers.get('cookie')) }
+    const boot: Boot = { base: Site.prefix(url), config: await configuring, data, face: face(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), site: Site.url(env, url), socket: `${url.protocol === 'https:' ? 'wss' : 'ws'}://${url.host}${Site.prefix(url)}`, url: url.href, zone: zone(request.headers.get('cookie')) }
     await writer.write(encoder.encode(`<title>${escape(head.title)}</title><meta name="description" content="${escape(head.description)}">${Share.tags(head)}${closing}<div id="root">`))
     try {
       const stream = await store.run(boot, () => render(request.signal))

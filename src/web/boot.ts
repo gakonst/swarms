@@ -17,7 +17,7 @@ export function here(): URL {
 }
 
 export function site() {
-  return boot()?.site ?? (server ? Site.base : location.origin + Site.base)
+  return boot()?.site ?? (server ? Site.root() : location.origin + Site.root())
 }
 
 export function seeded<T>(key: string): T | undefined {

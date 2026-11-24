@@ -33,11 +33,11 @@ function preloads(): Plugin {
         if (!context.bundle) return html
         const { entry, page } = graph(context.bundle)
         const routes: [string, string[]][] = [
-          [`^${base}/s/[^/]+(/chat|/code|/results|/n/[^/]+)?/?$`, [...page('Swarm'), ...page('TreePage')]],
-          [`^${base}/new/?$`, page('New')],
-          [`^${base}/about/?$`, page('About')],
-          [`^${base}/docs/?$`, page('Docs')],
-          [`^${base}/(?!(?:${[...reserved].join('|')})(?:/|$))[a-z0-9][a-z0-9-]{1,38}[a-z0-9](/chat|/code|/results|/n/[^/]+)?/?$`, [...page('Swarm'), ...page('TreePage')]],
+          [`^(?:${base})?/s/[^/]+(/chat|/code|/results|/n/[^/]+)?/?$`, [...page('Swarm'), ...page('TreePage')]],
+          [`^(?:${base})?/new/?$`, page('New')],
+          [`^(?:${base})?/about/?$`, page('About')],
+          [`^(?:${base})?/docs/?$`, page('Docs')],
+          [`^(?:${base})?/(?!(?:${[...reserved].join('|')})(?:/|$))[a-z0-9][a-z0-9-]{1,38}[a-z0-9](/chat|/code|/results|/n/[^/]+)?/?$`, [...page('Swarm'), ...page('TreePage')]],
         ]
         const table = routes.map(([path, files]) => [path, files.filter((file) => !entry.includes(file))])
         return html.replace('<script type="module"', `<script>(()=>{for(const[p,f]of${JSON.stringify(table)})if(new RegExp(p).test(location.pathname)){for(const h of f){const l=document.createElement('link');l.rel='modulepreload';l.crossOrigin='';l.href='${base}/'+h;document.head.append(l)}break}})()</script>\n    <script type="module"`)
@@ -58,7 +58,7 @@ export default defineConfig(({ command }) => {
       client: { build: { rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'hash', test: /\/viem\/_esm\/utils\/(hash\/keccak256|encoding\/toHex)\.js$/ }] } } } } },
       swarms: { build: { minify: true } },
     },
-    server: { allowedHosts: ['terminal.local'], cors: { origin: '*' } },
+    server: { allowedHosts: ['terminal.local', 'swarms.new', 'www.swarms.new'], cors: { origin: '*' } },
     plugins: [
       react(),
       preloads(),

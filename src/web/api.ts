@@ -365,7 +365,7 @@ function socket(url: string, listener: (event: { data: string } | { type: 'open'
     quiet = setTimeout(() => lost(probed), pongMs)
   }
   const open = () => {
-    const made = new WebSocket(`${boot()?.socket ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${Site.base}`}${url}`)
+    const made = new WebSocket(`${boot()?.socket ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${Site.root()}`}${url}`)
     line = made
     made.onopen = () => {
       opened?.(send)

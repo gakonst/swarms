@@ -126,8 +126,8 @@ export async function embed(env: Cloudflare.Env, given: string, origin: string, 
   } catch {
     return Problem.fail(400, 'invalid_request', 'url must be a link to a Swarms page.')
   }
-  if (url.origin !== new URL(origin).origin && url.origin !== self && url.origin !== new URL(env.SWARMS_URL).origin) return Problem.fail(404, 'not_found', 'url is not a Swarms page.')
-  const key = await keyed(env, new URL(`${Site.strip(url.pathname).replace(/^\/(x|tg)(?=\/|$)/, '') || '/'}${url.search}`, self))
+  if (url.origin !== new URL(origin).origin && url.origin !== self && url.origin !== new URL(env.SWARMS_URL).origin && url.hostname !== Site.domain) return Problem.fail(404, 'not_found', 'url is not a Swarms page.')
+  const key = await keyed(env, new URL(`${Site.strip(url.pathname, Site.prefix(url)).replace(/^\/(x|tg)(?=\/|$)/, '') || '/'}${url.search}`, self))
   const found = key && (await subject(env, key))
   if (!found) return Problem.fail(404, 'not_found', 'url is not a Swarms page or no longer exists.')
   const title = Share.title(found)

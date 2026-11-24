@@ -52,3 +52,16 @@ test('while one request refreshes a stale value in the background, the others an
   assert.equal(await Edge.cached(env, 'stale', 1, read, 60), 'new')
   assert.equal(reads, 1)
 })
+
+test('a page is kept apart for each host it was drawn for', async () => {
+  let draws = 0
+  const draw = async (request: Request) => ({ response: new Response(`${new URL(request.url).host} ${++draws}`), whole: Promise.resolve(true) })
+  const read = async (url: string) => (await Edge.page(new Request(url), 'v', draw)).text()
+  assert.equal(await read('https://swarms.new/faq'), 'swarms.new 1')
+  assert.equal(await read('https://swarms.tempo-dev.workers.dev/faq'), 'swarms.tempo-dev.workers.dev 2')
+  await Promise.all(waited.splice(0))
+  assert.equal(await read('https://swarms.new/faq'), 'swarms.new 1')
+  assert.equal(await read('https://swarms.tempo-dev.workers.dev/faq'), 'swarms.tempo-dev.workers.dev 2')
+  assert.equal(draws, 2)
+})
+
