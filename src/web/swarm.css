@@ -115,8 +115,6 @@ button.crew-bud:hover, .crew-row[data-open] .crew-bud { background:var(--wash); 
 .node-form summary span { margin-left:8px; font:12px var(--mono); color:var(--muted); }
 
 @media (min-width:900px) {
-  .swarm-shell, .grove { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto minmax(0,1fr); }
-  :is(.swarm-shell, .grove) > :is(.strip, .tabs, .panel) { grid-column:1; }
   .panel-page { scrollbar-gutter:stable; }
   .grove-tree { container:grove / inline-size; }
 }

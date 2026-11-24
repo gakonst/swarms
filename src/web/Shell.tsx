@@ -1,19 +1,17 @@
 import { type ReactNode, type TouchEvent, useEffect, useRef, useSyncExternalStore } from 'react'
-import type { Detail, Listing, Summary } from '../shared/Api.ts'
+import type { Listing, Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Rail from '../shared/Rail.ts'
 import * as Site from '../shared/Site.ts'
-import { boot, seeded } from './boot.ts'
+import { boot } from './boot.ts'
 import { cash } from './Branches.tsx'
-import { type Channel as Room, holding, type Thread, useShape } from './channels.ts'
+import { Here } from './ChannelMenu.tsx'
 import { Spiral } from './Field.tsx'
 import { Switcher } from './Switcher.tsx'
 import * as Status from '../shared/Status.ts'
 import { board, live, sown, stood } from './Home.tsx'
 import { Inline } from './Markdown.tsx'
 import { Link } from './router.tsx'
-import { useLive } from './Share.tsx'
-import { Mark } from './Tree.tsx'
 import * as Wire from './wire.ts'
 
 const seenKey = 'swarms_seen'
@@ -78,8 +76,6 @@ function setRail(next: Rail.Rail) {
   for (const watcher of railWatchers) watcher()
 }
 
-const shown = 4
-
 function riders(count: number) {
   return `${count.toLocaleString('en-US')} rider${count === 1 ? '' : 's'}`
 }
@@ -135,120 +131,24 @@ function Servers(props: { current: string | undefined; items: readonly Summary[]
         <span aria-hidden="true" className="server-pill"><i>+</i></span>
         <span aria-hidden="true" className="server-text"><span className="server-name">Start a problem</span><span className="server-line">$1 or more</span></span>
       </Link>
-      <button aria-expanded={open} aria-label={open ? 'Hide problem details' : 'Show problem details'} className="servers-toggle" onClick={() => setRail(Rail.toggle(props.rail))} title={open ? 'Collapse' : 'Expand'} type="button">
-        <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
-      </button>
-      <Foot className="rail-foot servers-foot" />
+      <div className="servers-end">
+        <button aria-expanded={open} aria-label={open ? 'Hide problem details' : 'Show problem details'} className="servers-toggle" onClick={() => setRail(Rail.toggle(props.rail))} title={open ? 'Collapse' : 'Expand'} type="button">
+          <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
+        </button>
+        <Foot />
+      </div>
     </nav>
   )
 }
 
-function Foot(props: { className?: string }) {
+function Foot() {
   return (
-    <footer className={props.className ?? 'rail-foot'}>
-      <Link to="/about">Swarm riders</Link>
-      <Link to="/faq">FAQ</Link>
-      <Link to="/docs">API</Link>
-      <a href={Site.essay}>Swarm riding, by Paradigm</a>
+    <footer className="servers-foot">
+      <Link label="Swarm riders" title="Swarm riders" to="/about"><span aria-hidden="true" className="foot-short">Riders</span><span aria-hidden="true" className="foot-long">Swarm riders</span></Link>
+      <Link label="FAQ" title="FAQ" to="/faq">FAQ</Link>
+      <Link label="API" title="API" to="/docs">API</Link>
+      <a aria-label="Swarm riding, by Paradigm" href={Site.essay} title="Swarm riding, by Paradigm"><span aria-hidden="true" className="foot-short">Essay</span><span aria-hidden="true" className="foot-long">Swarm riding, by Paradigm</span></a>
     </footer>
-  )
-}
-
-function Home(props: { channel: string | undefined; items: readonly Summary[]; listing: Listing | undefined }) {
-  const raised = props.items.reduce((sum, swarm) => sum + Number(swarm.balance), 0)
-  return (
-    <nav aria-label="Channels" className="rail">
-      <header className="side-head">
-        <b>Swarms</b>
-        <span className="side-meta" data-ready={!!props.listing}>{props.items.length} problem{props.items.length === 1 ? '' : 's'} · {cash(String(raised))}</span>
-      </header>
-      <div className="rail-scroll">
-        <Link className="rail-row rail-general" lit={props.channel === 'general'} to="/">
-          <i aria-hidden="true" className="rail-hash">#</i>
-          <span className="rail-name">general</span>
-          <span className="rail-meta">Everyone on Swarms</span>
-        </Link>
-        <Link className="rail-browse" to="/ideas">Browse every problem and idea</Link>
-      </div>
-      <Foot />
-    </nav>
-  )
-}
-
-function ThreadRow(props: { base: string; leaf: 't' | 'c'; lit: boolean; thread: Thread }) {
-  const thread = props.thread
-  return (
-    <li>
-      <Link className="rail-thread" data={{ 'data-live': String(thread.live) }} lit={props.lit} to={`${props.base}/${props.leaf}/${thread.id}`}>
-        <Mark checking={thread.checking} status={thread.status} />
-        <Inline className="rail-thread-name" text={thread.title} />
-        {Number(thread.money) > 0 && <span className="rail-thread-money">{cash(thread.money)}</span>}
-        {thread.doing && <Inline className="rail-thread-doing" text={thread.doing} />}
-      </Link>
-    </li>
-  )
-}
-
-function ChannelRow(props: { base: string; channel: Room; leaf: 't' | 'c'; lit: boolean; open: boolean; thread: string | undefined }) {
-  const channel = props.channel
-  const threads = props.open ? channel.threads : channel.threads.slice(0, shown)
-  const rest = channel.threads.length - threads.length
-  return (
-    <li>
-      <Link className="rail-row rail-channel" data={{ 'data-live': String(channel.live) }} lit={props.lit} to={`${props.base}/c/${channel.id}`}>
-        <i aria-hidden="true" className="rail-hash">#</i>
-        <Inline className="rail-name" text={channel.title} />
-        {Number(channel.money) > 0 && <span className="rail-money">{cash(channel.money)}</span>}
-      </Link>
-      {threads.length > 0 && (
-        <ol aria-label="Threads" className="rail-threads">
-          {threads.map((each) => <ThreadRow base={props.base} key={each.id} leaf={props.leaf} lit={props.thread === each.id} thread={each} />)}
-          {rest > 0 && (
-            <li>
-              <Link className="rail-thread rail-thread-all" to={`${props.base}/c/${channel.id}`}>{rest} more</Link>
-            </li>
-          )}
-        </ol>
-      )}
-    </li>
-  )
-}
-
-function SwarmSide(props: { general: boolean; id: string; room: string | undefined; swarm: Summary | undefined; thread: string | undefined; word: Status.Word | undefined }) {
-  const shape = useShape(props.id)
-  const swarm = props.swarm
-  const base = swarm ? Nickname.path(swarm) : `/s/${encodeURIComponent(props.id)}`
-  const held = (shape?.form === 'agent' ? holding(shape, props.room)?.id : props.room) ?? holding(shape, props.thread)?.id
-  const inside = props.thread ?? (shape?.form === 'agent' ? props.room : undefined)
-  const list = shape?.channels ?? []
-  const spent = list.reduce((sum, channel) => sum + Number(channel.money), 0)
-  return (
-    <nav aria-label="Channels" className="rail">
-      <header className="side-head">
-        {swarm ? <Inline className="side-title" text={swarm.title} /> : <b className="side-title" />}
-        <span className="side-meta" data-ready={!!swarm}>{swarm ? <>{cash(swarm.balance)} · {riders(swarm.contributors)}{props.word && Status.tag(props.word) && <> · {props.word === 'Working' && <i className="rail-live" />}{Status.tag(props.word)}</>}</> : ' '}</span>
-      </header>
-      <div className="rail-scroll">
-        <Link className="rail-row rail-general" lit={props.general && !held && !props.thread} to={base}>
-          <i aria-hidden="true" className="rail-hash">#</i>
-          <span className="rail-name">general</span>
-          <span className="rail-meta">Riders and the lead</span>
-        </Link>
-        {list.length > 0 && (
-          <>
-            <p className="rail-label">
-              <span>{shape?.form === 'tree' ? 'Programs' : 'Branches'}</span>
-              <span>{list.length}{spent > 0 && <> · {cash(String(spent))}{shape?.form === 'agent' ? ' spent' : ''}</>}</span>
-            </p>
-            <ol className="rail-list">
-              {list.map((channel) => <ChannelRow base={base} channel={channel} key={channel.id} leaf={shape?.form === 'tree' ? 't' : 'c'} lit={held === channel.id && !channel.threads.some((each) => each.id === inside)} open={held === channel.id} thread={inside} />)}
-            </ol>
-          </>
-        )}
-        <Link className="rail-browse" to="/">‹ #general on Swarms</Link>
-      </div>
-      <Foot />
-    </nav>
   )
 }
 
@@ -301,17 +201,15 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
   const list = Wire.useSwarms()
   const items = channels(list.data)
   const unread = useUnread(items, props.channel)
-  const id = props.channel !== 'general' ? props.channel : undefined
-  const shown = useLive(id)
-  const swarm = id ? (shown ?? list.data?.swarms.find((each) => each.id === id) ?? seeded<Detail>(id)) : undefined
   const rail = useSyncExternalStore(watchRail, readRail, servedRail)
   return (
-    <div className="hub" data-home={id ? undefined : ''} data-listing={props.listing || undefined} data-rail={rail} onClick={(event) => props.listing && event.target === event.currentTarget && props.onList(false)} {...swiped}>
+    <div className="hub" data-listing={props.listing || undefined} data-rail={rail} onClick={(event) => props.listing && event.target === event.currentTarget && props.onList(false)} {...swiped}>
       <div className="drawer" id="channels">
         <Servers current={props.channel} items={items} listing={list.data} rail={rail} unread={unread} />
-        {id ? <SwarmSide general={props.general} id={id} key={id} room={props.room} swarm={swarm} thread={props.thread} word={swarm && stood(swarm, list.data?.heads?.[id]).word} /> : <Home channel={props.channel} items={items} listing={list.data} />}
       </div>
-      <div className="hub-main" inert={props.listing || undefined}>{props.children}</div>
+      <div className="hub-main" inert={props.listing || undefined}>
+        <Here value={{ general: props.general, room: props.room, thread: props.thread }}>{props.children}</Here>
+      </div>
       <Switcher current={props.channel} items={items} listing={list.data} unread={unread} />
     </div>
   )

@@ -13,6 +13,7 @@ import { message, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import { why } from './Node.tsx'
 import { Overlay } from './Overlay.tsx'
+import { ChannelMenu } from './ChannelMenu.tsx'
 import { Avatar, tint } from './Room.tsx'
 import { Link } from './router.tsx'
 import { Mark, word } from './Tree.tsx'
@@ -220,7 +221,7 @@ export function TreeChannel(props: { children?: ReactNode; config: Config | unde
     <section aria-label={`#${node.title}`} className="channel">
       <header className="channel-head">
         <div className="channel-top">
-          <h1 className="channel-title"><i aria-hidden="true">#</i><Inline text={node.title} /></h1>
+          <h1 className="channel-title"><ChannelMenu id={props.swarm} title={node.title} /></h1>
           <p className="channel-stats">
             {Number(node.money.subtree.pledged) > 0 && <span><b>{cash(node.money.subtree.pledged)}</b> ridden</span>}
             <span><b>{node.counts.proven}</b> proven</span>
@@ -265,7 +266,7 @@ export function tagged(title: string) {
 
 const crewWords: Record<Crew.State, string> = { done: 'Done', failed: 'Failed', starved: 'Out of budget', stopped: 'Stopped', working: 'Working' }
 
-export function BranchChannel(props: { base: string; branch: Branch; branches: readonly Branch[]; config: Config | undefined; names: ReadonlyMap<string, string>; now: number; onPost: (text: string) => Promise<void>; onRide: ((anchor: HTMLElement) => void) | undefined; said: readonly Said[]; swarmTitle: string }) {
+export function BranchChannel(props: { base: string; branch: Branch; branches: readonly Branch[]; config: Config | undefined; names: ReadonlyMap<string, string>; now: number; onPost: (text: string) => Promise<void>; onRide: ((anchor: HTMLElement) => void) | undefined; said: readonly Said[]; swarm: string; swarmTitle: string }) {
   const branch = props.branch
   const member = Crew.member(branch)
   const status = crewMarks[member.state]
@@ -289,7 +290,7 @@ export function BranchChannel(props: { base: string; branch: Branch; branches: r
     <section aria-label={`#${member.title}`} className="channel">
       <header className="channel-head">
         <div className="channel-top">
-          <h1 className="channel-title"><i aria-hidden="true">#</i><Inline text={member.title} /></h1>
+          <h1 className="channel-title"><ChannelMenu id={props.swarm} title={member.title} /></h1>
           <p className="channel-stats">
             {member.metric && <span><b>{member.metric}</b> best</span>}
             <span><b>{cash(String(member.spent))}</b> spent</span>

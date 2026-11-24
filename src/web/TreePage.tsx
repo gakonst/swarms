@@ -279,7 +279,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const repo = proofs.data?.proofs[0]?.check.repo
   const count = root ? root.children.length : 0
   return (
-    <article className="grove" data-replying={replying !== undefined && !held && !thread ? '' : undefined} data-room={held ? '' : undefined} data-thread={thread || undefined} data-wire={wired}>
+    <article className="grove" data-view={view} data-replying={replying !== undefined && !held && !thread ? '' : undefined} data-room={held ? '' : undefined} data-thread={thread || undefined} data-wire={wired}>
       <Strip backers={top} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{head.proven.toLocaleString('en-US')}</b> proven</span>
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>

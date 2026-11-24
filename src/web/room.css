@@ -374,10 +374,6 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 .chat-thread-rule::after { content:''; flex:1; height:1px; background:var(--line); }
 .chat-thread-error { margin:0 20px 6px; }
 .chat-thread > .talk-foot { padding:8px 20px max(12px, env(safe-area-inset-bottom)); border-top:1px solid var(--line); }
-@media (min-width:720px) {
-  :is(.grove, .swarm-shell)[data-replying] > .pane { display:none; }
-  :is(.grove, .swarm-shell) > .chat-thread { grid-column:3; grid-row:2; border-left:1px solid var(--line); }
-}
 @media (max-width:719px) {
   .chat-thread { position:fixed; right:0; bottom:0; left:0; z-index:40; height:min(86dvh, calc(100dvh - 56px)); border-top:1px solid var(--line); border-radius:16px 16px 0 0; box-shadow:0 -12px 40px rgba(0,0,0,.16); animation:sheet-in .24s var(--ease); }
   .chat-thread > .talk-foot { padding-inline:var(--margin); }

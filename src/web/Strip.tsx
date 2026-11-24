@@ -90,13 +90,13 @@ export function Strip(props: { backers: readonly Backer[]; children?: ReactNode;
 }
 
 export function Tabs(props: { base: string; board: string; onShow: (view: Tab) => void; view: Tab }) {
-  const current = props.view === 'chat' ? 'board' : props.view
   return (
     <nav aria-label="Artifacts" className="tabs">
-      {tabs.filter(([key]) => key !== 'chat').map(([key, label]) => (
+      {tabs.map(([key, label]) => (
         <a
-          aria-current={current === key ? 'page' : undefined}
-          className="tab"
+          aria-current={props.view === key ? 'page' : undefined}
+          className={key === 'chat' ? 'tab tab-chat' : 'tab'}
+          data-default={(key === 'board' && props.view === 'chat') || undefined}
           href={href(at(props.base, key))}
           key={key}
           onClick={(event: MouseEvent<HTMLAnchorElement>) => {

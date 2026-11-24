@@ -144,7 +144,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
 
 
   return (
-    <article className="swarm-shell" data-replying={replying !== undefined && !roomed ? '' : undefined} data-room={roomed ? '' : undefined}>
+    <article className="swarm-shell" data-view={view} data-replying={replying !== undefined && !roomed ? '' : undefined} data-room={roomed ? '' : undefined}>
       <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span><b>{dollars(swarm.remaining)}</b> left</span>
@@ -166,6 +166,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           }}
           onRide={archived ? undefined : (anchor) => steer('', anchor)}
           said={chat.data?.messages ?? []}
+          swarm={id}
           swarmTitle={swarm.title}
         />
         </div>

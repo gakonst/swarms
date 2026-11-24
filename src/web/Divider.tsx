@@ -1,26 +1,16 @@
 import { type KeyboardEvent, type PointerEvent, useLayoutEffect, useRef } from 'react'
-import { useMedia } from './hooks.ts'
 
-type Axis = 'x' | 'y'
+type Drag = { at: 'idle' } | { at: 'dragging'; from: number; size: number }
 
-type Kept = { x: number | undefined; y: number | undefined }
-
-type Drag = { at: 'idle' } | { at: 'dragging'; axis: Axis; from: number; size: number }
-
-const kept = new Map<string, Kept>()
+const kept = new Map<string, number>()
 
 const narrowest = 280
 
 const chat = 373
 
-const least = 20
+const step = 32
 
-const most = 75
-
-const steps = { x: 32, y: 5 }
-
-function bounds(axis: Axis, host: HTMLElement) {
-  if (axis === 'y') return [least, most] as const
+function bounds(host: HTMLElement) {
   const style = getComputedStyle(host)
   const room = host.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight)
   return [narrowest, Math.max(narrowest, room - chat)] as const
@@ -33,16 +23,14 @@ function pane(host: HTMLElement) {
 export function Divider(props: { label: string; name: string }) {
   const handle = useRef<HTMLDivElement>(null)
   const drag = useRef<Drag>({ at: 'idle' })
-  const phone = useMedia('(max-width: 719px)')
-  const axis: Axis = phone ? 'y' : 'x'
 
-  const set = (along: Axis, value: number) => {
+  const set = (value: number) => {
     const host = handle.current?.parentElement
     if (!host) return
-    const [low, high] = bounds(along, host)
+    const [low, high] = bounds(host)
     const next = Math.round(Math.min(high, Math.max(low, value)))
-    kept.set(props.name, { ...(kept.get(props.name) ?? { x: undefined, y: undefined }), [along]: next })
-    host.style.setProperty(along === 'x' ? '--pane' : '--split', along === 'x' ? `${next}px` : `${next}%`)
+    kept.set(props.name, next)
+    host.style.setProperty('--pane', `${next}px`)
     handle.current?.setAttribute('aria-valuenow', String(next))
     handle.current?.setAttribute('aria-valuemin', String(low))
     handle.current?.setAttribute('aria-valuemax', String(Math.round(high)))
@@ -51,26 +39,8 @@ export function Divider(props: { label: string; name: string }) {
   useLayoutEffect(() => {
     const host = handle.current?.parentElement
     const known = kept.get(props.name)
-    if (!host || !known) return
-    if (known.x !== undefined) host.style.setProperty('--pane', `${known.x}px`)
-    if (known.y !== undefined) host.style.setProperty('--split', `${known.y}%`)
+    if (host && known !== undefined) host.style.setProperty('--pane', `${known}px`)
   }, [props.name])
-
-  const share = (host: HTMLElement) => {
-    const next = handle.current?.nextElementSibling
-    return next instanceof HTMLElement && host.clientHeight ? (next.offsetHeight / host.clientHeight) * 100 : least
-  }
-
-  const move = (event: PointerEvent<HTMLDivElement>) => {
-    const now = drag.current
-    const host = event.currentTarget.parentElement
-    if (now.at !== 'dragging' || !host) return
-    if (now.axis === 'x') set('x', now.size + now.from - event.clientX)
-    else {
-      const box = host.getBoundingClientRect()
-      set('y', ((box.bottom - event.clientY - event.currentTarget.offsetHeight / 2) / box.height) * 100)
-    }
-  }
 
   const stop = (event: PointerEvent<HTMLDivElement>) => {
     drag.current = { at: 'idle' }
@@ -80,20 +50,18 @@ export function Divider(props: { label: string; name: string }) {
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
     const host = event.currentTarget.parentElement
     if (!host) return
-    const [low, high] = bounds(axis, host)
-    const grow = axis === 'x' ? { ArrowLeft: 1, ArrowRight: -1 } : { ArrowUp: 1, ArrowDown: -1 }
-    const step = grow[event.key as keyof typeof grow]
-    const current = axis === 'x' ? pane(host) : share(host)
-    const next = event.key === 'Home' ? low : event.key === 'End' ? high : step ? current + step * steps[axis] : undefined
+    const [low, high] = bounds(host)
+    const grow = event.key === 'ArrowLeft' ? 1 : event.key === 'ArrowRight' ? -1 : 0
+    const next = event.key === 'Home' ? low : event.key === 'End' ? high : grow ? pane(host) + grow * step : undefined
     if (next === undefined) return
     event.preventDefault()
-    set(axis, next)
+    set(next)
   }
 
   return (
     <div
       aria-label={props.label}
-      aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
+      aria-orientation="vertical"
       className="split-handle"
       onKeyDown={keys}
       onLostPointerCapture={stop}
@@ -104,9 +72,12 @@ export function Divider(props: { label: string; name: string }) {
         event.preventDefault()
         event.currentTarget.setPointerCapture(event.pointerId)
         host.setAttribute('data-dragging', '')
-        drag.current = { at: 'dragging', axis, from: axis === 'x' ? event.clientX : event.clientY, size: axis === 'x' ? pane(host) : share(host) }
+        drag.current = { at: 'dragging', from: event.clientX, size: pane(host) }
       }}
-      onPointerMove={move}
+      onPointerMove={(event) => {
+        const now = drag.current
+        if (now.at === 'dragging') set(now.size + now.from - event.clientX)
+      }}
       onPointerUp={stop}
       ref={handle}
       role="separator"

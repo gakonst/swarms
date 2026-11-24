@@ -7,6 +7,7 @@ import * as Mention from '../shared/Mention.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Api from './api.ts'
 import { seeded } from './boot.ts'
+import { ChannelMenu } from './ChannelMenu.tsx'
 import { code } from './pay.ts'
 import { ago, day, minute, usd } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
@@ -603,8 +604,8 @@ export const Room = memo(function Room(props: {
   return (
     <section aria-label="Chat" className="chat">
       <header className="chat-here">
+        <ChannelMenu id={props.swarm.id} title="general" />
         {here.length > 0 && <span className="chat-faces">{here.map((member) => <Avatar address={member.address} handle={member.handle} key={member.address} size="small" />)}</span>}
-        <span>{props.swarm.contributors} rider{props.swarm.contributors === 1 ? '' : 's'}</span>
         {watching > 0 && <span className="chat-live"><i />{watching} here</span>}
       </header>
       <div
