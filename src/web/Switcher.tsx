@@ -76,7 +76,7 @@ export function Switcher(props: { current: string | undefined; items: readonly S
     const box = list.current
     if (!element || !box) return
     const left = element.offsetLeft - box.offsetLeft
-    if (left < box.scrollLeft || left + element.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollTo({ left: Math.max(0, left - 12) })
+    if (left < box.scrollLeft || left + element.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollTo({ left: Math.max(0, left - (box.clientWidth - element.offsetWidth) / 2) })
   }, [props.current, shown.length])
   return (
     <nav aria-label="Switch channel" className="switcher">

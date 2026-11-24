@@ -1029,7 +1029,9 @@ A thread on a phone shifted twice as it loaded (CLS 0.05 to 0.17): its crumbs ap
 
 Below 600 px #general's welcome is its title and one paragraph: the # badge, the two buttons and the hot list repeated what the problems strip above and the strip's Start button already show, and the hot list arriving late moved the welcome (CLS 0.025 at 390, 0.062 at 568, now 0). It also starts at the top of the chat, as a channel's intro does: with few messages the chat pinned it to the bottom and left half the phone blank above it, the gap Georgios saw at about 570 px (537 px blank at 568×1024 on an empty site, now below the welcome where the next messages land).
 
-A tree swarm's header now carries its status word and dot (Working now, Needs money, Retrying) as an agent swarm's does, from the same \`Status.standing\` with the tree's in-flight count, so a phone shows how it is going without opening the board; on phones it is the only status the folded stats keep.
+A tree swarm's header now carries its status word and dot (Working now, Needs money, Retrying) as an agent swarm's does, from the same `Status.standing` with the tree's in-flight count, so a phone shows how it is going without opening the board; on phones it is the only status the folded stats keep.
+
+Below 600 px the channel header drops its topic line and top riders (the riders count, dollars and status stay), which gives the board and the chat about 40 px more, and the switcher centers the current chip so its neighbours show on both sides.
 
 ## Desktop hill-climb (2026-11-24)
 

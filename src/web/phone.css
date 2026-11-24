@@ -14,3 +14,7 @@
   .general-chat > .chat-list > .welcome:first-child, .channel-list > .channel-intro:first-child { margin-top:0; }
 }
 
+
+@media (max-width:599px) {
+  .strip .strip-line { display:none; }
+}
