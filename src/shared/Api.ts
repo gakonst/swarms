@@ -290,6 +290,7 @@ export type Chatter =
   | { artifacts: Artifact[]; type: 'artifacts' }
   | { roster: Roster; type: 'roster' }
   | { delta: Tree.Delta; type: 'delta' }
+  | { entry: Entry; type: 'entry' }
 
 export type TreeView = { headline: Tree.Headline; nodes: Tree.Node[]; seq: number }
 

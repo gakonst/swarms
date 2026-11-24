@@ -8,6 +8,8 @@ import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
 import * as Sessions from './Sessions.ts'
+import * as Lobby from './Lobby.ts'
+import * as Watch from './Watch.ts'
 
 export const app = new Hono<{ Bindings: Cloudflare.Env }>()
 
@@ -31,6 +33,50 @@ export function contributed(result: Problem.Result<{ contributed: Contributed; c
 app.use('/v1/*', cors({ exposeHeaders: [Replica.header] }))
 app.use('/openapi.json', cors())
 app.use('/mcp', cors({ exposeHeaders: ['mcp-protocol-version', 'mcp-session-id'] }))
+
+function context<T>(c: { executionCtx: T }): T | undefined {
+  try {
+    return c.executionCtx
+  } catch {
+    return undefined
+  }
+}
+
+export async function listen(env: Cloudflare.Env, scope: Watch.Scope, on: (signal: Watch.Signal) => void) {
+  const upgrade = new Request('https://swarms/?listen=1&watch=1', { headers: { upgrade: 'websocket' } })
+  if (scope.kind !== 'swarm') return Watch.tap(await (scope.kind === 'lobby' ? env.LOBBY.getByName('lobby') : Lobby.hall(env)).fetch(upgrade), on)
+  const opened = await Operations.chatter(env, { swarm: scope.swarm }, upgrade)
+  return opened.ok ? Watch.tap(opened.value, on) : Problem.json(opened)
+}
+
+app.use('/v1/*', async (c, next) => {
+  if (c.req.method !== 'GET' || !Watch.wanted(c.req.header('accept'))) return next()
+  const url = new URL(c.req.url)
+  const since = url.searchParams.get('since')
+  url.searchParams.delete('since')
+  const topic = Watch.topic(url.pathname, url.searchParams)
+  if (!topic) return next()
+  const headers = new Headers(c.req.raw.headers)
+  headers.set('accept', 'application/json')
+  headers.delete('last-event-id')
+  headers.delete('if-none-match')
+  const read = async (query: Watch.Query, path?: string): Promise<Watch.Read> => {
+    const target = new URL(path ?? url.pathname, url)
+    if (!path) target.search = url.search
+    for (const [key, value] of Object.entries(query)) {
+      if (value === null) target.searchParams.delete(key)
+      else target.searchParams.set(key, value)
+    }
+    const response = await app.fetch(new Request(target, { headers }), c.env, context(c))
+    const text = await response.text()
+    let body: unknown = null
+    try {
+      body = JSON.parse(text)
+    } catch {}
+    return { body, status: response.status, text }
+  }
+  return Watch.open({ last: c.req.header('last-event-id') ?? since, listen: (on) => listen(c.env, topic.scope, on), read, signal: c.req.raw.signal, topic })
+})
 
 app.get('/openapi.json', async (c) => c.json((await import('./OpenApi.ts')).document(Site.url(c.env, c.req.url))))
 
@@ -189,6 +235,10 @@ app.post('/v1/swarms/:id/branches/:branch/stop', async (c) =>
 app.get('/v1/swarms/:id/tree', async (c) => Problem.respond(await Operations.tree(c.env, { ...c.req.query(), swarm: c.req.param('id') })))
 
 app.get('/v1/swarms/:id/nodes/:nid', async (c) => Problem.respond(await Operations.node(c.env, { node: c.req.param('nid'), swarm: c.req.param('id') })))
+
+app.get('/v1/swarms/:id/deltas', async (c) => Problem.respond(await Operations.nodeUpdates(c.env, { ...c.req.query(), swarm: c.req.param('id') })))
+
+app.get('/v1/swarms/:id/code', async (c) => Problem.respond(await Operations.code(c.env, { swarm: c.req.param('id') })))
 
 app.get('/v1/swarms/:id/nodes/:nid/updates', async (c) => Problem.respond(await Operations.nodeUpdates(c.env, { ...c.req.query(), node: c.req.param('nid'), swarm: c.req.param('id') })))
 

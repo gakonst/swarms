@@ -1035,8 +1035,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('Open the room as a WebSocket.', { status: 426 })
     if (this.ctx.getWebSockets().length >= Chat.socketsMost) return new Response('This room is full right now; read it over HTTP.', { status: 503 })
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket]
-    const listening = new URL(request.url).searchParams.get('listen') === '1'
-    this.ctx.acceptWebSocket(server, listening ? ['listen'] : [])
+    const asked = new URL(request.url).searchParams
+    const watching = asked.get('watch') === '1'
+    const listening = watching || asked.get('listen') === '1'
+    this.ctx.acceptWebSocket(server, watching ? ['listen', 'watch'] : listening ? ['listen'] : [])
     this.window?.close(Follow.until(this, Date.now()))
     server.serializeAttachment({ address: null })
     server.send(JSON.stringify({ type: 'welcome', version: this.stamp().version } satisfies Chatter))
@@ -1128,6 +1130,14 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     Runs.logged(this, { ...logged, seq: Number(row.seq) }, origin.ms ?? null)
     this.touch()
     if (!this.turn()) this.changed('feed')
+    const watching = this.ctx.getWebSockets('watch')
+    if (watching.length) {
+      const data = JSON.stringify({ entry: { ...logged, seq: Number(row.seq) }, type: 'entry' } satisfies Chatter)
+      for (const socket of watching)
+        try {
+          socket.send(data)
+        } catch {}
+    }
     if (!this.watchers.size) return
     const bytes = Relay.encoded({ entry: { ...logged, seq: Number(row.seq) }, type: 'entry' })
     for (const watcher of this.watchers) if (watcher.follow || watcher.relaying) Relay.write(this, watcher, bytes)

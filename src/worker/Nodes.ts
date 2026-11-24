@@ -219,6 +219,11 @@ export function emit(self: Swarm, nid: string, event: Event, text: string) {
   const at = Date.now()
   const seq = Number(self.ctx.storage.sql.exec<{ seq: number }>('INSERT INTO tree_deltas (at, node, event, text) VALUES (?, ?, ?, ?) RETURNING seq', at, nid, event, redact(text)).one().seq)
   changed(self)
+  self.ctx.waitUntil(
+    Store.find(self.env, swarm(self))
+      .then((row) => row && self.beacon(row))
+      .catch(() => undefined),
+  )
   const told = event === 'proven' || event === 'ended'
   if (!told && !self.listened() && !self.treeWatchers.size) return
   self.ctx.waitUntil(

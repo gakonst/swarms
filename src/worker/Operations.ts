@@ -1371,7 +1371,8 @@ export async function chatter(env: Cloudflare.Env, input: Input<'swarm'>, reques
   if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return Problem.fail(400, 'invalid_request', 'Open this route as a WebSocket.')
   if (!(await Store.exists(env, parsed.value.swarm))) return missing()
 
-  return Problem.ok(await stub(env, parsed.value.swarm).fetch(new Request(`https://swarm/chat?swarm=${encodeURIComponent(parsed.value.swarm)}${new URL(request.url).searchParams.get('listen') === '1' ? '&listen=1' : ''}`, request)))
+  const asked = new URL(request.url).searchParams
+  return Problem.ok(await stub(env, parsed.value.swarm).fetch(new Request(`https://swarm/chat?swarm=${encodeURIComponent(parsed.value.swarm)}${asked.get('listen') === '1' ? '&listen=1' : ''}${asked.get('watch') === '1' ? '&watch=1' : ''}`, request)))
 }
 
 function dollars(amount: string) {
