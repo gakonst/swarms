@@ -49,6 +49,7 @@ export function General(props: { config: Config | undefined }) {
     return { messages: seed?.messages ?? [], names: seed?.names ?? {} }
   })
   const [loaded, setLoaded] = useState(() => seeded<Hall>('general') !== undefined)
+  const [failed, setFailed] = useState(false)
   const [wired, setWired] = useState(false)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
@@ -64,7 +65,10 @@ export function General(props: { config: Config | undefined }) {
       const read = await Api.general(after ? { after } : {})
       setRoom((current) => ({ messages: merge(after ? current.messages : [], read.messages), names: { ...current.names, ...read.names } }))
       setLoaded(true)
-    } catch {}
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    }
   }, [])
 
   useEffect(() => {
@@ -214,7 +218,7 @@ export function General(props: { config: Config | undefined }) {
           <div className="welcome">
             <p className="welcome-mark" aria-hidden="true">#</p>
             <h2 className="welcome-title">Put a few dollars into an AI swarm and watch it work.</h2>
-            <p className="welcome-text">This is #general, where everyone on Swarms talks. Each problem on the left is a swarm with its own server: a #general for its riders and lead, a channel for each line of work, and a thread for each item, where its agents post what they do.</p>
+            <p className="welcome-text">This is #general, where everyone on Swarms talks. Each problem listed here is a swarm with its own server: a #general for its riders and lead, a channel for each line of work, and a thread for each item, where its agents post what they do.</p>
             <div className="welcome-go">
               <Link className="btn btn-high welcome-start" to="/new">Start a problem<span>$1+</span></Link>
               {hot[0] && <Link className="btn btn-medium welcome-ride" to={Nickname.path(hot[0])}>Ride #<Inline text={hot[0].title} /></Link>}
@@ -234,7 +238,7 @@ export function General(props: { config: Config | undefined }) {
               </ol>
             )}
           </div>
-          {!loaded && <p className="chat-empty">Loading…</p>}
+          {!loaded && <p className="chat-empty">{failed ? "Can't reach Swarms. Trying again." : 'Loading…'}</p>}
           {room.messages.map((item, index) => {
             const author = item.author ?? ''
             const handle = name(author)

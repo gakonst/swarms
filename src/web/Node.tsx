@@ -184,8 +184,6 @@ export function NodePanel(props: {
       )}
       {open && node.form !== 'triage' && <Pendings nodes={props.nodes} parent={node.id} swarm={props.swarm} />}
       {text && <section className="node-part node-words"><Markdown text={text} /></section>}
-      <details className="node-more">
-      <summary>Details</summary>
       {node.statement && (
         <section className="node-part">
           <h3>Lean statement{view?.review && <span className="node-review">statement under review</span>}</h3>
@@ -193,6 +191,8 @@ export function NodePanel(props: {
           <p className="fine">Frozen when it was posted. Proven only when the verifier builds a proof of exactly this.</p>
         </section>
       )}
+      <details className="node-more">
+      <summary>Details</summary>
       {node.proof && <Checked check={node.proof} title="Checked record" />}
       {node.end?.check && <Checked check={node.end.check} title="Checked refutation" />}
       {node.needs.length > 0 && (

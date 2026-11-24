@@ -210,6 +210,7 @@ function SwarmSide(props: { general: boolean; id: string; room: string | undefin
   const swarm = props.swarm
   const base = swarm ? Nickname.path(swarm) : `/s/${encodeURIComponent(props.id)}`
   const held = (shape?.form === 'agent' ? holding(shape, props.room)?.id : props.room) ?? holding(shape, props.thread)?.id
+  const inside = props.thread ?? (shape?.form === 'agent' ? props.room : undefined)
   const list = shape?.channels ?? []
   const spent = list.reduce((sum, channel) => sum + Number(channel.money), 0)
   return (
@@ -231,7 +232,7 @@ function SwarmSide(props: { general: boolean; id: string; room: string | undefin
               <span>{list.length}{spent > 0 && <> · {cash(String(spent))}{shape?.form === 'agent' ? ' spent' : ''}</>}</span>
             </p>
             <ol className="rail-list">
-              {list.map((channel) => <ChannelRow base={base} channel={channel} key={channel.id} leaf={shape?.form === 'tree' ? 't' : 'c'} lit={held === channel.id && props.thread !== channel.id} open={held === channel.id} thread={props.thread ?? (shape?.form === 'agent' ? props.room : undefined)} />)}
+              {list.map((channel) => <ChannelRow base={base} channel={channel} key={channel.id} leaf={shape?.form === 'tree' ? 't' : 'c'} lit={held === channel.id && !channel.threads.some((each) => each.id === inside)} open={held === channel.id} thread={inside} />)}
             </ol>
           </>
         )}

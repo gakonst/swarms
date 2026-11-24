@@ -100,7 +100,7 @@ function Bud(props: Props & { depth: number; node: Tree.Node }) {
         <Inline text={node.title} />
       </a>
       <span className="bud-meta">
-        <span className="bud-money">{cash(node.money.subtree.pledged)}{coming && <i className="bud-coming" title={act.at === 'owed' ? 'Sent, not counted yet' : 'Counting'}>+{cash(coming)}</i>}</span>
+        <span className="bud-money">{Number(node.money.subtree.pledged) > 0 && cash(node.money.subtree.pledged)}{coming && <i className="bud-coming" title={act.at === 'owed' ? 'Sent, not counted yet' : 'Counting'}>+{cash(coming)}</i>}</span>
         <Faces funders={node.funders} riders={node.riders} />
         {node.children.length > 0 && <Tally node={node} />}
         {folds && (
@@ -151,7 +151,7 @@ function Limb(props: Props & { depth: number; id: string; index: number }) {
           {hidden.length > 0 && (
             <li className="limb limb-more">
               <button onClick={() => props.onMore(node.id, limit + step)} type="button">
-                See {hidden.length} more<span>{cash(Grove.sum(hidden))}</span>
+                See {hidden.length} more{Number(Grove.sum(hidden)) > 0 && <span>{cash(Grove.sum(hidden))}</span>}
               </button>
             </li>
           )}

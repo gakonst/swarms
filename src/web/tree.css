@@ -67,7 +67,7 @@
 .node-run { font-size:13px; }
 .node-list { display:grid; gap:4px; }
 .node-list a { display:inline-flex; align-items:center; gap:6px; min-height:24px; }
-.node-riders li { display:flex; justify-content:space-between; gap:12px; font:12px var(--mono); }
+.node-riders li { display:flex; align-items:center; justify-content:space-between; gap:12px; font:12px var(--mono); }
 .node-runs, .node-updates { display:grid; gap:6px; }
 .node-runs li { display:grid; gap:2px; font-size:13px; }
 .node-run-head { font:11px var(--mono); color:var(--muted); }

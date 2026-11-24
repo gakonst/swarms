@@ -30,8 +30,10 @@ function rider(who: Tree.Who) {
 
 export function lines(node: Tree.Node, view: NodeView | undefined, updates: readonly Tree.Delta[] | undefined): Line[] {
   const out: Line[] = []
+  const summed = new Set((view?.runs ?? []).flatMap((run) => (run.outcome ? [run.summary.trim()] : [])))
   for (const delta of updates ?? []) {
     if (delta.event === 'funded' || delta.event === 'steered' || delta.event === 'moved' || out.some((line) => line.id === `d${delta.seq}:${delta.event}`)) continue
+    if (worker.has(delta.event) && summed.has(delta.text.trim())) continue
     out.push({ at: delta.at, id: `d${delta.seq}:${delta.event}`, text: delta.text, who: { address: null, bot: true, name: worker.has(delta.event) ? 'AI' : 'Swarm' } })
   }
   for (const run of view?.runs ?? []) {
@@ -211,7 +213,9 @@ export function TreeChannel(props: { children?: ReactNode; config: Config | unde
     const element = scroller.current
     if (element) element.scrollTop = element.scrollHeight
   }, [node.id, entries.length])
-  const topic = node.spec.replace(/^#[^\n]*\n+/, '').replace(/```[\s\S]*?```/g, '').trim()
+  const spec = node.spec.replace(/^#[^\n]*\n+/, '').replace(/```[\s\S]*?```/g, '').trim()
+  const first = spec.split('\n', 1)[0] ?? ''
+  const topic = first.trim() === node.title.trim() ? spec.slice(first.length).trim() : spec
   return (
     <section aria-label={`#${node.title}`} className="channel">
       <header className="channel-head">
