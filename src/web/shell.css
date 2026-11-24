@@ -150,6 +150,15 @@
   .welcome-channel { grid-template-columns:14px minmax(0, 1fr) auto; }
 }
 
+@media (min-width:900px) and (max-width:1099px) {
+  .drawer { position:relative; z-index:30; }
+  .rail { position:absolute; top:0; bottom:0; left:68px; width:288px; border-right:1px solid var(--line); box-shadow:0 18px 48px rgba(0,0,0,.1); transform:translateX(-8px); opacity:0; visibility:hidden; transition:transform .2s var(--ease), opacity .2s, visibility 0s linear .2s; }
+  .hub[data-listing] .rail { transform:none; opacity:1; visibility:visible; transition:transform .2s var(--ease), opacity .2s; }
+  .hub[data-listing]::after { content:''; position:absolute; inset:0 0 0 356px; z-index:20; background:rgba(0,0,0,.04); }
+  .game-header[data-shell] .header-channels { display:inline-flex; align-items:center; margin-right:var(--space-3); }
+  .header-channels[aria-expanded='true'] { text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:.2em; }
+}
+
 @keyframes thread-in { from { transform:translateX(24px); opacity:.6; } }
 @media (prefers-reduced-motion:reduce) { .drawer, .hub[data-listing] .drawer { transition:none; } .thread { animation:none; } .rail-live { animation:none; } }
 

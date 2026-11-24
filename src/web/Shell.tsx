@@ -282,7 +282,7 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
   const shown = useLive(id)
   const swarm = id ? (shown ?? list.data?.swarms.find((each) => each.id === id) ?? seeded<Detail>(id)) : undefined
   return (
-    <div className="hub" data-listing={props.listing || undefined} {...swiped}>
+    <div className="hub" data-listing={props.listing || undefined} onClick={(event) => props.listing && event.target === event.currentTarget && props.onList(false)} {...swiped}>
       <div className="drawer">
         <Servers current={props.channel} items={items} listing={list.data} unread={unread} />
         {id ? <SwarmSide general={props.general} id={id} key={id} room={props.room} swarm={swarm} thread={props.thread} word={swarm && stood(swarm, list.data?.heads?.[id]).word} /> : <Home channel={props.channel} items={items} listing={list.data} unread={unread} />}
