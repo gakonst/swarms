@@ -136,7 +136,7 @@ function Home(props: { channel: string | undefined; items: readonly Summary[]; l
         <Link className="rail-start" to="/new">
           <i aria-hidden="true">+</i>Start a problem<span>$1+</span>
         </Link>
-        <p className="rail-label"><span>Problems</span></p>
+        {props.items.length > 0 && <p className="rail-label"><span>Problems</span></p>}
         <ol className="rail-list" data-loading={!props.listing}>
           {props.items.map((swarm) => {
             const word = stood(swarm, heads[swarm.id]).word

@@ -33,10 +33,13 @@ function chosen(raw: string | null): Grove.Filter {
   return Grove.filters.some(([key]) => key === raw) ? (raw as Grove.Filter) : 'all'
 }
 
-function unfolded(data: TreeView | undefined) {
+function unfolded(data: TreeView | undefined, selected: string) {
   const told = here().searchParams.get('open')
-  if (told !== null) return new Set(['root', ...told.split(',').filter(Boolean)])
-  return new Set(['root', ...(data?.nodes.find((node) => node.id === 'root')?.children ?? [])])
+  const byId = new Map((data?.nodes ?? []).map((node) => [node.id, node] as const))
+  const trail: string[] = []
+  for (let node = byId.get(selected); node && node.id !== 'root' && trail.length < 64; node = node.parent ? byId.get(node.parent) : undefined) trail.push(node.id)
+  if (told !== null) return new Set(['root', ...told.split(',').filter(Boolean), ...trail])
+  return new Set(['root', ...(byId.get('root')?.children ?? []), ...trail])
 }
 
 function query(pairs: readonly (readonly [string, string])[]) {
@@ -74,7 +77,9 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const [burn, reburn] = usePoll(() => Api.burn(id), null, `burn:${id}`)
   const [proofs, reproof, setProofs] = usePoll(() => Api.proofs(id), null, `proofs:${id}`)
   const told = useRef(here().searchParams.has('open'))
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => unfolded(tree.data))
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => unfolded(tree.data, selected))
+  const scroller = useRef<HTMLDivElement>(null)
+  const scrolled = useRef<string | undefined>(undefined)
   const [more, setMore] = useState<Readonly<Record<string, number>>>({})
   const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([view]))
   const [unread, setUnread] = useState(0)
@@ -123,7 +128,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
     const data: TreeView | undefined = tree.data
     if (!data) return
     setGrove((current) => (!current || data.seq >= current.seq ? Grove.grow(data, current) : current))
-    if (!told.current) setOpen((current) => (current.size > 1 ? current : unfolded(data)))
+    if (!told.current) setOpen((current) => (current.size > 1 ? current : unfolded(data, selected)))
   }, [tree.data])
 
   useEffect(() => {
@@ -139,8 +144,19 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   useEffect(() => {
     if (!grove) return
     const trail = Grove.trail(grove.nodes, selected).map((node) => node.id)
-    if (trail.some((nid) => !open.has(nid) && nid !== selected)) setOpen((current) => new Set([...current, ...trail.slice(0, -1)]))
+    if (trail.some((nid) => !open.has(nid))) setOpen((current) => new Set([...current, ...trail]))
   }, [selected, !!grove])
+
+  useEffect(() => {
+    const box = scroller.current
+    if (!box || selected === 'root' || scrolled.current === selected) return
+    const row = box.querySelector<HTMLElement>('.limb[data-selected] > .bud')
+    if (!row) return
+    scrolled.current = selected
+    const outer = box.getBoundingClientRect()
+    const inner = row.getBoundingClientRect()
+    if (inner.top < outer.top || inner.bottom > outer.bottom) box.scrollTop += inner.top - outer.top - Math.min(outer.height / 4, 80)
+  })
 
   useEffect(() => {
     if (!grove || !node.data || grove.nodes[selected]) return
@@ -255,20 +271,20 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const count = root ? root.children.length : 0
   return (
     <article className="grove" data-room={held ? '' : undefined} data-tab={view} data-thread={thread || undefined} data-wire={wired}>
-      {!held && <Strip backers={top} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
+      <Strip backers={top} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{head.proven.toLocaleString('en-US')}</b> proven</span>
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>
         <span className="strip-mood" data-mood={stood.mood} title={Status.line(stood.word)}><i />{Status.pill(stood.word)}</span>
-      </Strip>}
-      {!held && <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} unread={unread} view={view} />}
+      </Strip>
+      <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} unread={unread} view={view} />
       <div className="panel panel-chat" hidden={!!held}>
         <Room config={props.config} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} onUnread={setUnread} steer={false} swarm={swarm} visible={!held && (view === 'chat' || view === 'board' || !phone)} />
       </div>
       {(seen.has('board') || seen.has('chat')) && (
-        <div className="grove-body panel panel-board" hidden={(view !== 'board' && view !== 'chat') || !!held}>
+        <div className="grove-body panel panel-board" hidden={view !== 'board' && view !== 'chat'}>
           <section aria-label="Threads" className="grove-tree">
             <Filters filter={filter} nodes={nodes} onFilter={filtered} />
-            <div className="grove-scroll">
+            <div className="grove-scroll" ref={scroller}>
               <Branches
                 composing={composing}
                 config={props.config}
@@ -285,7 +301,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
                 open={open}
                 path={path}
                 propose={propose}
-                selected={thread ? selected : ''}
+                selected={selected === 'root' ? '' : selected}
                 shape={scene.has('spine') ? 'spine' : 'tree'}
                 swarm={id}
               />
@@ -294,9 +310,9 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
           </section>
         </div>
       )}
-      <Divider hidden={(view !== 'board' && view !== 'chat') || !!held} />
+      <Divider hidden={view !== 'board' && view !== 'chat'} />
       {seen.has('results') && (
-        <div className="panel panel-page" hidden={view !== 'results' || !!held}>
+        <div className="panel panel-page" hidden={view !== 'results'}>
           <Headline burn={burn.data?.burn} headline={head} id={id} last={last} now={now} />
           {proofs.data && proofs.data.proofs.length > 0 ? (
             <ol className="proofs">
@@ -312,7 +328,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
         </div>
       )}
       {seen.has('code') && (
-        <div className="panel panel-page" hidden={view !== 'code' || !!held}>
+        <div className="panel panel-page" hidden={view !== 'code'}>
           {swarm.code ? (
             <Code repo={swarm.code} swarm={id} />
           ) : repo ? (
@@ -332,11 +348,12 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
         </div>
       )}
       {seen.has('about') && (
-        <div className="panel panel-page" hidden={view !== 'about' || !!held}>
+        <div className="panel panel-page" hidden={view !== 'about'}>
           <Explainer spec={root?.spec} swarm={swarm} />
         </div>
       )}
       {held && nodes[held] && (
+        <div className="panel panel-chat">
         <TreeChannel
           config={props.config}
           lines={lines(nodes[held], roomNode.data?.id === held ? roomNode.data : undefined, roomUpdates.data?.deltas)}
@@ -353,6 +370,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
           swarmTitle={swarm.title}
           thread={thread ? selected : undefined}
         />
+        </div>
       )}
       {thread && (
         <aside aria-label="Thread" className="thread" {...swiped}>

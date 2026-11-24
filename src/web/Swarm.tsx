@@ -137,18 +137,20 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
     if (next !== view) navigate(at(base, next), { keep: true, replace: true })
   }
   const branch = props.channel ? tree.data?.branches.find((each) => String(each.id) === props.channel) : undefined
+  const roomed = !!props.channel && (!tree.data || !!branch)
 
 
   return (
-    <article className="swarm-shell" data-room={branch ? '' : undefined} data-tab={view}>
-      {!branch && <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
+    <article className="swarm-shell" data-room={roomed ? '' : undefined} data-tab={view}>
+      <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span><b>{dollars(swarm.remaining)}</b> left</span>
         <span className="strip-mood" data-mood={stood.mood} title={line(stood.word)}><i />{pill(stood.word)}</span>
         {swarm.ai && <span className="strip-ai">on ${swarm.ai.handle}'s own AI</span>}
-      </Strip>}
-      {!branch && <Tabs base={base} board="Board" onShow={show} unread={unread} view={view} />}
+      </Strip>
+      <Tabs base={base} board="Board" onShow={show} unread={unread} view={view} />
       {branch && (
+        <div className="panel panel-chat">
         <BranchChannel
           base={base}
           branch={branch}
@@ -164,8 +166,9 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           said={chat.data?.messages ?? []}
           swarmTitle={swarm.title}
         />
+        </div>
       )}
-      <div className="panel panel-chat" hidden={!!branch}>
+      <div className="panel panel-chat" hidden={roomed}>
         <Room
           config={props.config}
           onArtifact={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`)}
@@ -174,21 +177,21 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           onResults={() => show('results')}
           onUnread={setUnread}
           swarm={swarm}
-          visible={!branch && (view === 'chat' || view === 'board' || !phone)}
+          visible={!roomed && (view === 'chat' || view === 'board' || !phone)}
         />
       </div>
-      <div className="panel panel-page panel-board" hidden={(view !== 'board' && view !== 'chat') || !!branch}>
+      <div className="panel panel-page panel-board" hidden={view !== 'board' && view !== 'chat'}>
         <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'board' || view === 'chat'} />
       </div>
-      <Divider hidden={(view !== 'board' && view !== 'chat') || !!branch} />
+      <Divider hidden={view !== 'board' && view !== 'chat'} />
       {seen.has('results') && (
-        <div className="panel panel-page" hidden={view !== 'results' || !!branch}>
+        <div className="panel panel-page" hidden={view !== 'results'}>
           <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show('chat')} onOpen={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steers ? steer : undefined} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
         </div>
       )}
-      {seen.has('code') && <div className="panel panel-page" hidden={view !== 'code' || !!branch}><Code repo={swarm.code} swarm={swarm.id} /></div>}
+      {seen.has('code') && <div className="panel panel-page" hidden={view !== 'code'}><Code repo={swarm.code} swarm={swarm.id} /></div>}
       {seen.has('about') && (
-        <div className="panel panel-page" hidden={view !== 'about' || !!branch}>
+        <div className="panel panel-page" hidden={view !== 'about'}>
           <Explainer swarm={swarm} />
           {archived ? <Archived swarm={swarm} /> : <Reins onNamed={named} swarm={swarm} />}
         </div>

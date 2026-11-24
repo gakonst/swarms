@@ -134,7 +134,6 @@
   .game-header[data-shell] .header-menu { display:none; }
   .game-header[data-shell] .header-channels { position:relative; display:inline-flex; align-items:center; gap:6px; }
   .header-channels[aria-expanded='true'] { text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:.2em; }
-  .thread { position:fixed; inset:0; z-index:45; padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); animation:thread-in .24s var(--ease); }
   .thread-head { padding:0 12px 0 6px; }
   .thread-head p { order:0; }
   .thread-close { font-size:30px; }
@@ -163,6 +162,7 @@
 }
 
 @keyframes thread-in { from { transform:translateX(24px); opacity:.6; } }
+@keyframes sheet-in { from { transform:translateY(24px); opacity:.6; } }
 @media (prefers-reduced-motion:reduce) { .drawer, .hub[data-listing] .drawer { transition:none; } .thread { animation:none; } .rail-live { animation:none; } }
 
 .channel { display:flex; flex:1; flex-direction:column; min-width:0; min-height:0; }
@@ -219,9 +219,6 @@
 .swarm-shell > .channel { padding:0; }
 .thread > .talk-foot { padding:8px 20px max(12px, env(safe-area-inset-bottom)); border-top:1px solid var(--line); }
 
-@media (min-width:900px) {
-  :is(.grove, .swarm-shell)[data-room] > .channel { grid-column:1; grid-row:1 / -1; }
-}
 
 @media (max-width:899px) {
   .channel-head { gap:6px; padding:10px var(--margin) 10px; }
@@ -257,28 +254,27 @@
 .general-new .general-lot-name { font:13px var(--mono); }
 
 @media (min-width:900px) {
-  :is(.grove, .swarm-shell):not([data-room]) { display:grid; grid-template-columns:minmax(0, 1fr) clamp(320px, 28vw, 440px); grid-template-rows:auto auto minmax(0, 1fr); }
-  :is(.grove, .swarm-shell):not([data-room]) > .strip { grid-column:1 / -1; grid-row:1; }
-  :is(.grove, .swarm-shell):not([data-room]) > .tabs { grid-column:1; grid-row:2; }
-  :is(.grove, .swarm-shell):not([data-room]) > .panel { grid-column:1; grid-row:3; }
-  :is(.grove, .swarm-shell):not([data-room]) > .panel-chat { grid-column:2; grid-row:2 / -1; margin:0 calc(var(--margin) * -1) 0 var(--gutter); padding:0 var(--margin) 14px 18px; border-left:1px solid var(--line); }
+  :is(.grove, .swarm-shell) { display:grid; grid-template-columns:minmax(0, 1fr) clamp(320px, 28vw, 440px); grid-template-rows:auto auto minmax(0, 1fr); }
+  :is(.grove, .swarm-shell) > .strip { grid-column:1 / -1; grid-row:1; }
+  :is(.grove, .swarm-shell) > .tabs { grid-column:1; grid-row:2; }
+  :is(.grove, .swarm-shell) > .panel { grid-column:1; grid-row:3; }
+  :is(.grove, .swarm-shell) > .panel-chat { grid-column:2; grid-row:2 / -1; margin:0 calc(var(--margin) * -1) 0 var(--gutter); padding:0 var(--margin) 14px 18px; border-left:1px solid var(--line); }
   :is(.grove, .swarm-shell) .tabs .tab[data-tab='chat'] { display:none; }
   :is(.grove, .swarm-shell) .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
-  .grove[data-thread]:not([data-room]) > .strip { grid-column:1; }
-  .grove[data-thread]:not([data-room]) > .panel-chat { display:none; }
+  .grove[data-thread] > .strip { grid-column:1; }
   .general-body { display:grid; grid-template-columns:minmax(0, 1fr) clamp(280px, 24vw, 360px); grid-template-rows:minmax(0, 1fr); }
   .general-board { order:2; margin:0 calc(var(--margin) * -1) 0 var(--gutter); padding:4px 14px 14px; border-left:1px solid var(--line); }
   .general-body > .general-chat { order:1; }
 }
 
 @media (max-width:899px) {
-  :is(.grove, .swarm-shell):not([data-room]) > .panel-board { order:1; }
-  :is(.grove, .swarm-shell):not([data-room]) > .panel-chat { order:2; }
-  :is(.grove, .swarm-shell):not([data-room])[data-tab='chat'] > .panel-board { flex:0 0 40%; border-bottom:1px solid var(--line); }
-  :is(.grove, .swarm-shell):not([data-room])[data-tab='chat'] > .panel-chat { flex:1 1 0; }
-  :is(.grove, .swarm-shell):not([data-room])[data-tab='board'] > .panel-board { flex:1 1 0; }
-  :is(.grove, .swarm-shell):not([data-room])[data-tab='board'] > .panel-chat { flex:0 0 38%; border-top:1px solid var(--line); }
-  :is(.grove, .swarm-shell):not([data-room]):not([data-tab='chat']):not([data-tab='board']) > .panel-chat { display:none; }
+  :is(.grove, .swarm-shell) > .panel-board { order:1; }
+  :is(.grove, .swarm-shell) > .panel-chat { order:2; }
+  :is(.grove, .swarm-shell)[data-tab='chat'] > .panel-board { flex:0 0 40%; border-bottom:1px solid var(--line); }
+  :is(.grove, .swarm-shell)[data-tab='chat'] > .panel-chat { flex:1 1 0; }
+  :is(.grove, .swarm-shell)[data-tab='board'] > .panel-board { flex:1 1 0; }
+  :is(.grove, .swarm-shell)[data-tab='board'] > .panel-chat { flex:0 0 38%; border-top:1px solid var(--line); }
+  :is(.grove, .swarm-shell):not([data-tab='chat']):not([data-tab='board']) > .panel-chat { display:none; }
   .general-board { flex:none; padding:0 0 8px; border-bottom:1px solid var(--line); }
   .general-board .rail-label { padding:8px var(--margin) 4px; }
   .general-list { display:flex; gap:8px; padding:0 var(--margin); overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
@@ -288,26 +284,37 @@
 }
 
 @media (min-width:720px) and (max-width:899px) {
-  :is(.grove, .swarm-shell):not([data-room]) { display:grid; grid-template-columns:minmax(0, 1fr) clamp(296px, 40vw, 340px); grid-template-rows:auto auto minmax(0, 1fr); }
-  :is(.grove, .swarm-shell):not([data-room]) > .strip { grid-column:1 / -1; grid-row:1; }
-  :is(.grove, .swarm-shell):not([data-room]) > .tabs { grid-column:1; grid-row:2; }
-  :is(.grove, .swarm-shell):not([data-room]) > .panel { grid-column:1; grid-row:3; border:0; }
-  :is(.grove, .swarm-shell):not([data-room]) > .panel-chat { grid-column:2; grid-row:2 / -1; border:0; border-left:1px solid var(--line); }
-  :is(.grove, .swarm-shell):not([data-room]):not([data-tab='chat']):not([data-tab='board']) > :is(.tabs, .panel) { grid-column:1 / -1; }
+  :is(.grove, .swarm-shell) { display:grid; grid-template-columns:minmax(0, 1fr) clamp(296px, 40vw, 340px); grid-template-rows:auto auto minmax(0, 1fr); }
+  :is(.grove, .swarm-shell) > .strip { grid-column:1 / -1; grid-row:1; }
+  :is(.grove, .swarm-shell) > .tabs { grid-column:1; grid-row:2; }
+  :is(.grove, .swarm-shell) > .panel { grid-column:1; grid-row:3; border:0; }
+  :is(.grove, .swarm-shell) > .panel-chat { grid-column:2; grid-row:2 / -1; border:0; border-left:1px solid var(--line); }
+  :is(.grove, .swarm-shell):not([data-tab='chat']):not([data-tab='board']) > :is(.tabs, .panel) { grid-column:1 / -1; }
   :is(.grove, .swarm-shell) .tabs .tab[data-tab='chat'] { display:none; }
   :is(.grove, .swarm-shell) .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
+}
+
+.grove[data-thread] > .panel-chat { display:none; }
+
+@media (min-width:720px) and (max-width:899px) {
+  .grove[data-thread] > .strip { grid-column:1; }
+  .grove > .thread { grid-column:2; grid-row:1 / -1; border-left:1px solid var(--line); }
 }
 
 .split-handle { display:none; }
 
 @media (max-width:719px) {
-  :is(.grove, .swarm-shell):not([data-room]) > .split-handle:not([hidden]) { order:2; display:grid; flex:none; place-items:center; height:24px; border-top:1px solid var(--line); cursor:row-resize; touch-action:none; }
+  :is(.grove, .swarm-shell) > .split-handle:not([hidden]) { order:2; display:grid; flex:none; place-items:center; height:24px; border-top:1px solid var(--line); cursor:row-resize; touch-action:none; }
   .split-handle > i { width:36px; height:4px; border-radius:2px; background:var(--rule); }
   .split-handle:hover > i, .split-handle:focus-visible > i { background:var(--muted); }
   .split-handle:focus-visible { outline:none; }
-  :is(.grove, .swarm-shell):not([data-room]) > .panel-chat { order:3; }
-  :is(.grove, .swarm-shell):not([data-room]):is([data-tab='chat'], [data-tab='board']) > .panel-board { flex:0 0 var(--board, 40%); border-top:0; border-bottom:0; }
-  :is(.grove, .swarm-shell):not([data-room]):is([data-tab='chat'], [data-tab='board']) > .panel-chat { flex:1 1 0; border-top:0; }
+  :is(.grove, .swarm-shell) > .panel-chat { order:3; }
+  .grove > .thread { order:3; flex:1 1 0; animation:sheet-in .24s var(--ease); }
+  .grove[data-thread] > :is(.strip, .tabs), :is(.grove, .swarm-shell)[data-room] > .strip { display:none; }
+  .grove[data-thread] > .split-handle:not([hidden]) { border:1px solid var(--line); border-bottom:0; border-radius:14px 14px 0 0; box-shadow:0 -8px 24px rgba(0,0,0,.08); }
+  .grove[data-thread] > .panel-board { border-bottom:0; }
+  :is(.grove, .swarm-shell):is([data-tab='chat'], [data-tab='board']) > .panel-board { flex:0 0 var(--board, 40%); border-top:0; border-bottom:0; }
+  :is(.grove, .swarm-shell):is([data-tab='chat'], [data-tab='board']) > .panel-chat { flex:1 1 0; border-top:0; }
   :is(.grove, .swarm-shell) .tabs .tab[data-tab='chat'] { display:none; }
   :is(.grove, .swarm-shell) .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
 }
