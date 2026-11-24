@@ -52,7 +52,7 @@ function riders(count: number) {
   return `${count.toLocaleString('en-US')} rider${count === 1 ? '' : 's'}`
 }
 
-export function Switcher(props: { current: string | undefined; items: readonly Summary[]; listing: Listing | undefined; onList: (open: boolean) => void; unread: (swarm: Summary) => boolean }) {
+export function Switcher(props: { current: string | undefined; items: readonly Summary[]; listing: Listing | undefined; unread: (swarm: Summary) => boolean }) {
   const known = useSyncExternalStore(watchRecent, readRecent, () => none)
   const client = useSyncExternalStore(never, () => true, () => false)
   const order = useRef<readonly string[]>(none)
@@ -108,9 +108,6 @@ export function Switcher(props: { current: string | undefined; items: readonly S
           )
         })}
       </ol>
-      <button aria-label="All channels" className="switch-all" data-switch-open onClick={() => props.onList(true)} type="button">
-        <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" /></svg>
-      </button>
     </nav>
   )
 }

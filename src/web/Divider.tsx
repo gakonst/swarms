@@ -1,58 +1,113 @@
 import { type KeyboardEvent, type PointerEvent, useLayoutEffect, useRef } from 'react'
+import { useMedia } from './hooks.ts'
 
-let kept = 40
+type Axis = 'x' | 'y'
 
-const least = 15
+type Kept = { x: number | undefined; y: number | undefined }
 
-const most = 50
+type Drag = { at: 'idle' } | { at: 'dragging'; axis: Axis; from: number; size: number }
 
-function host(handle: HTMLElement | null) {
-  return handle?.parentElement ?? null
+const kept = new Map<string, Kept>()
+
+const narrowest = 280
+
+const chat = 373
+
+const least = 20
+
+const most = 75
+
+const steps = { x: 32, y: 5 }
+
+function bounds(axis: Axis, host: HTMLElement) {
+  if (axis === 'y') return [least, most] as const
+  const style = getComputedStyle(host)
+  const room = host.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight)
+  return [narrowest, Math.max(narrowest, room - chat)] as const
 }
 
-export function Divider(props: { hidden: boolean }) {
-  const handle = useRef<HTMLDivElement>(null)
+function pane(host: HTMLElement) {
+  return Number.parseFloat(getComputedStyle(host).gridTemplateColumns.split(' ')[2] ?? '') || narrowest
+}
 
-  const set = (share: number) => {
-    kept = Math.round(Math.min(most, Math.max(least, share)))
-    host(handle.current)?.style.setProperty('--board', `${kept}%`)
-    handle.current?.setAttribute('aria-valuenow', String(kept))
+export function Divider(props: { label: string; name: string }) {
+  const handle = useRef<HTMLDivElement>(null)
+  const drag = useRef<Drag>({ at: 'idle' })
+  const phone = useMedia('(max-width: 719px)')
+  const axis: Axis = phone ? 'y' : 'x'
+
+  const set = (along: Axis, value: number) => {
+    const host = handle.current?.parentElement
+    if (!host) return
+    const [low, high] = bounds(along, host)
+    const next = Math.round(Math.min(high, Math.max(low, value)))
+    kept.set(props.name, { ...(kept.get(props.name) ?? { x: undefined, y: undefined }), [along]: next })
+    host.style.setProperty(along === 'x' ? '--pane' : '--split', along === 'x' ? `${next}px` : `${next}%`)
+    handle.current?.setAttribute('aria-valuenow', String(next))
+    handle.current?.setAttribute('aria-valuemin', String(low))
+    handle.current?.setAttribute('aria-valuemax', String(Math.round(high)))
   }
 
   useLayoutEffect(() => {
-    if (kept !== 40) set(kept)
-  }, [])
+    const host = handle.current?.parentElement
+    const known = kept.get(props.name)
+    if (!host || !known) return
+    if (known.x !== undefined) host.style.setProperty('--pane', `${known.x}px`)
+    if (known.y !== undefined) host.style.setProperty('--split', `${known.y}%`)
+  }, [props.name])
 
-  const drag = (event: PointerEvent<HTMLDivElement>) => {
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
-    const article = host(event.currentTarget)
-    const board = article?.querySelector<HTMLElement>(':scope > .panel-board')
-    if (!article || !board) return
-    set(((event.clientY - board.getBoundingClientRect().top) / article.clientHeight) * 100)
+  const share = (host: HTMLElement) => {
+    const next = handle.current?.nextElementSibling
+    return next instanceof HTMLElement && host.clientHeight ? (next.offsetHeight / host.clientHeight) * 100 : least
+  }
+
+  const move = (event: PointerEvent<HTMLDivElement>) => {
+    const now = drag.current
+    const host = event.currentTarget.parentElement
+    if (now.at !== 'dragging' || !host) return
+    if (now.axis === 'x') set('x', now.size + now.from - event.clientX)
+    else {
+      const box = host.getBoundingClientRect()
+      set('y', ((box.bottom - event.clientY - event.currentTarget.offsetHeight / 2) / box.height) * 100)
+    }
+  }
+
+  const stop = (event: PointerEvent<HTMLDivElement>) => {
+    drag.current = { at: 'idle' }
+    event.currentTarget.parentElement?.removeAttribute('data-dragging')
   }
 
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
-    const step = event.key === 'ArrowUp' ? -5 : event.key === 'ArrowDown' ? 5 : 0
-    if (!step) return
+    const host = event.currentTarget.parentElement
+    if (!host) return
+    const [low, high] = bounds(axis, host)
+    const grow = axis === 'x' ? { ArrowLeft: 1, ArrowRight: -1 } : { ArrowUp: 1, ArrowDown: -1 }
+    const step = grow[event.key as keyof typeof grow]
+    const current = axis === 'x' ? pane(host) : share(host)
+    const next = event.key === 'Home' ? low : event.key === 'End' ? high : step ? current + step * steps[axis] : undefined
+    if (next === undefined) return
     event.preventDefault()
-    set(kept + step)
+    set(axis, next)
   }
 
   return (
     <div
-      aria-label="Resize the board and the chat"
-      aria-orientation="horizontal"
-      aria-valuemax={most}
-      aria-valuemin={least}
-      aria-valuenow={kept}
+      aria-label={props.label}
+      aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
       className="split-handle"
-      hidden={props.hidden}
       onKeyDown={keys}
+      onLostPointerCapture={stop}
+      onPointerCancel={stop}
       onPointerDown={(event) => {
+        const host = event.currentTarget.parentElement
+        if (!host || event.button !== 0) return
         event.preventDefault()
         event.currentTarget.setPointerCapture(event.pointerId)
+        host.setAttribute('data-dragging', '')
+        drag.current = { at: 'dragging', axis, from: axis === 'x' ? event.clientX : event.clientY, size: axis === 'x' ? pane(host) : share(host) }
       }}
-      onPointerMove={drag}
+      onPointerMove={move}
+      onPointerUp={stop}
       ref={handle}
       role="separator"
       tabIndex={0}

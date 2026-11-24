@@ -89,14 +89,14 @@ export function Strip(props: { backers: readonly Backer[]; children?: ReactNode;
   )
 }
 
-export function Tabs(props: { base: string; board: string; onShow: (view: Tab) => void; unread: number; view: Tab }) {
+export function Tabs(props: { base: string; board: string; onShow: (view: Tab) => void; view: Tab }) {
+  const current = props.view === 'chat' ? 'board' : props.view
   return (
-    <nav aria-label="Channel" className="tabs" data-view={props.view}>
-      {tabs.map(([key, label]) => (
+    <nav aria-label="Artifacts" className="tabs">
+      {tabs.filter(([key]) => key !== 'chat').map(([key, label]) => (
         <a
-          aria-current={props.view === key ? 'page' : undefined}
+          aria-current={current === key ? 'page' : undefined}
           className="tab"
-          data-tab={key}
           href={href(at(props.base, key))}
           key={key}
           onClick={(event: MouseEvent<HTMLAnchorElement>) => {
@@ -106,7 +106,6 @@ export function Tabs(props: { base: string; board: string; onShow: (view: Tab) =
           }}
         >
           {key === 'board' ? props.board : label}
-          {key === 'chat' && props.unread > 0 && props.view !== 'chat' && <i className="tab-unread">{props.unread}</i>}
         </a>
       ))}
     </nav>

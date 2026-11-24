@@ -25,11 +25,7 @@
   .switch-home > .switch-name { grid-column:2; }
   .switch-home > i { font:15px var(--mono); font-style:normal; color:var(--faint); }
   .switch-home[data-lit] > i { color:var(--fg); }
-  .switch-all { flex:none; display:grid; place-items:center; width:52px; border:0; border-left:1px solid var(--line); background:none; color:var(--fg); cursor:pointer; }
-  .switch-all svg { width:18px; height:18px; }
-  .switch-all:active { background:var(--wash); }
   .hub[data-listing] .switcher { visibility:hidden; }
-  .game-header[data-shell] .header-channels { display:none; }
 }
 
 @media (max-width:899px) and (prefers-reduced-motion:no-preference) {

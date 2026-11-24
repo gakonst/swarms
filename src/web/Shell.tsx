@@ -279,7 +279,16 @@ export function useSwipe(handlers: { edge?: (() => void) | undefined; left?: (()
 }
 
 export function Shell(props: { channel: string | undefined; children: ReactNode; general: boolean; listing: boolean; onList: (open: boolean) => void; room: string | undefined; thread: string | undefined }) {
-  const swiped = useSwipe(props.listing ? { right: () => props.onList(false) } : { edge: () => props.onList(true), left: () => props.onList(true) })
+  const swiped = useSwipe(props.listing ? { left: () => props.onList(false) } : { edge: () => props.onList(true) })
+  const onList = props.onList
+  useEffect(() => {
+    if (!props.listing) return
+    const listener = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onList(false)
+    }
+    addEventListener('keydown', listener)
+    return () => removeEventListener('keydown', listener)
+  }, [props.listing, onList])
   const list = Wire.useSwarms()
   const items = channels(list.data)
   const unread = useUnread(items, props.channel)
@@ -288,12 +297,12 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
   const swarm = id ? (shown ?? list.data?.swarms.find((each) => each.id === id) ?? seeded<Detail>(id)) : undefined
   return (
     <div className="hub" data-listing={props.listing || undefined} onClick={(event) => props.listing && event.target === event.currentTarget && props.onList(false)} {...swiped}>
-      <div className="drawer">
+      <div className="drawer" id="channels">
         <Servers current={props.channel} items={items} listing={list.data} unread={unread} />
         {id ? <SwarmSide general={props.general} id={id} key={id} room={props.room} swarm={swarm} thread={props.thread} word={swarm && stood(swarm, list.data?.heads?.[id]).word} /> : <Home channel={props.channel} items={items} listing={list.data} unread={unread} />}
       </div>
       <div className="hub-main" inert={props.listing || undefined}>{props.children}</div>
-      <Switcher current={props.channel} items={items} listing={list.data} onList={props.onList} unread={unread} />
+      <Switcher current={props.channel} items={items} listing={list.data} unread={unread} />
     </div>
   )
 }

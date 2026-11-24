@@ -74,7 +74,9 @@
 .rail-foot a { display:inline-flex; align-items:center; min-width:24px; min-height:28px; color:var(--muted); text-decoration:none; }
 .rail-foot a:hover { color:var(--fg); }
 
-.header-channels { display:none; border:0; background:none; cursor:pointer; }
+.header-toggle { display:none; place-items:center; width:40px; height:40px; margin-left:-8px; padding:0; border:0; border-radius:10px; background:none; color:var(--fg); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.header-toggle svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; }
+.header-toggle:hover, .header-toggle[aria-expanded='true'] { background:var(--wash); }
 
 .thread { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--bg); }
 .thread-head { flex:none; display:flex; align-items:center; gap:10px; min-height:52px; padding:0 14px 0 20px; border-bottom:1px solid var(--line); }
@@ -111,16 +113,12 @@
 .welcome-money { font:12px var(--mono); font-feature-settings:'tnum'; }
 .welcome-faces { display:flex; justify-content:flex-end; min-width:64px; }
 
-@media (min-width:900px) {
-  .grove[data-thread] { grid-template-columns:minmax(0, 1fr) clamp(340px, 31vw, 460px); }
-  .grove > .thread { grid-column:2; grid-row:1 / -1; margin-right:calc(var(--margin) * -1); margin-left:var(--gutter); border-left:1px solid var(--line); }
-}
-
 @media (max-width:899px) {
   .hub { display:flex; flex-direction:column; border-top:0; }
   .hub-main { flex:1; }
-  .drawer { position:absolute; inset:0; z-index:30; border-right:0; transform:translateX(100%); visibility:hidden; transition:transform .28s var(--ease), visibility 0s linear .28s; }
-  .hub[data-listing] .drawer { transform:none; visibility:visible; transition:transform .28s var(--ease); }
+  .drawer { position:absolute; top:0; bottom:0; left:0; z-index:30; width:min(calc(100% - 52px), 420px); box-shadow:0 0 48px rgba(0,0,0,.18); transform:translateX(-100%); visibility:hidden; transition:transform .26s var(--ease), visibility 0s linear .26s; }
+  .hub[data-listing] .drawer { transform:none; visibility:visible; transition:transform .26s var(--ease); }
+  .hub[data-listing]::after { content:''; position:absolute; inset:0; z-index:20; background:rgba(0,0,0,.28); }
   .rail { flex:1; width:auto; }
   .servers { width:72px; padding-top:10px; }
   .server { width:48px; height:48px; }
@@ -132,8 +130,6 @@
   .rail-start { min-height:48px; }
   .rail-browse, .rail-foot a { min-height:40px; }
   .game-header[data-shell] .header-menu { display:none; }
-  .game-header[data-shell] .header-channels { position:relative; display:inline-flex; align-items:center; gap:6px; }
-  .header-channels[aria-expanded='true'] { text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:.2em; }
   .thread-head { padding:0 12px 0 6px; }
   .thread-head p { order:0; }
   .thread-close { font-size:30px; }
@@ -157,8 +153,6 @@
   .rail { position:absolute; top:0; bottom:0; left:68px; width:288px; border-right:1px solid var(--line); box-shadow:0 18px 48px rgba(0,0,0,.1); transform:translateX(-8px); opacity:0; visibility:hidden; transition:transform .2s var(--ease), opacity .2s, visibility 0s linear .2s; }
   .hub[data-listing] .rail { transform:none; opacity:1; visibility:visible; transition:transform .2s var(--ease), opacity .2s; }
   .hub[data-listing]::after { content:''; position:absolute; inset:0 0 0 356px; z-index:20; background:rgba(0,0,0,.04); }
-  .game-header[data-shell] .header-channels { display:inline-flex; align-items:center; margin-right:var(--space-3); }
-  .header-channels[aria-expanded='true'] { text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:.2em; }
 }
 
 @keyframes thread-in { from { transform:translateX(24px); opacity:.6; } }
@@ -253,72 +247,70 @@
 .general-new > i { grid-area:mark; justify-self:center; font-style:normal; }
 .general-new .general-lot-name { font:13px var(--mono); }
 
-@media (min-width:900px) {
-  :is(.grove, .swarm-shell) { display:grid; grid-template-columns:minmax(0, 1fr) clamp(320px, 28vw, 440px); grid-template-rows:auto auto minmax(0, 1fr); }
-  :is(.grove, .swarm-shell) > .strip { grid-column:1 / -1; grid-row:1; }
-  :is(.grove, .swarm-shell) > .tabs { grid-column:1; grid-row:2; }
-  :is(.grove, .swarm-shell) > .panel { grid-column:1; grid-row:3; }
-  :is(.grove, .swarm-shell) > .panel-chat { grid-column:2; grid-row:2 / -1; margin:0 calc(var(--margin) * -1) 0 var(--gutter); padding:0 var(--margin) 14px 18px; border-left:1px solid var(--line); }
-  :is(.grove, .swarm-shell) .tabs .tab[data-tab='chat'] { display:none; }
-  :is(.grove, .swarm-shell) .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
-  .grove[data-thread] > .strip { grid-column:1; }
-  .general-body { display:grid; grid-template-columns:minmax(0, 1fr) clamp(280px, 24vw, 360px); grid-template-rows:minmax(0, 1fr); }
-  .general-board { order:2; margin:0 calc(var(--margin) * -1) 0 var(--gutter); padding:4px 14px 14px; border-left:1px solid var(--line); }
-  .general-body > .general-chat { order:1; }
+.pane { display:flex; flex-direction:column; min-width:0; min-height:0; }
+.split-handle { display:none; }
+.grove[data-thread] > .panel-chat { display:none; }
+[data-dragging] { cursor:col-resize; user-select:none; }
+
+@media (max-width:1279px) {
+  .game-header[data-shell] .header-toggle { display:grid; grid-column:1; grid-row:1; }
 }
 
-@media (max-width:899px) {
-  :is(.grove, .swarm-shell) > .panel-board { order:1; }
-  :is(.grove, .swarm-shell) > .panel-chat { order:2; }
-  :is(.grove, .swarm-shell)[data-tab='chat'] > .panel-board { flex:0 0 40%; border-bottom:1px solid var(--line); }
-  :is(.grove, .swarm-shell)[data-tab='chat'] > .panel-chat { flex:1 1 0; }
-  :is(.grove, .swarm-shell)[data-tab='board'] > .panel-board { flex:1 1 0; }
-  :is(.grove, .swarm-shell)[data-tab='board'] > .panel-chat { flex:0 0 38%; border-top:1px solid var(--line); }
-  :is(.grove, .swarm-shell):not([data-tab='chat']):not([data-tab='board']) > .panel-chat { display:none; }
-  .general-board { flex:none; padding:0 0 8px; border-bottom:1px solid var(--line); }
+@media (min-width:800px) and (max-width:1279px) {
+  .game-header[data-shell] { grid-template-columns:auto minmax(0, 1fr) auto minmax(0, 1fr); }
+  .game-header[data-shell] :is(.header-nav, .header-menu) { grid-column:2; }
+  .game-header[data-shell] .brand { grid-column:3; }
+  .game-header[data-shell] .header-end { grid-column:4; }
+}
+
+@media (max-width:799px) {
+  .game-header[data-shell] { grid-template-columns:auto minmax(0, 1fr) auto; gap:6px; }
+  .game-header[data-shell] .brand { grid-column:2; }
+  .game-header[data-shell] .header-end { grid-column:3; }
+}
+
+@media (min-width:720px) {
+  :is(.grove, .swarm-shell) { display:grid; grid-template-columns:minmax(0, 1fr) auto min(var(--pane, clamp(340px, 34vw, 600px)), max(280px, calc(100% - 373px))); grid-template-rows:auto minmax(0, 1fr); }
+  :is(.grove, .swarm-shell) > .strip { grid-column:1 / -1; grid-row:1; }
+  :is(.grove, .swarm-shell) > :is(.panel-chat, .thread) { grid-column:1; grid-row:2; min-width:0; }
+  :is(.grove, .swarm-shell) > .split-handle { grid-column:2; grid-row:2; }
+  :is(.grove, .swarm-shell) > .pane { grid-column:3; grid-row:2; }
+  .general-body { display:grid; grid-template-columns:minmax(0, 1fr) auto min(var(--pane, clamp(280px, 24vw, 380px)), max(280px, calc(100% - 373px))); grid-template-rows:minmax(0, 1fr); }
+  .general-body > .general-chat { grid-column:1; min-width:0; }
+  .general-body > .split-handle { grid-column:2; }
+  .general-board { grid-column:3; padding:4px 12px 14px 6px; }
+  .general-board .rail-label { padding:14px 6px 6px; }
+  .split-handle { position:relative; display:grid; place-items:center; width:13px; cursor:col-resize; touch-action:none; }
+  .split-handle::before { content:''; position:absolute; top:0; bottom:0; left:6px; width:1px; background:var(--line); }
+  .split-handle > i { position:relative; width:5px; height:40px; border-radius:3px; background:var(--muted); opacity:0; transition:opacity .15s; }
+  .split-handle:hover > i, .split-handle:focus-visible > i, [data-dragging] > .split-handle > i { opacity:1; }
+  .split-handle:hover::before, [data-dragging] > .split-handle::before { background:var(--edge); }
+  .split-handle:focus-visible { outline:none; }
+}
+
+@media (min-width:900px) {
+  :is(.grove, .swarm-shell) > :is(.panel-chat, .thread) { padding-right:10px; }
+  :is(.grove, .swarm-shell) > .pane { margin-right:calc(var(--margin) * -1); padding:0 var(--margin) 0 12px; }
+  .general-board { margin-right:calc(var(--margin) * -1); padding:4px var(--margin) 14px 8px; }
+}
+
+@media (max-width:719px) {
+  :is(.grove, .swarm-shell) > :is(.panel-chat, .thread) { order:1; flex:1 1 0; min-height:0; }
+  :is(.grove, .swarm-shell) > .split-handle { order:2; display:grid; flex:none; place-items:center; height:22px; border-top:1px solid var(--line); cursor:row-resize; touch-action:none; }
+  :is(.grove, .swarm-shell) > .pane { order:3; flex:0 0 var(--split, 46%); }
+  [data-dragging] { cursor:row-resize; }
+  .split-handle > i { width:36px; height:4px; border-radius:2px; background:var(--rule); }
+  .split-handle:hover > i, .split-handle:focus-visible > i, [data-dragging] > .split-handle > i { background:var(--muted); }
+  .split-handle:focus-visible { outline:none; }
+  .grove > .thread { animation:sheet-in .24s var(--ease); }
+  .grove[data-thread] > .strip, :is(.grove, .swarm-shell)[data-room] > .strip { display:none; }
+  .general-board { order:-1; flex:none; padding:0 0 8px; border-bottom:1px solid var(--line); }
   .general-board .rail-label { padding:8px var(--margin) 4px; }
   .general-list { display:flex; gap:8px; padding:0 var(--margin); overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
   .general-list > li { flex:none; }
   .general-lot { width:min(72vw, 260px); min-height:52px; border:1px solid var(--line); }
   .general-new { width:auto; }
 }
-
-@media (min-width:720px) and (max-width:899px) {
-  :is(.grove, .swarm-shell) { display:grid; grid-template-columns:minmax(0, 1fr) clamp(296px, 40vw, 340px); grid-template-rows:auto auto minmax(0, 1fr); }
-  :is(.grove, .swarm-shell) > .strip { grid-column:1 / -1; grid-row:1; }
-  :is(.grove, .swarm-shell) > .tabs { grid-column:1; grid-row:2; }
-  :is(.grove, .swarm-shell) > .panel { grid-column:1; grid-row:3; border:0; }
-  :is(.grove, .swarm-shell) > .panel-chat { grid-column:2; grid-row:2 / -1; border:0; border-left:1px solid var(--line); }
-  :is(.grove, .swarm-shell):not([data-tab='chat']):not([data-tab='board']) > :is(.tabs, .panel) { grid-column:1 / -1; }
-  :is(.grove, .swarm-shell) .tabs .tab[data-tab='chat'] { display:none; }
-  :is(.grove, .swarm-shell) .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
-}
-
-.grove[data-thread] > .panel-chat { display:none; }
-
-@media (min-width:720px) and (max-width:899px) {
-  .grove[data-thread] > .strip { grid-column:1; }
-  .grove > .thread { grid-column:2; grid-row:1 / -1; border-left:1px solid var(--line); }
-}
-
-.split-handle { display:none; }
-
-@media (max-width:719px) {
-  :is(.grove, .swarm-shell) > .split-handle:not([hidden]) { order:2; display:grid; flex:none; place-items:center; height:24px; border-top:1px solid var(--line); cursor:row-resize; touch-action:none; }
-  .split-handle > i { width:36px; height:4px; border-radius:2px; background:var(--rule); }
-  .split-handle:hover > i, .split-handle:focus-visible > i { background:var(--muted); }
-  .split-handle:focus-visible { outline:none; }
-  :is(.grove, .swarm-shell) > .panel-chat { order:3; }
-  .grove > .thread { order:3; flex:1 1 0; animation:sheet-in .24s var(--ease); }
-  .grove[data-thread] > :is(.strip, .tabs), :is(.grove, .swarm-shell)[data-room] > .strip { display:none; }
-  .grove[data-thread] > .split-handle:not([hidden]) { border:1px solid var(--line); border-bottom:0; border-radius:14px 14px 0 0; box-shadow:0 -8px 24px rgba(0,0,0,.08); }
-  .grove[data-thread] > .panel-board { border-bottom:0; }
-  :is(.grove, .swarm-shell):is([data-tab='chat'], [data-tab='board']) > .panel-board { flex:0 0 var(--board, 40%); border-top:0; border-bottom:0; }
-  :is(.grove, .swarm-shell):is([data-tab='chat'], [data-tab='board']) > .panel-chat { flex:1 1 0; border-top:0; }
-  :is(.grove, .swarm-shell) .tabs .tab[data-tab='chat'] { display:none; }
-  :is(.grove, .swarm-shell) .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
-}
-
 
 @media (max-width:899px) {
   .channel-head { grid-template-columns:minmax(0, 1fr) auto auto; grid-template-areas:'title title title' 'stats stats stats' 'topic add ride'; align-items:center; gap:4px 8px; }
@@ -330,16 +322,6 @@
   .channel-acts .channel-add { grid-area:add; }
   .channel-acts .btn { flex:none; height:32px; padding:0 12px; }
   .channel-head:not(:has(.channel-add)) { grid-template-areas:'title title title' 'stats stats stats' 'topic topic ride'; }
-}
-
-@media (min-width:720px) and (max-width:899px) {
-  .general-body { display:grid; grid-template-columns:minmax(0, 1fr) clamp(232px, 32vw, 280px); grid-template-rows:minmax(0, 1fr); }
-  .general-body > .general-chat { order:1; min-width:0; }
-  .general-board { order:2; flex:initial; padding:4px 12px 14px; border-bottom:0; border-left:1px solid var(--line); }
-  .general-board .rail-label { padding:14px 6px 6px; }
-  .general-list { display:grid; gap:1px; padding:0; overflow-x:hidden; overflow-y:auto; }
-  .general-lot { width:auto; min-height:52px; border:0; }
-  .general-new { margin-top:6px; border:1px dashed var(--rule); }
 }
 
 @media (min-width:800px) and (max-width:899px) {

@@ -31,7 +31,6 @@
 .tab { display:inline-flex; align-items:center; gap:6px; min-height:42px; margin-bottom:-1px; border-bottom:2px solid transparent; font-size:15px; color:var(--muted); text-decoration:none; white-space:nowrap; }
 .tab:hover { color:var(--fg); }
 .tab[aria-current='page'] { border-bottom-color:var(--fg); color:var(--fg); }
-.tab-unread { display:inline-grid; place-items:center; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--high); color:var(--bg); font:10px var(--mono); font-style:normal; }
 
 .panel { flex:1; min-height:0; }
 .panel[hidden], .grove-body[hidden] { display:none; }

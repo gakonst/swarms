@@ -139,7 +139,6 @@ export const Room = memo(function Room(props: {
   onBack: (note: string) => void
   onMessages?: (messages: readonly Said[], me: Me | null, members: readonly Member[], online: readonly string[], watching: number) => void
   onResults?: () => void
-  onUnread: (count: number) => void
   steer?: false
   swarm: Detail
   visible: boolean
@@ -247,15 +246,6 @@ export const Room = memo(function Room(props: {
   }, [messages, me, members, online, watching, onMessages])
 
   const newest = messages.at(-1)?.id
-  const seen = useRef<number | undefined>(undefined)
-  const onUnread = props.onUnread
-  const myself = me?.address
-  useEffect(() => {
-    if (newest === undefined) return
-    if (seen.current === undefined || props.visible) seen.current = newest
-    const after = seen.current
-    onUnread(props.visible ? 0 : messages.filter((item) => item.id > after && item.author !== null && item.author !== myself).length)
-  }, [messages, newest, props.visible, onUnread, myself])
 
   useLayoutEffect(() => {
     const element = list.current

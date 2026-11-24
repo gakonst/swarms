@@ -179,6 +179,11 @@ function Header(props: { config: Config | undefined; free: boolean; listing: boo
   )
   return (
     <header className="game-header" data-shell={props.listing !== undefined || undefined}>
+      {props.listing !== undefined && (
+        <button aria-controls="channels" aria-expanded={props.listing} aria-label={props.listing ? 'Close channels' : 'Open channels'} className="header-toggle" onClick={() => props.onList(!props.listing)} type="button">
+          <svg aria-hidden="true" viewBox="0 0 20 20">{props.listing ? <path d="M5 5l10 10M15 5L5 15" /> : <path d="M3 5.5h14M3 10h14M3 14.5h14" />}</svg>
+        </button>
+      )}
       <nav className="header-nav">{links}</nav>
       <details className="header-menu" key={props.path}>
         <summary className="game-nav">Menu</summary>
@@ -198,7 +203,6 @@ function Header(props: { config: Config | undefined; free: boolean; listing: boo
       </p>
       <div className="header-end">
         <a className="game-nav header-essay" href={Site.essay}>Swarm riding, by Paradigm</a>
-        {props.listing !== undefined && <button aria-expanded={props.listing} className="game-nav header-channels" onClick={() => props.onList(!props.listing)} type="button">{props.listing ? 'Close' : 'Channels'}</button>}
         {props.swarm && <ShareSwarm id={props.swarm} key={props.swarm} />}
         <WalletButton config={props.config} />
       </div>

@@ -15,7 +15,7 @@ import { line, pill } from './Card.tsx'
 import { Code, useWarmCode } from './Repo.tsx'
 import { asked } from './Contribute.tsx'
 import { Divider } from './Divider.tsx'
-import { useMedia, useNow, usePoll, useWallet } from './hooks.ts'
+import { useNow, usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Overlay } from './Overlay.tsx'
 import { Host } from './OwnAi.tsx'
@@ -59,7 +59,6 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   const [tree, rebranch] = usePoll(() => Api.branches(id), wired === 'down' && detail.data?.status === 'running' ? 30_000 : null, `branches:${id}`)
   const [chat, rechat] = usePoll(() => Api.room(id), null, `room:${id}`)
   const now = useNow(30_000)
-  const phone = useMedia('(max-width: 899px)')
   const wishes = useWishes(shelf.data?.artifacts)
   const surface = useSurface(shelf.data?.artifacts, id)
   const opened = useQuery('r')
@@ -70,7 +69,6 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([view]))
   const [stir, setStir] = useState(0)
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<RoomState>(`room:${id}`)?.members ?? [])
-  const [unread, setUnread] = useState(0)
   const wallet = useWallet()
   const roster = useRoster(id, detail.data?.steering ?? 'open')
   const steers = steerer(roster?.steering ?? detail.data?.steering ?? 'open', roster, wallet.session?.address ?? wallet.address)
@@ -144,14 +142,13 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
 
 
   return (
-    <article className="swarm-shell" data-room={roomed ? '' : undefined} data-tab={view}>
+    <article className="swarm-shell" data-room={roomed ? '' : undefined}>
       <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span><b>{dollars(swarm.remaining)}</b> left</span>
         <span className="strip-mood" data-mood={stood.mood} title={line(stood.word)}><i />{pill(stood.word)}</span>
         {swarm.ai && <span className="strip-ai">on @{swarm.ai.handle}'s own AI</span>}
       </Strip>
-      <Tabs base={base} board="Board" onShow={show} unread={unread} view={view} />
       {branch && (
         <div className="panel panel-chat">
         <BranchChannel
@@ -178,15 +175,16 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           onBack={steer}
           onMessages={heard}
           onResults={() => show('results')}
-          onUnread={setUnread}
           swarm={swarm}
-          visible={!roomed && (view === 'chat' || view === 'board' || !phone)}
+          visible={!roomed}
         />
       </div>
+      <Divider label="Resize the chat and the artifacts" name="swarm" />
+      <section aria-label="Artifacts" className="pane">
+      <Tabs base={base} board="Board" onShow={show} view={view} />
       <div className="panel panel-page panel-board" hidden={view !== 'board' && view !== 'chat'}>
         <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'board' || view === 'chat'} />
       </div>
-      <Divider hidden={view !== 'board' && view !== 'chat'} />
       {seen.has('results') && (
         <div className="panel panel-page" hidden={view !== 'results'}>
           <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show('chat')} onOpen={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steers ? steer : undefined} swarm={swarm} updates={news.data?.updates} wishes={wishes} />
@@ -199,6 +197,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           {archived ? <Archived swarm={swarm} /> : <Reins onNamed={named} swarm={swarm} />}
         </div>
       )}
+      </section>
       {riding && !archived && (
         <Overlay anchor={riding.anchor} className="ride ride-box" label="Ride it" onClose={() => setRiding(undefined)}>
           <Box

@@ -83,7 +83,6 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const scrolled = useRef<string | undefined>(undefined)
   const [more, setMore] = useState<Readonly<Record<string, number>>>({})
   const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([view]))
-  const [unread, setUnread] = useState(0)
   const [riding, setRiding] = useState<{ anchor?: HTMLElement | undefined; nid: string } | undefined>()
   const [composing, setComposing] = useState<string | undefined>()
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set())
@@ -273,16 +272,18 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const repo = proofs.data?.proofs[0]?.check.repo
   const count = root ? root.children.length : 0
   return (
-    <article className="grove" data-room={held ? '' : undefined} data-tab={view} data-thread={thread || undefined} data-wire={wired}>
+    <article className="grove" data-room={held ? '' : undefined} data-thread={thread || undefined} data-wire={wired}>
       <Strip backers={top} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{head.proven.toLocaleString('en-US')}</b> proven</span>
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>
         <span className="strip-mood" data-mood={stood.mood} title={Status.line(stood.word)}><i />{Status.pill(stood.word)}</span>
       </Strip>
-      <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} unread={unread} view={view} />
       <div className="panel panel-chat" hidden={!!held}>
-        <Room config={props.config} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} onUnread={setUnread} steer={false} swarm={swarm} visible={!held && (view === 'chat' || view === 'board' || !phone)} />
+        <Room config={props.config} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} steer={false} swarm={swarm} visible={!held && !thread} />
       </div>
+      <Divider label="Resize the chat and the artifacts" name="swarm" />
+      <section aria-label="Artifacts" className="pane">
+      <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} view={view} />
       {(seen.has('board') || seen.has('chat')) && (
         <div className="grove-body panel panel-board" hidden={view !== 'board' && view !== 'chat'}>
           <section aria-label="Threads" className="grove-tree">
@@ -313,7 +314,6 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
           </section>
         </div>
       )}
-      <Divider hidden={view !== 'board' && view !== 'chat'} />
       {seen.has('results') && (
         <div className="panel panel-page" hidden={view !== 'results'}>
           <Headline burn={burn.data?.burn} headline={head} id={id} last={last} now={now} />
@@ -355,6 +355,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
           <Explainer spec={root?.spec} swarm={swarm} />
         </div>
       )}
+      </section>
       {held && nodes[held] && (
         <div className="panel panel-chat">
         <TreeChannel
