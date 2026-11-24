@@ -17,7 +17,7 @@ export function Now(props: {
   onChat: () => void
   onSteer: (note: string) => void
   stir: number
-  surface: readonly Kinds.Node[]
+  surface: readonly Kinds.Node[] | undefined
   swarm: Detail
   updates: readonly Update[] | undefined
   visible: boolean
@@ -26,11 +26,11 @@ export function Now(props: {
   const now = useNow(60_000)
   const [traced, setTraced] = useState(false)
   const told = props.updates?.filter((update) => update.text.trim() && !Chatter.idle(update.text)).at(-1) ?? (swarm.answer?.text.trim() && !Chatter.idle(swarm.answer.text) ? swarm.answer : undefined)
-  const brief = Brief.brief({ status: Kinds.status(props.surface), surfaced: props.artifacts?.find(Kinds.is), update: told })
-  const nodes = Kinds.shown(props.surface)
+  const brief = props.surface && Brief.brief({ status: Kinds.status(props.surface), surfaced: props.artifacts?.find(Kinds.is), update: told })
+  const nodes = props.surface ? Kinds.shown(props.surface) : []
   const stood = Status.standing(swarm)
   const running = stood.word === 'Working' || stood.word === 'Stuck'
-  const settled = props.artifacts !== undefined && props.updates !== undefined
+  const settled = props.artifacts !== undefined && props.updates !== undefined && props.surface !== undefined
 
   return (
     <div className="now">

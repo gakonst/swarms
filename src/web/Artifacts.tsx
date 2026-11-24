@@ -41,9 +41,9 @@ function rows(text: string, separator: string) {
 
 function useJson<value>(artifact: Artifact | undefined, parse: (text: string) => value, empty: value, seed?: string) {
   const url = artifact ? source(artifact) : undefined
-  const [read, setRead] = useState<value>(() => {
+  const [read, setRead] = useState<{ from: string | true | undefined; value: value }>(() => {
     const text = seed === undefined ? undefined : seeded<string>(seed)
-    return typeof text === 'string' ? parse(text) : empty
+    return typeof text === 'string' ? { from: true, value: parse(text) } : { from: undefined, value: empty }
   })
 
   useEffect(() => {
@@ -52,21 +52,22 @@ function useJson<value>(artifact: Artifact | undefined, parse: (text: string) =>
     fetch(url)
       .then((response) => (response.ok ? response.text() : Promise.reject(new Error(String(response.status)))))
       .then(
-        (text) => alive && setRead(parse(text)),
-        () => undefined,
+        (text) => alive && setRead({ from: url, value: parse(text) }),
+        () => alive && setRead((current) => ({ from: url, value: current.value })),
       )
     return () => {
       alive = false
     }
   }, [url])
 
-  return artifact ? read : empty
+  if (!artifact) return empty
+  return read.from === true || read.from === url ? read.value : undefined
 }
 
 const none: readonly never[] = []
 
 export function useWishes(list: readonly Artifact[] | undefined) {
-  return Wishlist.open(useJson<readonly Wishlist.Wish[]>(list?.find(Wishlist.is), Wishlist.parse, none))
+  return Wishlist.open(useJson<readonly Wishlist.Wish[]>(list?.find(Wishlist.is), Wishlist.parse, none) ?? none)
 }
 
 export function useSurface(list: readonly Artifact[] | undefined, id: string) {
