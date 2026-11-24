@@ -1,9 +1,11 @@
+import * as Maths from './Math.ts'
+
 type Token =
   | { at: number; kind: 'text'; text: string }
   | { at: number; close: boolean; kind: 'mark'; open: boolean; text: string }
   | { at: number; body: string; kind: 'code'; tick: string }
   | { at: number; head: string; inner: string; kind: 'link'; tail: string }
-  | { at: number; kind: 'atom'; size: number; text: string }
+  | { at: number; kind: 'atom'; size: number; text: string; tex?: string }
 
 const space = /\s/
 
@@ -41,6 +43,13 @@ function tokens(text: string) {
   }
   while (at < text.length) {
     const char = text[at]!
+    const math = char === '$' || char === '\\' ? Maths.span(text, at) : undefined
+    if (math) {
+      flush(at)
+      out.push({ at, kind: 'atom', size: math.body.length, tex: math.body, text: text.slice(at, math.end) })
+      start = at = math.end
+      continue
+    }
     if (char === '\\' && at + 1 < text.length && punct.test(text[at + 1]!)) {
       flush(at)
       out.push({ at, kind: 'atom', size: 1, text: text.slice(at, at + 2) })
@@ -131,7 +140,7 @@ export function line(text: string) {
   let fenced = ''
   let out = ''
   let gap = true
-  for (const row of text.replace(/\r\n?/g, '\n').split('\n')) {
+  for (const row of Maths.normalize(text.replace(/\r\n?/g, '\n'), true).split('\n')) {
     const fencing = fence.exec(row)
     if (fencing) {
       if (!fenced) fenced = fencing[1]!.charAt(0)
@@ -220,6 +229,6 @@ export function sentences(text: string) {
 
 export function plain(text: string): string {
   return tokens(text)
-    .map((token) => (token.kind === 'mark' ? '' : token.kind === 'text' ? token.text : token.kind === 'code' ? token.body : token.kind === 'link' ? plain(token.inner) : token.text.replace(/^\\|^<|>$/g, '')))
+    .map((token) => (token.kind === 'mark' ? '' : token.kind === 'text' ? token.text : token.kind === 'code' ? token.body : token.kind === 'link' ? plain(token.inner) : (token.tex ?? token.text.replace(/^\\|^<|>$/g, ''))))
     .join('')
 }

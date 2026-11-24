@@ -1,6 +1,7 @@
 import { createHtmlRenderer } from '@pierre/words/html'
 import { type CodeHighlighterPlugin, type Components, defaultUrlTransform, type PluginConfig, Markdown as Words } from '@pierre/words/react'
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { normalize } from '../shared/Math.ts'
 
 let plugins: PluginConfig | undefined
 
@@ -16,11 +17,11 @@ const controls = { code: { copy: true, download: false } }
 
 const marks = { mark: ['class', 'data-me', 'data-swarm'] }
 
-const spans = ['strong', 'em', 'code', 'del', 'mark']
+const spans = ['strong', 'em', 'code', 'del', 'mark', 'svg', 'g', 'text']
 
-const line = createHtmlRenderer({ allowedElements: spans, controls: false, unwrapDisallowed: true })
+const line = createHtmlRenderer({ allowedElements: spans, controls: false, math: true, unwrapDisallowed: true })
 
-const linked = createHtmlRenderer({ allowedElements: [...spans, 'a'], components, controls: false, unwrapDisallowed: true })
+const linked = createHtmlRenderer({ allowedElements: [...spans, 'a'], components, controls: false, math: true, unwrapDisallowed: true })
 
 export function highlighted(plugin: CodeHighlighterPlugin) {
   plugins = { code: plugin }
@@ -63,6 +64,7 @@ export function Markdown(props: { base?: string; compact?: boolean; marks?: bool
   const loaded = useSyncExternalStore(subscribe, current, current)
   const fenced = fence.test(props.text)
   const transform = useMemo(() => resolve(props.base), [props.base])
+  const body = useMemo(() => normalize(props.text, false), [props.text])
   useEffect(() => {
     if (fenced && !loaded) void highlight()
   }, [fenced, loaded])
@@ -81,12 +83,12 @@ export function Markdown(props: { base?: string; compact?: boolean; marks?: bool
       mode={props.streaming === undefined ? 'static' : 'streaming'}
       urlTransform={transform}
     >
-      {props.text}
+      {body}
     </Words>
   )
 }
 
 export function Inline(props: { className?: string; links?: boolean; text: string }) {
-  const html = useMemo(() => (props.links ? linked : line).render(props.text, false).html.trim(), [props.links, props.text])
+  const html = useMemo(() => (props.links ? linked : line).render(normalize(props.text, true), false).html.trim(), [props.links, props.text])
   return <span className={props.className ? `inline ${props.className}` : 'inline'} dangerouslySetInnerHTML={{ __html: html }} />
 }

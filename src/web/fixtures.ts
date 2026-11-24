@@ -764,7 +764,7 @@ const wishes = JSON.stringify([
 const surface = JSON.stringify({
   nodes: [
     { id: 'status', kind: 'status', items: [
-      'Eight of twelve models are scored on all 350 tasks; the best solves 41%.',
+      'Eight of twelve models are scored on all 350 tasks, so $|S| = 2^e \\cdot 3^{(n-e)/2}$ and \\(\\nu = \\sum_j \\lfloor m_j/2 \\rfloor\\); bare |S| = 2^e·3^{(n−e)/2}, ν = Σ⌊m_j/2⌋ stays as written.',
       'Now running the frontier models through the batch API, two helpers on it.',
       'Next: the four 70B models, which need an H100 nobody has funded yet.',
     ] },
@@ -1912,7 +1912,7 @@ function woods(listener: (event: Chatter | { type: 'open' | 'closed' }) => void)
 const hallSaid: Said[] = [
   { artifact: null, at: at(190), author: people[2], id: 1, mentions: [], steer: null, text: 'Rode Does P = NP? with $5. Every green dot on its board is a proof Lean checked.' },
   { artifact: null, at: at(150), author: people[4], id: 2, mentions: [], steer: null, text: 'Is anyone starting a channel on attention kernels for small GPUs? I would ride it.' },
-  { artifact: null, at: at(62), author: people[1], id: 3, mentions: [], steer: null, text: 'The JSON channel parsed its terabyte for under a dollar. Its Results tab has the numbers.' },
+  { artifact: null, at: at(62), author: people[1], id: 3, mentions: [], steer: null, text: 'The JSON channel parsed its terabyte for under a dollar, about $c = k \\cdot n^{2}$ per task, \\(\\nu \\le 3\\). It cost $5 and $10.\n\n\\[\\frac{a}{b} = \\sqrt{c^2 + d_i}\\]' },
   { artifact: null, at: at(18), author: people[2], id: 4, mentions: [], steer: null, text: '@tensorbox start it, I put in $10 the minute it exists.' },
 ]
 
