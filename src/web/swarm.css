@@ -124,6 +124,8 @@ button.crew-bud:hover, .crew-row[data-open] .crew-bud { background:var(--wash); 
 
 @media (min-width:900px) and (max-width:1279px) {
   .strip-stats .strip-big b { font-size:26px; }
+  .strip-title { white-space:normal; }
+  .strip-title > .inline { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; text-wrap:balance; }
   .strip-line { flex-wrap:nowrap; }
   .backers { flex:none; flex-wrap:nowrap; gap:0 12px; }
   .backer::before, .backer-name { display:none; }

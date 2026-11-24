@@ -285,3 +285,13 @@
   .general-new { width:auto; }
 }
 
+@media (min-width:720px) and (max-width:899px) {
+  :is(.grove, .swarm-shell):not([data-room]) { display:grid; grid-template-columns:minmax(0, 1fr) clamp(296px, 40vw, 340px); grid-template-rows:auto auto minmax(0, 1fr); }
+  :is(.grove, .swarm-shell):not([data-room]) > .strip { grid-column:1 / -1; grid-row:1; }
+  :is(.grove, .swarm-shell):not([data-room]) > .tabs { grid-column:1; grid-row:2; }
+  :is(.grove, .swarm-shell):not([data-room]) > .panel { grid-column:1; grid-row:3; border:0; }
+  :is(.grove, .swarm-shell):not([data-room]) > .panel-chat { grid-column:2; grid-row:2 / -1; border:0; border-left:1px solid var(--line); }
+  :is(.grove, .swarm-shell):not([data-room]):not([data-tab='chat']):not([data-tab='board']) > :is(.tabs, .panel) { grid-column:1 / -1; }
+  :is(.grove, .swarm-shell) .tabs .tab[data-tab='chat'] { display:none; }
+  :is(.grove, .swarm-shell) .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
+}
