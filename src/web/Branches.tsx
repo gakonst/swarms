@@ -1,10 +1,11 @@
-import type { CSSProperties, MouseEvent } from 'react'
+import { type CSSProperties, type MouseEvent, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
 import { Compose, Pending } from './Compose.tsx'
 import { ago, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { Inline } from './Markdown.tsx'
+import { Overlay } from './Overlay.tsx'
 import { Avatar } from './Room.tsx'
 import { why } from './Node.tsx'
 import * as Pay from './pay.ts'
@@ -121,6 +122,7 @@ function Bud(props: Props & { depth: number; node: Tree.Node }) {
 
 function Limb(props: Props & { depth: number; id: string; index: number }) {
   const ghosts = Pay.useGhosts(props.swarm, props.id)
+  const [spot, setSpot] = useState<HTMLAnchorElement | null>(null)
   const node = props.nodes[props.id]
   if (!node) return null
   const open = node.form === 'goal' || props.open.has(node.id) || props.filter !== 'all'
@@ -160,13 +162,14 @@ function Limb(props: Props & { depth: number; id: string; index: number }) {
               <Pending act={ghost.act} owed={ghost.owed} />
             </li>
           ))}
-          {composing ? (
-            <li className="limb limb-compose">
-              <Compose config={props.config} onClose={() => props.onCompose(undefined)} onSent={() => props.onCompose(undefined)} parent={node} swarm={props.swarm} />
-            </li>
-          ) : proposing && (
+          {proposing && (
             <li className="limb limb-propose">
-              <a href={href(props.propose(node.id))} onClick={(event) => {
+              {composing && (
+                <Overlay anchor={spot} className="compose-card" label="Add a sub-item" onClose={() => props.onCompose(undefined)}>
+                  <Compose config={props.config} onSent={() => props.onCompose(undefined)} parent={node} swarm={props.swarm} />
+                </Overlay>
+              )}
+              <a aria-expanded={composing} aria-haspopup="dialog" href={href(props.propose(node.id))} ref={setSpot} onClick={(event) => {
                 if (!plain(event)) return
                 event.preventDefault()
                 props.onCompose(node.id)
@@ -181,7 +184,7 @@ function Limb(props: Props & { depth: number; id: string; index: number }) {
   )
 }
 
-export function Peek(props: { node: Tree.Node; nodes: Readonly<Record<string, Tree.Node>>; onRide: (node: Tree.Node) => void; to: string }) {
+export function Peek(props: { node: Tree.Node; nodes: Readonly<Record<string, Tree.Node>>; onRide: (node: Tree.Node, anchor: HTMLElement) => void; to: string }) {
   const node = props.node
   const rides = !Grove.closed(node) && node.form !== 'triage'
   return (
@@ -191,7 +194,7 @@ export function Peek(props: { node: Tree.Node; nodes: Readonly<Record<string, Tr
         <span className="peek-why">{why(node, props.nodes)}</span>
         <span className="peek-meta"><span className="bud-money">{cash(node.money.subtree.pledged)}</span><Faces funders={node.funders} riders={node.riders} /><span className="peek-go">Read more ›</span></span>
       </Link>
-      {rides && <button className="btn btn-high peek-ride" onClick={() => props.onRide(node)} type="button">Ride it</button>}
+      {rides && <button className="btn btn-high peek-ride" onClick={(event) => props.onRide(node, event.currentTarget)} type="button">Ride it</button>}
     </div>
   )
 }

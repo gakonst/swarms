@@ -82,6 +82,10 @@
 .node-form summary::before { content:'+'; width:16px; font-family:var(--mono); color:var(--muted); }
 .node-form[open] summary::before { content:'–'; }
 .node-form .fuel { margin-top:4px; }
+.node-add { display:flex; align-items:center; min-height:32px; padding:0; border:0; background:none; font:14px var(--serif); color:var(--fg); text-align:left; cursor:pointer; }
+.node-add::before { content:'+'; width:16px; font-family:var(--mono); color:var(--muted); }
+.node-add span { margin-left:8px; font:12px var(--mono); color:var(--muted); }
+.node-add:hover { text-decoration:underline; }
 .node-field { display:grid; gap:4px; }
 .node-field span { font:11px var(--mono); color:var(--muted); }
 .node-field input, .node-field textarea, .node-field select { width:100%; min-height:36px; padding:7px 9px; border:1px solid var(--rule); border-radius:var(--radius-small); background:var(--bg); font:16px var(--serif); color:var(--fg); }
@@ -89,8 +93,6 @@
 .node-field .mono { font-family:var(--mono); font-size:16px; }
 .node-soon { padding-top:12px; border-top:1px solid var(--line); font:12px var(--mono); color:var(--faint); }
 
-.sheet-card.ride { display:grid; gap:10px; max-width:480px; margin:0 auto; padding:20px 18px calc(18px + env(safe-area-inset-bottom)); }
-.ride h3 { font-size:var(--size-headline); font-weight:400; letter-spacing:-.02em; }
 .ride-what { font-size:13px; line-height:1.4; color:var(--muted); }
 
 
@@ -218,7 +220,6 @@
   .limbs > .limb { padding-left:18px; }
   .limbs > .limb::before { width:16px; }
   .since { right:var(--margin); left:var(--margin); width:auto; }
-  .sheet-card.ride { max-width:none; }
 }
 
 @media (prefers-reduced-motion:reduce) { .mark, .bud, .headline-stats [data-live] b::after { animation:none; } }
@@ -231,8 +232,7 @@
 .node-ride { display:grid; gap:4px; }
 .node-pending { display:grid; gap:8px; }
 .bud-coming { margin-left:6px; padding:0 4px; border-radius:4px; background:var(--green-wash); font-style:normal; color:var(--fg); }
-.limbs > .limb-compose::before { height:20px; border-bottom-style:dotted; }
-.compose { display:grid; gap:6px; margin:2px 0 8px; padding:10px 12px 8px; border:1px solid var(--rule); border-radius:var(--radius-small); background:var(--bg); }
+.compose { display:grid; gap:6px; }
 .compose-field { display:block; }
 .compose-title, .compose-detail { display:block; width:100%; padding:6px 0; border:0; border-bottom:1px solid var(--line); border-radius:0; background:none; font:16px/1.35 var(--serif); color:var(--fg); outline:none; }
 .compose-title { min-height:40px; }
@@ -241,8 +241,6 @@
 .compose-title::placeholder, .compose-detail::placeholder { color:var(--faint); }
 .compose .fuel { margin-top:6px; }
 .compose .node-field { margin-top:4px; }
-.compose-close { justify-self:center; min-height:32px; padding:0 12px; border:0; background:none; font:12px var(--mono); color:var(--muted); cursor:pointer; }
-.compose-close:hover { color:var(--fg); }
 @keyframes ghost-breathe { 0% { background:transparent; } 100% { background:var(--wash); } }
 .ghost { cursor:default; }
 .ghost:hover { background:none; }
@@ -259,4 +257,15 @@
 
 @media (prefers-reduced-motion:reduce) { .ghost[data-at='counting'] { animation:none; background:var(--wash); } }
 
-@media (min-width:800px) { .sheet.ride-sheet { align-items:center; } .sheet-card.ride { border-radius:12px; } }
+
+.overlay { position:fixed; inset:0; z-index:70; display:flex; align-items:flex-end; background:rgba(17,17,17,.08); }
+.overlay-card { position:relative; display:grid; gap:10px; width:100%; max-height:88%; overflow-y:auto; overscroll-behavior:contain; padding:18px 16px calc(16px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); border-radius:14px 14px 0 0; background:var(--bg); box-shadow:0 -12px 40px rgba(0,0,0,.12); }
+.overlay-card h3 { padding-right:40px; font:400 22px/1.15 var(--serif); letter-spacing:-.01em; }
+.overlay-card .sheet-close { top:4px; right:4px; }
+.overlay-card .fuel { margin-top:0; }
+@media (min-width:900px) {
+  .overlay { display:block; background:none; }
+  .overlay-card { position:fixed; top:var(--y, 50%); left:var(--x, 50%); width:380px; max-height:calc(100vh - 24px); padding:16px; border:1px solid var(--line); border-radius:12px; box-shadow:0 16px 48px rgba(0,0,0,.16); }
+  .overlay:not([data-anchored]) .overlay-card { transform:translate(-50%, -50%); }
+  .overlay[data-anchored] .overlay-card:not([data-placed]) { opacity:0; }
+}

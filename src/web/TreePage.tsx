@@ -69,7 +69,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const [peek, setPeek] = useState<string | undefined>(() => (inside === 'root' ? undefined : inside))
   const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([view, side(view)]))
   const [unread, setUnread] = useState(0)
-  const [riding, setRiding] = useState<string | undefined>()
+  const [riding, setRiding] = useState<{ anchor?: HTMLElement | undefined; nid: string } | undefined>()
   const [composing, setComposing] = useState<string | undefined>()
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set())
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<{ members: Member[] }>(`room:${id}`)?.members ?? [])
@@ -150,7 +150,8 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   }, [selected, !!node.data, !!grove])
 
   const heard = useCallback((_said: readonly Said[], _me: unknown, list: readonly Member[]) => setMembers(list), [])
-  const ride = useCallback(() => setRiding('root'), [])
+  const ride = useCallback((anchor: HTMLElement) => setRiding({ anchor, nid: 'root' }), [])
+  const back = useCallback(() => setRiding({ nid: 'root' }), [])
 
   useEffect(
     () =>
@@ -251,7 +252,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
       </Strip>
       <Tabs base={base} onShow={show} unread={unread} view={view} />
       <div className="panel panel-chat" data-side="true" hidden={view !== 'chat'}>
-        <Room config={props.config} onArtifact={results} onBack={ride} onMessages={heard} onResults={results} onUnread={setUnread} steer={false} swarm={swarm} visible={view === 'chat' || !phone} />
+        <Room config={props.config} onArtifact={results} onBack={back} onMessages={heard} onResults={results} onUnread={setUnread} steer={false} swarm={swarm} visible={view === 'chat' || !phone} />
       </div>
       {seen.has('board') && (
         <div className="grove-body panel" data-desk={view === 'chat' || undefined} hidden={side(view) !== 'board'}>
@@ -279,7 +280,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
                 swarm={id}
               />
             </div>
-            {phone && peek && nodes[peek] && <Peek node={nodes[peek]!} nodes={nodes} onRide={(node) => setRiding(node.id)} to={path(peek)} />}
+            {phone && peek && nodes[peek] && <Peek node={nodes[peek]!} nodes={nodes} onRide={(node, anchor) => setRiding({ anchor, nid: node.id })} to={path(peek)} />}
             <Since id={id} nodes={nodes} now={now} />
           </section>
           {nodeShown && (
@@ -345,7 +346,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
           <Explainer spec={root?.spec} swarm={swarm} />
         </div>
       )}
-      {riding && nodes[riding] && <Ride config={props.config} node={nodes[riding]!} onClose={() => setRiding(undefined)} onDone={() => redetail()} swarm={id} />}
+      {riding && nodes[riding.nid] && <Ride anchor={riding.anchor} config={props.config} key={riding.nid} node={nodes[riding.nid]!} onClose={() => setRiding(undefined)} onDone={() => redetail()} swarm={id} />}
     </article>
   )
 }

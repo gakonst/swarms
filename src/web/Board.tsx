@@ -117,7 +117,7 @@ const flows: readonly Flow[] = [
       { name: 'Check prompt', steps: [{ click: '.node-ride' }, { click: '.ride .fuel-go' }], url: grove(`/n/${razb}`, '&scene=hang,in') },
       { name: 'Riding', steps: [{ click: '.node-ride' }, { click: '.ride .fuel-go' }, { wait: 3000 }], url: grove(`/n/${razb}`, '&scene=in') },
       { name: 'Sent, not counted yet', steps: [{ click: '.node-ride' }, { click: '.ride .fuel-go' }, { wait: 2600 }], url: grove(`/n/${razb}`, '&scene=uncounted,in') },
-      { name: 'Propose a lemma', steps: [{ click: '.node-form summary' }], url: grove(`/n/${mono}`, '&scene=in') },
+      { name: 'Propose a lemma', steps: [{ click: '.node-add' }], url: grove(`/n/${mono}`, '&scene=in') },
       { name: 'An archived swarm', url: idea('dex-guide') },
     ],
     id: 'ride',

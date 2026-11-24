@@ -8,7 +8,7 @@ import { asked, dollars, Fuel } from './Contribute.tsx'
 import * as Pay from './pay.ts'
 import { Mark } from './Tree.tsx'
 
-export function Compose(props: { config: Config | undefined; full?: boolean; onClose?: (() => void) | undefined; onSent?: (() => void) | undefined; parent: Tree.Node; swarm: string }) {
+export function Compose(props: { config: Config | undefined; full?: boolean; onSent?: (() => void) | undefined; parent: Tree.Node; swarm: string }) {
   const [title, setTitle] = useState('')
   const [spec, setSpec] = useState('')
   const [statement, setStatement] = useState('')
@@ -19,9 +19,10 @@ export function Compose(props: { config: Config | undefined; full?: boolean; onC
   const under = props.parent.form === 'goal' ? 'the whole swarm' : props.parent.title
   return (
     <div className="compose" data-full={props.full || undefined}>
+      <h3>Add under {under}</h3>
       <label className="compose-field">
         <span className="sr-only">Title</span>
-        <input autoFocus={!props.full} className="compose-title" disabled={busy} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder={`A sub-item under ${under}`} value={title} />
+        <input autoFocus className="compose-title" disabled={busy} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="Its title" value={title} />
       </label>
       <label className="compose-field">
         <span className="sr-only">What and why</span>
@@ -64,7 +65,6 @@ export function Compose(props: { config: Config | undefined; full?: boolean; onC
         }}
         verb="Add it"
       />
-      {props.onClose && <button className="compose-close" disabled={busy} onClick={props.onClose} type="button">Cancel</button>}
     </div>
   )
 }

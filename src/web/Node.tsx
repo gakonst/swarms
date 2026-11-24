@@ -11,6 +11,7 @@ import { ago, duration, short, stamp, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { message, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
+import { Overlay } from './Overlay.tsx'
 import * as Pay from './pay.ts'
 import { Back, Link, useBase, useQuery } from './router.tsx'
 import { Mark, word } from './Tree.tsx'
@@ -85,32 +86,33 @@ export function RideFuel(props: { compact?: boolean; config: Config | undefined;
   )
 }
 
-export function Ride(props: { config: Config | undefined; node: Tree.Node; onClose: () => void; onDone: () => void; swarm: string }) {
+export function Ride(props: { anchor?: HTMLElement | null | undefined; config: Config | undefined; node: Tree.Node; onClose: () => void; onDone: () => void; swarm: string }) {
   const root = props.node.form === 'goal'
   return (
-    <div className="sheet ride-sheet" onClick={(event) => event.target === event.currentTarget && props.onClose()}>
-      <div aria-label="Ride" aria-modal="true" className="sheet-card ride" role="dialog">
-        <button aria-label="Close" className="sheet-close" onClick={props.onClose} type="button">×</button>
-        <h3>{root ? 'Ride the whole swarm' : props.node.title}</h3>
-        <p className="ride-what">{root ? 'Your dollars serve every program, split by what is runnable.' : `Your dollars run ${noun(props.node)} first, then what grows under it.`} Workers spend it only through the gateway; what is left stays yours to move.</p>
-        <RideFuel config={props.config} focus={1} node={props.node} onDone={() => { props.onDone(); props.onClose() }} swarm={props.swarm} />
-      </div>
-    </div>
+    <Overlay anchor={props.anchor} className="ride" label={verb(props.node)} onClose={props.onClose}>
+      <h3>{root ? 'Ride the whole swarm' : props.node.title}</h3>
+      <p className="ride-what">{root ? 'Your dollars serve every program, split by what is runnable.' : `Your dollars run ${noun(props.node)} first, then what grows under it.`}</p>
+      <RideFuel compact config={props.config} focus={1} node={props.node} onDone={() => { props.onDone(); props.onClose() }} swarm={props.swarm} />
+    </Overlay>
   )
 }
 
 function Propose(props: { asked: boolean; config: Config | undefined; nodes: Readonly<Record<string, Tree.Node>>; parent: Tree.Node; swarm: string }) {
   const [shown, setShown] = useState(props.asked)
-  const part = useRef<HTMLDetailsElement>(null)
+  const [spot, setSpot] = useState<HTMLButtonElement | null>(null)
   useEffect(() => {
-    if (props.asked) part.current?.scrollIntoView({ block: 'nearest' })
-  }, [props.asked])
+    if (props.asked) spot?.scrollIntoView({ block: 'nearest' })
+  }, [props.asked, spot])
   return (
     <>
-      <details className="node-part node-form" onToggle={(event) => setShown(event.currentTarget.open)} open={shown} ref={part}>
-        <summary>Add a sub-item<span>$1+</span></summary>
-        {shown && <Compose config={props.config} full parent={props.parent} swarm={props.swarm} />}
-      </details>
+      <div className="node-part node-form">
+        <button aria-expanded={shown} aria-haspopup="dialog" className="node-add" onClick={() => setShown(true)} ref={setSpot} type="button">Add a sub-item<span>$1+</span></button>
+        {shown && (
+          <Overlay anchor={spot} className="compose-card" label="Add a sub-item" onClose={() => setShown(false)}>
+            <Compose config={props.config} full onSent={() => setShown(false)} parent={props.parent} swarm={props.swarm} />
+          </Overlay>
+        )}
+      </div>
       <Pendings nodes={props.nodes} parent={props.parent.id} swarm={props.swarm} />
     </>
   )

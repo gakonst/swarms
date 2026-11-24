@@ -73,12 +73,12 @@ export function Backers(props: { list: readonly Backer[]; size: number }) {
   )
 }
 
-export function Strip(props: { backers: readonly Backer[]; children?: ReactNode; latest?: ReactNode; onRide: (() => void) | undefined; raised: string; riders: number; title: string }) {
+export function Strip(props: { backers: readonly Backer[]; children?: ReactNode; latest?: ReactNode; onRide: ((anchor: HTMLElement) => void) | undefined; raised: string; riders: number; title: string }) {
   return (
     <header aria-label="The swarm" className="strip">
       <div className="strip-head">
         <h1 className="strip-title"><Inline text={props.title} /></h1>
-        {props.onRide && <button className="btn btn-high strip-ride" onClick={props.onRide} type="button">Ride it</button>}
+        {props.onRide && <button className="btn btn-high strip-ride" onClick={(event) => props.onRide?.(event.currentTarget)} type="button">Ride it</button>}
       </div>
       <div className="strip-line">
         <p className="strip-stats">
