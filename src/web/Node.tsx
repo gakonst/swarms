@@ -145,7 +145,7 @@ export function NodePanel(props: {
     if (here().searchParams.has('ride')) onRide()
   }, [])
   const wallet = useWallet()
-  const ride = Pay.useFlow(Pay.slot(props.swarm, props.nid))
+  Pay.useKept(Pay.slot(props.swarm, props.nid), () => onRide())
   const known = props.nodes[props.nid]
   const view = props.view
   const node: Tree.Node | undefined = view ?? known
@@ -161,7 +161,6 @@ export function NodePanel(props: {
   const mine = view?.funders.find((funder) => funder.who.address && funder.who.address.toLowerCase() === (wallet.session?.address ?? wallet.address))
   const text = words(node.spec)
   const open = !Grove.closed(node)
-  const rides = node.form !== 'triage' && (open || ride.at !== 'idle')
   return (
     <div className="node" data-status={node.status}>
       {trail.length > 1 && (
@@ -182,11 +181,6 @@ export function NodePanel(props: {
           <button className="btn btn-high node-ride-btn" onClick={(event) => props.onRide(event.currentTarget)} type="button">Ride it</button>
           <Add asked={asked} config={props.config} key={`${node.id}:${asked}`} nodes={props.nodes} parent={node} swarm={props.swarm} />
         </div>
-      )}
-      {rides && (ride.at === 'counting' || ride.at === 'owed' || ride.at === 'refused') && (
-        <section aria-label={verb(node)} className="node-part node-ride">
-          <RideFuel compact config={props.config} key={node.id} node={node} onDone={props.onChanged} swarm={props.swarm} />
-        </section>
       )}
       {open && node.form !== 'triage' && <Pendings nodes={props.nodes} parent={node.id} swarm={props.swarm} />}
       {text && <section className="node-part node-words"><Markdown text={text} /></section>}

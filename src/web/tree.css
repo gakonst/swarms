@@ -215,7 +215,6 @@
 .fuel[data-size='compact'] .fuel-sum { font-size:30px; }
 .fuel[data-size='compact'] .fuel-ends { display:none; }
 .fuel[data-size='compact'] .fuel-go { min-height:44px; }
-.node-ride { display:grid; gap:4px; }
 .node-pending { display:grid; gap:8px; }
 .bud-coming { margin-left:6px; padding:0 4px; border-radius:4px; background:var(--green-wash); font-style:normal; color:var(--fg); }
 .compose { display:grid; gap:6px; }

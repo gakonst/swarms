@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import * as Api from './api.ts'
 import { message } from './hooks.ts'
 
@@ -273,6 +273,20 @@ function useVersion() {
 export function useGhosts(swarm: string, parent: string) {
   useVersion()
   return ghosts(swarm, parent)
+}
+
+const shown = new Set<string>()
+
+export function useKept(slot: string, open: () => void) {
+  const act = useFlow(slot)
+  const owed = act.at === 'owed' || act.at === 'refused' ? act.owed : undefined
+  const opener = useRef(open)
+  opener.current = open
+  useEffect(() => {
+    if (!owed || shown.has(owed.hash)) return
+    shown.add(owed.hash)
+    opener.current()
+  }, [owed])
 }
 
 export function useFlow(slot: string) {

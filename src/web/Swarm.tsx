@@ -21,6 +21,7 @@ import * as Names from './names.ts'
 import { Now } from './Now.tsx'
 import { Results } from './Results.tsx'
 import { Room } from './Room.tsx'
+import * as Pay from './pay.ts'
 import { useShown } from './Share.tsx'
 import { Reins, steerer, useRoster } from './Steering.tsx'
 import { at, backers, dollars, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
@@ -99,6 +100,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   const heard = useCallback((_said: readonly Said[], _me: Me | null, list: readonly Member[]) => setMembers(list), [])
 
   useShown(detail.data)
+  Pay.useKept(id, () => setRiding((current) => current ?? {}))
 
   const steer = (text: string, anchor?: HTMLElement) => {
     if (detail.data?.archivedAt) return

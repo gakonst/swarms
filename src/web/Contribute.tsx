@@ -217,7 +217,7 @@ export function Fuel(props: {
         {busy ? working[act.at as keyof typeof working] : funding ? 'Adding funds…' : props.ended ? 'Ended' : props.locked && props.wants ? props.wants : ok ? `${said} · ${dollars(amount)}` : said}
       </button>
       <div className="fuel-told" ref={told}>
-        {props.ended && !busy && act.at !== 'counted' ? <Alert title={props.ended} tone="warn" /> : added && act.at === 'idle' ? <Alert title="Funds added." tone="good">{wallet.balance === undefined ? 'Ride it now.' : `Your wallet has ${usd(decimal(wallet.balance))}. Ride it now.`}</Alert> : <Told act={act} config={props.config} onFund={() => void fund()} onRetry={retry} slot={props.slot} />}
+        {props.ended && (act.at === 'idle' || act.at === 'failed') ? <Alert title={props.ended} tone="warn" /> : added && act.at === 'idle' ? <Alert title="Funds added." tone="good">{wallet.balance === undefined ? 'Ride it now.' : `Your wallet has ${usd(decimal(wallet.balance))}. Ride it now.`}</Alert> : <Told act={act} config={props.config} onFund={() => void fund()} onRetry={retry} slot={props.slot} />}
       </div>
     </div>
   )

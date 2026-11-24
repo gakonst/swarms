@@ -10,6 +10,7 @@ import { type Rider, rider } from './rider.ts'
 const shots = process.env['E2E_SHOTS'] ?? path.join(os.tmpdir(), 'swarms-e2e-shots')
 const grove = '/s/p-vs-np'
 const lemma = grove + '/n/1583a1546a'
+const agent = '/s/bench-coders'
 
 let dev: Dev.Dev
 let ana: Rider
@@ -26,9 +27,9 @@ after(async () => {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const watch = `(() => {
-  window.__cheers = 0
+  let shown = !!document.querySelector('.cheer')
+  window.__cheers = shown ? 1 : 0
   window.__trace = []
-  let shown = false
   new MutationObserver(() => {
     const now = !!document.querySelector('.cheer')
     if (now && !shown) window.__cheers++
@@ -113,6 +114,33 @@ for (const viewport of ['desktop', 'phone'] as const) {
       assert.match((await page.read('.cheer')) ?? '', /You're riding · \$5/)
       assert.match((await page.read('.wallet')) ?? '', /@ada/)
       await page.shoot('strip-cheer')
+      assert.deepEqual(page.errors, [])
+    } finally {
+      await page.close()
+    }
+  })
+}
+
+for (const viewport of ['desktop', 'phone'] as const) {
+  test(`an agent swarm rides in the shared overlay on a ${viewport}, then one success sheet whose total matches the header and the side`, async () => {
+    const page = await browse(viewport)
+    try {
+      await page.open(agent + '?fixture&scene=in,open')
+      const before = await page.raised()
+      await page.tap('.strip-ride')
+      assert.ok(await page.until('!!document.querySelector(".overlay .ride-box .fuel-go")'), 'the ride opens in the shared overlay')
+      assert.equal(await page.evaluate('document.querySelectorAll(".overlay, .sheet").length'), 1)
+      if (viewport === 'desktop') assert.ok((await page.evaluate<number>('document.querySelector(".overlay-card").getBoundingClientRect().width')) <= 400, 'a popover, not a full-width sheet')
+      await page.shoot('agent-open')
+      await page.tap('.overlay .fuel-go')
+      assert.ok(await page.until('!!document.querySelector(".cheer")'), 'the success sheet shows')
+      await sleep(1500)
+      assert.equal(await page.evaluate('window.__cheers'), 1)
+      assert.equal(await page.evaluate('document.querySelectorAll(".overlay, .sheet").length'), 1, 'the success sheet replaced the ride sheet')
+      const total = '$' + (before + 5).toFixed(2)
+      assert.equal(await page.raised(), before + 5)
+      for (const where of ['.strip-stats', '.side-meta', '.cheer-stats']) assert.ok(((await page.read(where)) ?? '').includes(total), where + ' says ' + total)
+      await page.shoot('agent-cheer')
       assert.deepEqual(page.errors, [])
     } finally {
       await page.close()

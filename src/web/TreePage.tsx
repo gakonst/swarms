@@ -82,6 +82,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<{ members: Member[] }>(`room:${id}`)?.members ?? [])
   const swarm = detail.data ?? props.detail
   useShown(swarm)
+  Pay.useKept(Pay.slot(id, 'root'), () => setRiding((current) => current ?? { nid: 'root' }))
 
   useEffect(() => {
     setSeen((current) => (current.has(view) ? current : new Set([...current, view])))
@@ -366,7 +367,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
                 reupdate()
                 redetail()
               }}
-              onRide={(anchor) => setRiding({ anchor, nid: selected })}
+              onRide={(anchor) => setRiding((current) => (!anchor && current?.nid === selected ? current : { anchor, nid: selected }))}
               swarm={id}
               updates={updates.data?.deltas}
               view={node.data?.id === selected ? node.data : undefined}
