@@ -5,13 +5,14 @@ import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
 import { explain } from './Alert.tsx'
 import { signed, usd } from './format.ts'
-import { message, remember, remembered, useConfig, usePoll, useWallet } from './hooks.ts'
+import { message, useConfig, usePoll, useWallet } from './hooks.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { General } from './General.tsx'
 import { Join } from './Home.tsx'
 import { Base, Link, navigate, usePath, warmer } from './router.tsx'
 import { Lost } from './Lost.tsx'
+import * as Local from './local.ts'
 import * as Names from './names.ts'
 import { Cheered, ShareSwarm } from './Share.tsx'
 import { Shell } from './Shell.tsx'
@@ -31,12 +32,13 @@ const Swarm = page('swarm', () => import('./Swarm.tsx').then((module) => module.
 
 const TreePage = page('tree', () => import('./TreePage.tsx').then((module) => module.TreePage))
 
-const fetching = new Map<string, number>()
-
-function warmDetail(swarm: string) {
-  if (remembered(swarm) !== undefined || Date.now() - (fetching.get(swarm) ?? 0) < 10_000) return
-  fetching.set(swarm, Date.now())
-  Api.swarm(swarm, false).then((detail) => remember(swarm, detail), () => fetching.delete(swarm))
+function warmDetail(swarm: string, tail = '') {
+  Local.warm(swarm, () => Api.swarm(swarm, false))
+  const nid = /^\/[ntc]\/([^/?#]+)/.exec(tail)?.[1]
+  if (!nid || Local.value<{ form?: string }>(swarm)?.form !== 'tree') return
+  const node = decodeURIComponent(nid)
+  Local.warm(`node:${swarm}:${node}`, () => Api.node(swarm, node))
+  Local.warm(`updates:${swarm}:${node}`, () => Api.nodeUpdates(swarm, node))
 }
 
 function warmSwarm() {
@@ -50,12 +52,12 @@ if (typeof window !== 'undefined') {
     if (route === '/about') void import('./About.tsx').then((module) => preload('about', module.About))
     if (route === '/docs') void import('./Docs.tsx').then((module) => preload('docs', module.Docs))
     if (route === '/faq') void import('./Faq.tsx').then((module) => preload('faq', module.Faq))
-    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results|\/board|\/about|\/[ntc]\/[^/?#]+)?\/?(?:[?#]|$)/.exec(path)?.[1]
+    const [, id, tail] = /^\/s\/([^/?#]+)(\/chat|\/code|\/results|\/board|\/about|\/[ntc]\/[^/?#]+)?\/?(?:[?#]|$)/.exec(path) ?? []
     const named = Nickname.parse(route)
-    if (named) void warmSwarm().then(() => Names.warm(named.name)).then((found) => found && warmDetail(found.swarm), () => {})
+    if (named) void warmSwarm().then(() => Names.warm(named.name)).then((found) => found && warmDetail(found.swarm, named.tail), () => {})
     if (!id) return
     void warmSwarm()
-    warmDetail(decodeURIComponent(id))
+    warmDetail(decodeURIComponent(id), tail)
   })
   const idle = (window as { requestIdleCallback?: (run: () => void) => void }).requestIdleCallback ?? ((run: () => void) => setTimeout(run, 1500))
   idle(() => void warmSwarm())
