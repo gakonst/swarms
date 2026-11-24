@@ -1150,11 +1150,11 @@ export function document(origin: string) {
         },
         post: {
           description:
-            "Issues a hand for a contributor's own machine: a unique name under the swarm's gateway app, with the nanocode CLI command and a nanocode-ts snippet that attach it. The swarm's agent and its subagents use connected hands, and are told they belong to contributors. With a session token from /v1/auth, the caller joins the swarm's room as a backer.",
+            "Issues a hand for a contributor's own machine: a unique name under the swarm's gateway app, with the nanocode CLI command and a nanocode-ts snippet that attach it. The swarm's agent and its subagents use connected hands, and are told they belong to contributors. Needs a session token from /v1/auth as the bearer token (any signed-in rider; the caller joins the swarm's room as a backer once the machine connects), or the operator's gateway key; without one it answers 401.",
           operationId: 'issueHand',
           parameters: [swarm],
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.hand.omit({ swarm: true })) } } },
-          responses: { ...ok(ref('Issued'), 'The hand.', '201'), ...failures(400, 404, 409, 502) },
+          responses: { ...ok(ref('Issued'), 'The hand.', '201'), ...failures(400, 401, 404, 409, 410, 502) },
           summary: 'Issue a hand',
         },
       },

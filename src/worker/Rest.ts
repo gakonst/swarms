@@ -179,7 +179,7 @@ app.get('/v1/swarms/:id/hands', async (c) => Problem.respond(await Operations.ha
 
 app.post('/v1/swarms/:id/hands', async (c) =>
   Problem.respond(
-    await Operations.hand(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)),
+    await Operations.hand(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, ''))),
     201,
   ),
 )

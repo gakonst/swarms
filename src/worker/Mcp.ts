@@ -27,7 +27,7 @@ export async function handle(request: Request, env: Cloudflare.Env) {
   if (request.method !== 'POST')
     return Problem.json({ code: 'invalid_request', detail: 'Use POST for MCP over streamable HTTP.', status: 405 })
 
-  const server = create(env, Replica.read(env, request), Site.url(env, request.url), await Sessions.who(env, request))
+  const server = create(env, Replica.read(env, request), Site.url(env, request.url), await Sessions.who(env, request), await Operations.keyed(env, request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')))
   const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true })
   await server.connect(transport)
   return transport.handleRequest(request)
@@ -44,7 +44,7 @@ function reply<value>(result: Problem.Result<value>, shape: (value: value) => un
 
 const reading = { openWorldHint: false, readOnlyHint: true } as const
 
-function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, address: Awaited<ReturnType<typeof Sessions.who>>) {
+function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, address: Awaited<ReturnType<typeof Sessions.who>>, operated: boolean) {
   const server = new McpServer({ name: 'swarms', version: '1.0.0' }, { instructions: instructions(origin) })
 
   server.registerTool(
@@ -312,10 +312,10 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, addre
     {
       annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true, readOnlyHint: false },
       description:
-        "Issue a hand so the user can lend their own machine to a swarm. Returns a unique hand name, the CLI command to run on that machine (cli: nc hand '<url>' --token <token>; command installs nanocode first) and a nanocode-ts library snippet (library, after npm) that attaches with Hand.connect. Once it runs, the swarm's agent and its subagents can run commands and read and write files there, paid from the swarm's money, and are told it belongs to a contributor and to ask before anything destructive. The token is shown once: anyone holding it can attach a machine under that name. Stopping the command detaches the machine. Call it only when the user asks, and tell them what the swarm's agents will be able to do on it.",
+        "Issue a hand so the user can lend their own machine to a swarm. Returns a unique hand name, the CLI command to run on that machine (cli: nc hand '<url>' --token <token>; command installs nanocode first) and a nanocode-ts library snippet (library, after npm) that attaches with Hand.connect. Once it runs, the swarm's agent and its subagents can run commands and read and write files there, paid from the swarm's money, and are told it belongs to a contributor and to ask before anything destructive. The token is shown once: anyone holding it can attach a machine under that name. Stopping the command detaches the machine. Needs a signed-in session (Authorization: Bearer with a token from /v1/auth). Call it only when the user asks, and tell them what the swarm's agents will be able to do on it.",
       inputSchema: Operations.schema.hand.shape,
     },
-    async (input) => reply(await Operations.hand(env, input)),
+    async (input) => reply(await Operations.hand(env, input, address, operated)),
   )
 
   server.registerTool(

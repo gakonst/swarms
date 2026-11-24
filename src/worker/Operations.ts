@@ -1568,7 +1568,8 @@ async function self(env: Cloudflare.Env, members: readonly Member[], address: Ad
   return { address, available: Memo.decimal(0n), backed: Memo.decimal(0n), handle: known.handle, member: false, since: 0, steered: Memo.decimal(0n), ways: [] }
 }
 
-export async function hand(env: Cloudflare.Env, input: Input<'hand'>, contributor?: Address): Promise<Problem.Result<Issued>> {
+export async function hand(env: Cloudflare.Env, input: Input<'hand'>, contributor?: Address, operated = false): Promise<Problem.Result<Issued>> {
+  if (!contributor && !operated) return Problem.fail(401, 'unauthorized', "Sign in with Tempo ID to lend a machine, or send the operator's gateway key as the bearer token.")
   const parsed = parse(schema.hand, input)
   if (!parsed.ok) return parsed
   const gone = await legacy(env, parsed.value.swarm, true)

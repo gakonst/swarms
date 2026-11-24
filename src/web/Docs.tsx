@@ -56,6 +56,7 @@ const routes = [
   ['DELETE', '/v1/me/ai/claude', 'Disconnect your Claude plan.', ''],
   ['POST', '/v1/swarms/:id/ai', "Run a swarm you ride on your own AI, so its agent's model calls cost the swarm nothing, or hand it back.", '{ on }'],
   ['GET', '/v1/config', 'Where rides go: the gateway credit recipient and owner.', ''],
+  ['POST', '/v1/swarms/:id/hands', 'Lend your own machine to a swarm, signed in: answers a hand name, its token and the command that attaches it.', '{ label? }'],
 ] as const
 
 const events = [

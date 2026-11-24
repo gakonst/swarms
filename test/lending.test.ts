@@ -21,6 +21,7 @@ const { Swarm }: typeof SwarmModule = await import('../src/worker/Swarm.ts')
 
 const id = 'abc123abc123'
 const dayMs = 86_400_000
+const issuer = ('0x' + 'cd'.repeat(20)) as `0x${string}`
 
 type Listing = { connected: boolean; name: string; requests?: number }[] | 503
 
@@ -91,7 +92,7 @@ test('a hands listing that failed evicts no machine and detaches none', async ()
   const now = Date.now()
   const down = world(503)
   down.lend('live-1', now - 3 * dayMs, now - 2 * dayMs)
-  const issued = await Operations.hand(down.env, { swarm: id })
+  const issued = await Operations.hand(down.env, { swarm: id }, issuer)
   assert.equal(issued.ok, true)
   assert.deepEqual(down.detached, [])
   assert.deepEqual(down.names(), ['live-1', issued.ok ? issued.value.name : ''])
@@ -99,7 +100,7 @@ test('a hands listing that failed evicts no machine and detaches none', async ()
   const up = world([{ connected: false, name: 'gone-1' }, { connected: true, name: 'live-1' }])
   up.lend('gone-1', now - 3 * dayMs, null)
   up.lend('live-1', now - 3 * dayMs, now - 2 * dayMs)
-  const next = await Operations.hand(up.env, { swarm: id })
+  const next = await Operations.hand(up.env, { swarm: id }, issuer)
   assert.deepEqual(up.detached, ['gone-1'])
   assert.deepEqual(up.names(), ['live-1', next.ok ? next.value.name : ''])
 })
@@ -123,7 +124,7 @@ test('a machine that was used and is evicted gives back its slot and keeps its l
   idle.lend('mbp-abc123', now - 3 * dayMs, now - 2 * dayMs, lender)
   idle.lend('never-1', now - 3 * dayMs, null, lender)
   for (let n = 0; n < 31; n++) idle.lend(`used-${n}`, now - 4 * dayMs, now - 3 * dayMs)
-  const issued = await Operations.hand(idle.env, { swarm: id })
+  const issued = await Operations.hand(idle.env, { swarm: id }, issuer)
   assert.equal(issued.ok, true)
   assert.equal(idle.detached.length, 33)
   assert.equal(idle.names().includes('mbp-abc123'), true)
@@ -132,7 +133,7 @@ test('a machine that was used and is evicted gives back its slot and keeps its l
   const listed = await Operations.hands(idle.env, { swarm: id })
   assert.equal(listed.ok && listed.value.hands.some((hand) => hand.name === 'mbp-abc123'), true)
 
-  const again = await Operations.hand(idle.env, { swarm: id })
+  const again = await Operations.hand(idle.env, { swarm: id }, issuer)
   assert.equal(again.ok, true)
   assert.equal(idle.detached.length, 33)
   assert.throws(() => idle.db.sqlite.prepare('update hands set returned_at = 1 where name = ?').run(again.ok ? again.value.name : ''))
