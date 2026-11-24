@@ -1,16 +1,20 @@
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { Config, Detail, Me, Member, Room as RoomState, Said } from '../shared/Api.ts'
+import type { Config, Detail, Me, Member, Reaction, Replies, Room as RoomState, Said } from '../shared/Api.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Chatter from '../shared/Chatter.ts'
 import { maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
+import type * as Tree from '../shared/Tree.ts'
 import * as Api from './api.ts'
 import { seeded } from './boot.ts'
 import { code } from './pay.ts'
-import { day, minute, usd } from './format.ts'
+import { ago, day, minute, usd } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
+import { Acts, Chips, flip, Picker, send } from './Reactions.tsx'
+import { Link } from './router.tsx'
 import { gate as gated, steerer, useRoster } from './Steering.tsx'
+import { Mark, word } from './Tree.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 import * as Wire from './wire.ts'
@@ -67,7 +71,7 @@ function merge(list: readonly Said[], more: readonly Said[]) {
 
 type Row =
   | { at: number; key: string; kind: 'day'; label: string }
-  | { at: number; count: number; key: string; kind: 'ai'; artifact: Said['artifact']; text: string }
+  | { at: number; count: number; item: Said; key: string; kind: 'ai'; artifact: Said['artifact']; text: string }
   | { at: number; count: number; key: string; kind: 'idle'; text: string }
   | { at: number; key: string; kind: 'backed'; note: string | undefined; text: string }
   | { at: number; first: boolean; item: Said; key: string; kind: 'said'; last: boolean }
@@ -83,12 +87,13 @@ function rows(messages: readonly Said[], now: number): Row[] {
       out.push({ at: item.at, key: `d${item.id}`, kind: 'day', label })
     }
     if (item.artifact || !item.author) {
-      if (item.artifact) out.push({ artifact: item.artifact, at: item.at, count: 1, key: `m${item.id}`, kind: 'ai', text: item.text.replace(/^New artifact: /, '') })
+      if (item.artifact) out.push({ artifact: item.artifact, at: item.at, count: 1, item, key: `m${item.id}`, kind: 'ai', text: item.text.replace(/^New artifact: /, '') })
       else if (item.text.startsWith('Update: ')) {
         const text = item.text.slice(8)
         const before = out.at(-1)
-        if (before && (before.kind === 'idle' || (before.kind === 'ai' && !before.artifact)) && Chatter.gist(before.text) === Chatter.gist(text)) out[out.length - 1] = { ...before, at: item.at, count: before.count + 1, text }
-        else out.push(Chatter.idle(text) ? { at: item.at, count: 1, key: `m${item.id}`, kind: 'idle', text } : { artifact: null, at: item.at, count: 1, key: `m${item.id}`, kind: 'ai', text })
+        if (before && before.kind === 'idle' && Chatter.gist(before.text) === Chatter.gist(text)) out[out.length - 1] = { ...before, at: item.at, count: before.count + 1, text }
+        else if (before && before.kind === 'ai' && !before.artifact && !before.item.reactions && !before.item.replies && !item.reactions && !item.replies && Chatter.gist(before.text) === Chatter.gist(text)) out[out.length - 1] = { ...before, at: item.at, count: before.count + 1, item, text }
+        else out.push(Chatter.idle(text) ? { at: item.at, count: 1, key: `m${item.id}`, kind: 'idle', text } : { artifact: null, at: item.at, count: 1, item, key: `m${item.id}`, kind: 'ai', text })
       } else out.push({ at: item.at, key: `m${item.id}`, kind: 'backed', note: noted(item.text), text: friendly(item.text) })
       return
     }
@@ -116,7 +121,7 @@ function Words(props: { handles: ReadonlySet<string>; me: ReadonlySet<string>; t
   )
 }
 
-function marked(text: string, handles: ReadonlySet<string>, me: ReadonlySet<string>) {
+export function marked(text: string, handles: ReadonlySet<string>, me: ReadonlySet<string>) {
   return text
     .split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/)
     .map((part, index) =>
@@ -133,14 +138,50 @@ function marked(text: string, handles: ReadonlySet<string>, me: ReadonlySet<stri
     .join('')
 }
 
+export type Items = { nodes: Readonly<Record<string, Tree.Node>>; path: (nid: string) => string }
+
+export function Item(props: { items: Items; node: string }) {
+  const node = props.items.nodes[props.node]
+  return (
+    <Link className="msg-item" keep to={props.items.path(props.node)}>
+      {node ? <Mark checking={node.run?.checking} status={node.status} /> : <Mark status="proposed" />}
+      <span className="msg-item-title">{node ? <Inline text={node.title} /> : 'Board item'}</span>
+      <span className="msg-item-open">{node ? word(node.status) : 'Open'} ›</span>
+    </Link>
+  )
+}
+
+export function ThreadLink(props: { lit: boolean; name: (address: string) => string; now: number; onOpen: () => void; replies: Replies }) {
+  const replies = props.replies
+  return (
+    <button aria-pressed={props.lit} className="msg-thread" onClick={props.onOpen} type="button">
+      <span className="msg-thread-faces">
+        {replies.who.map((address, index) =>
+          address === null ? (
+            <span aria-hidden="true" className="avatar avatar-ai" data-size="small" key={`ai${index}`}>✦</span>
+          ) : (
+            <Avatar address={address} handle={props.name(address).replace(/^@/, '')} key={address} size="small" />
+          ),
+        )}
+      </span>
+      <b>{replies.count} {replies.count === 1 ? 'reply' : 'replies'}</b>
+      <time dateTime={new Date(replies.at).toISOString()}>{ago(replies.at, props.now)}</time>
+    </button>
+  )
+}
+
 export const Room = memo(function Room(props: {
   config: Config | undefined
+  items?: Items | undefined
   onArtifact: (slug: string) => void
   onBack: (note: string) => void
+  onSwarm?: ((text: string, anchor: HTMLElement | null, sent: () => void) => void) | undefined
+  onThread?: ((id: number) => void) | undefined
   onMessages?: (messages: readonly Said[], me: Me | null, members: readonly Member[], online: readonly string[], watching: number) => void
   onResults?: () => void
   steer?: false
   swarm: Detail
+  thread?: number | undefined
   visible: boolean
 }) {
   const id = props.swarm.id
@@ -167,12 +208,16 @@ export const Room = memo(function Room(props: {
   const [signing, setSigning] = useState(false)
   const [problem, setProblem] = useState<{ short?: boolean; text: string }>()
   const [fresh, setFresh] = useState(0)
+  const [picking, setPicking] = useState<{ anchor: HTMLElement; id: number }>()
   const list = useRef<HTMLDivElement>(null)
+  const sender = useRef<HTMLButtonElement>(null)
   const area = useRef<HTMLTextAreaElement>(null)
   const stick = useRef(true)
   const last = useRef(0)
   const typed = useRef(0)
   const fetched = useRef(0)
+
+  const setReactions = (message: number, reactions: Reaction[]) => setMessages((previous) => (previous.some((item) => item.id === message) ? previous.map((item) => (item.id === message ? { ...item, reactions } : item)) : previous))
 
   const load = useCallback(
     async (after: number) => {
@@ -201,7 +246,9 @@ export const Room = memo(function Room(props: {
   const [connected, setConnected] = useState(() => Wire.connected(id))
   const wired = Wire.useWire(id, 'room', (signal) => {
     if (signal.type === 'open' || signal.type === 'closed') setConnected(signal.type === 'open')
-    if (signal.type === 'said') setMessages((previous) => merge(previous, [signal.message]))
+    if (signal.type === 'said' && signal.message.parent === undefined) setMessages((previous) => merge(previous, [signal.message]))
+    if (signal.type === 'reacted') setReactions(signal.id, signal.reactions)
+    if (signal.type === 'replies') setMessages((previous) => (previous.some((item) => item.id === signal.id) ? previous.map((item) => (item.id === signal.id ? { ...item, replies: signal.replies } : item)) : previous))
     if (signal.type === 'presence') {
       setOnline(signal.online)
       setWatching(signal.watching)
@@ -286,16 +333,17 @@ export const Room = memo(function Room(props: {
   const mine = typeof door === 'object' && door.at === 'open' ? (me ?? undefined) : undefined
   const helm = props.steer !== false && typeof door === 'object' && door.at === 'open' && door.from !== null
   const steers = props.steer !== false && steerer(policy, roster, wallet.session?.address ?? wallet.address)
+  const asks = !!props.onSwarm && !!mine
   const query = mine && !closed ? /(^|\s)@([a-z0-9_-]*)$/i.exec(text.slice(0, caret)) : null
   const options = query
     ? [
-        ...(helm ? [{ handle: 'swarm', hint: 'tell the AI what to try' }] : []),
+        ...(helm || asks ? [{ handle: 'swarm', hint: asks ? 'make it a board item' : 'tell the AI what to try' }] : []),
         ...members.filter((member) => !member.handle.startsWith('0x') && member.address !== me?.address).map((member) => ({ handle: member.handle, hint: '' })),
       ]
         .filter((option) => option.handle.startsWith((query[2] ?? '').toLowerCase()))
         .slice(0, 6)
     : []
-  const steering = props.steer !== false && (ai || Mention.steers(text))
+  const steering = (props.steer !== false || asks) && (ai || Mention.steers(text))
   const idea = ai ? text.replace(/\s+/g, ' ').trim() : Mention.idea(text)
   const typers = Object.entries(typing).filter(([address, until]) => until > now && address !== me?.address).map(([address]) => handleOf(address))
   const here = members.filter((member) => online.includes(member.address)).slice(0, 4)
@@ -367,6 +415,15 @@ export const Room = memo(function Room(props: {
   const submit = () => {
     const body = text.trim()
     if (!body || sending || !mine) return
+    if (steering && asks) {
+      if (idea.length < 3) return setProblem({ text: 'Say what the swarm should do.' })
+      setProblem(undefined)
+      return props.onSwarm?.(idea, sender.current, () => {
+        setText('')
+        setCaret(0)
+        setAi(false)
+      })
+    }
     if (steering) {
       if (!helm) return setProblem({ text: 'Only the riders who steer this swarm tell the AI what to do.' })
       if (idea.length < 3) return setProblem({ text: 'Say what the AI should try.' })
@@ -436,6 +493,32 @@ export const Room = memo(function Room(props: {
   }
 
   const listed = rows(messages, now)
+  const named = (address: string) => {
+    const handle = handleOf(address)
+    return handle.startsWith('0x') ? Mention.short(address) : `@${handle}`
+  }
+  const react = mine ? (item: Said) => (anchor: HTMLElement) => setPicking({ anchor, id: item.id }) : undefined
+  const reply = props.onThread ? (item: Said) => () => props.onThread?.(item.id) : undefined
+  const toggle = (item: Said, emoji: string, on: boolean) => {
+    if (!mine) return
+    const before = item.reactions ?? []
+    setReactions(item.id, flip(before, emoji, mine.address, on))
+    send(id, item.id, emoji, on).then(
+      (reactions) => setReactions(item.id, reactions),
+      (error: unknown) => {
+        setReactions(item.id, before)
+        setProblem({ text: reason(error) })
+      },
+    )
+  }
+  const under = (item: Said) => (
+    <>
+      {item.node && props.items && <Item items={props.items} node={item.node} />}
+      <Chips me={mine?.address} name={named} onAdd={react?.(item)} onToggle={mine ? (emoji, on) => toggle(item, emoji, on) : undefined} reactions={item.reactions} />
+      {item.replies && props.onThread && <ThreadLink lit={props.thread === item.id} name={named} now={now} onOpen={() => props.onThread?.(item.id)} replies={item.replies} />}
+    </>
+  )
+  const picked = picking ? messages.find((item) => item.id === picking.id) : undefined
 
   let foot: ReactNode
   if (door === 'checking') foot = <div aria-busy="true" className="chat-bar chat-bar-wait" />
@@ -475,23 +558,23 @@ export const Room = memo(function Room(props: {
             ))}
           </ol>
         )}
-        {helm && (
+        {(helm || asks) && (
           <button
-            aria-label={ai ? 'Talk to people' : 'Tell the AI'}
+            aria-label={ai ? 'Talk to people' : asks ? 'Ask the swarm' : 'Tell the AI'}
             aria-pressed={ai}
             className="chat-ai"
             onClick={() => {
               setAi(!ai)
               area.current?.focus()
             }}
-            title={ai ? 'Talk to people' : 'Tell the AI what to try'}
+            title={ai ? 'Talk to people' : asks ? 'Ask the swarm: it becomes a board item' : 'Tell the AI what to try'}
             type="button"
           >
             ✦
           </button>
         )}
         <textarea
-          aria-label={steering ? 'What should the AI try?' : 'Message'}
+          aria-label={steering ? (asks ? 'What should the swarm do?' : 'What should the AI try?') : 'Message'}
           enterKeyHint="send"
           maxLength={Mention.maxText}
           onChange={(event) => {
@@ -506,13 +589,13 @@ export const Room = memo(function Room(props: {
           }}
           onKeyDown={keys}
           onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-          placeholder={ai ? 'What should the AI try?' : 'Message'}
+          placeholder={ai ? (asks ? 'What should the swarm do? It becomes a board item' : 'What should the AI try?') : 'Message'}
           ref={area}
           rows={1}
           value={text}
         />
-        <button aria-label={steering ? 'Steer it' : 'Send'} className="chat-send" data-ai={steering} disabled={!text.trim() || sending} onClick={submit} type="button">
-          {steering ? 'Steer it' : '↑'}
+        <button aria-label={steering ? (asks ? 'Add it to the board' : 'Steer it') : 'Send'} className="chat-send" data-ai={steering} disabled={!text.trim() || sending} onClick={submit} ref={sender} type="button">
+          {steering ? (asks ? 'Add it' : 'Steer it') : '↑'}
         </button>
       </div>
     )
@@ -560,7 +643,7 @@ export const Room = memo(function Room(props: {
             )
           if (row.kind === 'ai')
             return (
-              <div className="msg msg-ai" data-first="true" data-last="true" key={row.key}>
+              <div className="msg msg-ai" data-first="true" data-last="true" data-lit={props.thread === row.item.id || undefined} key={row.key} tabIndex={-1}>
                 <span aria-hidden="true" className="avatar avatar-ai">✦</span>
                 <div className="msg-col">
                   <p className="msg-who"><b>AI</b><time dateTime={new Date(row.at).toISOString()}>{minute(row.at)}</time>{row.count > 1 && <small className="msg-count">×{row.count}</small>}</p>
@@ -576,7 +659,9 @@ export const Room = memo(function Room(props: {
                       <small>See results →</small>
                     </button>
                   )}
+                  {under(row.item)}
                 </div>
+                <Acts onReact={react?.(row.item)} onReply={reply?.(row.item)} />
               </div>
             )
           const item = row.item
@@ -584,7 +669,7 @@ export const Room = memo(function Room(props: {
           const handle = handleOf(author)
           const self = author === me?.address
           return (
-            <div className="msg" data-first={row.first} data-last={row.last} data-me={self} data-mentioned={!!me && item.mentions.includes(me.address)} key={row.key}>
+            <div className="msg" data-first={row.first} data-last={row.last} data-lit={props.thread === item.id || undefined} data-me={self} data-mentioned={!!me && item.mentions.includes(me.address)} key={row.key} tabIndex={-1}>
               {row.first ? <Avatar address={author} handle={handle} /> : <span className="avatar-gap" />}
               <div className="msg-col">
                 {row.first && <p className="msg-who"><b style={{ color: tint(author) }}>{handle.startsWith('0x') ? Mention.short(author) : handle}</b><time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time></p>}
@@ -597,7 +682,9 @@ export const Room = memo(function Room(props: {
                     {steers && <button onClick={() => props.onBack(item.steer?.note ?? '')} type="button">+ Steer this</button>}
                   </p>
                 )}
+                {under(item)}
               </div>
+              <Acts onReact={react?.(item)} onReply={reply?.(item)} />
             </div>
           )
         })}
@@ -625,6 +712,7 @@ export const Room = memo(function Room(props: {
         )}
         {foot}
       </footer>
+      {picking && picked && mine && <Picker anchor={picking.anchor} onClose={() => setPicking(undefined)} onPick={(emoji) => toggle(picked, emoji, !(picked.reactions ?? []).some((each) => each.emoji === emoji && each.who.some((address) => address.toLowerCase() === mine.address.toLowerCase())))} />}
     </section>
   )
 })

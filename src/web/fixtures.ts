@@ -1,6 +1,6 @@
 import * as Answer from '../shared/Answer.ts'
 import * as Shelf from '../shared/Artifact.ts'
-import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Hall, Heard, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Room, Roster, Said, Shouted, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Hall, Heard, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Reacted, Reaction, Replied, Replies, Room, Roster, Said, Shouted, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -939,6 +939,12 @@ export function artifacts(key: string) {
 }
 
 const talk: Record<string, readonly (readonly [number | null, string, number, string?])[]> = {
+  'p-vs-np': [
+    [3, 'Switching lemma run 2 looks close. Has anyone checked how it counts restrictions?', 95],
+    [5, 'Both oracle lemmas are proven, so relativizing proofs are out. Natural proofs next?', 70],
+    [1, 'Prove Cook–Levin before anything else in Foundations: half the tree needs it.', 41],
+    [2, 'Razborov is moving again, the AND gate bound is nearly there.', 12],
+  ],
   'bench-coders': [
     [null, 'Back at work with $2.68 to spend.', 46],
     [1, 'Qwen3-Coder timed out on 40 tasks earlier. Giving it its own machine was the right call.', 44],
@@ -1042,8 +1048,40 @@ function steering(swarm: Live, amount: string, note: string): Said['steer'] {
   return { amount, backers: found?.backers ?? 1, live: swarm.status === 'running', note, noteId: found?.id ?? id(note), share: found?.share ?? 0, weight: found?.weight ?? amount }
 }
 
+const items: Record<string, readonly (readonly [message: number, title: string])[]> = { 'p-vs-np': [[3, 'Cook–Levin: SAT is NP-complete']] }
+
+const threads: Record<string, readonly (readonly [parent: number, person: number | null, line: string, minutes: number])[]> = {
+  'p-vs-np': [
+    [1, 4, 'Yes: three of the five cases go through. Depth two is the hard one.', 90],
+    [1, 2, 'The count matches the textbook proof too.', 84],
+    [1, 3, 'Thanks, putting $2 more on it.', 80],
+    [3, null, '@kestrel rode it with $5', 40],
+    [3, null, 'Run 1 started on GLM 5.3', 38],
+    [3, null, 'Encoded the verifier as a 3-CNF; two of the four clause families check in Lean.', 18],
+  ],
+}
+
+const seededReactions: Record<string, readonly (readonly [message: number, emoji: string, people: readonly number[]])[]> = {
+  'p-vs-np': [
+    [1, '👀', [2, 4]],
+    [2, '🎉', [1, 3, 4, 5]],
+    [2, '💯', [6]],
+    [3, '🚀', [2, 5]],
+  ],
+}
+
 function seed(swarm: Live) {
   if (swarm.chat.length || !talk[swarm.id]) return swarm
+  const settled = () => {
+    for (const [index, title] of items[swarm.id] ?? []) {
+      const item = swarm.chat[index - 1]
+      const node = grove.find((each) => each.title === title)
+      if (item && node) item.node = node.id
+    }
+    for (const [parent, person, line, minutes] of threads[swarm.id] ?? []) swarm.chat.push({ artifact: null, at: at(minutes), author: person === null ? null : (people[person] ?? visitor), id: swarm.chat.length + 1, mentions: [], parent, steer: null, text: spoken(line) })
+    const known = reactionsOf(swarm)
+    for (const [message, emoji, who] of seededReactions[swarm.id] ?? []) known.set(message, [...(known.get(message) ?? []), { emoji, who: who.map((index) => people[index] ?? visitor) }])
+  }
   for (const [person, line, minutes, amount] of talk[swarm.id] ?? []) {
     const author = person === null ? null : (people[person] ?? visitor)
     const text = spoken(line)
@@ -1056,6 +1094,7 @@ function seed(swarm: Live) {
     const shown = person === null && line.startsWith('New artifact: ') ? (shelves[swarm.id] ?? []).find((item) => line.includes(item.title)) : undefined
     swarm.chat.push({ artifact: shown ? { slug: shown.slug, title: shown.title } : null, at: at(minutes), author, id: swarm.chat.length + 1, mentions: mentions(swarm, text), steer, text })
   }
+  settled()
   return swarm
 }
 
@@ -1103,13 +1142,77 @@ export function lent(key: string): { hands: Lent[] } {
   return { hands: [{ at: Date.now() - 40 * 60_000, channels: '0.042000', charged: '0.042000', connected: true, earned: '0.042000', label: "tensorbox's 4090", name: 'gpu-box-7a1c', price: '$0.002 a command', requests: 21 }] }
 }
 
+const reactions = new Map<string, Map<number, Reaction[]>>()
+
+function reactionsOf(swarm: Live) {
+  const known = reactions.get(swarm.id) ?? new Map<number, Reaction[]>()
+  reactions.set(swarm.id, known)
+  return known
+}
+
+function replied(swarm: Live, id: number): Replies | undefined {
+  const list = swarm.chat.filter((item) => item.parent === id)
+  const last = list.at(-1)
+  if (!last) return undefined
+  const who: (`0x${string}` | null)[] = []
+  for (const item of [...list].reverse()) if (!who.includes(item.author) && who.length < 3) who.push(item.author)
+  return { at: last.at, count: list.length, who }
+}
+
+function decorated(swarm: Live, item: Said): Said {
+  const shown = reactionsOf(swarm).get(item.id)
+  const thread = replied(swarm, item.id)
+  return { ...item, ...(shown?.length ? { reactions: shown } : {}), ...(thread ? { replies: thread } : {}) }
+}
+
+function rooted(swarm: Live, id: number) {
+  const found = swarm.chat.find((item) => item.id === id)
+  return found ? (found.parent ?? found.id) : undefined
+}
+
+function post(key: string, swarm: Live, message: Said) {
+  swarm.chat.push(message)
+  tell(key, { message, type: 'said' })
+  const parent = message.parent
+  const thread = parent === undefined ? undefined : replied(swarm, parent)
+  if (parent !== undefined && thread) tell(key, { id: parent, replies: thread, type: 'replies' })
+  return message
+}
+
 export async function room(key: string, query: { after?: number; before?: number }, who: `0x${string}` | undefined): Promise<Room> {
   const swarm = seed(await find(key))
-  const messages = query.before ? swarm.chat.filter((item) => item.id < (query.before ?? 0)).slice(-100) : query.after ? swarm.chat.filter((item) => item.id > (query.after ?? 0)) : swarm.chat.slice(-100)
+  const top = swarm.chat.filter((item) => item.parent === undefined)
+  const messages = (query.before ? top.filter((item) => item.id < (query.before ?? 0)).slice(-100) : query.after ? top.filter((item) => item.id > (query.after ?? 0)) : top.slice(-100)).map((item) => decorated(swarm, item))
   return delay({ me: me(swarm, who), members: members(swarm), messages, next: messages.at(-1)?.id ?? query.after ?? 0 })
 }
 
-export async function say(key: string, input: { artifact?: boolean; steer?: string; text: string }, who: `0x${string}` | undefined): Promise<Posted> {
+export async function replies(key: string, message: number, after: number, who: `0x${string}` | undefined): Promise<Replied> {
+  const swarm = seed(await find(key))
+  const top = rooted(swarm, message)
+  const parent = swarm.chat.find((item) => item.id === top)
+  if (top === undefined || !parent) throw fail(404, 'not_found', 'No message in this room has that id.')
+  const list = swarm.chat.filter((item) => item.parent === top && item.id > after).map((item) => decorated(swarm, item))
+  return delay({ me: me(swarm, who), members: members(swarm), next: list.at(-1)?.id ?? after, parent: decorated(swarm, parent), replies: list }, 200)
+}
+
+export async function react(key: string, message: number, input: { emoji: string; on: boolean }, who: `0x${string}` | undefined): Promise<Reacted> {
+  const swarm = seed(await find(key))
+  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to react in a room.')
+  if (!me(swarm, who)?.member) throw fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
+  if (!swarm.chat.some((item) => item.id === message)) throw fail(404, 'not_found', 'No message in this room has that id.')
+  const known = reactionsOf(swarm)
+  const mine = who.toLowerCase() as `0x${string}`
+  const list = (known.get(message) ?? []).map((item) => ({ emoji: item.emoji, who: item.who.filter((address) => item.emoji !== input.emoji || address !== mine) }))
+  const found = list.find((item) => item.emoji === input.emoji)
+  if (input.on && found) found.who.push(mine)
+  else if (input.on) list.push({ emoji: input.emoji, who: [mine] })
+  const kept = list.filter((item) => item.who.length)
+  known.set(message, kept)
+  tell(key, { id: message, reactions: kept, type: 'reacted' })
+  return delay({ id: message, reactions: kept }, 150)
+}
+
+export async function say(key: string, input: { artifact?: boolean; parent?: number; steer?: string; text: string }, who: `0x${string}` | undefined): Promise<Posted> {
   const swarm = seed(await find(key))
   if (scene.has('stall')) return new Promise<Posted>(() => {})
   if (scene.has('mute')) return new Promise<Posted>((_, reject) => setTimeout(() => reject(fail(503, 'unavailable', 'The room is not answering right now.')), 600))
@@ -1119,6 +1222,13 @@ export async function say(key: string, input: { artifact?: boolean; steer?: stri
   const seated = swarm.steering === 'team' ? rostered(swarm).seats.find((found) => found.address === who.toLowerCase()) : undefined
   if (!self?.member && !seated) throw fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
   const text = input.text.trim()
+  if (input.parent !== undefined) {
+    if (Mention.steers(text)) throw fail(400, 'invalid_request', '@swarm goes in the room, not in a thread: post it as its own message.')
+    const parent = rooted(swarm, input.parent)
+    if (parent === undefined) throw fail(404, 'not_found', 'No message in this room has that id to reply to.')
+    const reply = post(key, swarm, { artifact: null, at: Date.now(), author: who, id: (swarm.chat.at(-1)?.id ?? 0) + 1, mentions: mentions(swarm, text), parent, steer: null, text })
+    return delay({ me: self, message: reply }, 250)
+  }
   if (swarm.steering === 'team' && Mention.steers(text) && !seated) throw fail(403, 'not_member', "Only this swarm's team steers it. Its admins add who may: ask one of them in the room.")
   let steer: Said['steer'] = null
   if (Mention.steers(text)) {
@@ -1133,9 +1243,7 @@ export async function say(key: string, input: { artifact?: boolean; steer?: stri
     if (swarm.status === 'running') push(swarm, 'steer', `Steered the agent toward "${note}"`, null, Date.now())
     changed(key, ['detail', 'members'])
   }
-  const message: Said = { artifact: null, at: Date.now(), author: who, id: (swarm.chat.at(-1)?.id ?? 0) + 1, mentions: mentions(swarm, text), steer, text }
-  swarm.chat.push(message)
-  tell(key, { message, type: 'said' })
+  const message = post(key, swarm, { artifact: null, at: Date.now(), author: who, id: (swarm.chat.at(-1)?.id ?? 0) + 1, mentions: mentions(swarm, text), steer, text })
   return delay({ me: me(swarm, who) as Me, message }, 250)
 }
 
@@ -1778,15 +1886,21 @@ function emit(found: Twig, event: Tree.Delta['event'], text: string) {
   found.deltas.push(delta)
   found.updatedAt = delta.at
   tell(treeId, { delta, type: 'delta' })
+  const room = fixtures.find((each) => each.id === treeId)
+  const head = room?.chat.find((item) => item.node === found.id && item.parent === undefined)
+  if (room && head && event !== 'posted' && event !== 'doing') post(treeId, room, { artifact: null, at: delta.at, author: null, id: (room.chat.at(-1)?.id ?? 0) + 1, mentions: [], parent: head.id, steer: null, text })
   return delta
 }
 
 const proposals = new Map<string, Twig>()
 
-export async function propose(key: string, input: { form: Tree.Form; parent: string; spec: string; statement?: string; title: string }, by: `0x${string}` | undefined): Promise<Proposed> {
+const proposed = new Map<string, string>()
+
+export async function propose(key: string, input: { form: Tree.Form; parent: string; said?: string; spec: string; statement?: string; title: string }, by: `0x${string}` | undefined): Promise<Proposed> {
   if (!by) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to propose.')
   const parent = twig(key, input.parent)
   const made = nid(`${parent.id}\n${input.title.trim().toLowerCase()}`)
+  if (input.said?.trim()) proposed.set(made, input.said.trim())
   proposals.set(made, { by: who(0), createdAt: Date.now(), deltas: [], end: null, form: input.form, funders: [], id: made, inherited: 0n, left: 0n, needs: [], parent: parent.id, pledged: 0n, proof: null, run: null, runs: [], spent: 0n, statement: input.statement?.trim() || null, status: 'proposed', steers: [], suggestions: [], title: input.title.trim(), updatedAt: Date.now(), words: input.spec.trim() })
   const memo = `0x${hex(`memo:${made}`, 64)}` as `0x${string}`
   return delay({ nid: made, transfer: { amount: '1.000000', call: null, link: '', memo, memoText: `n:${made}`, note: `n:${made}`, swarm: key, symbol: 'USDC.e', to: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE', token: 'usdce', tokenAddress: '0x20C000000000000000000000b9537d11c60E8b50' } }, 400)
@@ -1808,6 +1922,10 @@ export async function ride(key: string, input: { hash: string; node: string }): 
   if (fresh) {
     proposals.delete(input.node)
     grove.push(fresh)
+    const said = proposed.get(input.node)
+    const room = said ? seed(await find(key)) : undefined
+    if (said && room) post(key, room, { artifact: null, at: Date.now(), author: visitor, id: (room.chat.at(-1)?.id ?? 0) + 1, mentions: mentions(room, said), node: fresh.id, steer: null, text: said })
+    proposed.delete(input.node)
   }
   const found = twig(key, input.node)
   const amount = sent.get(hash)?.amount ?? 1_000_000n

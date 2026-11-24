@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Config, Detail, Member, ProofsView, Said, TreeView } from '../shared/Api.ts'
 import * as Prose from '../shared/Prose.ts'
 import * as Status from '../shared/Status.ts'
@@ -8,6 +8,7 @@ import { here, seeded } from './boot.ts'
 import * as Grove from './grove.ts'
 import { Branches } from './Branches.tsx'
 import { Composer, lines, TreeChannel } from './Channel.tsx'
+import { Compose } from './Compose.tsx'
 import { Code, useWarmCode } from './Repo.tsx'
 import { Divider } from './Divider.tsx'
 import { ago } from './format.ts'
@@ -16,12 +17,14 @@ import { useMedia, useNow, usePoll } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Inline } from './Markdown.tsx'
 import { NodePanel, Ride } from './Node.tsx'
+import { Overlay } from './Overlay.tsx'
 import * as Pay from './pay.ts'
 import { Room } from './Room.tsx'
 import { back, Link, navigate, useBase } from './router.tsx'
 import { shareTree } from './channels.ts'
 import { useShown } from './Share.tsx'
 import { useSwipe } from './Shell.tsx'
+import { ChatThread } from './Thread.tsx'
 import { scene } from './stage.ts'
 import { at, backers, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
 import { Filters, Mark } from './Tree.tsx'
@@ -88,6 +91,10 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set())
   const [settled, setSettled] = useState<string | undefined>()
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<{ members: Member[] }>(`room:${id}`)?.members ?? [])
+  const [replying, setReplying] = useState<number>()
+  const [asking, setAsking] = useState<{ anchor: HTMLElement | null; sent: () => void; text: string }>()
+  const awaited = useRef<string | undefined>(undefined)
+  const chatMade = useRef(new Set<string>())
   const swarm = detail.data ?? props.detail
   useShown(swarm)
   Pay.useKept(Pay.slot(id, 'root'), () => setRiding((current) => current ?? { nid: 'root' }))
@@ -126,6 +133,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   }, [swarm.title])
 
   const nodes = grove?.nodes ?? {}
+  const items = useMemo(() => ({ nodes, path }), [grove, path])
 
   useEffect(() => {
     if (grove) shareTree(id, grove.nodes)
@@ -168,7 +176,15 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
     }
   }, [selected, !!node.data, !!grove])
 
-  const heard = useCallback((_said: readonly Said[], _me: unknown, list: readonly Member[]) => setMembers(list), [])
+  const heard = useCallback((said: readonly Said[], _me: unknown, list: readonly Member[]) => {
+    setMembers(list)
+    const made = awaited.current && said.find((item) => item.node === awaited.current)
+    if (made) {
+      awaited.current = undefined
+      setReplying(made.id)
+    }
+  }, [])
+  const ask = useCallback((text: string, anchor: HTMLElement | null, sent: () => void) => setAsking({ anchor, sent, text }), [])
   const ride = useCallback((anchor: HTMLElement) => setRiding({ anchor, nid: 'root' }), [])
   const steer = useCallback(() => setRiding({ nid: 'root' }), [])
 
@@ -184,11 +200,13 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
         redetail()
         const made = act.node
         if (!made) return
+        const chatted = chatMade.current.delete(made)
         setGrove((current) => current && { ...current, landed: { ...current.landed, [made]: Date.now() } })
         const parent = act.parent
         if (!parent) return
         setOpen((current) => (current.has(parent) ? current : new Set([...current, parent])))
         void Api.tree(id, { depth: 1, root: parent }).then((got) => setGrove((current) => current && Grove.graft(current, got)), () => {})
+        if (chatted) return
         if (phone) navigate(path(made), { keep: true })
         else navigate(carried(path(made)), { keep: true, replace: true })
       }),
@@ -261,14 +279,14 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const repo = proofs.data?.proofs[0]?.check.repo
   const count = root ? root.children.length : 0
   return (
-    <article className="grove" data-room={held ? '' : undefined} data-thread={thread || undefined} data-wire={wired}>
+    <article className="grove" data-replying={replying !== undefined && !held && !thread ? '' : undefined} data-room={held ? '' : undefined} data-thread={thread || undefined} data-wire={wired}>
       <Strip backers={top} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{head.proven.toLocaleString('en-US')}</b> proven</span>
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>
         <span className="strip-mood" data-mood={stood.mood} title={Status.line(stood.word)}><i />{Status.pill(stood.word)}</span>
       </Strip>
       <div className="panel panel-chat" hidden={!!held}>
-        <Room config={props.config} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} steer={false} swarm={swarm} visible={!held && !thread} />
+        <Room config={props.config} items={items} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} onSwarm={root ? ask : undefined} onThread={setReplying} steer={false} swarm={swarm} thread={replying} visible={!held && !thread} />
       </div>
       <Divider label="Resize the chat and the artifacts" name="swarm" />
       <section aria-label="Artifacts" className="pane">
@@ -403,6 +421,26 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
             />
           )}
         </aside>
+      )}
+      {replying !== undefined && !held && !thread && <ChatThread config={props.config} id={replying} items={items} key={replying} onClose={() => setReplying(undefined)} swarm={id} />}
+      {asking && root && (
+        <Overlay anchor={asking.anchor} className="compose-card" label="Add it to the board" onClose={() => setAsking(undefined)}>
+          <Compose
+            config={props.config}
+            heading="Add it to the board"
+            onMade={(nid) => {
+              awaited.current = nid
+              chatMade.current.add(nid)
+            }}
+            onSent={() => {
+              asking.sent()
+              setAsking(undefined)
+            }}
+            parent={root}
+            said={asking.text}
+            swarm={id}
+          />
+        </Overlay>
       )}
       {riding && nodes[riding.nid] && <Ride anchor={riding.anchor} config={props.config} key={riding.nid} node={nodes[riding.nid]!} onClose={() => setRiding(undefined)} onDone={() => redetail()} swarm={id} />}
     </article>

@@ -8,18 +8,18 @@ import { asked, dollars, Fuel } from './Contribute.tsx'
 import * as Pay from './pay.ts'
 import { Mark } from './Tree.tsx'
 
-export function Compose(props: { config: Config | undefined; full?: boolean; onSent?: (() => void) | undefined; parent: Tree.Node; swarm: string }) {
-  const [title, setTitle] = useState('')
-  const [spec, setSpec] = useState('')
+export function Compose(props: { config: Config | undefined; full?: boolean; heading?: string | undefined; onMade?: ((nid: string) => void) | undefined; onSent?: (() => void) | undefined; parent: Tree.Node; said?: string | undefined; swarm: string }) {
+  const [title, setTitle] = useState(() => (props.said ? titled(props.said) : ''))
+  const [spec, setSpec] = useState(props.said ?? '')
   const [statement, setStatement] = useState('')
-  const [form, setForm] = useState<Tree.Form>('lemma')
+  const [form, setForm] = useState<Tree.Form>(props.said ? 'idea' : 'lemma')
   const [prefill] = useState(() => ({ ...asked(), amount: '1' }))
   const slot = Pay.proposing(props.swarm, props.parent.id)
   const busy = Pay.busy(Pay.useFlow(slot))
   const under = props.parent.form === 'goal' ? 'the whole swarm' : props.parent.title
   return (
     <div className="compose" data-full={props.full || undefined}>
-      <h3>Add under {under}</h3>
+      <h3>{props.heading ?? `Add under ${under}`}</h3>
       <label className="compose-field">
         <span className="sr-only">Title</span>
         <input autoFocus className="compose-title" disabled={busy} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="Its title" value={title} />
@@ -60,7 +60,8 @@ export function Compose(props: { config: Config | undefined; full?: boolean; onS
         steers={false}
         target={async () => {
           const named = title.trim()
-          const made = await Api.propose(props.swarm, { form, parent: props.parent.id, spec: spec.trim() || named, title: named, ...(statement.trim() ? { statement: statement.trim() } : {}) })
+          const made = await Api.propose(props.swarm, { form, parent: props.parent.id, spec: spec.trim() || named, title: named, ...(statement.trim() ? { statement: statement.trim() } : {}), ...(props.said ? { said: props.said } : {}) })
+          props.onMade?.(made.nid)
           return { id: props.swarm, node: made.nid, parent: props.parent.id, title: named }
         }}
         verb="Add it"
@@ -68,6 +69,13 @@ export function Compose(props: { config: Config | undefined; full?: boolean; onS
       />
     </div>
   )
+}
+
+export function titled(text: string) {
+  const line = text.replace(/\s+/g, ' ').trim()
+  if (line.length <= 120) return line
+  const cut = line.slice(0, 119)
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 60)).trimEnd()}…`
 }
 
 function said(act: Pay.Act) {

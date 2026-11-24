@@ -29,6 +29,7 @@ import { Reins, steerer, useRoster } from './Steering.tsx'
 import { at, backers, dollars, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
 import { back, Link, navigate, useBase, useQuery } from './router.tsx'
 import { stamp } from './format.ts'
+import { ChatThread } from './Thread.tsx'
 import * as Wire from './wire.ts'
 
 const detailMs = 10_000
@@ -139,10 +140,11 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   }
   const branch = props.channel ? tree.data?.branches.find((each) => String(each.id) === props.channel) : undefined
   const roomed = !!props.channel && (!tree.data || !!branch)
+  const [replying, setReplying] = useState<number>()
 
 
   return (
-    <article className="swarm-shell" data-room={roomed ? '' : undefined}>
+    <article className="swarm-shell" data-replying={replying !== undefined && !roomed ? '' : undefined} data-room={roomed ? '' : undefined}>
       <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span><b>{dollars(swarm.remaining)}</b> left</span>
@@ -175,7 +177,9 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           onBack={steer}
           onMessages={heard}
           onResults={() => show('results')}
+          onThread={setReplying}
           swarm={swarm}
+          thread={replying}
           visible={!roomed}
         />
       </div>
@@ -198,6 +202,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
         </div>
       )}
       </section>
+      {replying !== undefined && !roomed && <ChatThread config={props.config} id={replying} key={replying} onClose={() => setReplying(undefined)} swarm={id} />}
       {riding && !archived && (
         <Overlay anchor={riding.anchor} className="ride ride-box" label="Ride it" onClose={() => setRiding(undefined)}>
           <Box

@@ -1,4 +1,4 @@
-import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Hall, Heard, Issued, Lent, Listing, Live, Lobby, Named, NodeUpdates, NodeView, OwnAi, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Room, Roster, Shouted, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Hall, Heard, Issued, Lent, Listing, Live, Lobby, Named, NodeUpdates, NodeView, OwnAi, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Reacted, Replied, Room, Roster, Shouted, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
@@ -293,8 +293,16 @@ export function room(id: string, query: { after?: number; before?: number } = {}
   return fixture ? staged((fixtures) => fixtures.room(id, query, bearer ? visitor : undefined)) : request<Room>(`${path(id)}/chat?${search}`)
 }
 
-export function say(id: string, input: { artifact?: boolean; btw?: readonly Btw.Exchange[]; steer?: string; text: string }) {
+export function say(id: string, input: { artifact?: boolean; btw?: readonly Btw.Exchange[]; parent?: number; steer?: string; text: string }) {
   return signed(() => fixture ? staged((fixtures) => fixtures.say(id, input, who())) : request<Posted>(`${path(id)}/chat`, input))
+}
+
+export function replies(id: string, message: number, after = 0) {
+  return fixture ? staged((fixtures) => fixtures.replies(id, message, after, bearer ? visitor : undefined)) : request<Replied>(`${path(id)}/chat/${message}${after ? `?after=${after}` : ''}`)
+}
+
+export function react(id: string, message: number, input: { emoji: string; on: boolean }) {
+  return signed(() => (fixture ? staged((fixtures) => fixtures.react(id, message, input, who())) : request<Reacted>(`${path(id)}/chat/${message}/reactions`, input)))
 }
 
 export function general(query: { after?: number; before?: number } = {}) {
@@ -383,7 +391,7 @@ export function ride(id: string, input: { hash: string; node: string }) {
   return fixture ? staged((fixtures) => fixtures.ride(id, input)) : request<Contributed>(`${v1(id)}/contributions`, input)
 }
 
-export function propose(id: string, input: { form: Tree.Form; parent: string; spec: string; statement?: string; title: string }) {
+export function propose(id: string, input: { form: Tree.Form; parent: string; said?: string; spec: string; statement?: string; title: string }) {
   return signed(() => (fixture ? staged((fixtures) => fixtures.propose(id, input, who())) : request<Proposed>(`${v1(id)}/nodes`, input)))
 }
 

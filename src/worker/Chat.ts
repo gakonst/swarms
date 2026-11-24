@@ -10,7 +10,7 @@ export const columns = [
   ['chat', 'node', 'ALTER TABLE chat ADD COLUMN node TEXT'],
 ] as const
 
-export const indexes = ['CREATE INDEX IF NOT EXISTS chat_thread ON chat (parent, id) WHERE parent IS NOT NULL', 'CREATE INDEX IF NOT EXISTS chat_node ON chat (node) WHERE node IS NOT NULL']
+export const indexes = ['CREATE INDEX IF NOT EXISTS chat_top ON chat (id) WHERE parent IS NULL', 'CREATE INDEX IF NOT EXISTS chat_thread ON chat (parent, id) WHERE parent IS NOT NULL', 'CREATE INDEX IF NOT EXISTS chat_node ON chat (node) WHERE node IS NOT NULL']
 
 const selected = 'SELECT id, at, author, text, mentions, steer, artifact, parent, node FROM chat'
 
