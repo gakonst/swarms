@@ -76,6 +76,10 @@ const planted = new Map<string, { from: unknown; shape: Shape }>()
 
 const watchers = new Set<() => void>()
 
+const nothing: readonly (readonly [string, Shape])[] = []
+
+let every = nothing
+
 function seed(id: string): Shape | undefined {
   const tree = seeded<TreeView>(`tree:${id}`)
   const branches = tree ? undefined : seeded<Branches>(`branches:${id}`)
@@ -97,10 +101,13 @@ function keep(id: string, shape: Shape) {
     const first = seed(id)
     if (first && JSON.stringify(first) === key) {
       shapes.set(id, { key, shape: first })
+      every = [...shapes].map(([each, held]) => [each, held.shape] as const)
+      for (const watcher of watchers) watcher()
       return
     }
   }
   shapes.set(id, { key, shape })
+  every = [...shapes].map(([each, held]) => [each, held.shape] as const)
   for (const watcher of watchers) watcher()
 }
 
@@ -125,6 +132,10 @@ export function useShape(id: string | undefined) {
     () => (id ? (shapes.get(id)?.shape ?? seed(id)) : undefined),
     () => (id ? seed(id) : undefined),
   )
+}
+
+export function useShapes() {
+  return useSyncExternalStore(watch, () => every, () => nothing)
 }
 
 export function holding(shape: Shape | undefined, nid: string | undefined) {

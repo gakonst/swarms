@@ -3,9 +3,9 @@ import type { Listing, Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Status from '../shared/Status.ts'
 import { cash } from './Branches.tsx'
-import { Spiral } from './Field.tsx'
-import { sown, stood } from './Home.tsx'
+import { stood } from './Home.tsx'
 import { Inline } from './Markdown.tsx'
+import { Badge } from './Picture.tsx'
 import { Link } from './router.tsx'
 
 const recentKey = 'swarms_recent'
@@ -100,7 +100,7 @@ export function Switcher(props: { current: string | undefined; items: readonly S
                 lit={props.current === swarm.id}
                 to={Nickname.path(swarm)}
               >
-                <Spiral cells={sown(swarm, heads[swarm.id])} id={swarm.id} live={working} />
+                <Badge head={heads[swarm.id]} live={working} swarm={swarm} />
                 <Inline className="switch-name" text={swarm.title} />
                 <span className="switch-meta"><i aria-hidden="true" />{cash(swarm.balance)}</span>
               </Link>

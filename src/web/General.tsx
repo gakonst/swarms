@@ -11,6 +11,7 @@ import { message as reason, useNow, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import { code } from './pay.ts'
 import { Divider } from './Divider.tsx'
+import { useHello, Welcome } from './Hello.tsx'
 import { Avatar, tint } from './Room.tsx'
 import { Link } from './router.tsx'
 import { channels } from './Shell.tsx'
@@ -41,6 +42,7 @@ function joined(a: Said | undefined, b: Said | undefined, now: number) {
 
 export function General(props: { config: Config | undefined }) {
   const list = Wire.useSwarms()
+  const hello = useHello()
   const wallet = useWallet()
   const now = useNow(60_000)
   const [room, setRoom] = useState<Room>(() => {
@@ -196,7 +198,7 @@ export function General(props: { config: Config | undefined }) {
           }}
           ref={scroller}
         >
-          <div className="welcome">
+          {hello === 'new' ? <Welcome /> : <div className="welcome">
             <p className="welcome-mark" aria-hidden="true">#</p>
             <h2 className="welcome-title">Put a few dollars into an AI swarm and watch it work.</h2>
             <p className="welcome-text">This is #general, where everyone on Swarms talks. Each problem listed here is a swarm with its own server: a #general for its riders and lead, a channel for each line of work, and a thread for each item, where its agents post what they do.</p>
@@ -218,7 +220,7 @@ export function General(props: { config: Config | undefined }) {
                 ))}
               </ol>
             )}
-          </div>
+          </div>}
           {!loaded && <p className="chat-empty">{failed ? "Can't reach Swarms. Trying again." : 'Loading…'}</p>}
           {room.messages.map((item, index) => {
             const author = item.author ?? ''

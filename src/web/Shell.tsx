@@ -6,12 +6,13 @@ import * as Site from '../shared/Site.ts'
 import { boot } from './boot.ts'
 import { cash } from './Branches.tsx'
 import { Here } from './ChannelMenu.tsx'
-import { Spiral } from './Field.tsx'
 import { Switcher } from './Switcher.tsx'
 import * as Status from '../shared/Status.ts'
-import { board, live, sown, stood } from './Home.tsx'
+import { board, live, stood } from './Home.tsx'
 import { Inline } from './Markdown.tsx'
+import { Badge } from './Picture.tsx'
 import { Link } from './router.tsx'
+import { Opener, Palette, useShortcut } from './Search.tsx'
 import * as Wire from './wire.ts'
 
 const seenKey = 'swarms_seen'
@@ -103,6 +104,11 @@ function Servers(props: { current: string | undefined; items: readonly Summary[]
         <span aria-hidden="true" className="server-pill"><i>#</i></span>
         <span aria-hidden="true" className="server-text"><span className="server-name">general</span><span className="server-line">Everyone on Swarms</span></span>
       </Link>
+      <Opener className="server server-search" label="Search problems, channels and threads">
+        <span aria-hidden="true" className="server-pill"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg></span>
+        <span aria-hidden="true" className="server-text"><span className="server-name">Search</span><span className="server-line">Problems, channels and threads</span></span>
+        <kbd aria-hidden="true" className="server-side server-key">⌘K</kbd>
+      </Opener>
       <span aria-hidden="true" className="servers-rule" />
       <ol className="servers-list" data-loading={!props.listing}>
         {props.items.map((swarm) => {
@@ -119,7 +125,7 @@ function Servers(props: { current: string | undefined; items: readonly Summary[]
                 title={`${swarm.title} · ${cash(swarm.balance)}`}
                 to={Nickname.path(swarm)}
               >
-                <span className="server-pill"><Spiral cells={sown(swarm, heads[swarm.id])} id={swarm.id} live={working} /></span>
+                <span className="server-pill"><Badge head={heads[swarm.id]} live={working} swarm={swarm} /></span>
                 <span aria-hidden="true" className="server-text"><Inline className="server-name" text={swarm.title} /><Inline className="server-line" text={swarm.goal} /></span>
                 <span aria-hidden="true" className="server-side"><span className="server-money">{cash(swarm.balance)}</span><span className="server-state" data-word={word}>{tag ? <>{working && <i className="rail-live" />}{tag}</> : riders(swarm.contributors)}</span></span>
               </Link>
@@ -202,6 +208,7 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
   const items = channels(list.data)
   const unread = useUnread(items, props.channel)
   const rail = useSyncExternalStore(watchRail, readRail, servedRail)
+  useShortcut()
   return (
     <div className="hub" data-listing={props.listing || undefined} data-rail={rail} onClick={(event) => props.listing && event.target === event.currentTarget && props.onList(false)} {...swiped}>
       <div className="drawer" id="channels">
@@ -211,6 +218,7 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
         <Here value={{ general: props.general, room: props.room, thread: props.thread }}>{props.children}</Here>
       </div>
       <Switcher current={props.channel} items={items} listing={list.data} unread={unread} />
+      <Palette />
     </div>
   )
 }

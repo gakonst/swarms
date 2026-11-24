@@ -100,7 +100,7 @@ function Seed(props: { config: Config | undefined; name: string | undefined; pro
 
 function Own(props: { config: Config | undefined; name: string | undefined }) {
   const list = Wire.useSwarms()
-  const [question, setQuestion] = useState(() => (props.name ? Nickname.topic(props.name) : ''))
+  const [question, setQuestion] = useState(() => (props.name ? Nickname.topic(props.name) : (here().searchParams.get('q') ?? '')))
   const [note, setNote] = useState('')
   const drafted = brief(question)
   const [steering, setSteering] = useState<Steering>('team')

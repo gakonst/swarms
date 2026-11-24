@@ -3,6 +3,7 @@ import { waitUntil } from 'cloudflare:workers'
 import { render } from '#ssr'
 import type { Boot, Face } from '../shared/Boot.ts'
 import * as Nickname from '../shared/Nickname.ts'
+import * as Hello from '../shared/Hello.ts'
 import * as Rail from '../shared/Rail.ts'
 import * as Site from '../shared/Site.ts'
 import * as Surface from '../shared/Surface.ts'
@@ -251,7 +252,7 @@ export async function page(request: Request, env: Cloudflare.Env) {
   const build = await built(env, url.origin).catch(() => '')
   const named = Nickname.parse(url.pathname)
   const swarm = named ? ((await lookup(env, request, named.name))?.swarm ?? '') : ''
-  return Edge.page(request, `${build}|${mobile(request) ? 'm' : 'd'}|${zone(cookie) ?? ''}|${Rail.parse(cookie)}|${swarm}`, (given) => draw(given, env))
+  return Edge.page(request, `${build}|${mobile(request) ? 'm' : 'd'}|${zone(cookie) ?? ''}|${Rail.parse(cookie)}|${swarm}|${url.pathname === '/' ? Hello.parse(cookie) : ''}`, (given) => draw(given, env))
 }
 
 let build: { html: string; value: string } | undefined
@@ -287,7 +288,7 @@ async function draw(request: Request, env: Cloudflare.Env) {
 
   const work = (async () => {
     const { data, head, whole } = await gathering
-    const boot: Boot = { base: Site.prefix(url), config: await configuring, data, face: face(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), rail: Rail.parse(request.headers.get('cookie')), site: Site.url(env, url), socket: `${url.protocol === 'https:' ? 'wss' : 'ws'}://${url.host}${Site.prefix(url)}`, url: url.href, zone: zone(request.headers.get('cookie')) }
+    const boot: Boot = { base: Site.prefix(url), config: await configuring, data, face: face(request.headers.get('cookie')), hello: Hello.parse(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), rail: Rail.parse(request.headers.get('cookie')), site: Site.url(env, url), socket: `${url.protocol === 'https:' ? 'wss' : 'ws'}://${url.host}${Site.prefix(url)}`, url: url.href, zone: zone(request.headers.get('cookie')) }
     await writer.write(encoder.encode(`<title>${escape(head.title)}</title><meta name="description" content="${escape(head.description)}">${Share.tags(head)}${closing}<div id="root">`))
     try {
       const stream = await store.run(boot, () => render(request.signal))
