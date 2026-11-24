@@ -47,7 +47,7 @@ export function useRoster(id: string, steering: Policy) {
     const loop = loops.get(id)
     if (loop) loop.count += 1
     else {
-      void fetched(id)
+      if (!rosters.has(id) && !seeded<Roster>(`team:${id}`)) void fetched(id)
       loops.set(id, {
         count: 1,
         leave: Wire.join(id, 'room', (signal) => {

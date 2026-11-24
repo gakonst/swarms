@@ -76,7 +76,7 @@ export function General(props: { config: Config | undefined }) {
   }, [room.messages])
 
   useEffect(() => {
-    void load(last.current)
+    if (!seeded<Hall>('general')) void load(last.current)
     return Api.hall((event) => {
       if (event.type === 'open' || event.type === 'closed') setWired(event.type === 'open')
       if (event.type === 'welcome') void load(last.current)

@@ -84,8 +84,10 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   }, [tree.data, id])
 
   const answered = detail.data?.answer?.at
+  const [heardAnswer, setHeardAnswer] = useState(answered)
   useEffect(() => {
-    if (!answered) return
+    if (!answered || answered === heardAnswer) return
+    setHeardAnswer(answered)
     renews()
     rebranch()
     reprogress()

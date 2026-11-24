@@ -53,7 +53,23 @@ async function signed<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-async function request<T>(path: string, body?: unknown, method?: 'DELETE' | 'PATCH'): Promise<T> {
+const reading = new Map<string, { at: number; read: Promise<unknown> }>()
+
+const together = 50
+
+function request<T>(path: string, body?: unknown, method?: 'DELETE' | 'PATCH'): Promise<T> {
+  if (body !== undefined || method) return send<T>(path, body, method)
+  const key = `${bearer ?? ''} ${path}`
+  const held = reading.get(key)
+  if (held && Date.now() - held.at < together) return held.read as Promise<T>
+  const read = send<T>(path).finally(() => {
+    if (reading.get(key)?.read === read) reading.delete(key)
+  })
+  reading.set(key, { at: Date.now(), read })
+  return read
+}
+
+async function send<T>(path: string, body?: unknown, method?: 'DELETE' | 'PATCH'): Promise<T> {
   const headers: Record<string, string> = bearer ? { authorization: `Bearer ${bearer}` } : {}
   const response = await fetch(Site.at(path), method === 'DELETE' ? { headers, method } : body === undefined ? { headers } : { body: JSON.stringify(body), headers: { ...headers, 'content-type': 'application/json' }, method: method ?? 'POST' })
   const data: unknown = await response.json().catch(() => undefined)
