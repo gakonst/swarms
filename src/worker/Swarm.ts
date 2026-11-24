@@ -1033,10 +1033,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   socket(request: Request) {
     if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('Open the room as a WebSocket.', { status: 426 })
-    if (this.ctx.getWebSockets().length >= Chat.socketsMost) return new Response('This room is full right now; read it over HTTP.', { status: 503 })
-    const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket]
     const asked = new URL(request.url).searchParams
     const watching = asked.get('watch') === '1'
+    const watched = this.ctx.getWebSockets('watch').length
+    if (watching ? watched >= Chat.streamsMost : this.ctx.getWebSockets().length - watched >= Chat.socketsMost) return new Response('This room is full right now; read it over HTTP.', { status: 503 })
+    const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket]
     const listening = watching || asked.get('listen') === '1'
     this.ctx.acceptWebSocket(server, watching ? ['listen', 'watch'] : listening ? ['listen'] : [])
     this.window?.close(Follow.until(this, Date.now()))

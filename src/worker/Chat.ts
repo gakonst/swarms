@@ -30,6 +30,8 @@ export const typingMs = 2_000
 
 export const socketsMost = 500
 
+export const streamsMost = 1000
+
 export const postsPerMinute = 10
 
 export function speak(self: Swarm, author: Address | null, text: string, mentions: Address[], steer: Steer | null, artifact: Shown | null = null): Said {
