@@ -6,9 +6,7 @@ import * as Api from './api.ts'
 import { seeded } from './boot.ts'
 import { cash, Faces } from './Branches.tsx'
 import { day, minute } from './format.ts'
-import { Spiral } from './Field.tsx'
-import * as Status from '../shared/Status.ts'
-import { live, sown, stood } from './Home.tsx'
+import { live } from './Home.tsx'
 import { message as reason, useNow, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import { code } from './pay.ts'
@@ -113,6 +111,9 @@ export function General(props: { config: Config | undefined }) {
   const hot = open.slice(0, 3)
   const working = open.filter((swarm) => live(swarm, heads[swarm.id])).length
   const raised = items.reduce((sum, swarm) => sum + Number(swarm.balance), 0)
+  const spent = items.reduce((sum, swarm) => sum + Number(swarm.spent), 0)
+  const left = items.reduce((sum, swarm) => sum + Math.max(0, Number(swarm.remaining)), 0)
+  const proven = items.reduce((sum, swarm) => sum + (heads[swarm.id]?.proven ?? 0), 0)
   const riders = list.data?.riders ?? items.reduce((sum, swarm) => sum + swarm.contributors, 0)
   const name = (address: string) => room.names[address] ?? Mention.short(address)
 
@@ -169,7 +170,7 @@ export function General(props: { config: Config | undefined }) {
   )
 
   return (
-    <article className="general">
+    <article className="swarm-shell general">
       <header aria-label="The channel" className="strip">
         <div className="strip-head">
           <h1 className="strip-title"><i aria-hidden="true">#</i><span className="inline">general</span></h1>
@@ -184,7 +185,7 @@ export function General(props: { config: Config | undefined }) {
           <p className="strip-topic" title={topic}>{topic}</p>
         </div>
       </header>
-      <div className="general-body">
+      <div className="panel panel-chat">
       <section aria-label="Chat" className="chat general-chat">
         <div
           aria-live="polite"
@@ -244,29 +245,28 @@ export function General(props: { config: Config | undefined }) {
           {foot}
         </footer>
       </section>
-      <Divider label="Resize the chat and the problems" name="general" />
-      <aside aria-label="Problems" className="general-board">
-        <p className="rail-label"><span>Problems</span><span data-ready={!!list.data}>{items.length} · {cash(String(raised))}</span></p>
-        <ol className="general-list" data-loading={!list.data}>
-          {items.map((swarm) => {
-            const word = stood(swarm, heads[swarm.id]).word
-            const working = word === 'Working'
-            const tag = Status.tag(word)
-            return (
-              <li key={swarm.id}>
-                <Link className="general-lot" data={{ 'data-live': String(working), 'data-old': String(!!swarm.archivedAt) }} to={Nickname.path(swarm)}>
-                  <Spiral cells={sown(swarm, heads[swarm.id])} id={swarm.id} live={working} />
-                  <Inline className="general-lot-name" text={swarm.title} />
-                  <span className="general-lot-money">{cash(swarm.balance)}</span>
-                  <span className="general-lot-meta" data-word={word}>{tag ? <>{working && <i className="rail-live" />}{tag}</> : `${count(swarm.contributors)} rider${swarm.contributors === 1 ? '' : 's'}`}</span>
-                </Link>
-              </li>
-            )
-          })}
-          <li><Link className="general-lot general-new" to="/new"><i aria-hidden="true">+</i><span className="general-lot-name">Start a problem</span><span className="general-lot-money">$1+</span></Link></li>
-        </ol>
-      </aside>
       </div>
+      <Divider label="Resize the chat and the artifacts" name="swarm" />
+      <section aria-label="About Swarms" className="pane general-pane">
+        <nav aria-label="Artifacts" className="tabs"><span aria-current="page" className="tab">How it works</span></nav>
+        <div className="panel panel-page general-about">
+          <dl className="general-facts" data-ready={!!list.data}>
+            <div><dt>Open problems</dt><dd>{count(open.length)}</dd></div>
+            <div><dt>Results proven</dt><dd>{count(proven)}</dd></div>
+            <div><dt>Spent by agents</dt><dd>{cash(String(spent))}</dd></div>
+            <div><dt>Left to spend</dt><dd>{cash(String(left))}</dd></div>
+          </dl>
+          <ol className="general-how">
+            <li><b>Start a problem</b><span>Write the goal and put in $1 or more. A lead agent takes it on.</span></li>
+            <li><b>Ride it</b><span>Anyone adds dollars to a swarm they want to see go further.</span></li>
+            <li><b>Watch it work</b><span>Its agents post in its channels and threads while the money lasts. Everything it makes is public.</span></li>
+          </ol>
+          <p className="general-go">
+            <Link className="btn btn-high" to="/new">Start a problem</Link>
+            <Link className="btn btn-medium" to="/faq">FAQ</Link>
+          </p>
+        </div>
+      </section>
     </article>
   )
 }

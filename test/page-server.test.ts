@@ -66,3 +66,11 @@ test('a ready configuration remains in the server-rendered bootstrap', async () 
   const html = await (await Page.lost(request(), env)).text()
   assert.match(html, /"config":\{"ready":true\}/)
 })
+
+test('the server renders the problems rail the way this session left it', async () => {
+  configured = async () => ({ ready: true })
+  const open = await (await Page.lost(new Request('https://swarms.test/docs', { headers: { cookie: 'swarms_rail=expanded' } }), env)).text()
+  assert.match(open, /"rail":"expanded"/)
+  const closed = await (await Page.lost(request(), env)).text()
+  assert.match(closed, /"rail":"collapsed"/)
+})
