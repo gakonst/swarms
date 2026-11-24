@@ -160,7 +160,7 @@ function Home(props: { channel: string | undefined; items: readonly Summary[]; l
     <nav aria-label="Channels" className="rail">
       <header className="side-head">
         <b>Swarms</b>
-        <span className="side-meta" data-ready={!!props.listing}>{props.items.length} problems · {cash(String(raised))}</span>
+        <span className="side-meta" data-ready={!!props.listing}>{props.items.length} problem{props.items.length === 1 ? '' : 's'} · {cash(String(raised))}</span>
       </header>
       <div className="rail-scroll">
         <Link className="rail-row rail-general" lit={props.channel === 'general'} to="/">
