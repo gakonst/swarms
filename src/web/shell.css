@@ -325,3 +325,26 @@
   .channel-head:not(:has(.channel-add)) { grid-template-areas:'title title title' 'stats stats stats' 'topic topic ride'; }
 }
 
+@media (min-width:720px) and (max-width:899px) {
+  .general-body { display:grid; grid-template-columns:minmax(0, 1fr) clamp(232px, 32vw, 280px); grid-template-rows:minmax(0, 1fr); }
+  .general-body > .general-chat { order:1; min-width:0; }
+  .general-board { order:2; flex:initial; padding:4px 12px 14px; border-bottom:0; border-left:1px solid var(--line); }
+  .general-board .rail-label { padding:14px 6px 6px; }
+  .general-list { display:grid; gap:1px; padding:0; overflow-x:hidden; overflow-y:auto; }
+  .general-lot { width:auto; min-height:52px; border:0; }
+  .general-new { margin-top:6px; border:1px dashed var(--rule); }
+}
+
+@media (min-width:800px) and (max-width:899px) {
+  html, body { height:100%; overflow:hidden; overscroll-behavior:none; }
+  .app { position:fixed; inset:0; display:flex; flex-direction:column; height:var(--screen, 100dvh); min-height:0; overflow:hidden; padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+  .app > main { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+  .game-header { position:relative; flex-shrink:0; }
+  .game-nav, .game-header .wallet { position:relative; }
+  .game-nav::after, .game-header .wallet::after { content:''; position:absolute; inset:-6px -8px; }
+}
+
+@media (min-width:600px) and (max-width:1279px) {
+  .general-chat > .chat-list > .welcome:first-child, .channel-list > .channel-intro:first-child { margin-top:0; }
+  .general-chat .welcome-hot { display:none; }
+}
