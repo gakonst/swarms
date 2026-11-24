@@ -286,7 +286,7 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 .wallet-menu[data-open='true'] > .wallet-drop,.wallet-menu:focus-within > .wallet-drop { display:block; }
 @media (hover:hover) { .wallet-menu:hover > .wallet-drop { display:block; } }
 .wallet-list { display:grid; min-width:160px; padding:4px; border:1px solid var(--rule); border-radius:12px; background:var(--bg); }
-.wallet-out { display:block; width:100%; padding:10px 12px; border:0; border-radius:8px; background:none; color:var(--fg); font:12px var(--mono); white-space:nowrap; text-align:left; text-decoration:none; cursor:pointer; }
+.wallet-out { display:flex; align-items:center; width:100%; padding:10px 12px; border:0; border-radius:8px; background:none; color:var(--fg); font:12px var(--mono); white-space:nowrap; text-align:left; text-decoration:none; cursor:pointer; }
 .wallet-out:hover { background:var(--wash); }
 .wallet-out:disabled { color:var(--muted); cursor:default; }
 .wallet-note { margin:0; padding:10px 12px 6px; color:var(--muted); font:12px var(--mono); white-space:nowrap; }
