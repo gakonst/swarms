@@ -137,6 +137,14 @@ app.get('/api/swarms', async (c) => {
 
 app.get('/api/swarms/live', (c) => Lobby.enter(c.env, c.req.raw))
 
+app.get('/api/general/chat', async (c) => Problem.respond(await Operations.general(c.env, c.req.query())))
+
+app.post('/api/general/chat', async (c) => Problem.respond(await Operations.shout(c.env, await Rest.body(c.req.raw), await Sessions.who(c.env, c.req.raw)), 201))
+
+app.get('/api/general/chat/live', (c) => Lobby.listen(c.env, c.req.raw))
+
+app.get('/v1/general/chat/live', (c) => Lobby.listen(c.env, c.req.raw))
+
 app.get('/v1/swarms/live', (c) => Lobby.enter(c.env, c.req.raw))
 
 app.post('/api/swarms', async (c) => Problem.respond(await Operations.create(c.env, await Rest.body(c.req.raw), await Sessions.who(c.env, c.req.raw)), 201))

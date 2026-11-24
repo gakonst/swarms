@@ -1,4 +1,4 @@
-import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Issued, Lent, Listing, Live, Lobby, Named, NodeUpdates, NodeView, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Room, Roster, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Hall, Heard, Issued, Lent, Listing, Live, Lobby, Named, NodeUpdates, NodeView, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Room, Roster, Shouted, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
@@ -246,6 +246,17 @@ export function say(id: string, input: { artifact?: boolean; btw?: readonly Btw.
   return signed(() => fixture ? staged((fixtures) => fixtures.say(id, input, who())) : request<Posted>(`${path(id)}/chat`, input))
 }
 
+export function general(query: { after?: number; before?: number } = {}) {
+  const search = new URLSearchParams()
+  if (query.after) search.set('after', String(query.after))
+  if (query.before) search.set('before', String(query.before))
+  return fixture ? staged((fixtures) => fixtures.general(query)) : request<Hall>(`/api/general/chat?${search}`)
+}
+
+export function shout(text: string) {
+  return signed(() => fixture ? staged((fixtures) => fixtures.shout(text, who())) : request<Shouted>('/api/general/chat', { text }))
+}
+
 export function team(id: string) {
   return fixture ? staged((fixtures) => fixtures.team(id)) : request<Roster>(`${path(id)}/team`)
 }
@@ -444,4 +455,19 @@ export function lobby(listener: (event: Lobby | { type: 'open' | 'closed' }) => 
     }
   }
   return socket('/api/swarms/live', (event) => listener('data' in event ? (JSON.parse(event.data) as Lobby) : event)).close
+}
+
+export function hall(listener: (event: Heard | { type: 'open' | 'closed' }) => void) {
+  if (fixture) {
+    let stop: (() => void) | undefined
+    let alive = true
+    void staged((fixtures) => {
+      if (alive) stop = fixtures.hall(listener)
+    })
+    return () => {
+      alive = false
+      stop?.()
+    }
+  }
+  return socket('/api/general/chat/live', (event) => listener('data' in event ? (JSON.parse(event.data) as Heard) : event)).close
 }

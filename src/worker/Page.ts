@@ -127,11 +127,12 @@ async function gather(env: Cloudflare.Env, url: URL, calling: Calling): Promise<
   const lost = Share.share(site, Share.listing('home', []), { title: 'Not found · Swarms' })
   const data: Record<string, unknown> = {}
   if (path === '/' || path === '/ideas' || path === '/new') {
-    const list = await within(Operations.list(env, {}), 1500)
+    const [list, hall] = await Promise.all([within(Operations.list(env, {}), 1500), path === '/' ? within(Operations.general(env, { limit: firstChat }), 1500) : undefined])
     if (list?.ok) data['swarms'] = Operations.listed(list.value)
+    if (hall?.ok) data['general'] = hall.value
     const problem = path === '/new' ? Share.problem(url.searchParams.get('q')) : undefined
     const subject = problem ? Share.idea(problem) : Share.listing(path === '/ideas' ? 'ideas' : path === '/new' ? 'new' : 'home', list?.ok ? list.value.swarms : [])
-    return { data, head: Share.share(site, subject), status: 200, whole: !!list?.ok }
+    return { data, head: Share.share(site, subject), status: 200, whole: !!list?.ok && (path !== '/' || !!hall?.ok) }
   }
   if (path === '/about' || path === '/docs') return { data, head: Share.share(site, Share.plain(path === '/about' ? 'about' : 'docs')), status: 200, whole: true }
   if (path === '/faq') return { data, head: Share.share(site, Share.plain('about'), { description: Share.faq, path: '/faq', title: 'Questions · Swarms' }), status: 200, whole: true }

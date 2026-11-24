@@ -329,6 +329,12 @@ export type Ledgered = { drift: string; gateway: { deposited: string; left: stri
 
 export type Lobby = { swarm: Summary; type: 'swarm' } | { type: 'welcome' }
 
+export type Hall = { messages: Said[]; names: Record<string, string>; next: number }
+
+export type Shouted = { message: Said; name: string }
+
+export type Heard = { message: Said; name: string; type: 'said' } | { type: 'welcome' }
+
 export type Rode = { balance: string; form: SwarmForm; id: string; nickname: string | null; ridden: string; riders: number; since: number; started: boolean; title: string }
 
 export type RodeItem = { created: boolean; node: string; ridden: string; status: Tree.Status; swarm: string; title: string }

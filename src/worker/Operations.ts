@@ -6,6 +6,8 @@ import { z } from 'zod'
 import type {
   Account,
   Answered,
+  Hall,
+  Shouted,
   Branch,
   Branches,
   Roster,
@@ -68,6 +70,7 @@ import * as Clock from './Clock.ts'
 import * as Edge from './Edge.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
+import * as Lobby from './Lobby.ts'
 import * as Persona from './Persona.ts'
 import * as Progress from '../shared/Progress.ts'
 import * as Phase from './Phase.ts'
@@ -299,6 +302,14 @@ export const schema = {
       .max(Mention.maxName)
       .nullable()
       .describe(`Your username, 3 to ${Mention.maxName} letters, digits, hyphens or underscores, starting with a letter; it is stored in lower case. null or "" goes back to the name made from your address.`),
+  }),
+  general: z.object({
+    after: z.coerce.number().int().min(0).default(0).describe('Return the messages after this id; 0 returns the newest.'),
+    before: z.coerce.number().int().min(1).optional().describe('Return the messages before this id, to read further back.'),
+    limit: z.coerce.number().int().min(1).max(200).default(100).describe('At most this many messages.'),
+  }),
+  shout: z.object({
+    text: z.string().trim().min(1).max(Mention.maxText).describe('The message, posted to #general under your username.'),
   }),
   room: z.object({
     after: z.coerce.number().int().min(0).default(0).describe('Return the messages after this id; 0 returns the newest.'),
@@ -772,6 +783,22 @@ export async function listened(env: Cloudflare.Env, input: Input<'room'>, addres
 
   const [{ messages, stamp }, members] = await Promise.all([chatting ?? stub(env, query.swarm).chat({ after: query.after, before: query.before, limit: query.limit }), listing])
   return Problem.ok({ room: { me: address ? await self(env, members, address) : null, members, messages, next: messages.at(-1)?.id ?? query.after }, stamp })
+}
+
+export async function general(env: Cloudflare.Env, input: Input<'general'>): Promise<Problem.Result<Hall>> {
+  const parsed = parse(schema.general, input)
+  if (!parsed.ok) return parsed
+  return Problem.ok(await Lobby.hall(env).hall(parsed.value))
+}
+
+export async function shout(env: Cloudflare.Env, input: Input<'shout'>, address?: Address): Promise<Problem.Result<Shouted>> {
+  const parsed = parse(schema.shout, input)
+  if (!parsed.ok) return parsed
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to post in #general.')
+  const account = await Store.account(env, address)
+  if (!account.name) return unnamed()
+  const message = await Lobby.hall(env).shout({ author: account.address, name: account.name, text: parsed.value.text })
+  return message ? Problem.ok({ message, name: account.name }) : Problem.fail(429, 'rate_limited', 'At most 10 messages a minute in a room; wait a moment.')
 }
 
 export async function account(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<Account>> {

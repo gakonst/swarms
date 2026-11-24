@@ -7,7 +7,8 @@ import { signed, usd } from './format.ts'
 import { message, remember, remembered, useConfig, usePoll, useWallet } from './hooks.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
-import { Home, Join } from './Home.tsx'
+import { General } from './General.tsx'
+import { Join } from './Home.tsx'
 import { Base, Link, navigate, usePath, warmer } from './router.tsx'
 import { Lost } from './Lost.tsx'
 import * as Names from './names.ts'
@@ -278,7 +279,7 @@ export function App() {
     <Caught path={path}>
       <Suspense fallback={<section aria-busy="true" className="page lost" />}>
         {path === '/' ? (
-          <Home />
+          <General config={config} />
         ) : path === '/ideas' || path === '/join' ? (
           <Join />
         ) : path === '/new' ? (

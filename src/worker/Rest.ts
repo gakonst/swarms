@@ -139,6 +139,10 @@ app.get('/v1/swarms/:id/artifacts', async (c) =>
   Problem.respond(await Operations.artifacts(c.env, { swarm: c.req.param('id') }, Site.url(c.env, c.req.url))),
 )
 
+app.get('/v1/general/chat', async (c) => Problem.respond(await Operations.general(c.env, c.req.query())))
+
+app.post('/v1/general/chat', async (c) => Problem.respond(await Operations.shout(c.env, await body(c.req.raw), await Sessions.who(c.env, c.req.raw)), 201))
+
 app.get('/v1/swarms/:id/chat', async (c) =>
   Problem.respond(await Operations.room(c.env, { ...c.req.query(), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
 )

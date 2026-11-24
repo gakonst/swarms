@@ -381,6 +381,12 @@ const schemas = {
     "A backer of the swarm, who may post in its room. A lent machine counts when its hand was issued to a signed-in caller and has connected.",
   ),
   Posted: object({ me: ref('Me'), message: ref('Said') }),
+  Hall: object({
+    messages: { items: ref('Said'), type: 'array' },
+    names: { additionalProperties: string, description: 'The username each author posted under, by address.', type: 'object' },
+    next: { description: 'The newest message id; pass it as after to read what comes next.', type: 'integer' },
+  }),
+  Shouted: object({ message: ref('Said'), name: string }),
   Exchange: object({ answer: string, question: string }),
   Seat: object({ address: string, handle: string, left: string, limit: nullable(string), role: string, spent: string }),
   Roster: object({ admins: { items: string, type: 'array' }, memberBudget: nullable(string), seats: { items: ref('Seat'), type: 'array' }, steering: string, team: nullable(string) }),
@@ -800,6 +806,34 @@ export function document(origin: string) {
           parameters: [swarm],
           responses: { ...ok(object({ artifacts: { items: ref('Artifact'), type: 'array' } }), 'The artifacts.'), ...failures(404, 502) },
           summary: 'Artifacts',
+        },
+      },
+      '/v1/general/chat': {
+        get: {
+          description: "#general, the site's own room: its newest messages (or those after or before an id) and the username each author posted under.",
+          operationId: 'getGeneral',
+          parameters: [
+            parameter('after', 'query', { default: 0, minimum: 0, type: 'integer' }, 'Messages after this id; 0 returns the newest.'),
+            parameter('before', 'query', { minimum: 1, type: 'integer' }, 'Messages before this id.'),
+            parameter('limit', 'query', { default: 100, maximum: 200, minimum: 1, type: 'integer' }, 'Messages at most.'),
+          ],
+          responses: { ...ok(ref('Hall'), 'The room.'), ...failures(400) },
+          summary: 'Read #general',
+        },
+        post: {
+          description: 'Posts to #general as the signed-in rider (Authorization: Bearer <token> from /v1/auth), under their username. Anyone with a username posts; at most 10 messages a minute.',
+          operationId: 'postGeneral',
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.shout) } }, required: true },
+          responses: { ...ok(ref('Shouted'), 'The message and the name it went out under.', '201'), ...failures(400, 401, 403, 429) },
+          summary: 'Post to #general',
+        },
+      },
+      '/v1/general/chat/live': {
+        get: {
+          description: 'A WebSocket. The server sends {type: welcome} on connect and {type: said, message, name} for every new message in #general. Send the text ping to get pong.',
+          operationId: 'generalLive',
+          responses: { '101': { description: 'Switching to the WebSocket.' }, ...failures(400) },
+          summary: '#general live',
         },
       },
       '/v1/swarms/{id}/chat': {

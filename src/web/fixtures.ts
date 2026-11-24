@@ -1,6 +1,6 @@
 import * as Answer from '../shared/Answer.ts'
 import * as Shelf from '../shared/Artifact.ts'
-import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Room, Roster, Said, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Hall, Heard, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Room, Roster, Said, Shouted, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -1906,5 +1906,42 @@ function woods(listener: (event: Chatter | { type: 'open' | 'closed' }) => void)
     },
     hello: () => {},
     typing: () => {},
+  }
+}
+
+const hallSaid: Said[] = [
+  { artifact: null, at: at(190), author: people[2], id: 1, mentions: [], steer: null, text: 'Rode Does P = NP? with $5. Every green dot on its board is a proof Lean checked.' },
+  { artifact: null, at: at(150), author: people[4], id: 2, mentions: [], steer: null, text: 'Is anyone starting a channel on attention kernels for small GPUs? I would ride it.' },
+  { artifact: null, at: at(62), author: people[1], id: 3, mentions: [], steer: null, text: 'The JSON channel parsed its terabyte for under a dollar. Its Results tab has the numbers.' },
+  { artifact: null, at: at(18), author: people[2], id: 4, mentions: [], steer: null, text: '@tensorbox start it, I put in $10 the minute it exists.' },
+]
+
+const hallListeners = new Set<(event: Heard | { type: 'open' | 'closed' }) => void>()
+
+export async function general(query: { after?: number; before?: number }): Promise<Hall> {
+  const messages = query.before ? hallSaid.filter((item) => item.id < (query.before ?? 0)) : hallSaid.filter((item) => item.id > (query.after ?? 0))
+  return delay({ messages, names: Object.fromEntries(hallSaid.flatMap((item) => (item.author ? [[item.author, called(item.author)]] : []))), next: messages.at(-1)?.id ?? query.after ?? 0 })
+}
+
+export async function shout(text: string, who: `0x${string}` | undefined): Promise<Shouted> {
+  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to post in #general.')
+  const name = names.get(who.toLowerCase())
+  if (!name) throw fail(403, 'username_required', 'Pick a username first.')
+  const message: Said = { artifact: null, at: Date.now(), author: who, id: (hallSaid.at(-1)?.id ?? 0) + 1, mentions: [], steer: null, text: text.trim() }
+  hallSaid.push(message)
+  for (const listener of hallListeners) listener({ message, name, type: 'said' })
+  return delay({ message, name }, 250)
+}
+
+export function hall(listener: (event: Heard | { type: 'open' | 'closed' }) => void) {
+  hallListeners.add(listener)
+  const opened = setTimeout(() => {
+    if (offline) return
+    listener({ type: 'open' })
+    listener({ type: 'welcome' })
+  }, 200)
+  return () => {
+    clearTimeout(opened)
+    hallListeners.delete(listener)
   }
 }

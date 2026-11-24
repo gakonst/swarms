@@ -1,11 +1,23 @@
 import { DurableObject } from 'cloudflare:workers'
+import type { Address } from 'viem'
 import * as Answer from '../shared/Answer.ts'
-import type { Lobby as Message, Summary } from '../shared/Api.ts'
+import type { Hall, Heard, Lobby as Message, Said, Summary } from '../shared/Api.ts'
+import { redact } from '../shared/Trail.ts'
+import { postsPerMinute } from './Chat.ts'
+import { minuteMs } from './Clock.ts'
 import * as Problem from './Problem.ts'
 
 const socketsMost = 10_000
 
 const quietMs = 30_000
+
+const room = 'CREATE TABLE IF NOT EXISTS hall (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, author TEXT NOT NULL, name TEXT NOT NULL, text TEXT NOT NULL)'
+
+type Row = { at: number; author: string; id: number; name: string; text: string }
+
+function said(row: Row): Said {
+  return { artifact: null, at: Number(row.at), author: row.author as Address, id: Number(row.id), mentions: [], steer: null, text: String(row.text) }
+}
 
 function listed(summary: Summary): Summary {
   return summary.answer ? { ...summary, answer: { ...summary.answer, text: Answer.lead(summary.answer.text) } } : summary
@@ -21,6 +33,7 @@ export class Lobby extends DurableObject<Cloudflare.Env> {
   constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
     super(ctx, env)
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
+    ctx.storage.sql.exec(room)
   }
 
   override async fetch(request: Request) {
@@ -58,6 +71,38 @@ export class Lobby extends DurableObject<Cloudflare.Env> {
       } catch {}
   }
 
+  hall(query: { after: number; before?: number | undefined; limit: number }): Hall {
+    const sql = this.ctx.storage.sql
+    const columns = 'SELECT id, at, author, name, text FROM hall'
+    const rows =
+      query.before !== undefined
+        ? sql.exec<Row>(`${columns} WHERE id < ? ORDER BY id DESC LIMIT ?`, query.before, query.limit).toArray().reverse()
+        : query.after > 0
+          ? sql.exec<Row>(`${columns} WHERE id > ? ORDER BY id LIMIT ?`, query.after, query.limit).toArray()
+          : sql.exec<Row>(`${columns} ORDER BY id DESC LIMIT ?`, query.limit).toArray().reverse()
+    const names: Record<string, string> = {}
+    for (const row of rows) names[row.author] = row.name
+    const messages = rows.map(said)
+    return { messages, names, next: messages.at(-1)?.id ?? query.after }
+  }
+
+  shout(input: { author: Address; name: string; text: string }): Said | null {
+    const now = Date.now()
+    const key = `said:${input.author}`
+    const recent = (this.ctx.storage.kv.get<number[]>(key) ?? []).filter((at) => at > now - minuteMs)
+    if (recent.length >= postsPerMinute) return null
+    this.ctx.storage.kv.put(key, [...recent, now])
+    const text = redact(input.text)
+    const row = this.ctx.storage.sql.exec<{ id: number }>('INSERT INTO hall (at, author, name, text) VALUES (?, ?, ?, ?) RETURNING id', now, input.author, input.name, text).one()
+    const message = said({ at: now, author: input.author, id: row.id, name: input.name, text })
+    const data = JSON.stringify({ message, name: input.name, type: 'said' } satisfies Heard)
+    for (const socket of this.ctx.getWebSockets())
+      try {
+        socket.send(data)
+      } catch {}
+    return message
+  }
+
   override async alarm() {
     const now = Date.now()
     const listening = this.ctx.getWebSockets().length > 0
@@ -85,4 +130,13 @@ export function enter(env: Cloudflare.Env, request: Request) {
 
 export function tell(env: Cloudflare.Env, summary: Summary) {
   return env.LOBBY.getByName('lobby').changed(summary).catch(() => undefined)
+}
+
+export function hall(env: Cloudflare.Env) {
+  return env.LOBBY.getByName('general')
+}
+
+export function listen(env: Cloudflare.Env, request: Request) {
+  if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return Problem.json({ code: 'invalid_request', detail: 'Open this route as a WebSocket.', status: 400 })
+  return hall(env).fetch(request)
 }

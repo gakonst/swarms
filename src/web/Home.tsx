@@ -27,10 +27,6 @@ type Filter = (typeof filters)[number][0]
 
 const aliases: Record<string, Filter> = { fuel: 'money', live: 'running', new: 'waiting' }
 
-const first = 6
-
-const step = 8
-
 const least = 1
 
 type Doing = { at: number; text: string }
@@ -121,54 +117,6 @@ function Lot(props: { doing: Doing | undefined; funders: readonly Tree.Funder[];
         <Activity doing={props.doing} head={props.head} now={props.now} swarm={swarm} />
       </Link>
     </li>
-  )
-}
-
-function count(value: number) {
-  return value.toLocaleString('en-US')
-}
-
-export function Home() {
-  const list = Wire.useSwarms()
-  const now = useNow(30_000)
-  const [limit, setLimit] = useState(first)
-  const items = board(list.data)
-  const shown = items.slice(0, limit)
-  const hidden = items.slice(limit)
-  const heads = list.data?.heads ?? {}
-  const said = useDoing(shown.filter((swarm) => swarm.form === 'tree' && live(swarm, heads[swarm.id])))
-  const raised = items.reduce((sum, swarm) => sum + Number(swarm.balance), 0)
-  const working = items.filter((swarm) => live(swarm, heads[swarm.id])).length
-  const riders = list.data?.riders ?? items.reduce((sum, swarm) => sum + swarm.contributors, 0)
-
-  return (
-    <div className="home">
-      <section className="hero">
-        <h1 className="hero-title">Put a few dollars into an AI swarm and watch it work.</h1>
-        <dl className="tally-site" data-ready={!!list.data}>
-          <div><dt>riders</dt><dd>{count(riders)}</dd></div>
-          <div><dt>raised</dt><dd>{cash(String(raised))}</dd></div>
-          <div data-live={working > 0}><dt>working now</dt><dd>{count(working)}</dd></div>
-        </dl>
-      </section>
-      <section aria-label="Swarms" className="site-board">
-        {list.error && !list.data ? (
-          <button className="world-empty" onClick={() => location.reload()} type="button"><span>Can't reach Swarms.</span><b>Tap to try again ↻</b></button>
-        ) : (
-          <ol className="limbs lots" data-loading={!list.data}>
-            {shown.map((swarm) => <Lot doing={said[swarm.id]} funders={list.data?.funders?.[swarm.id] ?? []} head={heads[swarm.id]} key={swarm.id} now={now} swarm={swarm} />)}
-            {hidden.length > 0 && (
-              <li className="limb limb-more">
-                <button onClick={() => setLimit(limit + step)} type="button">See {hidden.length} more<span>{cash(String(hidden.reduce((sum, swarm) => sum + Number(swarm.balance), 0)))}</span></button>
-              </li>
-            )}
-            <li className="limb limb-propose">
-              <Link to="/new"><i aria-hidden="true">+</i>Start a swarm<span>$1+</span></Link>
-            </li>
-          </ol>
-        )}
-      </section>
-    </div>
   )
 }
 
