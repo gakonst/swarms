@@ -310,7 +310,7 @@
   :is(.grove, .swarm-shell) > .pane { display:contents; }
   :is(.grove, .swarm-shell) > .pane > .tabs { order:1; }
   :is(.grove, .swarm-shell) > :is(.panel-chat, .thread, .chat-thread), :is(.grove, .swarm-shell) > .pane > .panel { order:2; flex:1 1 0; min-height:0; }
-  :is(.grove, .swarm-shell)[data-view]:not([data-view='chat']) > .panel-chat, :is(.grove, .swarm-shell)[data-view='chat'] > .pane > .panel { display:none; }
+  :is(.grove, .swarm-shell)[data-view]:not([data-view='chat']) > :is(.panel-chat, .chat-thread), :is(.grove, .swarm-shell)[data-view='chat'] > .pane > .panel { display:none; }
   :is(.grove, .swarm-shell)[data-thread] > .panel-chat, :is(.grove, .swarm-shell)[data-thread] > .pane > .panel { display:none; }
   :is(.grove, .swarm-shell)[data-replying] > .panel-chat { display:none; }
   .general > .pane { display:none; }
