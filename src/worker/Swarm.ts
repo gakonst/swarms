@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 import type { Address } from 'viem'
 import type { Artifact, Chatter, Code, Currency, Entry, Hand, Kind, Live, Note, Part, Pulse, Roster, Said, Snapshot, Steer, Update, Working } from '../shared/Api.ts'
 import { clip, redact } from '../shared/Trail.ts'
+import * as Answer from '../shared/Answer.ts'
 import * as Btw from '../shared/Btw.ts'
 import * as Fleet from '../shared/Fleet.ts'
 import * as Memo from '../shared/Memo.ts'
@@ -482,7 +483,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     await this.ctx.storage.setAlarm(now)
   }
 
-  view(shape: { feed?: number; pushed?: boolean; texts?: boolean } = {}): View {
+  view(shape: { excerpts?: boolean; feed?: number; pushed?: boolean; texts?: boolean } = {}): View {
     const stamp = this.stamp()
     this.ctx.waitUntil(this.heal())
     this.ctx.waitUntil(About.ensure(this).catch((error: unknown) => console.error('About failed', error)))
@@ -514,7 +515,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
         .exec<{ ended_at: number; n: number }>('SELECT n, ended_at FROM turns WHERE ended_at IS NOT NULL ORDER BY n DESC LIMIT 20')
         .toArray()
         .map((row) => ({ endedAt: Number(row.ended_at), n: Number(row.n) })),
-      updates: shape.texts === false ? shown.map((update) => ({ ...update, text: '' })) : shown,
+      updates: shape.texts === false ? shown.map((update) => ({ ...update, text: '' })) : shape.excerpts ? shown.map((update) => ({ ...update, text: Answer.excerpt(update.text) })) : shown,
       working: this.working(),
     }
   }

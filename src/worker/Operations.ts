@@ -473,7 +473,7 @@ function logged(task: Promise<unknown>) {
   return task.catch((error: unknown) => console.error('Indexing for search failed', error))
 }
 
-type Shape = { feed?: number; pushed?: boolean; texts?: boolean }
+type Shape = { excerpts?: boolean; feed?: number; pushed?: boolean; texts?: boolean }
 
 async function load(env: Cloudflare.Env, id: string, shape: Shape = {}) {
   const viewing = Store.seen(id) ? Promise.resolve(stub(env, id).view(shape)) : undefined
@@ -500,7 +500,7 @@ async function ledgered(env: Cloudflare.Env, id: string, shape: Shape) {
 
 async function backfill(env: Cloudflare.Env, row: Store.Row, latest: Update | undefined, shape: Shape) {
   if (row.answer || !latest) return
-  const last = shape.texts === false ? (await stub(env, row.id).pulse()).updates.at(-1) ?? latest : latest
+  const last = shape.texts === false || shape.excerpts ? (await stub(env, row.id).pulse()).updates.at(-1) ?? latest : latest
   row.answer = JSON.stringify({ at: last.at, done: last.done, text: last.text })
   await Store.update(env, row.id, { answer: row.answer })
 }
@@ -629,7 +629,7 @@ export async function stamped(env: Cloudflare.Env, input: Input<'swarm'>, feed =
 export async function get(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<Overview>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
-  const loaded = await ledgered(env, parsed.value.swarm, { feed: 0 })
+  const loaded = await ledgered(env, parsed.value.swarm, { excerpts: true, feed: 0 })
   if (!loaded) return missing()
 
   const { ledger, row, view } = loaded
@@ -642,7 +642,7 @@ export async function get(env: Cloudflare.Env, input: Input<'swarm'>): Promise<P
     notes: ledger.notes(new Set(view.steered)),
     reason: view.reason,
     why: view.why,
-    updates: view.updates.map(({ text, ...update }) => ({ ...update, excerpt: Answer.excerpt(text) })),
+    updates: view.updates.map(({ text, ...update }) => ({ ...update, excerpt: text })),
     working: view.working,
   })
 }
