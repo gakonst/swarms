@@ -108,6 +108,19 @@ export async function issue(self: Swarm, swarm: string, label: string, contribut
   return { ok: false, reason: 'unnamed' }
 }
 
+export type Removed = { ok: true } | { ok: false; reason: 'missing' } | { detail: string; ok: false; reason: 'upstream' }
+
+export async function remove(self: Swarm, swarm: string, name: string): Promise<Removed> {
+  const [rows, listed] = await Promise.all([list(self.env, swarm), listing(self.env, swarm)])
+  if (!rows.some((row) => row.name === name) && !listed?.some((hand) => hand.name === name)) return { ok: false, reason: 'missing' }
+  const revoked = await Gateway.detach(self.env, swarm, name)
+  // A 404 means the gateway no longer holds the hand: nothing is left to revoke there.
+  if (!revoked.ok && revoked.status !== 404) return { detail: revoked.detail, ok: false, reason: 'upstream' }
+  await free(self, swarm, name)
+  await self.env.DB.prepare('delete from hands where swarm = ? and name = ?').bind(swarm, name).run()
+  return { ok: true }
+}
+
 export async function listing(env: Cloudflare.Env, swarm: string) {
   const listed = await Gateway.hands(env, swarm)
   return listed.ok ? listed.value.hands : undefined

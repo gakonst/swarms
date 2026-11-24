@@ -303,6 +303,14 @@ export const schema = {
       .describe('A short name for the machine, such as "georgios-mbp". The hand name is made from it plus a random suffix.'),
     swarm: id,
   }),
+  unhand: z.object({
+    hand: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9_-]{0,47}$/, 'No hand has that name.')
+      .describe('The hand to remove, as GET /v1/swarms/{id}/hands names it.'),
+    swarm: id,
+  }),
   feed: z.object({
     after: z.coerce.number().int().min(0).default(0).describe('Return entries after this seq; pass the previous page\'s next.'),
     kind: z.enum(kinds).optional().describe('Only entries of this kind.'),
@@ -1597,6 +1605,25 @@ export async function hand(env: Cloudflare.Env, input: Input<'hand'>, contributo
   })
 }
 
+export async function unhand(env: Cloudflare.Env, input: Input<'unhand'>, address?: Address, operated = false): Promise<Problem.Result<{ hand: string; removed: true; swarm: string }>> {
+  if (!address && !operated) return Problem.fail(401, 'unauthorized', "Sign in with Tempo ID as one of the swarm's admins or the operator, or send the operator's gateway key as the bearer token.")
+  const parsed = parse(schema.unhand, input)
+  if (!parsed.ok) return parsed
+  const gone = await legacy(env, parsed.value.swarm, false)
+  if (!gone.ok) return gone
+  const row = await Store.find(env, parsed.value.swarm)
+  if (!row) return missing()
+  const allowed = await owned(env, row, address, operated, "Only the swarm's admins and the operator remove a hand.")
+  if (!allowed.ok) return allowed
+  const name = parsed.value.hand
+  const removed: Hands.Removed = await stub(env, row.id).unlend(row.id, name)
+  if (!removed.ok && removed.reason === 'missing') return Problem.fail(404, 'not_found', `This swarm has no hand named ${name}.`)
+  if (!removed.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not revoke the hand: ${removed.detail}`)
+  lending.delete(row.id)
+  fleets.delete(row.id)
+  return Problem.ok({ hand: name, removed: true, swarm: row.id })
+}
+
 const lending = new Map<string, { at: number; hands: Lent[] }>()
 
 const lendingMs = 10_000
@@ -1953,14 +1980,14 @@ function taken(name: string) {
   return Problem.fail(409, 'conflict', `Another swarm is called ${name}.`)
 }
 
-async function owned(env: Cloudflare.Env, row: Store.Row, address: Address | undefined, operated: boolean): Promise<Problem.Result<null>> {
+async function owned(env: Cloudflare.Env, row: Store.Row, address: Address | undefined, operated: boolean, refused = "Only the swarm's admins and the operator name it."): Promise<Problem.Result<null>> {
   if (operated) return Problem.ok(null)
   if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo ID as one of the swarm's admins or the operator, or send the operator's gateway key as the bearer token.")
   const operator = await Gateway.wallet(env)
   if (operator && address.toLowerCase() === operator.toLowerCase()) return Problem.ok(null)
   const admin = await Team.admin(env, row, address).then(Problem.ok, Team.unlisted)
   if (!admin.ok) return admin
-  return admin.value ? Problem.ok(null) : Problem.fail(403, 'access_denied', "Only the swarm's admins and the operator name it.")
+  return admin.value ? Problem.ok(null) : Problem.fail(403, 'access_denied', refused)
 }
 
 export async function nickname(env: Cloudflare.Env, input: Input<'nickname'>, address?: Address, operated = false): Promise<Problem.Result<Summary>> {

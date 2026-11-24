@@ -57,6 +57,7 @@ const routes = [
   ['POST', '/v1/swarms/:id/ai', "Run a swarm you ride on your own AI, so its agent's model calls cost the swarm nothing, or hand it back.", '{ on }'],
   ['GET', '/v1/config', 'Where rides go: the gateway credit recipient and owner.', ''],
   ['POST', '/v1/swarms/:id/hands', 'Lend your own machine to a swarm, signed in: answers a hand name, its token and the command that attaches it.', '{ label? }'],
+  ['DELETE', '/v1/swarms/:id/hands/:hand', "Remove a hand, as one of the swarm's admins or the operator: its token is revoked and it leaves the swarm's machines.", ''],
 ] as const
 
 const events = [

@@ -288,6 +288,10 @@ app.post('/api/swarms/:id/hands', async (c) =>
   ),
 )
 
+app.delete('/api/swarms/:id/hands/:hand', async (c) =>
+  Problem.respond(await Operations.unhand(c.env, { hand: c.req.param('hand'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, '')))),
+)
+
 app.get('/api/swarms/:id/tree', async (c) => Problem.respond(await Operations.tree(c.env, { ...c.req.query(), swarm: c.req.param('id') })))
 app.get('/api/swarms/:id/nodes/:nid', async (c) => Problem.respond(await Operations.node(c.env, { node: c.req.param('nid'), swarm: c.req.param('id') })))
 app.get('/api/swarms/:id/nodes/:nid/updates', async (c) => Problem.respond(await Operations.nodeUpdates(c.env, { ...c.req.query(), node: c.req.param('nid'), swarm: c.req.param('id') })))

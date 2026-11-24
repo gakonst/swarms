@@ -319,6 +319,17 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, addre
   )
 
   server.registerTool(
+    'swarm_hand_remove',
+    {
+      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true, readOnlyHint: false },
+      description:
+        "Remove a hand from a swarm (signed in as one of its admins or the operator): revokes its token at the gateway, which cuts off a machine attached with it, and drops it from the swarm's hands and Machines tab. Call it only when the user asks.",
+      inputSchema: Operations.schema.unhand.shape,
+    },
+    async (input) => reply(await Operations.unhand(env, input, address, operated)),
+  )
+
+  server.registerTool(
     'swarm_feedback',
     {
       annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true, readOnlyHint: false },

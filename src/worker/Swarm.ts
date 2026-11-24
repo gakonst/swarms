@@ -457,6 +457,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return Hands.issue(this, swarm, label, contributor)
   }
 
+  async unlend(swarm: string, name: string) {
+    const removed = await Hands.remove(this, swarm, name)
+    if (!removed.ok) return removed
+    this.kv.put('removed', [...new Set([...(this.kv.get<string[]>('removed') ?? []), name])])
+    this.kv.put('hands', (this.kv.get<Hand[]>('hands') ?? []).filter((hand) => hand.name !== name))
+    this.changed('hands', 'members')
+    return removed
+  }
+
   async lent(swarm: string) {
     const rows = await Hands.list(this.env, swarm)
     if (this.kv.get<string>('id') !== swarm) return { listed: [] as Gateway.Listed[], rows }
@@ -584,7 +593,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       .exec<Record<string, SqlStorageValue>>(`SELECT seq, at, kind, text, detail, who, event FROM feed WHERE ${Feed.machined} ORDER BY seq`)
       .toArray()
       .map(Feed.entry)
-    return Runs.counted(this, Fleet.folded(rows, this.kv.get<Hand[]>('hands') ?? []))
+    const removed = this.kv.get<string[]>('removed') ?? []
+    return Runs.counted(
+      this,
+      Fleet.folded(rows, this.kv.get<Hand[]>('hands') ?? []).filter((machine) => !removed.includes(machine.name)),
+    )
   }
 
   commands(machine: string, query: { cursor?: number | undefined; limit: number; order: 'newest' | 'oldest' }) {

@@ -184,6 +184,10 @@ app.post('/v1/swarms/:id/hands', async (c) =>
   ),
 )
 
+app.delete('/v1/swarms/:id/hands/:hand', async (c) =>
+  Problem.respond(await Operations.unhand(c.env, { hand: c.req.param('hand'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, '')))),
+)
+
 app.get('/v1/problems', async (c) => Problem.respond(await Operations.problems(c.env)))
 
 app.get('/v1/health', async (c) => Problem.respond(await Operations.health(c.env)))

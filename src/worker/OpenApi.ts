@@ -1158,6 +1158,16 @@ export function document(origin: string) {
           summary: 'Issue a hand',
         },
       },
+      '/v1/swarms/{id}/hands/{hand}': {
+        delete: {
+          description:
+            "As one of the swarm's admins or the operator (signed in, or with the operator's gateway key as the bearer token): remove a hand. The gateway revokes its token, which cuts off a machine attached with it, and the hand leaves the swarm's hands and its Machines tab.",
+          operationId: 'removeHand',
+          parameters: [swarm, parameter('hand', 'path', string, "The hand's name, as GET /v1/swarms/{id}/hands lists it.")],
+          responses: { ...ok(object({ hand: string, removed: { type: 'boolean' }, swarm: string }), 'The hand is revoked and removed.'), ...failures(400, 401, 403, 404, 410, 502) },
+          summary: 'Remove a hand',
+        },
+      },
       '/v1/swarms/{id}/updates': {
         get: {
           description: "The agent's updates in full, oldest first: what it reported each time it paused to reply.",
