@@ -1,16 +1,15 @@
 import type { Artifact } from '../shared/Api.ts'
 import * as Shelf from '../shared/Artifact.ts'
 import * as Site from '../shared/Site.ts'
+import * as Edge from './Edge.ts'
 import * as Gateway from './Gateway.ts'
 import * as Timing from './Timing.ts'
 
-const fresh = 15_000
+const fresh = 15
 
 const wrappedMost = 2_000_000
 
 const cdns = ['https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://cdnjs.cloudflare.com', 'https://esm.sh']
-
-const listed = new Map<string, { at: number; artifacts: Artifact[] }>()
 
 type Entry = { key: string; value: unknown; version: number }
 
@@ -19,17 +18,13 @@ export function base(swarm: string) {
 }
 
 export async function list(env: Cloudflare.Env, swarm: string, cached = true): Promise<Artifact[] | undefined> {
-  const memo = listed.get(swarm)
-  if (cached && memo && Date.now() - memo.at < fresh) return memo.artifacts
-  const key = new Request(`https://swarms.cache/artifacts/${swarm}`)
-  const shared = cached ? await Timing.span('cache', caches.default.match(key).catch(() => undefined)) : undefined
-  if (shared) {
-    const artifacts = (await shared.json()) as Artifact[]
-    listed.set(swarm, { artifacts, at: Number(shared.headers.get('x-listed-at')) || Date.now() - fresh / 2 })
-    return artifacts
-  }
+  const read = () => shelf(env, swarm)
+  return (cached ? Edge.cached(env, `artifacts/${swarm}`, fresh, read, 600) : read()).catch(() => undefined)
+}
+
+async function shelf(env: Cloudflare.Env, swarm: string): Promise<Artifact[]> {
   const owner = await Gateway.wallet(env)
-  if (!owner) return undefined
+  if (!owner) throw new Error('The gateway did not name the operator.')
   const entries: Entry[] = []
   let cursor: string | null = null
   for (let page = 0; page < 3; page++) {
@@ -40,15 +35,13 @@ export async function list(env: Cloudflare.Env, swarm: string, cached = true): P
         async (response) => [response, response.ok ? ((await response.json()) as { cursor: string | null; entries: Entry[] }) : undefined] as const,
       ),
     )
-    if (!response.ok || !body) return response.status === 404 ? [] : undefined
+    if (response.status === 404) return []
+    if (!response.ok || !body) throw new Error(`The gateway answered ${response.status} for the artifacts.`)
     entries.push(...body.entries)
     cursor = body.cursor
     if (!cursor) break
   }
-  const artifacts = entries.flatMap((entry) => Shelf.read(entry.key, entry.value, entry.version, base(swarm)) ?? [])
-  listed.set(swarm, { artifacts, at: Date.now() })
-  await caches.default.put(key, new Response(JSON.stringify(artifacts), { headers: { 'cache-control': `max-age=${fresh / 1000}`, 'content-type': 'application/json', 'x-listed-at': String(Date.now()) } })).catch(() => undefined)
-  return artifacts
+  return entries.flatMap((entry) => Shelf.read(entry.key, entry.value, entry.version, base(swarm)) ?? [])
 }
 
 export async function read(env: Cloudflare.Env, swarm: string, name: string, file: string) {
