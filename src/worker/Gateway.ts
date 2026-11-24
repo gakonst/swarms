@@ -256,6 +256,18 @@ function credentials(rider: string) {
   return '/v1/credentials/' + encodeURIComponent(subject(rider))
 }
 
+const credentialing = new Map<string, { at: number; value: boolean }>()
+
+export async function credentialed(env: Cloudflare.Env) {
+  const known = credentialing.get(env.GATEWAY_URL)
+  if (known && Date.now() - known.at < 300_000) return known.value
+  const answered = await send<unknown>(env, credentials('0x0000000000000000000000000000000000000000'), { open: true })
+  if (!answered.ok && answered.status >= 500) return known?.value ?? false
+  const value = answered.ok || answered.status !== 404 || !/^No route/.test(answered.detail)
+  credentialing.set(env.GATEWAY_URL, { at: Date.now(), value })
+  return value
+}
+
 export function ai(env: Cloudflare.Env, rider: string) {
   return send<OwnAi>(env, credentials(rider))
 }

@@ -184,6 +184,7 @@ export type Config = {
   explorer: string
   gateway: string
   models: Setup.Price[]
+  ownAi: boolean
   reserve: string
   rpc: string
   credit: Credit | null

@@ -514,6 +514,7 @@ export function config(): Promise<Config> {
     explorer: 'https://explore.tempo.xyz',
     gateway: 'https://gateway.tempo-dev.workers.dev',
     models,
+    ownAi: true,
     reserve: '0.050000',
     rpc: 'https://rpc.tempo.xyz',
     tokens: [

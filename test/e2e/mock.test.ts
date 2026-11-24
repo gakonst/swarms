@@ -299,3 +299,13 @@ test('the mock GitHub runs the verify workflow, signs its webhook and serves che
     hook.close()
   }
 })
+
+test('own AI is offered only by a gateway that answers the credentials routes', async () => {
+  assert.equal(await Gateway.credentialed(world), true)
+  const bare = await Mock.start({ credentialRoute: false })
+  try {
+    assert.equal(await Gateway.credentialed(env(bare)), false)
+  } finally {
+    await bare.close()
+  }
+})

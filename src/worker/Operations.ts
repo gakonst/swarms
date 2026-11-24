@@ -506,7 +506,7 @@ async function backfill(env: Cloudflare.Env, row: Store.Row, latest: Update | un
 }
 
 export async function config(env: Cloudflare.Env): Promise<Config> {
-  const [owner, prices] = await Promise.all([Gateway.wallet(env), Gateway.prices(env)])
+  const [owner, prices, ownAi] = await Promise.all([Gateway.wallet(env), Gateway.prices(env), Gateway.credentialed(env)])
   return {
     models: [...(prices?.values() ?? [])],
     auth: Sessions.path,
@@ -514,6 +514,7 @@ export async function config(env: Cloudflare.Env): Promise<Config> {
     credit: owner ? { owner: owner as Address, recipient: Chain.recipient } : null,
     explorer: Chain.chain.blockExplorers.default.url,
     gateway: env.GATEWAY_URL,
+    ownAi,
     reserve: Memo.decimal(Store.reserve),
     rpc: env.TEMPO_RPC,
     tokens: [{ address: Chain.mach.address, id: 'mach' as const, symbol: Chain.mach.symbol }, ...Chain.ids.map((id) => ({ address: Chain.tokens[id].address, id, symbol: Chain.tokens[id].symbol }))],
@@ -873,8 +874,11 @@ function relayed<value>(answered: Gateway.Result<value>): Problem.Result<value> 
 
 const unsigned = () => Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to use your own AI.')
 
+const offline = () => Problem.fail(503, 'unavailable', 'Your own AI is not available yet: the Tempo gateway does not keep riders\' keys or plans yet.')
+
 export async function ownAi(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<OwnAi>> {
   if (!address) return unsigned()
+  if (!(await Gateway.credentialed(env))) return offline()
   return relayed(await Gateway.ai(env, address))
 }
 
@@ -882,6 +886,7 @@ export async function ownKey(env: Cloudflare.Env, input: Input<'ownKey'>, addres
   const parsed = parse(schema.ownKey, input)
   if (!parsed.ok) return parsed
   if (!address) return unsigned()
+  if (!(await Gateway.credentialed(env))) return offline()
   const attached = relayed(await Gateway.attach(env, address, parsed.value.provider, parsed.value.key))
   if (!attached.ok) return attached
   return ownAi(env, address)
@@ -891,6 +896,7 @@ export async function ownDrop(env: Cloudflare.Env, input: Input<'ownProvider'>, 
   const parsed = parse(schema.ownProvider, input)
   if (!parsed.ok) return parsed
   if (!address) return unsigned()
+  if (!(await Gateway.credentialed(env))) return offline()
   const dropped = relayed(await Gateway.unattach(env, address, parsed.value.provider))
   if (!dropped.ok) return dropped
   return ownAi(env, address)
@@ -898,6 +904,7 @@ export async function ownDrop(env: Cloudflare.Env, input: Input<'ownProvider'>, 
 
 export async function ownSignIn(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<{ url: string }>> {
   if (!address) return unsigned()
+  if (!(await Gateway.credentialed(env))) return offline()
   const started = relayed(await Gateway.signIn(env, address))
   return started.ok ? Problem.ok({ url: started.value.authorization_url }) : started
 }
@@ -906,6 +913,7 @@ export async function ownSignedIn(env: Cloudflare.Env, input: Input<'ownCode'>, 
   const parsed = parse(schema.ownCode, input)
   if (!parsed.ok) return parsed
   if (!address) return unsigned()
+  if (!(await Gateway.credentialed(env))) return offline()
   const done = relayed(await Gateway.signedIn(env, address, parsed.value.code))
   if (!done.ok) return done
   return ownAi(env, address)
@@ -913,6 +921,7 @@ export async function ownSignedIn(env: Cloudflare.Env, input: Input<'ownCode'>, 
 
 export async function ownSignOut(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<OwnAi>> {
   if (!address) return unsigned()
+  if (!(await Gateway.credentialed(env))) return offline()
   const done = relayed(await Gateway.signOut(env, address))
   if (!done.ok) return done
   return ownAi(env, address)
@@ -941,6 +950,7 @@ export async function hostAi(env: Cloudflare.Env, input: Input<'ownAi'>, address
   const members = await Store.members(env, row.id)
   if (row.creator?.toLowerCase() !== rider && !members.some((member) => member.address.toLowerCase() === rider))
     return Problem.fail(403, 'not_member', 'Ride this swarm first: your own AI runs only swarms you ride or started.')
+  if (!(await Gateway.credentialed(env))) return offline()
   const own = await Gateway.ai(env, rider)
   if (!own.ok) return relayed(own)
   const harness = Store.setup(row)?.harness ?? 'claude'

@@ -22,16 +22,28 @@ export function OwnAi(props: { config: Config | undefined }) {
   const [typed, setTyped] = useState<Record<string, string>>({})
   const [link, setLink] = useState<string>()
   const [code, setCode] = useState('')
+  const [gone, setGone] = useState(false)
   const address = wallet.address
+  const offered = props.config?.ownAi !== false && !gone
+  const unavailable = (reason: unknown): never => {
+    if (reason instanceof Api.Failure && reason.status === 503 && reason.code === 'unavailable') setGone(true)
+    throw reason
+  }
   useEffect(() => {
     document.title = 'Your own AI · Swarms'
   }, [])
   useEffect(() => {
-    if (address) void run(Api.ownAi).then((done) => done && setRead(done.value))
-  }, [address, run])
+    if (address && offered) void run(() => Api.ownAi().catch(unavailable)).then((done) => done && setRead(done.value))
+  }, [address, offered, run])
   const act = (work: () => Promise<Read | undefined>) => {
-    void run(work).then((done) => done?.value && setRead(done.value))
+    void run(() => work().catch(unavailable)).then((done) => done?.value && setRead(done.value))
   }
+  if (!offered)
+    return (
+      <Lost title="Your own AI is not available yet.">
+        <Link className="lost-row" to="/ideas">Ride a swarm <span aria-hidden="true">→</span></Link>
+      </Lost>
+    )
   if (!address)
     return wallet.pending ? (
       <section aria-busy="true" className="page lost"><span className="lost-orbit" aria-hidden="true"><i /><i /><i /></span></section>
@@ -115,12 +127,12 @@ export function OwnAi(props: { config: Config | undefined }) {
   )
 }
 
-export function Host(props: { onChange: () => void; swarm: { ai?: { address: string } | null | undefined; id: string } }) {
+export function Host(props: { config: Config | undefined; onChange: () => void; swarm: { ai?: { address: string } | null | undefined; id: string } }) {
   const wallet = useWallet()
   const [attempt, run] = useAttempt()
   const busy = Attempt.busy(attempt)
   const error = Attempt.error(attempt)
-  if (!wallet.address) return null
+  if (!wallet.address || props.config?.ownAi === false) return null
   const mine = props.swarm.ai?.address.toLowerCase() === wallet.address.toLowerCase()
   const flip = () => {
     void run(() => Api.hostAi(props.swarm.id, !mine)).then((done) => done && props.onChange())

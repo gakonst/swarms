@@ -75,6 +75,7 @@ type App = {
 
 export type Options = {
   chain?: Chain.Chain
+  credentialRoute?: boolean
   dispatcherBudget?: number | null
   dispatcherUsd?: number
   key?: string
@@ -128,7 +129,7 @@ export async function start(options: Options = {}) {
   const scripts = [...(options.scripts ?? [])]
   const calls: { at: number; method: string; path: string; status: number }[] = []
   const errors: string[] = []
-  const settings = { dispatcherBudget: options.dispatcherBudget, dispatcherUsd: options.dispatcherUsd ?? 0.0005, spawnRoute: options.spawnRoute ?? true, unsolicited: options.unsolicited ?? false }
+  const settings = { credentialRoute: options.credentialRoute ?? true, dispatcherBudget: options.dispatcherBudget, dispatcherUsd: options.dispatcherUsd ?? 0.0005, spawnRoute: options.spawnRoute ?? true, unsolicited: options.unsolicited ?? false }
   const keyed = new Map<string, number>()
   const owned = new Map<string, { claude: string; keys: Map<string, { added_at: number; hint: string }> }>()
   let agentCount = 0
@@ -439,6 +440,7 @@ export async function start(options: Options = {}) {
       if ('dispatcherBudget' in body) settings.dispatcherBudget = body['dispatcherBudget'] as number | null | undefined
       if (typeof body['unsolicited'] === 'boolean') settings.unsolicited = body['unsolicited']
       if (typeof body['spawnRoute'] === 'boolean') settings.spawnRoute = body['spawnRoute']
+      if (typeof body['credentialRoute'] === 'boolean') settings.credentialRoute = body['credentialRoute']
       if (typeof body['dispatcherUsd'] === 'number') settings.dispatcherUsd = body['dispatcherUsd']
       return settings
     }
@@ -474,6 +476,8 @@ export async function start(options: Options = {}) {
       if (view === 'files' || view === 'diff') return { files: [] }
       throw new Problem(404, 'not_found', 'No such file.')
     }
+
+    if (!settings.credentialRoute && path.startsWith('/v1/credentials/')) throw new Problem(404, 'not_found', `No route answers ${method} ${path}; the routes are in /openapi.json and at /reference.`)
 
     if (headers['authorization'] !== 'Bearer ' + key) throw new Problem(401, 'invalid_api_key', 'The sk-tempo- key in Authorization is unknown.')
 

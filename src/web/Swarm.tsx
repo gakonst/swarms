@@ -224,7 +224,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
             swarm={swarm}
             target={() => Promise.resolve({ id: swarm.id })}
           />
-          <Host onChange={reload} swarm={swarm} />
+          <Host config={props.config} onChange={reload} swarm={swarm} />
         </Overlay>
       )}
       {viewing && <Viewer artifact={viewing} onClose={() => back(at(base, view))} />}

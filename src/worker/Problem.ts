@@ -31,7 +31,7 @@ export const codes = {
   not_member: "Only the swarm's backers (who sent it money or lent it a machine) and its team post in its room or ask it side questions, and on a team-steered swarm only its team steers it.",
   rate_limited: "Too many side questions from this backer in the last hour, or too many messages in a minute.",
   unauthorized: 'Sign in with Tempo ID at /v1/auth and send the session token as Authorization: Bearer <token>.',
-  unavailable: 'The swarm could not be saved, or the gateway cannot pay network fees right now and sent nothing.',
+  unavailable: 'The swarm could not be saved, the gateway cannot pay network fees right now and sent nothing, or it does not offer riders\' own AI yet.',
   upstream_failed: 'The Tempo gateway or Tempo ID failed or refused.',
   username_required: 'The signed-in account has no username yet; set one with POST /v1/me { name } before posting, steering or asking side questions.',
 } as const satisfies Record<Code, string>
