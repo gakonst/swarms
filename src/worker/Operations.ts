@@ -2047,7 +2047,8 @@ export async function rider(env: Cloudflare.Env, input: Input<'rider'>): Promise
   if (!address) return Problem.fail(404, 'not_found', 'No rider has this name.')
   const lower = address.toLowerCase()
   const [account, found] = await Promise.all([Store.account(env, address), Store.ridden(env, address)])
-  const rows = await Promise.all(found.swarms.map((one) => Store.find(env, one.swarm)))
+  const all = await Store.findAll(env, found.swarms.map((one) => one.swarm))
+  const rows = found.swarms.map((one) => all.get(one.swarm))
   const trees = await Promise.all(rows.map((row) => (row?.form === 'tree' ? within(tree(env, { depth: 64, swarm: row.id }), 2500) : undefined)))
   const swarms: Profile['swarms'] = []
   const items: Profile['items'] = []

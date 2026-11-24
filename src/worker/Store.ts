@@ -192,6 +192,13 @@ export async function exists(env: Cloudflare.Env, id: string) {
   return found
 }
 
+export async function findAll(env: Cloudflare.Env, ids: readonly string[]) {
+  if (!ids.length) return new Map<string, Row>()
+  const { results } = await env.DB.prepare(totals + ' where s.id in (select value from json_each(?))').bind(JSON.stringify(ids)).all<Row>()
+  for (const row of results) known.add(row.id)
+  return new Map(results.map((row) => [row.id, row]))
+}
+
 export async function find(env: Cloudflare.Env, id: string) {
   const row = await fresh(env, (db) => db.prepare(totals + ' where s.id = ?').bind(id).first<Row>())
   if (row) known.add(row.id)

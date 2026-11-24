@@ -147,7 +147,7 @@ function WalletButton(props: { config: Config | undefined }) {
               {funding ? 'Adding funds…' : 'Add funds'}
             </button>
             <Link className="wallet-out" to={mine(wallet.account, wallet.address)}>Your profile</Link>
-            <Link className="wallet-out" to="/me/ai">Use your own AI</Link>
+            {props.config?.ownAi !== false && <Link className="wallet-out" to="/me/ai">Use your own AI</Link>}
             <button className="wallet-out" onClick={() => Wallet.disconnect()} role="menuitem" type="button">Sign out</button>
           </div>
         </div>
