@@ -123,7 +123,7 @@ function Sheet(props: { cheer: Cheer }) {
         <p aria-hidden="true" className="cheer-mark">✓</p>
         <h3 className="cheer-head">You're riding · {cut(props.cheer.amount)}</h3>
         {(props.cheer.title ?? swarm) && <p className="cheer-what"><Inline text={props.cheer.title ?? swarm?.title ?? ''} /></p>}
-        {swarm && <p className="cheer-stats"><b>{swarm.contributors}</b> rider{swarm.contributors === 1 ? '' : 's'} · <b>{usd(swarm.balance)}</b> raised</p>}
+        {swarm && !props.cheer.title && <p className="cheer-stats"><b>{swarm.contributors}</b> rider{swarm.contributors === 1 ? '' : 's'} · <b>{usd(swarm.balance)}</b> raised</p>}
         <div className="cheer-go">
           <a className="btn btn-high" href={shared?.intent} onClick={close} ref={go} rel="noreferrer" target="_blank">Share on X</a>
           <button className="btn btn-medium" disabled={!shared} onClick={() => shared && void copy(shared.page).then(setCopied)} type="button">{copied ? 'Link copied' : 'Invite friends'}</button>
