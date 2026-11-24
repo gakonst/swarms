@@ -346,7 +346,13 @@ export function probes(world: World): Probe[] {
     { kind: 'bytes', method: 'GET', path: `/og/s/${s}/card.png`, route: '/og/s/:id/card.png', status: read },
     { kind: 'bytes', method: 'GET', path: '/favicon.ico', status: read },
     { kind: 'json', method: 'GET', path: '/feedback', status: read },
-    ...(world.artifact ? [{ kind: 'bytes' as const, method: 'GET', path: world.artifact, route: '/a/:id/:slug/', status: read }] : []),
+    ...(world.artifact
+      ? [
+          { kind: 'bytes' as const, method: 'GET', path: world.artifact, route: '/a/:id/:slug/*', status: read },
+          { kind: 'bytes' as const, method: 'HEAD', path: world.artifact, route: '/a/:id/:slug/*', status: read },
+          { kind: 'redirect' as const, method: 'GET', path: world.artifact.split('/').slice(0, 4).join('/'), route: '/a/:id/:slug', status: [301] },
+        ]
+      : []),
   ]
   const api: Probe[] = [
     { kind: 'json', method: 'GET', path: '/api/config', status: read },
@@ -356,7 +362,9 @@ export function probes(world: World): Probe[] {
     { check: listed('entries'), kind: 'json', method: 'GET', path: `${a}/feed?limit=20`, route: '/api/swarms/:id/feed', status: read },
     { kind: 'sse', method: 'GET', path: `${a}/live?after=999999999`, route: '/api/swarms/:id/live', status: read },
     { kind: 'json', method: 'GET', path: `${a}/code`, route: '/api/swarms/:id/code', status: read },
-    { kind: 'json', method: 'GET', path: `${a}/git/log`, route: '/api/swarms/:id/git/log', status: [200, 404] },
+    { kind: 'json', method: 'GET', path: `${a}/git/log?ref=main&limit=20`, route: '/api/swarms/:id/git/log', status: [200, 404] },
+    { kind: 'json', method: 'GET', path: `${a}/git/files?ref=main`, route: '/api/swarms/:id/git/files', status: [200, 404] },
+    { kind: 'json', method: 'GET', path: `${a}/git/nope`, route: '/api/swarms/:id/git/:unknown', status: [404] },
     { kind: 'json', method: 'GET', path: `${a}/progress`, route: '/api/swarms/:id/progress', status: read },
     { check: listed('artifacts'), kind: 'json', method: 'GET', path: `${a}/artifacts`, route: '/api/swarms/:id/artifacts', status: read },
     { kind: 'json', method: 'GET', path: `${a}/chat`, route: '/api/swarms/:id/chat', status: read },
@@ -388,6 +396,35 @@ export function probes(world: World): Probe[] {
     { body: {}, kind: 'json', method: 'PATCH', path: a, route: '/api/swarms/:id', status: refused },
     { body: {}, kind: 'json', method: 'POST', path: `${a}/archive`, route: '/api/swarms/:id/archive', status: [401] },
     { body: {}, kind: 'json', method: 'POST', path: '/api/me/ai/claude', status: [401] },
+    { body: {}, kind: 'json', method: 'POST', path: '/api/me/ai/claude/complete', status: refused },
+    { kind: 'json', method: 'DELETE', path: '/api/me/ai/claude', status: [401] },
+    { body: {}, kind: 'json', method: 'POST', path: '/api/me/ai/keys/anthropic', route: '/api/me/ai/keys/:provider', status: refused },
+    { kind: 'json', method: 'DELETE', path: '/api/me/ai/keys/anthropic', route: '/api/me/ai/keys/:provider', status: [401] },
+    { body: {}, kind: 'json', method: 'POST', path: `${a}/team/members`, route: '/api/swarms/:id/team/members', status: refused },
+    { kind: 'json', method: 'DELETE', path: `${a}/team/members/0x0000000000000000000000000000000000000001`, route: '/api/swarms/:id/team/members/:member', status: [401] },
+    { body: {}, kind: 'json', method: 'PUT', path: `${a}/picture`, route: '/api/swarms/:id/picture', status: refused },
+    { kind: 'json', method: 'DELETE', path: `${a}/picture`, route: '/api/swarms/:id/picture', status: [401] },
+    { body: {}, kind: 'json', method: 'POST', path: `${a}/triage`, route: '/api/swarms/:id/triage', status: refused },
+    { body: {}, kind: 'json', method: 'POST', path: `${a}/nodes`, route: '/api/swarms/:id/nodes', status: [400, 401, 410] },
+    { body: {}, kind: 'json', method: 'POST', path: `${a}/ideas`, route: '/api/swarms/:id/ideas', status: [400, 401, 410] },
+    ...(world.message ? [{ body: {}, kind: 'json' as const, method: 'POST', path: `${a}/chat/${world.message}/reactions`, route: '/api/swarms/:id/chat/:message/reactions', status: refused }] : []),
+    ...(world.branch ? ['fund', 'move', 'stop'].map((verb) => ({ body: {}, kind: 'json' as const, method: 'POST', path: `${a}/branches/${world.branch}/${verb}`, route: `/api/swarms/:id/branches/:branch/${verb}`, status: refused })) : []),
+    ...(t
+      ? [
+          { kind: 'json' as const, method: 'GET', path: `/api/swarms/${t}/tree`, route: '/api/swarms/:tree/tree', status: read },
+          { kind: 'json' as const, method: 'GET', path: `/api/swarms/${t}/proofs`, route: '/api/swarms/:tree/proofs', status: read },
+          ...(world.node
+            ? [
+                { kind: 'json' as const, method: 'GET', path: `/api/swarms/${t}/nodes/${world.node}`, route: '/api/swarms/:tree/nodes/:nid', status: read },
+                { kind: 'json' as const, method: 'GET', path: `/api/swarms/${t}/nodes/${world.node}/updates?after=0`, route: '/api/swarms/:tree/nodes/:nid/updates', status: read },
+                ...['steer', 'move', 'end', 'review'].map((verb) => ({ body: {}, kind: 'json' as const, method: 'POST', path: `/api/swarms/${t}/nodes/${world.node}/${verb}`, route: `/api/swarms/:tree/nodes/:nid/${verb}`, status: refused })),
+                { kind: 'html' as const, method: 'GET', path: `/s/${t}/n/${world.node}`, route: '/s/:tree/n/:nid', status: [200, 301] },
+                { kind: 'html' as const, method: 'GET', path: `/x/s/${t}/n/${world.node}`, route: '/x/s/:tree/n/:nid', status: read },
+                { kind: 'html' as const, method: 'GET', path: `/tg/s/${t}/n/${world.node}`, route: '/tg/s/:tree/n/:nid', status: read },
+              ]
+            : []),
+        ]
+      : []),
   ]
   const v1: Probe[] = [
     { kind: 'json', method: 'GET', path: '/v1/config', schema: 'GET /v1/config', status: read },
@@ -460,6 +497,7 @@ export function probes(world: World): Probe[] {
     { body: {}, kind: 'json', method: 'POST', path: '/v1/me', status: refused },
     { body: {}, kind: 'json', method: 'POST', path: '/v1/feedback', status: [400] },
     { body: {}, kind: 'json', method: 'POST', path: '/v1/auth', status: [400] },
+    { body: { chainId: 4217 }, check: (body) => (typeof (body as { message?: unknown }).message === 'string' ? undefined : 'bad: no message to sign'), kind: 'json', method: 'POST', path: '/v1/auth/challenge', status: read },
     { body: {}, kind: 'json', method: 'POST', path: '/v1/auth/logout', status: [200, 401] },
     { body: {}, kind: 'json', method: 'POST', path: '/v1/general/chat', status: refused },
     { body: {}, kind: 'json', method: 'POST', path: `${v}/contributions`, route: '/v1/swarms/:id/contributions', status: [400] },
