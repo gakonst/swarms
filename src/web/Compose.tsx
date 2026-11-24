@@ -64,6 +64,7 @@ export function Compose(props: { config: Config | undefined; full?: boolean; onS
           return { id: props.swarm, node: made.nid, parent: props.parent.id, title: named }
         }}
         verb="Add it"
+        wants="Give it a title first"
       />
     </div>
   )

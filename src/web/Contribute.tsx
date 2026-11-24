@@ -62,7 +62,7 @@ export function valid(amount: string, minimum = smallest) {
 const working = {
   counting: 'Counting…',
   creating: 'Setting up…',
-  paying: 'Check prompt…',
+  paying: 'Confirm in Tempo ID…',
   signing: 'Signing in…',
 } as const
 
@@ -120,6 +120,7 @@ export function Fuel(props: {
   steers?: boolean | undefined
   target: () => Promise<Target>
   verb?: string | undefined
+  wants?: string | undefined
 }) {
   const wallet = useWallet()
   const [amount, setAmount] = useState(props.prefill.amount)
@@ -136,7 +137,7 @@ export function Fuel(props: {
     if (moved && (act.at === 'counted' || act.at === 'failed' || act.at === 'owed' || act.at === 'refused')) told.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [act.at])
   useEffect(() => {
-    if (props.focus) (props.steers === false || props.first ? sum : steer).current?.focus({ preventScroll: true })
+    if (props.focus && !matchMedia('(pointer: coarse)').matches) (props.steers === false || props.first ? sum : steer).current?.focus({ preventScroll: true })
   }, [props.focus])
   useEffect(() => {
     if (!props.config) return
@@ -210,7 +211,7 @@ export function Fuel(props: {
       {props.extra}
       {!props.first && props.steers !== false && <input aria-label={props.ask ?? 'What should it try next?'} className="fuel-steer" disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder={`${props.ask ?? 'What should it try next?'} (optional)`} ref={steer} value={props.note} />}
       <button aria-busy={busy || undefined} className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
-        {busy ? working[act.at as keyof typeof working] : funding ? 'Adding funds…' : props.ended ? 'Ended' : ok ? `${said} · ${dollars(amount)}` : said}
+        {busy ? working[act.at as keyof typeof working] : funding ? 'Adding funds…' : props.ended ? 'Ended' : props.locked && props.wants ? props.wants : ok ? `${said} · ${dollars(amount)}` : said}
       </button>
       <div className="fuel-told" ref={told}>
         {props.ended && !busy && act.at !== 'counted' ? <Alert title={props.ended} tone="warn" /> : <Told act={act} config={props.config} onFund={() => void fund()} onRetry={() => void retry()} slot={props.slot} />}

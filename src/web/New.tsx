@@ -136,6 +136,7 @@ function Own(props: { config: Config | undefined; name: string | undefined }) {
             shared={false}
             swarm={{ balance: '0', contributors: 0, id: 'own', remaining: '0', status: 'funding', title: drafted.title, why: null }}
             target={launch.target}
+            wants={question.trim() ? 'Say a little more first' : "Say what you're after first"}
           />
       </div>
       {free.length > 0 && (
