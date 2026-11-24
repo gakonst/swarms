@@ -222,6 +222,21 @@ test('a payment in flight outlives the box that started it, and a settled one is
   Pay.move('s1', events.reset)
 })
 
+test('a transfer the server could not count yet is tried again by itself, with nothing on screen', async () => {
+  const Pay = await loaded()
+  const made: PayModule.Owed = { amount: '1.000000', hash: '0xfed', node: 'n7', note: '', parent: 'root', swarm: 's1', title: 'A late lemma' }
+  const from = Pay.proposing('s1', 'root')
+  const asked = answering(problem(502, 'upstream_failed', 'The gateway did not credit the transfer: timeout'), counted)
+  Pay.move(from, { creates: true, signed: true, type: 'start' })
+  Pay.move(from, { type: 'created' })
+  assert.deepEqual(await Pay.record(made, from), { at: 'later' })
+  assert.deepEqual(Pay.flow(Pay.slot('s1', 'n7')), { at: 'owed', owed: made, tries: 0 })
+  await new Promise((resolve) => setTimeout(resolve, Pay.retries[0] + 300))
+  assert.equal(asked.length, 2)
+  assert.deepEqual(Pay.flow(Pay.slot('s1', 'n7')), { amount: '1.000000', at: 'counted', node: 'n7', parent: 'root', swarm: 's1', title: 'A late lemma' })
+  assert.deepEqual(owed(), [])
+})
+
 test('an approval an older page left owed is dropped: approvals are gone, and only a sent transfer is owed', async () => {
   stored.set('swarms.owed', JSON.stringify([{ amount: '2.000000', id: 'backing_1', keyAuthorization: {}, note: '', swarm: 's9', way: 'approved' }, { ...sent, swarm: 's9' }]))
   const Pay = await loaded()

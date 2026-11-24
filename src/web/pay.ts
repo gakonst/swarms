@@ -109,6 +109,8 @@ const watchers = new Map<string, Set<() => void>>()
 
 const heard = new Set<(slot: string, act: Act) => void>()
 
+const timers = new Map<string, ReturnType<typeof setTimeout>>()
+
 let version = 0
 
 function notify() {
@@ -170,9 +172,24 @@ export function move(slot: string, event: Event) {
   if (to.at === 'owed') tried.set(to.owed.hash, to.tries)
   if (to.at === 'idle' || to.at === 'owed') acts.delete(at)
   else acts.set(at, to)
+  schedule(at, to)
   notify()
   for (const listener of [...heard]) listener(at, to)
   return to
+}
+
+function schedule(at: string, to: Act) {
+  clearTimeout(timers.get(at))
+  timers.delete(at)
+  const wait = to.at === 'owed' ? retries[to.tries] : undefined
+  if (wait === undefined) return
+  timers.set(
+    at,
+    setTimeout(() => {
+      timers.delete(at)
+      void retry(at)
+    }, wait),
+  )
 }
 
 export function listen(listener: (slot: string, act: Act) => void) {
@@ -290,13 +307,5 @@ export function useKept(slot: string, open: () => void) {
 }
 
 export function useFlow(slot: string) {
-  const act = useSyncExternalStore(useCallback((listener: () => void) => watch(slot, listener), [slot]), () => flow(slot), () => idle)
-  const tries = act.at === 'owed' ? act.tries : -1
-  useEffect(() => {
-    const wait = retries[tries]
-    if (wait === undefined) return
-    const timer = setTimeout(() => void retry(slot), wait)
-    return () => clearTimeout(timer)
-  }, [slot, act, tries])
-  return act
+  return useSyncExternalStore(useCallback((listener: () => void) => watch(slot, listener), [slot]), () => flow(slot), () => idle)
 }
