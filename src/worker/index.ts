@@ -324,6 +324,23 @@ app.get('*', async (c) => {
   return Page.lost(c.req.raw, c.env)
 })
 
+const sockets = /^\/(?:api|v1)\/(?:(swarms|general\/chat)\/live|swarms\/([^/]+)\/chat\/live)$/
+
+function upgraded(request: Request, env: Cloudflare.Env, path: string): Response | Promise<Response> | undefined {
+  if (request.method !== 'GET' || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return undefined
+  const [, lobby, room] = sockets.exec(path) ?? []
+  if (lobby === 'swarms') return Lobby.enter(env, request)
+  if (lobby) return Lobby.listen(env, request)
+  if (!room) return undefined
+  let swarm: string
+  try {
+    swarm = decodeURIComponent(room)
+  } catch {
+    return undefined
+  }
+  return Operations.chatter(Replica.read(env, request), { swarm }, request).then(Rest.socket)
+}
+
 function paged(path: string) {
   return Page.rendered(path) || Page.moved(new URL(path, 'https://swarms')) !== undefined || /^\/(x|tg)(\/|$)/.test(path)
 }
@@ -334,6 +351,8 @@ export default {
     const www = Site.www(url)
     if (www) return new Response(null, { headers: { location: www }, status: 301 })
     const { path, stray } = Site.place(url)
+    const socket = upgraded(request, env, path)
+    if (socket) return socket
     const accept = request.headers.get('accept') ?? ''
     const page = (request.method === 'GET' || request.method === 'HEAD') && paged(path) && (accept === '' || /text\/html|\*\/\*/.test(accept))
     const site = Site.url(env, url)
