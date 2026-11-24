@@ -70,7 +70,11 @@ export async function open() {
   const send = (method: string, params: Record<string, unknown> = {}) =>
     new Promise<Record<string, unknown>>((resolve, reject) => {
       const id = next++
-      pending.set(id, { reject, resolve })
+      const timer = setTimeout(() => {
+        pending.delete(id)
+        reject(new Error(`Chrome did not answer ${method} within 60 s`))
+      }, 60_000)
+      pending.set(id, { reject: (error) => (clearTimeout(timer), reject(error)), resolve: (value) => (clearTimeout(timer), resolve(value)) })
       socket.send(JSON.stringify({ id, method, params }))
     })
   await send('Page.enable')
