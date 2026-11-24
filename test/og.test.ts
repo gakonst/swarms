@@ -28,9 +28,9 @@ const swarm: Summary = {
   machines: 0,
   pool: '0',
   problem: null,
-  remaining: '2.310000',
+  remaining: '0.031000',
   setup: null,
-  spent: '77.690000',
+  spent: '79.969000',
   status: 'paused',
   steering: 'open',
   title: 'Megakernel for "Muse" <Spark> & co',
@@ -97,10 +97,10 @@ test('pages without a moving picture share a large image and no player', () => {
 
 test('a preview keeps its version while only cents move, and changes with money, backers or state', () => {
   const version = Share.version(Share.swarm(swarm))
-  assert.equal(Share.version(Share.swarm({ ...swarm, remaining: '2.300000', spent: '77.700000', updatedAt: 9 })), version)
+  assert.equal(Share.version(Share.swarm({ ...swarm, remaining: '0.030000', spent: '79.970000', updatedAt: 9 })), version)
   assert.notEqual(Share.version(Share.swarm({ ...swarm, balance: '82.000000' })), version)
   assert.notEqual(Share.version(Share.swarm({ ...swarm, contributors: 3 })), version)
-  assert.notEqual(Share.version(Share.swarm({ ...swarm, status: 'running', why: null })), version)
+  assert.notEqual(Share.version(Share.swarm({ ...swarm, remaining: '2.310000', status: 'running', why: null })), version)
 })
 
 test('page urls map to preview keys, and only known ideas get one', () => {

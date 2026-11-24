@@ -48,7 +48,7 @@ test('thinking that arrives only as live frames is kept by offset and taken as o
   assert.equal(Follow.buffers(object).take(null), 'an older thought')
 })
 
-test('a working agent with no model or tool call for twenty minutes is reported stalled once, and progress renews its lease and clears it', async () => {
+test('a working agent with no model or tool call for twenty minutes is noted stalled once in the logs and never in the feed, and progress renews its lease and clears it', async () => {
   const Work = await import('../src/worker/Work.ts')
   const Turns = await import('../src/worker/Turns.ts')
   const { fresh } = await import('./board.ts')
@@ -72,13 +72,14 @@ test('a working agent with no model or tool call for twenty minutes is reported 
   await Turns.progressed(object)
   Follow.stalled(object, Date.now())
   Follow.stalled(object, Date.now())
-  assert.equal(logged.length, 1)
-  assert.match(logged[0] ?? '', /no model call or tool call for 30 minutes/)
+  assert.equal(logged.length, 0)
+  const noted = kept.get('stallNoted')
+  assert.equal(typeof noted, 'number')
   Follow.advanced(object, 'model.call.completed', Date.now())
   await Turns.progressed(object)
   assert.ok(((await board.task('turn:1'))?.untilMs ?? 0) >= Date.now() + Turns.leaseMs - 1_000)
   Follow.stalled(object, Date.now())
-  assert.equal(logged.length, 1)
+  assert.deepEqual([logged.length, kept.get('stallNoted')], [0, noted])
 })
 
 test('eight model calls in a row that nothing could pay for starve the turn, and one that went through clears the count', () => {
