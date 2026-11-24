@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Site from '../shared/Site.ts'
+import * as Showing from './showing.ts'
 
 type Step = { click: string } | { slide: [string, number] } | { scroll: string; to?: 'top' } | { type: [string, string] } | { wait: number }
 
@@ -229,38 +230,46 @@ async function play(frame: HTMLIFrameElement, steps: readonly Step[]) {
 
 function Shot(props: { frame: Frame; index: string; size: Size }) {
   const ref = useRef<HTMLIFrameElement>(null)
-  const [seen, setSeen] = useState(false)
-  const [ready, setReady] = useState(false)
+  const [shot, setShot] = useState<Showing.Showing>('away')
+  const live = useRef(shot)
   const [key, setKey] = useState(0)
   const box = sizes[props.frame.size ?? props.size]
   const holder = useRef<HTMLDivElement>(null)
+  const move = (step: (now: Showing.Showing) => Showing.Showing) => {
+    const next = step(live.current)
+    if (Showing.holds(live.current) && !Showing.holds(next)) release()
+    live.current = next
+    setShot(next)
+  }
 
   useEffect(() => {
     const element = holder.current
     if (!element) return
-    const observer = new IntersectionObserver(([entry]) => setSeen(!!entry?.isIntersecting), { rootMargin: '300px' })
+    const observer = new IntersectionObserver(([entry]) => move((now) => Showing.seen(now, !!entry?.isIntersecting)), { rootMargin: '300px' })
     observer.observe(element)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      if (Showing.holds(live.current)) release()
+    }
   }, [])
 
   useEffect(() => {
-    if (!seen) return setReady(false)
-    if (ready) return
+    if (shot !== 'queued') return
     let alive = true
-    void claim().then(() => (alive ? setReady(true) : release()))
+    void claim().then(() => (alive && live.current === 'queued' ? move(Showing.granted) : release()))
     return () => {
       alive = false
     }
-  }, [seen, ready])
+  }, [shot])
 
   return (
     <figure className="shot" data-size={props.frame.size ?? props.size}>
       <div className="shot-screen" ref={holder} style={{ height: box.height * box.scale, width: box.width * box.scale }}>
-        {ready && (
+        {Showing.framed(shot) && (
           <iframe
             key={key}
             onLoad={() => {
-              release()
+              move(Showing.loaded)
               if (ref.current && props.frame.steps) void play(ref.current, props.frame.steps)
             }}
             ref={ref}
