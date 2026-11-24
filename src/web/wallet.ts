@@ -317,6 +317,13 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
     if (Object.values(fixtures.balances).reduce((sum, value) => sum + value, 0n) < input.amount) throw Object.assign(new Error(`Your wallet holds less than this.`), { code: 'insufficient_balance' })
     const hash = `0x${Date.now().toString(16).padStart(64, '5')}` as Hex
     fixtures.sent.set(hash, { amount: input.amount, token: input.token })
+    let owed = input.amount
+    for (const token of [input.token, ...(Object.keys(fixtures.balances) as Currency[])]) {
+      const taken = fixtures.balances[token] < owed ? fixtures.balances[token] : owed
+      fixtures.balances[token] -= taken
+      owed -= taken
+    }
+    void refresh(config)
     if (!state.session) set({ address: visitor, pending: false, session: { address: visitor, token: 'fixture' } })
     return hash
   }
