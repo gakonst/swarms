@@ -1029,6 +1029,8 @@ A thread on a phone shifted twice as it loaded (CLS 0.05 to 0.17): its crumbs ap
 
 Below 600 px #general's welcome is its title and one paragraph: the # badge, the two buttons and the hot list repeated what the problems strip above and the strip's Start button already show, and the hot list arriving late moved the welcome (CLS 0.025 at 390, 0.062 at 568, now 0). It also starts at the top of the chat, as a channel's intro does: with few messages the chat pinned it to the bottom and left half the phone blank above it, the gap Georgios saw at about 570 px (537 px blank at 568×1024 on an empty site, now below the welcome where the next messages land).
 
+A tree swarm's header now carries its status word and dot (Working now, Needs money, Retrying) as an agent swarm's does, from the same \`Status.standing\` with the tree's in-flight count, so a phone shows how it is going without opening the board; on phones it is the only status the folded stats keep.
+
 ## Desktop hill-climb (2026-11-24)
 
 - A scorer outside the repository (`~/swarms-work/hill-desktop/score.mjs`, headless Chrome) loads #general, a tree swarm and its Board, Results, Code and About tabs, a thread, a board channel, an agent swarm and its Board and Results, a profile, `/new`, `/faq`, `/about`, `/ideas`, `/docs` and the ride overlay at 1280×800, 1440×900, 1728×1117 and 2560×1440 on the fixture world, and counts sideways overflow, text clipped by the viewport, overlapping text, tap targets under 24 px, inputs under 16 px, layout shift over 0.01, blank bands over 30% of the viewport, text cut short beside free room, lines over 48 em, stretched filled controls and console errors. On origin/main dc5c9ca it scored 161 (20, 31, 51 and 59 by width).

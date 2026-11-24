@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Config, Detail, Member, NodeUpdates, NodeView, ProofsView, Said, TreeView } from '../shared/Api.ts'
 import * as Prose from '../shared/Prose.ts'
+import * as Status from '../shared/Status.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
@@ -248,6 +249,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   for (const each of Object.values(nodes)) for (const funder of each.funders) if (funder.who.address) names.set(funder.who.address.toLowerCase(), funder.who.handle)
   for (const member of members) names.set(member.address.toLowerCase(), member.handle)
   const top = backers(swarm.contributions, names)
+  const stood = Status.standing({ ...swarm, inFlight: head.inFlight })
   const root = nodes['root']
   const repo = proofs.data?.proofs[0]?.check.repo
   const count = root ? root.children.length : 0
@@ -256,6 +258,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
       {!held && <Strip backers={top} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{head.proven.toLocaleString('en-US')}</b> proven</span>
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>
+        <span className="strip-mood" data-mood={stood.mood} title={Status.line(stood.word)}><i />{Status.pill(stood.word)}</span>
       </Strip>}
       {!held && <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} unread={unread} view={view} />}
       <div className="panel panel-chat" hidden={!!held}>
