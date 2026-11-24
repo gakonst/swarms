@@ -16,7 +16,8 @@ import { NodePanel, Ride } from './Node.tsx'
 import * as Pay from './pay.ts'
 import { Room } from './Room.tsx'
 import { back, Link, navigate, useBase } from './router.tsx'
-import { share, useSwipe } from './Shell.tsx'
+import { shareTree } from './channels.ts'
+import { useSwipe } from './Shell.tsx'
 import { scene } from './stage.ts'
 import { at, backers, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
 import { Filters, Mark } from './Tree.tsx'
@@ -118,7 +119,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const nodes = grove?.nodes ?? {}
 
   useEffect(() => {
-    if (grove) share(id, grove.nodes)
+    if (grove) shareTree(id, grove.nodes)
   }, [grove, id])
 
   useEffect(() => {

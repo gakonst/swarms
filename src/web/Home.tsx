@@ -51,7 +51,7 @@ export function board(listing: Listing | undefined) {
     .sort((a, b) => Number(!!a.archivedAt) - Number(!!b.archivedAt) || Number(b.balance) - Number(a.balance) || b.updatedAt - a.updatedAt)
 }
 
-function sown(swarm: Summary, head: Tree.Headline | undefined): Record<Cell, number> {
+export function sown(swarm: Summary, head: Tree.Headline | undefined): Record<Cell, number> {
   const balance = Math.max(0, Number(swarm.balance))
   const count = Math.round(Math.min(44, 8 + 4 * Math.sqrt(balance)))
   if (head) {

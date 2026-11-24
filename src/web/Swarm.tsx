@@ -7,6 +7,7 @@ import * as Api from './api.ts'
 import { useSurface, useWishes, Viewer } from './Artifacts.tsx'
 import { here, seeded } from './boot.ts'
 import { Box } from './Box.tsx'
+import { shareBranches } from './channels.ts'
 import * as Prose from '../shared/Prose.ts'
 import { pill } from './Card.tsx'
 import { Code } from './Code.tsx'
@@ -66,6 +67,10 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
     if (location.hash === '#room') navigate(base, { replace: true })
     else if (location.hash) history.replaceState(history.state, '', location.pathname + location.search)
   }, [base])
+
+  useEffect(() => {
+    if (tree.data) shareBranches(id, tree.data.branches)
+  }, [tree.data, id])
 
   const answered = detail.data?.answer?.at
   useEffect(() => {

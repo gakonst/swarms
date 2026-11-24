@@ -29,7 +29,7 @@ document.cookie = `swarms_tz=${encodeURIComponent(Intl.DateTimeFormat().resolved
 const path = Site.strip(location.pathname)
 const named = Nickname.parse(path)
 const free = !!named && globalThis.__SWARMS_BOOT__?.data[`name:${named.name}`] === null
-const route = /^\/s\/[^/]+(\/chat|\/code|\/results|\/board|\/about|\/[nt]\/[^/]+)?\/?$/.test(path) || (named && !free)
+const route = /^\/s\/[^/]+(\/chat|\/code|\/results|\/board|\/about|\/[ntc]\/[^/]+)?\/?$/.test(path) || (named && !free)
   ? Promise.all([import('./Swarm.tsx').then((module) => preload('swarm', module.Swarm)), import('./TreePage.tsx').then((module) => preload('tree', module.TreePage))])
   : path === '/new' || free
       ? import('./New.tsx').then((module) => preload('new', module.New))

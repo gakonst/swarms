@@ -69,7 +69,7 @@ function plain(event: MouseEvent<HTMLAnchorElement>) {
   return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
 }
 
-export function Link(props: { children: ReactNode; className?: string; data?: Readonly<Record<`data-${string}`, string>> | undefined; keep?: boolean; label?: string; lit?: boolean; onHover?: (hovering: boolean) => void; replace?: boolean; to: string }) {
+export function Link(props: { children: ReactNode; className?: string; data?: Readonly<Record<`data-${string}`, string>> | undefined; keep?: boolean; label?: string; lit?: boolean; onHover?: (hovering: boolean) => void; replace?: boolean; title?: string; to: string }) {
   return (
     <a
       {...props.data}
@@ -77,6 +77,7 @@ export function Link(props: { children: ReactNode; className?: string; data?: Re
       className={props.className}
       data-lit={props.lit || undefined}
       href={href(props.to)}
+      title={props.title}
       onBlur={() => props.onHover?.(false)}
       onFocus={() => {
         prefetch(props.to)

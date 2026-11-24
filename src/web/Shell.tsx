@@ -1,13 +1,15 @@
 import { type ReactNode, type TouchEvent, useEffect, useRef, useSyncExternalStore } from 'react'
-import type { Listing, Summary, TreeView } from '../shared/Api.ts'
+import type { Detail, Listing, Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
-import type * as Tree from '../shared/Tree.ts'
-import { seeded, server } from './boot.ts'
+import { seeded } from './boot.ts'
 import { cash } from './Branches.tsx'
-import { board, live } from './Home.tsx'
+import { type Channel as Room, holding, type Thread, useShape } from './channels.ts'
+import { Spiral } from './Field.tsx'
+import { board, live, sown } from './Home.tsx'
 import { Inline } from './Markdown.tsx'
 import { Link } from './router.tsx'
+import { Mark } from './Tree.tsx'
 import * as Wire from './wire.ts'
 
 const seenKey = 'swarms_seen'
@@ -46,78 +48,7 @@ function visit(id: string, at: number) {
   for (const watcher of seenWatchers) watcher()
 }
 
-const shown = 5
-
-const threadWatchers = new Set<() => void>()
-
-const threads = new Map<string, readonly Tree.Node[]>()
-
-const grown = new WeakMap<TreeView, readonly Tree.Node[]>()
-
-function top(nodes: readonly Tree.Node[]) {
-  const byId = new Map(nodes.map((node) => [node.id, node]))
-  return (byId.get('root')?.children ?? []).flatMap((nid) => byId.get(nid) ?? []).sort((a, b) => Number(b.money.subtree.pledged) - Number(a.money.subtree.pledged))
-}
-
-function same(a: readonly Tree.Node[], b: readonly Tree.Node[]) {
-  return a.length === b.length && a.every((node, index) => node.id === b[index]?.id && node.title === b[index]?.title && node.status === b[index]?.status && node.money.subtree.pledged === b[index]?.money.subtree.pledged)
-}
-
-export function share(id: string, nodes: Readonly<Record<string, Tree.Node>>) {
-  const next = top(Object.values(nodes))
-  const before = threads.get(id) ?? planted(id)
-  if (before && same(before, next)) return
-  threads.set(id, next)
-  for (const watcher of threadWatchers) watcher()
-}
-
-function planted(id: string) {
-  const view = seeded<TreeView>(`tree:${id}`)
-  if (!view) return undefined
-  if (server) return top(view.nodes)
-  const kept = grown.get(view)
-  if (kept) return kept
-  const made = top(view.nodes)
-  grown.set(view, made)
-  return made
-}
-
-function watchThreads(listener: () => void) {
-  threadWatchers.add(listener)
-  return () => {
-    threadWatchers.delete(listener)
-  }
-}
-
-function useThreads(id: string | undefined) {
-  return useSyncExternalStore(
-    watchThreads,
-    () => (id ? (threads.get(id) ?? planted(id)) : undefined),
-    () => (id ? planted(id) : undefined),
-  )
-}
-
-function Threads(props: { base: string; id: string; thread: string | undefined }) {
-  const list = useThreads(props.id)
-  if (!list?.length) return null
-  return (
-    <ol aria-label="Threads" className="rail-threads">
-      {list.slice(0, shown).map((node) => (
-        <li key={node.id}>
-          <Link className="rail-thread" data={{ 'data-live': String(node.status === 'in flight' || node.counts['in flight'] > 0) }} lit={props.thread === node.id} to={`${props.base}/t/${node.id}`}>
-            <Inline className="rail-thread-name" text={node.title} />
-            <span className="rail-thread-money">{cash(node.money.subtree.pledged)}</span>
-          </Link>
-        </li>
-      ))}
-      <li>
-        <Link className="rail-thread rail-thread-all" to={`${props.base}/board`}>
-          {list.length > shown ? `All ${list.length} threads` : 'All threads'}
-        </Link>
-      </li>
-    </ol>
-  )
-}
+const shown = 4
 
 function riders(count: number) {
   return `${count.toLocaleString('en-US')} rider${count === 1 ? '' : 's'}`
@@ -128,68 +59,178 @@ export function channels(listing: Listing | undefined) {
   return board(listing).sort((a, b) => Number(!!a.archivedAt) - Number(!!b.archivedAt) || Number(live(b, heads[b.id])) - Number(live(a, heads[a.id])) || Number(b.balance) - Number(a.balance))
 }
 
-function Channel(props: { current: boolean; listing: Listing | undefined; swarm: Summary; thread: string | undefined; unread: boolean }) {
-  const swarm = props.swarm
-  const base = Nickname.path(swarm)
-  const working = live(swarm, props.listing?.heads?.[swarm.id])
+function useUnread(items: readonly Summary[], current: string | undefined) {
+  const known = useSyncExternalStore(watchSeen, readSeen, () => nothing)
+  const now = items.find((swarm) => swarm.id === current)
+  useEffect(() => {
+    if (now) visit(now.id, now.updatedAt)
+  }, [now?.id, now?.updatedAt])
+  return (swarm: Summary) => swarm.id !== current && known[swarm.id] !== undefined && swarm.updatedAt > known[swarm.id]!
+}
+
+function Servers(props: { current: string | undefined; items: readonly Summary[]; listing: Listing | undefined; unread: (swarm: Summary) => boolean }) {
+  const heads = props.listing?.heads ?? {}
   return (
-    <li>
-      <Link
-        className="rail-row"
-        data={{ 'data-live': String(working), 'data-old': String(!!swarm.archivedAt), 'data-unread': String(props.unread) }}
-        label={`${swarm.title}, ${cash(swarm.balance)} from ${riders(swarm.contributors)}${working ? ', working now' : ''}`}
-        lit={props.current}
-        to={base}
-      >
-        <i aria-hidden="true" className="rail-hash">#</i>
-        <Inline className="rail-name" text={swarm.title} />
-        <span className="rail-money">{cash(swarm.balance)}</span>
-        <span className="rail-meta">{swarm.archivedAt ? 'Archived' : working ? <><i className="rail-live" />working now</> : riders(swarm.contributors)}</span>
+    <nav aria-label="Problems" className="servers">
+      <Link className="server server-home" data={{ 'data-live': 'false', 'data-unread': 'false' }} label="Home: #general" lit={props.current === 'general' || props.current === undefined} title="Home" to="/">
+        <i aria-hidden="true">#</i>
       </Link>
-      {props.current && swarm.form === 'tree' && !swarm.archivedAt && <Threads base={base} id={swarm.id} thread={props.thread} />}
-    </li>
+      <span aria-hidden="true" className="servers-rule" />
+      <ol className="servers-list" data-loading={!props.listing}>
+        {props.items.map((swarm) => {
+          const working = live(swarm, heads[swarm.id])
+          return (
+            <li key={swarm.id}>
+              <Link
+                className="server"
+                data={{ 'data-live': String(working), 'data-old': String(!!swarm.archivedAt), 'data-unread': String(props.unread(swarm)) }}
+                label={`${swarm.title}, ${cash(swarm.balance)} from ${riders(swarm.contributors)}${working ? ', working now' : ''}`}
+                lit={props.current === swarm.id}
+                title={`${swarm.title} · ${cash(swarm.balance)}`}
+                to={Nickname.path(swarm)}
+              >
+                <Spiral cells={sown(swarm, heads[swarm.id])} id={swarm.id} live={working} />
+              </Link>
+            </li>
+          )
+        })}
+      </ol>
+      <Link className="server server-add" label="Start a problem, $1 or more" title="Start a problem" to="/new">
+        <i aria-hidden="true">+</i>
+      </Link>
+    </nav>
   )
 }
 
-export function Rail(props: { channel: string | undefined; thread: string | undefined }) {
-  const list = Wire.useSwarms()
-  const known = useSyncExternalStore(watchSeen, readSeen, () => nothing)
-  const items = channels(list.data)
-  const current = items.find((swarm) => swarm.id === props.channel)
-  const raised = items.reduce((sum, swarm) => sum + Number(swarm.balance), 0)
+function Foot() {
+  return (
+    <footer className="rail-foot">
+      <Link to="/about">Swarm riders</Link>
+      <Link to="/faq">FAQ</Link>
+      <Link to="/docs">API</Link>
+      <a href={Site.essay}>Swarm riding, by Paradigm</a>
+    </footer>
+  )
+}
 
-  useEffect(() => {
-    if (current) visit(current.id, current.updatedAt)
-  }, [current?.id, current?.updatedAt])
-
+function Home(props: { channel: string | undefined; items: readonly Summary[]; listing: Listing | undefined; unread: (swarm: Summary) => boolean }) {
+  const raised = props.items.reduce((sum, swarm) => sum + Number(swarm.balance), 0)
+  const heads = props.listing?.heads ?? {}
   return (
     <nav aria-label="Channels" className="rail">
+      <header className="side-head">
+        <b>Swarms</b>
+        <span className="side-meta" data-ready={!!props.listing}>{props.items.length} problems · {cash(String(raised))}</span>
+      </header>
       <div className="rail-scroll">
         <Link className="rail-row rail-general" lit={props.channel === 'general'} to="/">
           <i aria-hidden="true" className="rail-hash">#</i>
           <span className="rail-name">general</span>
           <span className="rail-meta">Everyone on Swarms</span>
         </Link>
-        <p className="rail-label">
-          <span>Channels</span>
-          <span data-ready={!!list.data}>{items.length} · {cash(String(raised))}</span>
-        </p>
-        <ol className="rail-list" data-loading={!list.data}>
-          {items.map((swarm) => (
-            <Channel current={swarm.id === props.channel} key={swarm.id} listing={list.data} swarm={swarm} thread={swarm.id === props.channel ? props.thread : undefined} unread={swarm.id !== props.channel && known[swarm.id] !== undefined && swarm.updatedAt > known[swarm.id]!} />
-          ))}
-        </ol>
         <Link className="rail-start" to="/new">
-          <i aria-hidden="true">+</i>Start a channel<span>$1+</span>
+          <i aria-hidden="true">+</i>Start a problem<span>$1+</span>
         </Link>
-        <Link className="rail-browse" to="/ideas">Browse every channel and idea</Link>
+        <p className="rail-label"><span>Problems</span></p>
+        <ol className="rail-list" data-loading={!props.listing}>
+          {props.items.map((swarm) => {
+            const working = live(swarm, heads[swarm.id])
+            return (
+              <li key={swarm.id}>
+                <Link
+                  className="rail-row rail-problem"
+                  data={{ 'data-live': String(working), 'data-old': String(!!swarm.archivedAt), 'data-unread': String(props.unread(swarm)) }}
+                  label={`${swarm.title}, ${cash(swarm.balance)} from ${riders(swarm.contributors)}${working ? ', working now' : ''}`}
+                  to={Nickname.path(swarm)}
+                >
+                  <Spiral cells={sown(swarm, heads[swarm.id])} id={swarm.id} live={working} />
+                  <Inline className="rail-name" text={swarm.title} />
+                  <span className="rail-money">{cash(swarm.balance)}</span>
+                  <span className="rail-meta">{swarm.archivedAt ? 'Archived' : working ? <><i className="rail-live" />working now</> : riders(swarm.contributors)}</span>
+                </Link>
+              </li>
+            )
+          })}
+        </ol>
+        <Link className="rail-browse" to="/ideas">Browse every problem and idea</Link>
       </div>
-      <footer className="rail-foot">
-        <Link to="/about">Swarm riders</Link>
-        <Link to="/faq">FAQ</Link>
-        <Link to="/docs">API</Link>
-        <a href={Site.essay}>Swarm riding, by Paradigm</a>
-      </footer>
+      <Foot />
+    </nav>
+  )
+}
+
+function ThreadRow(props: { base: string; lit: boolean; thread: Thread }) {
+  const thread = props.thread
+  return (
+    <li>
+      <Link className="rail-thread" data={{ 'data-live': String(thread.live) }} lit={props.lit} to={`${props.base}/t/${thread.id}`}>
+        <Mark checking={thread.checking} status={thread.status} />
+        <Inline className="rail-thread-name" text={thread.title} />
+        <span className="rail-thread-money">{cash(thread.money)}</span>
+        {thread.doing && <Inline className="rail-thread-doing" text={thread.doing} />}
+      </Link>
+    </li>
+  )
+}
+
+function ChannelRow(props: { base: string; channel: Room; lit: boolean; open: boolean; thread: string | undefined }) {
+  const channel = props.channel
+  const threads = props.open ? channel.threads : channel.threads.slice(0, shown)
+  const rest = channel.threads.length - threads.length
+  return (
+    <li>
+      <Link className="rail-row rail-channel" data={{ 'data-live': String(channel.live) }} lit={props.lit} to={`${props.base}/c/${channel.id}`}>
+        <i aria-hidden="true" className="rail-hash">#</i>
+        <Inline className="rail-name" text={channel.title} />
+        <span className="rail-money">{cash(channel.money)}</span>
+      </Link>
+      {threads.length > 0 && (
+        <ol aria-label="Threads" className="rail-threads">
+          {threads.map((each) => <ThreadRow base={props.base} key={each.id} lit={props.thread === each.id} thread={each} />)}
+          {rest > 0 && (
+            <li>
+              <Link className="rail-thread rail-thread-all" to={`${props.base}/c/${channel.id}`}>{rest} more</Link>
+            </li>
+          )}
+        </ol>
+      )}
+    </li>
+  )
+}
+
+function SwarmSide(props: { general: boolean; id: string; room: string | undefined; swarm: Summary | undefined; thread: string | undefined; working: boolean }) {
+  const shape = useShape(props.id)
+  const swarm = props.swarm
+  const base = swarm ? Nickname.path(swarm) : `/s/${encodeURIComponent(props.id)}`
+  const held = props.room ?? holding(shape, props.thread)?.id
+  const list = shape?.channels ?? []
+  const spent = list.reduce((sum, channel) => sum + Number(channel.money), 0)
+  return (
+    <nav aria-label="Channels" className="rail">
+      <header className="side-head">
+        {swarm ? <Inline className="side-title" text={swarm.title} /> : <b className="side-title" />}
+        <span className="side-meta" data-ready={!!swarm}>{swarm ? <>{cash(swarm.balance)} · {riders(swarm.contributors)}{props.working && <> · <i className="rail-live" />working</>}</> : ' '}</span>
+      </header>
+      <div className="rail-scroll">
+        <Link className="rail-row rail-general" lit={props.general && !held && !props.thread} to={base}>
+          <i aria-hidden="true" className="rail-hash">#</i>
+          <span className="rail-name">general</span>
+          <span className="rail-meta">Riders and the lead</span>
+        </Link>
+        {list.length > 0 && (
+          <>
+            <p className="rail-label">
+              <span>{shape?.form === 'tree' ? 'Programs' : 'Branches'}</span>
+              <span>{list.length} · {cash(String(spent))}{shape?.form === 'agent' ? ' spent' : ''}</span>
+            </p>
+            <ol className="rail-list">
+              {list.map((channel) => <ChannelRow base={base} channel={channel} key={channel.id} lit={held === channel.id && props.thread !== channel.id} open={held === channel.id} thread={props.thread} />)}
+            </ol>
+          </>
+        )}
+        <Link className="rail-browse" to="/">‹ #general on Swarms</Link>
+      </div>
+      <Foot />
     </nav>
   )
 }
@@ -226,11 +267,19 @@ export function useSwipe(handlers: { left?: (() => void) | undefined; right?: ((
   }
 }
 
-export function Shell(props: { channel: string | undefined; children: ReactNode; listing: boolean; onList: (open: boolean) => void; thread: string | undefined }) {
+export function Shell(props: { channel: string | undefined; children: ReactNode; general: boolean; listing: boolean; onList: (open: boolean) => void; room: string | undefined; thread: string | undefined }) {
   const swiped = useSwipe(props.listing ? { right: () => props.onList(false) } : { left: () => props.onList(true) })
+  const list = Wire.useSwarms()
+  const items = channels(list.data)
+  const unread = useUnread(items, props.channel)
+  const id = props.channel !== 'general' ? props.channel : undefined
+  const swarm = id ? (list.data?.swarms.find((each) => each.id === id) ?? seeded<Detail>(id)) : undefined
   return (
     <div className="hub" data-listing={props.listing || undefined} {...swiped}>
-      <Rail channel={props.channel} thread={props.thread} />
+      <div className="drawer">
+        <Servers current={props.channel} items={items} listing={list.data} unread={unread} />
+        {id ? <SwarmSide general={props.general} id={id} key={id} room={props.room} swarm={swarm} thread={props.thread} working={!!swarm && live(swarm, list.data?.heads?.[id])} /> : <Home channel={props.channel} items={items} listing={list.data} unread={unread} />}
+      </div>
       <div className="hub-main" inert={props.listing || undefined}>{props.children}</div>
     </div>
   )

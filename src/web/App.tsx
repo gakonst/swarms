@@ -49,7 +49,7 @@ if (typeof window !== 'undefined') {
     if (route === '/about') void import('./About.tsx').then((module) => preload('about', module.About))
     if (route === '/docs') void import('./Docs.tsx').then((module) => preload('docs', module.Docs))
     if (route === '/faq') void import('./Faq.tsx').then((module) => preload('faq', module.Faq))
-    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results|\/board|\/about|\/[nt]\/[^/?#]+)?\/?(?:[?#]|$)/.exec(path)?.[1]
+    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results|\/board|\/about|\/[ntc]\/[^/?#]+)?\/?(?:[?#]|$)/.exec(path)?.[1]
     const named = Nickname.parse(route)
     if (named) void warmSwarm().then(() => Names.warm(named.name)).then((found) => found && warmDetail(found.swarm), () => {})
     if (!id) return
@@ -254,12 +254,13 @@ export function App() {
   const path = usePath()
   const config = useConfig()
   const [listing, setListing] = useState(false)
-  const matched = /^\/s\/([^/]+)((?:\/chat|\/code|\/results|\/board|\/about)|\/[nt]\/([^/]+))?\/?$/.exec(path)
+  const matched = /^\/s\/([^/]+)((?:\/chat|\/code|\/results|\/board|\/about)|\/[ntc]\/([^/]+))?\/?$/.exec(path)
   const named = matched ? undefined : Nickname.parse(path)
   const found = Names.useNamed(named?.name)
   const swarm = matched?.[1] ? decodeURIComponent(matched[1]) : typeof found === 'object' && found ? found.swarm : undefined
   const tail = (matched ? matched[2] : named?.tail) ?? ''
   const node = /^\/[nt]\/([^/]+)$/.exec(tail)?.[1]
+  const room = /^\/c\/([^/]+)$/.exec(tail)?.[1]
   const view: Tab = node || tail === '/board' ? 'board' : tail === '/code' ? 'code' : tail === '/results' ? 'results' : tail === '/about' ? 'about' : 'chat'
   const free = !!named && found === null
   const rider = /^\/u\/([^/]+)\/?$/.exec(path)?.[1]
@@ -340,7 +341,7 @@ export function App() {
       <Cheered />
       <main>
         {shelled ? (
-          <Shell channel={swarm ?? (path === '/' ? 'general' : undefined)} listing={listing} onList={setListing} thread={node && decodeURIComponent(node)}>
+          <Shell channel={swarm ?? (path === '/' ? 'general' : undefined)} general={view === 'chat'} listing={listing} onList={setListing} room={room && decodeURIComponent(room)} thread={node && decodeURIComponent(node)}>
             {content}
           </Shell>
         ) : (
