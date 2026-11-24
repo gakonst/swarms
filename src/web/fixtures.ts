@@ -486,7 +486,7 @@ function summary(swarm: Live): Summary {
     steering: swarm.steering,
     title: swarm.title,
     updatedAt: swarm.updatedAt,
-    why: reason(swarm) ? why(swarm) : null,
+    why: why(swarm) === 'stuck' || reason(swarm) ? why(swarm) : null,
   }
 }
 
@@ -500,7 +500,7 @@ function detail(swarm: Live): Detail {
     hands: swarm.hands,
     notes: swarm.notes,
     reason: reason(swarm),
-    why: reason(swarm) ? why(swarm) : null,
+    why: why(swarm) === 'stuck' || reason(swarm) ? why(swarm) : null,
     updates: swarm.updates,
     working: swarm.since === null ? null : { since: swarm.since },
   }
