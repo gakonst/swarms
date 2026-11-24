@@ -10,6 +10,7 @@ import * as Status from '../shared/Status.ts'
 import { board, live, sown, stood } from './Home.tsx'
 import { Inline } from './Markdown.tsx'
 import { Link } from './router.tsx'
+import { useLive } from './Share.tsx'
 import { Mark } from './Tree.tsx'
 import * as Wire from './wire.ts'
 
@@ -278,7 +279,8 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
   const items = channels(list.data)
   const unread = useUnread(items, props.channel)
   const id = props.channel !== 'general' ? props.channel : undefined
-  const swarm = id ? (list.data?.swarms.find((each) => each.id === id) ?? seeded<Detail>(id)) : undefined
+  const shown = useLive(id)
+  const swarm = id ? (shown ?? list.data?.swarms.find((each) => each.id === id) ?? seeded<Detail>(id)) : undefined
   return (
     <div className="hub" data-listing={props.listing || undefined} {...swiped}>
       <div className="drawer">

@@ -42,7 +42,7 @@ let cheer: Cheer | undefined
 
 const listeners = new Set<() => void>()
 
-const live = new Map<string, Shown>()
+const live = new Map<string, Summary>()
 
 function tell() {
   for (const listener of [...listeners]) listener()
@@ -53,7 +53,7 @@ function show(next: Cheer | undefined) {
   tell()
 }
 
-export function useShown(swarm: Shown | undefined) {
+export function useShown(swarm: Summary | undefined) {
   useEffect(() => {
     if (!swarm || live.get(swarm.id) === swarm) return
     live.set(swarm.id, swarm)
@@ -88,9 +88,13 @@ export function Cheered() {
   return <Sheet cheer={shown} key={`${shown.swarm}:${shown.node ?? ''}:${shown.amount}`} />
 }
 
+export function useLive(id: string | undefined) {
+  return useSyncExternalStore(subscribe, () => (id ? live.get(id) : undefined), () => undefined)
+}
+
 function Sheet(props: { cheer: Cheer }) {
   const id = props.cheer.swarm
-  const shown = useSyncExternalStore(subscribe, () => live.get(id), () => undefined)
+  const shown = useLive(id)
   const [fetched, setFetched] = useState<Shown | undefined>(() => remembered<Shown>(id))
   const swarm = shown ?? fetched
   const [copied, setCopied] = useState(false)

@@ -19,8 +19,7 @@ const first: Record<number, number> = { 0: 5, 1: 3 }
 const step = 6
 
 export function cash(value: string) {
-  const number = Number(value)
-  return number >= 100 ? `$${Math.round(number).toLocaleString('en-US')}` : usd(value)
+  return usd(value)
 }
 
 export function doing(node: Tree.Node): Doing | null {
