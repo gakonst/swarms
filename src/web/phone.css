@@ -17,3 +17,10 @@
 @media (max-width:599px) {
   .strip .strip-line { display:none; }
 }
+
+@media (max-width:479px) {
+  .channel-head, .channel-head:not(:has(.channel-add)) { grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); grid-template-areas:'title title' 'stats stats' 'topic topic' 'add ride'; }
+  .channel-head:not(:has(.channel-add)) { grid-template-areas:'title title' 'stats stats' 'topic topic' 'ride ride'; }
+  .channel-acts .btn { width:100%; justify-content:center; }
+}
+

@@ -1033,6 +1033,8 @@ A tree swarm's header now carries its status word and dot (Working now, Needs mo
 
 Below 600 px the channel header drops its topic line and top riders (the riders count, dollars and status stay), which gives the board and the chat about 40 px more, and the switcher centers the current chip so its neighbours show on both sides.
 
+Below 480 px a channel's header puts its status line on its own row and Add a sub-item and Ride it side by side under it: in three rows the status was cut to "Propose" at 360 px.
+
 ## Desktop hill-climb (2026-11-24)
 
 - A scorer outside the repository (`~/swarms-work/hill-desktop/score.mjs`, headless Chrome) loads #general, a tree swarm and its Board, Results, Code and About tabs, a thread, a board channel, an agent swarm and its Board and Results, a profile, `/new`, `/faq`, `/about`, `/ideas`, `/docs` and the ride overlay at 1280×800, 1440×900, 1728×1117 and 2560×1440 on the fixture world, and counts sideways overflow, text clipped by the viewport, overlapping text, tap targets under 24 px, inputs under 16 px, layout shift over 0.01, blank bands over 30% of the viewport, text cut short beside free room, lines over 48 em, stretched filled controls and console errors. On origin/main dc5c9ca it scored 161 (20, 31, 51 and 59 by width).
