@@ -7,7 +7,8 @@ import { seeded } from './boot.ts'
 import { cash, Faces } from './Branches.tsx'
 import { day, minute } from './format.ts'
 import { Spiral } from './Field.tsx'
-import { live, sown } from './Home.tsx'
+import * as Status from '../shared/Status.ts'
+import { live, sown, stood } from './Home.tsx'
 import { message as reason, useNow, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import { code } from './pay.ts'
@@ -183,14 +184,16 @@ export function General(props: { config: Config | undefined }) {
         <p className="rail-label"><span>Problems</span><span data-ready={!!list.data}>{items.length} · {cash(String(raised))}</span></p>
         <ol className="general-list" data-loading={!list.data}>
           {items.map((swarm) => {
-            const working = live(swarm, heads[swarm.id])
+            const word = stood(swarm, heads[swarm.id]).word
+            const working = word === 'Working'
+            const tag = Status.tag(word)
             return (
               <li key={swarm.id}>
                 <Link className="general-lot" data={{ 'data-live': String(working), 'data-old': String(!!swarm.archivedAt) }} to={Nickname.path(swarm)}>
                   <Spiral cells={sown(swarm, heads[swarm.id])} id={swarm.id} live={working} />
                   <Inline className="general-lot-name" text={swarm.title} />
                   <span className="general-lot-money">{cash(swarm.balance)}</span>
-                  <span className="general-lot-meta">{swarm.archivedAt ? 'Archived' : working ? <><i className="rail-live" />working now</> : `${count(swarm.contributors)} rider${swarm.contributors === 1 ? '' : 's'}`}</span>
+                  <span className="general-lot-meta" data-word={word}>{tag ? <>{working && <i className="rail-live" />}{tag}</> : `${count(swarm.contributors)} rider${swarm.contributors === 1 ? '' : 's'}`}</span>
                 </Link>
               </li>
             )

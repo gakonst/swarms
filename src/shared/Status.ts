@@ -17,7 +17,7 @@ const pills: Record<Word, string> = {
   'Needs money': 'Needs money',
   'Not started': 'No riders yet',
   Starting: 'Starting',
-  Stopped: 'Stopped',
+  Stopped: 'Archived',
   Stuck: 'Retrying',
   Working: 'Working now',
 }
@@ -26,7 +26,7 @@ const lines: Record<Word, string> = {
   'Needs money': 'Out of money: ride it to keep it going.',
   'Not started': 'Ride it to get it started.',
   Starting: 'Getting back to work.',
-  Stopped: 'Stopped for good: nothing here runs or takes rides.',
+  Stopped: 'Archived: nothing here runs or takes rides.',
   Stuck: 'Stuck: its AI calls keep failing, so the swarm keeps retrying.',
   Working: 'AI is working on it right now.',
 }
@@ -35,7 +35,7 @@ const tags: Record<Word, string | null> = {
   'Needs money': 'needs money',
   'Not started': null,
   Starting: null,
-  Stopped: 'stopped',
+  Stopped: 'archived',
   Stuck: 'retrying',
   Working: 'working now',
 }
