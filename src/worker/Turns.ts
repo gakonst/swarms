@@ -44,8 +44,12 @@ export function roomed(origin: string, swarm: string) {
   return `Your room, where backers talk and answer your Wishlist, is ${origin.replace(/\/+$/, '')}/v1/swarms/${swarm}/chat (public, free to read).`
 }
 
+export function sponsorless(message: string | null | undefined) {
+  return !!message && message.includes('cannot pay the network fee') && message.includes('fee sponsor is out of funds')
+}
+
 export function broke(message: string | null) {
-  return !!message && (message.includes("This app's credit has $") || message.includes(' was not paid: '))
+  return !!message && (message.includes("This app's credit has $") || message.includes(' was not paid: ') || message.includes('cannot pay the network fee'))
 }
 
 function grown(told: bigint | null | undefined, weight: bigint) {
@@ -412,6 +416,8 @@ export async function instructed(self: Swarm, row: Store.Row, agent: Lead): Prom
 
 export async function finish(self: Swarm, row: Store.Row, run: Turning, report: Gateway.Report) {
   Relay.ended(self)
+  const unpaidBy = self.kv.get<{ count: number; error: string }>('unpaid')
+  const unpaid = unpaidBy !== undefined
   self.kv.delete('unpaid')
   const n = run.n
   const error = typeof report.error === 'string' ? report.error : report.error?.message
@@ -446,7 +452,7 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   self.kv.delete('heard')
   const grew = run.balance !== undefined && BigInt(money.row.balance) > BigInt(run.balance)
   const short = money.known && money.left < Store.reserveOf(money.row)
-  const refused = status !== 'completed' && (short || (broke(message) && !grew))
+  const refused = status !== 'completed' && (short || ((broke(message) || unpaid) && !grew))
   const attempt = task && run.claim ? await attempted(self, task, run.claim, status === 'completed' ? { done: message ?? '' } : { failed: message ?? status }, !refused) : { attempts: 1, due: undefined, finished: true }
   await Work.once(self.board, `d1:${task ?? `turn:${n}`}#${n}`, Clock.minuteMs, () => projected(self, row.id, answer, ended))
   const pushed = commits.length ? ` and pushed ${commits.length} commit${commits.length === 1 ? '' : 's'} to ${repo.name}` : ''
@@ -468,7 +474,7 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   const kinds = new Set((['kv', 'bucket', 'git'] as const).filter((kind) => stored[kind] > 0 || !self.kv.get<number>('published')))
   if (kinds.size) await expose(self, row, kinds).catch((error: unknown) => console.error('Making the swarm data public failed', error))
   if (refused) {
-    await pause(self, money.row, { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: short ? null : Date.now() + Work.delay(paying, attempt.attempts), why: 'money' })
+    await pause(self, money.row, { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: short ? null : Date.now() + Work.delay(paying, attempt.attempts), why: 'money', ...(!short && (sponsorless(message) || sponsorless(unpaidBy?.error)) ? { sponsor: true } : {}) })
     return null
   }
   const renewed = status !== 'completed' && resets(self) >= resetsToRenew && renew(self, message)

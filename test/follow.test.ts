@@ -103,7 +103,7 @@ test("the last model call the gateway failed is kept with its route, status, cod
   Follow.refused(object, 'model.call.failed', { error }, 1_000)
   Follow.refused(object, 'model.call.failed', { error: 'the turn was cancelled' }, 2_000)
   assert.deepEqual(kept.get('failure'), { at: 1_000, code: 'api_error', message: "Tempo Agents cannot pay the network fee to open your key's channel right now: its fee sponsor is out of funds.", route: 'Messages', status: 503 })
-  assert.match(Follow.starved(object) ?? 'none', /none/)
+  assert.match(Follow.starved(object) ?? 'none', /fee sponsor is out of funds/)
   assert.deepEqual(Follow.failure('Messages stream error api_error: Boundless was not paid: fetch failed', 3), { at: 3, code: 'api_error', message: 'Boundless was not paid: fetch failed', route: 'Messages', status: null })
   assert.deepEqual(Follow.failure('Responses HTTPS request was rejected with HTTP 402: {"title":"x","code":"payment_failed","detail":"No money."}', 4), { at: 4, code: 'payment_failed', message: 'No money.', route: 'Responses', status: 402 })
 })

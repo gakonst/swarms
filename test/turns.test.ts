@@ -41,6 +41,9 @@ test("a turn the gateway refused because the swarm's credit ran out counts as ou
   assert.ok(Turns.broke('Boundless was not paid: fetch failed'))
   assert.ok(!Turns.broke(null))
   assert.ok(Turns.broke('Messages stream error api_error: Boundless was not paid: No method found for challenges: tempo.session'))
+  assert.ok(Turns.broke('Messages HTTP 503: {"error":{"message":"Tempo Agents cannot pay the network fee to open your key\'s channel right now: its fee sponsor is out of funds.","type":"api_error"},"type":"error"}'))
+  assert.ok(Turns.sponsorless('Messages HTTP 503: Tempo Agents cannot pay the network fee to open your key\'s channel right now: its fee sponsor is out of funds.'))
+  assert.ok(!Turns.sponsorless("Boundless was not paid: fetch failed"))
 })
 
 test('a swarm paused for money reads its credit once its calls are over, and goes on when enough came back', async () => {

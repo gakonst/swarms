@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { id, rider, world } from './run.ts'
+import * as Phase from '../src/worker/Phase.ts'
 
 const error = () => Response.json({ error: 'upstream hiccup' }, { status: 503 })
 
@@ -602,3 +603,51 @@ test('a paused swarm viewed ten minutes later lowers a backing that ended while 
   await w.ring()
   assert.deepEqual([w.swarm.run().state, await amount()], ['paused', '1000000'])
 })
+
+test('a turn stopped for no progress after the gateway could not fund its model calls waits as refused instead of counting against the agent', async (t) => {
+  let report: Record<string, unknown> = { request_id: 'agt_1:1', status: 'running' }
+  const w = world((_request, url) => {
+    if (url.pathname === '/api/keys/credit') return Response.json({ deposited: '5', left: '5', spent: '0' })
+    if (url.pathname.startsWith('/v1/agents/agt_1/turns/agt_1:')) return Response.json(report)
+    return undefined
+  })
+  t.after(w.restore)
+  await w.seed('5000000')
+  await w.swarm.wake('money')
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+  w.swarm.kv.put('unpaid', { count: 2, error: "Messages HTTP 503: Tempo Agents cannot pay the network fee to open your key's channel right now" })
+  report = { error: 'The agent made no model call or tool call for 30 minutes, so the swarm stopped the turn to start another.', request_id: 'agt_1:1', status: 'failed' }
+  w.swarm.checked = 0
+  w.pass(11_000)
+  await w.ring()
+  const paused = w.swarm.run()
+  assert.equal(paused.state === 'paused' && paused.pause.why === 'money' && paused.pause.wake, Date.now() + 10 * 60_000)
+  assert.equal(w.swarm.kv.get('unpaid'), undefined)
+})
+
+test("a turn the gateway's empty fee sponsor could not pay waits on the sponsor, says so, and keeps the agent", async (t) => {
+  let report: Record<string, unknown> = { request_id: 'agt_1:1', status: 'running' }
+  const w = world((_request, url) => {
+    if (url.pathname === '/api/keys/credit') return Response.json({ deposited: '5', left: '5', spent: '0' })
+    if (url.pathname.startsWith('/v1/agents/agt_1/turns/agt_1:')) return Response.json(report)
+    return undefined
+  })
+  t.after(w.restore)
+  await w.seed('5000000')
+  await w.swarm.wake('money')
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+  const agent = w.swarm.agent()?.id
+  const error = 'Messages HTTP 503: {"error":{"message":"Tempo Agents cannot pay the network fee to open your key\'s channel right now: its fee sponsor is out of funds. This key has no OUSD, pathUSD or USDC.e limit, so it cannot pay the fee itself.","type":"api_error"},"type":"error"}'
+  w.swarm.kv.put('unpaid', { count: 1, error })
+  report = { error: 'The agent made no model call or tool call for 30 minutes, so the swarm stopped the turn to start another.', request_id: 'agt_1:1', status: 'failed' }
+  w.swarm.checked = 0
+  w.pass(11_000)
+  await w.ring()
+  const paused = w.swarm.run()
+  assert.ok(paused.state === 'paused' && paused.pause.why === 'money' && paused.pause.sponsor === true)
+  assert.match(paused.state === 'paused' ? Phase.reason(paused.pause) : '', /^Waiting on the gateway's fee sponsor/)
+  assert.equal(w.swarm.agent()?.id, agent)
+})
+

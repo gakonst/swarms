@@ -3,7 +3,7 @@ import * as Memo from '../shared/Memo.ts'
 
 export type Pause =
   | { why: 'unfunded' }
-  | { balance?: string | undefined; left: string; needs?: string | undefined; wake: number | null; why: 'money' }
+  | { balance?: string | undefined; left: string; needs?: string | undefined; sponsor?: true | undefined; wake: number | null; why: 'money' }
   | { wanted: string; why: 'costly' }
   | { failures: number; why: 'rest' }
   | { why: 'idle' }
@@ -87,12 +87,13 @@ export function project(run: Run, n: number, stuck = false): { status: Status; w
 
 export function reason(pause: Pause) {
   if (pause.why === 'unfunded') return 'Nobody is riding it yet.'
+  if (refused(pause) && pause.why === 'money' && pause.sponsor) return "Waiting on the gateway's fee sponsor: the gateway cannot pay the network fee for its AI calls right now, though the swarm has money. It tries again by itself."
   if (refused(pause)) return 'Its last step could not be paid for, though it has money. It tries again by itself.'
   return 'Out of money. Ride it to keep it going.'
 }
 
 export function same(a: Pause, b: Pause) {
-  return a.why === b.why
+  return a.why === b.why && (a.why !== 'money' || b.why !== 'money' || !a.sponsor === !b.sponsor)
 }
 
 export function stale(why: Why | null | undefined) {

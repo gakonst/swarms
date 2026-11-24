@@ -300,7 +300,7 @@ export function refused(self: Swarm, type: string | undefined, payload: Record<s
 
 export function starved(self: Swarm) {
   const held = self.kv.get<{ count: number; error: string }>('unpaid')
-  return held && held.count >= unpaidMost ? held.error : undefined
+  return held && (held.count >= unpaidMost || Turns.sponsorless(held.error)) ? held.error : undefined
 }
 
 export function stalled(self: Swarm, now: number) {
