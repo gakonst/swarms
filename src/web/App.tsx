@@ -3,6 +3,7 @@ import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
+import { explain } from './Alert.tsx'
 import { signed, usd } from './format.ts'
 import { message, remember, remembered, useConfig, usePoll, useWallet } from './hooks.ts'
 import * as Api from './api.ts'
@@ -68,6 +69,7 @@ function WalletButton(props: { config: Config | undefined }) {
   const [error, setError] = useState<string>()
   const [open, setOpen] = useState(false)
   const [funding, setFunding] = useState(false)
+  const [funded, setFunded] = useState<string>()
   const menu = useRef<HTMLDivElement>(null)
   const token = wallet.session?.token
   const known = !!wallet.account
@@ -105,11 +107,15 @@ function WalletButton(props: { config: Config | undefined }) {
   }
 
   const fund = () => {
-    if (!props.config) return
+    if (!props.config || funding) return
     setFunding(true)
+    setFunded(undefined)
     Wallet.fund(props.config).then(
-      () => setError(undefined),
-      (reason: unknown) => setError(message(reason)),
+      (status) => {
+        setError(undefined)
+        if (status === 'received') setFunded('Funds added.')
+      },
+      (reason: unknown) => setFunded(explain(message(reason)).title),
     ).finally(() => setFunding(false))
   }
 
@@ -122,7 +128,21 @@ function WalletButton(props: { config: Config | undefined }) {
         </button>
         <div className="wallet-drop">
           <div className="wallet-list" onClick={close} role="menu">
-            <button className="wallet-out" onClick={fund} role="menuitem" type="button">Add funds</button>
+            {wallet.balance !== undefined && <p className="wallet-note">{usd(decimal(wallet.balance))} in your wallet</p>}
+            {funded && <p className="wallet-note" role="status">{funded}</p>}
+            <button
+              aria-busy={funding || undefined}
+              className="wallet-out"
+              disabled={funding}
+              onClick={(event) => {
+                event.stopPropagation()
+                fund()
+              }}
+              role="menuitem"
+              type="button"
+            >
+              {funding ? 'Adding funds…' : 'Add funds'}
+            </button>
             <Link className="wallet-out" to={mine(wallet.account, wallet.address)}>Your profile</Link>
             <button className="wallet-out" onClick={() => Wallet.disconnect()} role="menuitem" type="button">Sign out</button>
           </div>

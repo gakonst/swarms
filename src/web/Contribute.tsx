@@ -3,7 +3,7 @@ import type { Config, Currency } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
-import { mach, short } from './format.ts'
+import { mach, short, usd } from './format.ts'
 import { message, useWallet } from './hooks.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Pay from './pay.ts'
@@ -126,6 +126,7 @@ export function Fuel(props: {
   const [amount, setAmount] = useState(props.prefill.amount)
   const [picked] = useState<Currency | undefined>(props.prefill.token)
   const [funding, setFunding] = useState(false)
+  const [added, setAdded] = useState(false)
   const act = Pay.useFlow(props.slot)
   const told = useRef<HTMLDivElement>(null)
   const steer = useRef<HTMLInputElement>(null)
@@ -160,9 +161,11 @@ export function Fuel(props: {
   const fund = async () => {
     if (!props.config || funding) return
     setFunding(true)
+    setAdded(false)
     try {
-      await Wallet.fund(props.config)
-      if (act.at === 'failed') Pay.forget(props.slot)
+      if ((await Wallet.fund(props.config)) !== 'received') return
+      if (Pay.flow(props.slot).at === 'failed') Pay.forget(props.slot)
+      setAdded(true)
     } catch {
     } finally {
       setFunding(false)
@@ -179,6 +182,7 @@ export function Fuel(props: {
     const start = { creates: !!props.creates, signed: !!Wallet.snapshot().session, type: 'start' } as const
     if (!config || !ready || !Pay.can(props.slot, start)) return
     Pay.move(props.slot, start)
+    setAdded(false)
     try {
       if (start.creates && !start.signed) {
         await Wallet.signIn(config)
@@ -214,7 +218,7 @@ export function Fuel(props: {
         {busy ? working[act.at as keyof typeof working] : funding ? 'Adding funds…' : props.ended ? 'Ended' : props.locked && props.wants ? props.wants : ok ? `${said} · ${dollars(amount)}` : said}
       </button>
       <div className="fuel-told" ref={told}>
-        {props.ended && !busy && act.at !== 'counted' ? <Alert title={props.ended} tone="warn" /> : <Told act={act} config={props.config} onFund={() => void fund()} onRetry={() => void retry()} slot={props.slot} />}
+        {props.ended && !busy && act.at !== 'counted' ? <Alert title={props.ended} tone="warn" /> : added && act.at === 'idle' ? <Alert title="Funds added." tone="good">{wallet.balance === undefined ? 'Ride it now.' : `Your wallet has ${usd(decimal(wallet.balance))}. Ride it now.`}</Alert> : <Told act={act} config={props.config} onFund={() => void fund()} onRetry={() => void retry()} slot={props.slot} />}
       </div>
     </div>
   )
