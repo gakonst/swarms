@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Config, NodeView } from '../shared/Api.ts'
-import { maxNote } from '../shared/Memo.ts'
 import type * as Tree from '../shared/Tree.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
-import { Compose, Pendings } from './Compose.tsx'
+import { Add, lines, Talk } from './Channel.tsx'
+import { Pendings } from './Compose.tsx'
 import { asked, Fuel, valid } from './Contribute.tsx'
-import { ago, duration, short, stamp, usd } from './format.ts'
+import { duration, short, stamp, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { message, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
@@ -15,7 +15,6 @@ import { Overlay } from './Overlay.tsx'
 import * as Pay from './pay.ts'
 import { Link, useBase, useQuery } from './router.tsx'
 import { Mark, word } from './Tree.tsx'
-import * as Wallet from './wallet.ts'
 
 const ends: Record<Tree.End['kind'], string> = { barrier: 'Ruled out by a barrier', exhausted: 'Exhausted', merged: 'Merged', refuted: 'Refuted', rejected: 'Rejected', withdrawn: 'Withdrawn' }
 
@@ -97,56 +96,6 @@ export function Ride(props: { anchor?: HTMLElement | null | undefined; config: C
   )
 }
 
-function Propose(props: { asked: boolean; config: Config | undefined; nodes: Readonly<Record<string, Tree.Node>>; parent: Tree.Node; swarm: string }) {
-  const [shown, setShown] = useState(props.asked)
-  const [spot, setSpot] = useState<HTMLButtonElement | null>(null)
-  useEffect(() => {
-    if (props.asked) spot?.scrollIntoView({ block: 'nearest' })
-  }, [props.asked, spot])
-  return (
-    <>
-      <div className="node-part node-form">
-        <button aria-expanded={shown} aria-haspopup="dialog" className="node-add" onClick={() => setShown(true)} ref={setSpot} type="button">Add a sub-item<span>$1+</span></button>
-        {shown && (
-          <Overlay anchor={spot} className="compose-card" label="Add a sub-item" onClose={() => setShown(false)}>
-            <Compose config={props.config} full onSent={() => setShown(false)} parent={props.parent} swarm={props.swarm} />
-          </Overlay>
-        )}
-      </div>
-      <Pendings nodes={props.nodes} parent={props.parent.id} swarm={props.swarm} />
-    </>
-  )
-}
-
-function Suggest(props: { config: Config | undefined; parent: Tree.Node; swarm: string; onDone: () => void }) {
-  const [text, setText] = useState('')
-  const [state, setState] = useState<{ at: 'idle' } | { at: 'busy' } | { at: 'done' } | { at: 'failed'; error: string }>({ at: 'idle' })
-  const wallet = useWallet()
-  const submit = async () => {
-    if (!text.trim() || state.at === 'busy') return
-    setState({ at: 'busy' })
-    try {
-      if (!wallet.session && props.config) await Wallet.signIn(props.config)
-      await Api.suggest(props.swarm, { parent: props.parent.id, text: text.trim() })
-      setText('')
-      setState({ at: 'done' })
-      props.onDone()
-    } catch (error) {
-      setState({ at: 'failed', error: message(error) })
-    }
-  }
-  return (
-    <details className="node-part node-form">
-      <summary>Suggest something, free</summary>
-      <label className="node-field"><span>Your idea</span><textarea maxLength={maxNote} onChange={(event) => setText(event.target.value)} rows={2} value={text} /></label>
-      <p className="fine">Signed in, five a day. Triage may make it a node credited to you, and anyone can ride it.</p>
-      <button className="btn btn-medium" disabled={!text.trim() || state.at === 'busy'} onClick={() => void submit()} type="button">{state.at === 'busy' ? 'Sending…' : 'Suggest it'}</button>
-      {state.at === 'done' && <Alert title="Suggested." tone="good">It shows under this node.</Alert>}
-      {state.at === 'failed' && <Alert title={explain(state.error).title} tone="bad">{explain(state.error).detail}</Alert>}
-    </details>
-  )
-}
-
 function Move(props: { mine: Tree.Funder; node: Tree.Node; nodes: Readonly<Record<string, Tree.Node>>; onDone: () => void; swarm: string }) {
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState(props.mine.amount.replace(/\.?0+$/, ''))
@@ -185,12 +134,16 @@ export function NodePanel(props: {
   nodes: Readonly<Record<string, Tree.Node>>
   now: number
   onChanged: () => void
+  onRide: (anchor?: HTMLElement) => void
   swarm: string
   updates: readonly Tree.Delta[] | undefined
   view: NodeView | undefined
 }) {
-  const [riding] = useState(() => (here().searchParams.has('ride') ? 1 : 0))
   const asked = useQuery('propose') !== null
+  const onRide = props.onRide
+  useEffect(() => {
+    if (here().searchParams.has('ride')) onRide()
+  }, [])
   const wallet = useWallet()
   const ride = Pay.useFlow(Pay.slot(props.swarm, props.nid))
   const known = props.nodes[props.nid]
@@ -220,19 +173,25 @@ export function NodePanel(props: {
       )}
       <h2 className="node-title"><Inline text={node.title} /></h2>
       <p className="node-status" data-status={node.status}><Mark checking={node.run?.checking} status={node.status} /><b>{node.run?.checking ? 'Checking' : word(node.status)}</b> {why(node, props.nodes)}</p>
-      {node.status === 'in flight' && !node.run?.checking && node.run?.doing && <p className="node-doing" aria-live="polite"><i aria-hidden="true" /><Inline text={node.run.doing.text} /></p>}
       <p className="node-money">
         <b>{usd(node.money.pledged)}</b> ridden by {node.riders} rider{node.riders === 1 ? '' : 's'} · {usd(node.money.spent)} spent · {usd(node.money.left)} left
         {node.children.length > 0 && <> · subtree {usd(node.money.subtree.spent)} spent</>}
       </p>
-      {rides && (
+      {open && node.form !== 'triage' && (
+        <div className="node-acts">
+          <button className="btn btn-high node-ride-btn" onClick={(event) => props.onRide(event.currentTarget)} type="button">Ride it</button>
+          <Add asked={asked} config={props.config} key={`${node.id}:${asked}`} nodes={props.nodes} parent={node} swarm={props.swarm} />
+        </div>
+      )}
+      {rides && (ride.at === 'counting' || ride.at === 'owed' || ride.at === 'refused') && (
         <section aria-label={verb(node)} className="node-part node-ride">
-          <h3>{verb(node)}</h3>
-          <RideFuel compact config={props.config} focus={riding} key={node.id} node={node} onDone={props.onChanged} swarm={props.swarm} />
+          <RideFuel compact config={props.config} key={node.id} node={node} onDone={props.onChanged} swarm={props.swarm} />
         </section>
       )}
-      {open && node.form !== 'triage' && <Propose asked={asked} config={props.config} key={`${node.id}:${asked}`} nodes={props.nodes} parent={node} swarm={props.swarm} />}
+      {open && node.form !== 'triage' && <Pendings nodes={props.nodes} parent={node.id} swarm={props.swarm} />}
       {text && <section className="node-part node-words"><Markdown text={text} /></section>}
+      <details className="node-more">
+      <summary>Details</summary>
       {node.statement && (
         <section className="node-part">
           <h3>Lean statement{view?.review && <span className="node-review">statement under review</span>}</h3>
@@ -275,25 +234,10 @@ export function NodePanel(props: {
           </ol>
         </section>
       )}
-      {props.updates && props.updates.length > 0 && (
-        <section className="node-part">
-          <h3>Updates</h3>
-          <ol className="node-updates">
-            {props.updates.slice(0, 12).map((delta) => <li key={`${delta.seq}:${delta.at}:${delta.event}`}><Inline text={delta.text} /><time>{ago(delta.at, props.now)}</time></li>)}
-          </ol>
-        </section>
-      )}
-      {open && <Suggest config={props.config} onDone={props.onChanged} parent={node} swarm={props.swarm} />}
-      {view && view.suggestions.length > 0 && (
-        <section className="node-part">
-          <h3>Suggestions</h3>
-          <ol className="node-updates">
-            {view.suggestions.map((idea) => <li key={idea.id}><span><Inline text={idea.text} /> · @{idea.who.handle}</span><time>{ago(idea.at, props.now)}</time></li>)}
-          </ol>
-        </section>
-      )}
       {mine && Number(mine.amount) > 0 && open && <Move mine={mine} node={node} nodes={props.nodes} onDone={props.onChanged} swarm={props.swarm} />}
       <p className="node-soon">Bring your own agent or machine · coming soon</p>
+      </details>
+      <Talk doing={node.status === 'in flight' && !node.run?.checking ? node.run?.doing : null} empty="No messages yet. What its agents do lands here." lines={lines(node, view, props.updates)} now={props.now} />
     </div>
   )
 }

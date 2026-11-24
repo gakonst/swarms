@@ -6,6 +6,7 @@ import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
 import * as Grove from './grove.ts'
 import { Branches } from './Branches.tsx'
+import { Composer, lines, TreeChannel } from './Channel.tsx'
 import { Code } from './Code.tsx'
 import { ago } from './format.ts'
 import { Headline, Since } from './Headline.tsx'
@@ -48,10 +49,10 @@ function carried(to: string) {
   return kept.length ? `${to}?${query(kept)}` : to
 }
 
-export function TreePage(props: { config: Config | undefined; detail: Detail; id: string; nid: string | undefined; view: Tab }) {
+export function TreePage(props: { channel?: string | undefined; config: Config | undefined; detail: Detail; id: string; nid: string | undefined; view: Tab }) {
   const id = props.id
   const view = props.view
-  const selected = props.nid ?? 'root'
+  const selected = props.nid ?? props.channel ?? 'root'
   const thread = props.nid !== undefined && props.nid !== 'root'
   const base = useBase(id)
   const path = useCallback((nid: string) => (nid === 'root' ? `${base}/board` : `${base}/t/${nid}`), [base])
@@ -63,6 +64,10 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const [grove, setGrove] = useState<Grove.Grove | undefined>(() => tree.data && Grove.grow(tree.data))
   const [node, review, setView] = usePoll(() => Api.node(id, selected), null, `node:${id}:${selected}`)
   const [updates, reupdate, setUpdates] = usePoll(() => Api.nodeUpdates(id, selected), null, `updates:${id}:${selected}`)
+  const held = props.channel ?? (thread && grove ? Grove.trail(grove.nodes, selected).find((node) => node.parent === 'root')?.id : undefined)
+  const room = held ?? selected
+  const [roomNode, reroom] = usePoll(() => Api.node(id, room), null, `node:${id}:${room}`)
+  const [roomUpdates, reroomUpdates] = usePoll(() => Api.nodeUpdates(id, room), null, `updates:${id}:${room}`)
   const [burn, reburn] = usePoll(() => Api.burn(id), null, `burn:${id}`)
   const [proofs, reproof, setProofs] = usePoll(() => Api.proofs(id), null, `proofs:${id}`)
   const told = useRef(here().searchParams.has('open'))
@@ -89,6 +94,10 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
         setView((current: NodeView | undefined) => current && { ...current, ...delta.node, funders: current.funders, runs: current.runs })
         if (delta.event !== 'doing') setUpdates((current: NodeUpdates | undefined) => current && { deltas: [delta, ...current.deltas.filter((each) => each.seq !== delta.seq)], next: Math.max(current.next, delta.seq) })
         if (delta.event === 'proven' || delta.event === 'ended' || delta.event === 'started' || delta.event === 'funded' || delta.event === 'moved' || delta.event === 'steered') review()
+      }
+      if (held && delta.node.id === held && held !== selected && delta.event !== 'doing') {
+        reroom()
+        reroomUpdates()
       }
       if (delta.event === 'proven' && delta.node.proof) {
         const check = delta.node.proof
@@ -239,17 +248,17 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const repo = proofs.data?.proofs[0]?.check.repo
   const count = root ? root.children.length : 0
   return (
-    <article className="grove" data-tab={view} data-thread={thread || undefined} data-wire={wired}>
-      <Strip backers={top} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
+    <article className="grove" data-room={held ? '' : undefined} data-tab={view} data-thread={thread || undefined} data-wire={wired}>
+      {!held && <Strip backers={top} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{head.proven.toLocaleString('en-US')}</b> proven</span>
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>
-      </Strip>
-      <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} unread={unread} view={view} />
-      <div className="panel panel-chat" hidden={view !== 'chat'}>
+      </Strip>}
+      {!held && <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} unread={unread} view={view} />}
+      <div className="panel panel-chat" hidden={view !== 'chat' || !!held}>
         <Room config={props.config} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} onUnread={setUnread} steer={false} swarm={swarm} visible={view === 'chat'} />
       </div>
       {seen.has('board') && (
-        <div className="grove-body panel" hidden={view !== 'board'}>
+        <div className="grove-body panel" hidden={view !== 'board' || !!held}>
           <section aria-label="Threads" className="grove-tree">
             <Filters filter={filter} nodes={nodes} onFilter={filtered} />
             <div className="grove-scroll">
@@ -279,7 +288,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
         </div>
       )}
       {seen.has('results') && (
-        <div className="panel panel-page" hidden={view !== 'results'}>
+        <div className="panel panel-page" hidden={view !== 'results' || !!held}>
           <Headline burn={burn.data?.burn} headline={head} id={id} last={last} now={now} />
           {proofs.data && proofs.data.proofs.length > 0 ? (
             <ol className="proofs">
@@ -295,7 +304,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
         </div>
       )}
       {seen.has('code') && (
-        <div className="panel panel-page" hidden={view !== 'code'}>
+        <div className="panel panel-page" hidden={view !== 'code' || !!held}>
           {swarm.code ? (
             <Code repo={swarm.code} swarm={id} />
           ) : repo ? (
@@ -315,15 +324,33 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
         </div>
       )}
       {seen.has('about') && (
-        <div className="panel panel-page" hidden={view !== 'about'}>
+        <div className="panel panel-page" hidden={view !== 'about' || !!held}>
           <Explainer spec={root?.spec} swarm={swarm} />
         </div>
+      )}
+      {held && nodes[held] && (
+        <TreeChannel
+          config={props.config}
+          lines={lines(nodes[held], roomNode.data?.id === held ? roomNode.data : undefined, roomUpdates.data?.deltas)}
+          node={nodes[held]}
+          nodes={nodes}
+          now={now}
+          onPost={async (text) => {
+            await Api.suggest(id, { parent: held, text })
+            reroom()
+          }}
+          onRide={(anchor) => setRiding({ anchor, nid: held })}
+          path={path}
+          swarm={id}
+          swarmTitle={swarm.title}
+          thread={thread ? selected : undefined}
+        />
       )}
       {thread && (
         <aside aria-label="Thread" className="thread" {...swiped}>
           <header className="thread-head">
             <button aria-label="Close the thread" className="thread-close" onClick={close} type="button"><span aria-hidden="true">{phone ? '‹' : '×'}</span></button>
-            <p><b>Thread</b><span><i aria-hidden="true">#</i><Inline text={swarm.title} /></span></p>
+            <p><b>Thread</b><span><i aria-hidden="true">#</i><Inline text={held && nodes[held] ? nodes[held]!.title : swarm.title} /></span></p>
           </header>
           <div className="thread-body">
             <NodePanel
@@ -337,11 +364,25 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
                 reupdate()
                 redetail()
               }}
+              onRide={(anchor) => setRiding({ anchor, nid: selected })}
               swarm={id}
               updates={updates.data?.deltas}
               view={node.data?.id === selected ? node.data : undefined}
             />
           </div>
+          {nodes[selected] && (
+            <Composer
+              config={props.config}
+              disabled={Grove.closed(nodes[selected]!) ? 'This thread has ended.' : undefined}
+              fine="A note on this item, free. Five a day; triage may turn it into an item."
+              label="Message this thread"
+              onPost={async (text) => {
+                await Api.suggest(id, { parent: selected, text })
+                review()
+              }}
+              placeholder="Message this thread"
+            />
+          )}
         </aside>
       )}
       {riding && nodes[riding.nid] && <Ride anchor={riding.anchor} config={props.config} key={riding.nid} node={nodes[riding.nid]!} onClose={() => setRiding(undefined)} onDone={() => redetail()} swarm={id} />}

@@ -232,7 +232,7 @@ function Busy() {
 
 type Tab = 'chat' | 'board' | 'results' | 'code' | 'about'
 
-function Picked(props: { base: string; config: Config | undefined; id: string; nid: string | undefined; tail: string; view: Tab }) {
+function Picked(props: { base: string; config: Config | undefined; id: string; nid: string | undefined; room: string | undefined; tail: string; view: Tab }) {
   const [detail] = usePoll(() => Api.swarm(props.id, false), null, props.id)
   const data = detail.data
   const nickname = data?.nickname
@@ -246,7 +246,7 @@ function Picked(props: { base: string; config: Config | undefined; id: string; n
   useEffect(() => {
     if (props.tail.startsWith('/n/')) navigate(`${props.base}/t/${props.tail.slice(3)}${location.search}`, { keep: true, replace: true })
   }, [props.base, props.tail])
-  const page = data?.form === 'tree' && !data.archivedAt ? <TreePage config={props.config} detail={data} id={props.id} nid={props.nid} view={props.view} /> : !data && !detail.error ? <Busy /> : props.nid && data ? <Lost title="This swarm has no tree."><Link className="lost-row" replace to={props.base}>Open it <span aria-hidden="true">→</span></Link></Lost> : <Swarm config={props.config} id={props.id} view={props.view} />
+  const page = data?.form === 'tree' && !data.archivedAt ? <TreePage channel={props.room} config={props.config} detail={data} id={props.id} nid={props.nid} view={props.view} /> : !data && !detail.error ? <Busy /> : props.nid && data ? <Lost title="This swarm has no tree."><Link className="lost-row" replace to={props.base}>Open it <span aria-hidden="true">→</span></Link></Lost> : <Swarm channel={props.room} config={props.config} id={props.id} view={props.view} />
   return <Base value={props.base}>{page}</Base>
 }
 
@@ -316,7 +316,7 @@ export function App() {
         ) : path === '/faq' ? (
           <Faq />
         ) : swarm ? (
-          <Picked base={named ? `/${named.name}` : `/s/${encodeURIComponent(swarm)}`} config={config} id={swarm} key={swarm} nid={node && decodeURIComponent(node)} tail={tail} view={view} />
+          <Picked base={named ? `/${named.name}` : `/s/${encodeURIComponent(swarm)}`} config={config} id={swarm} key={swarm} nid={node && decodeURIComponent(node)} room={room && decodeURIComponent(room)} tail={tail} view={view} />
         ) : named && found === undefined ? (
           <Busy />
         ) : free && !tail ? (

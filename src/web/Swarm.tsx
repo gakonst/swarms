@@ -28,7 +28,7 @@ const detailMs = 10_000
 
 const shelfMs = 60_000
 
-export function Swarm(props: { config: Config | undefined; id: string; view: Tab }) {
+export function Swarm(props: { channel?: string | undefined; config: Config | undefined; id: string; view: Tab }) {
   const id = props.id
   const view = props.view
   const base = useBase(id)
