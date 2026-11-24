@@ -180,12 +180,7 @@ button.swarm-home { border:0; background:none; cursor:pointer; }
 .repo-crumbs button:hover { text-decoration:underline; text-underline-offset:3px; }
 .repo-crumbs i { font-style:normal; color:var(--faint); }
 .repo-crumbs b { padding:0 4px; font-weight:600; }
-.repo-list { margin:0; padding:0; list-style:none; }
-.repo-list li + li { border-top:1px solid var(--line); }
-.repo-list button { display:flex; align-items:center; gap:10px; width:100%; min-height:44px; padding:0 12px; border:0; background:none; font:14px var(--mono); color:var(--fg); text-align:left; cursor:pointer; }
-.repo-list button:hover { background:var(--wash); }
-.repo-icon { width:14px; color:var(--faint); text-align:center; }
-.repo-icon[data-kind='dir'] { color:var(--fg); }
+.repo-tree { display:block; height:100%; min-height:0; --trees-bg-override:transparent; --trees-bg-muted-override:var(--wash); --trees-fg-override:var(--fg); --trees-fg-muted-override:var(--muted); --trees-selected-bg-override:var(--wash); --trees-selected-fg-override:var(--fg); --trees-selected-focused-border-color-override:var(--line); --trees-border-color-override:var(--line); --trees-indent-guide-bg-override:var(--line); --trees-focus-ring-color-override:var(--fg); --trees-accent-override:var(--fg); --trees-font-family-override:var(--mono); --trees-font-size-override:13px; --trees-padding-inline-override:6px; }
 .repo-file { max-height:72vh; overflow:auto; }
 .repo-readme > header { padding:12px 16px; border-bottom:1px solid var(--line); font:13px var(--mono); color:var(--fg); }
 .repo-readme > .markdown { padding:22px 26px 26px; }
@@ -584,9 +579,7 @@ button.traces-note { cursor:pointer; }
 .repo-crumbs::-webkit-scrollbar { display:none; }
 .repo-shut { display:none; margin-left:auto; }
 .repo-browse { display:grid; grid-template-columns:280px minmax(0,1fr); height:var(--repo-height); }
-.repo-browse .repo-list { overflow-y:auto; overscroll-behavior:contain; border-right:1px solid var(--line); }
-.repo-browse .repo-list button[aria-current] { background:var(--wash); }
-.repo-browse .repo-list button span:last-child { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.repo-browse .repo-tree { padding-block:6px; border-right:1px solid var(--line); overscroll-behavior:contain; }
 .repo-view { min-width:0; overflow:auto; overscroll-behavior:contain; }
 .repo-view .repo-file { max-height:none; overflow:visible; }
 .repo-view .repo-readme { overflow:visible; border:0; border-radius:0; }
@@ -594,8 +587,8 @@ button.traces-note { cursor:pointer; }
   .idea-now { min-height:calc(100vh - 47px); }
   .repo { --repo-height:70vh; }
   .repo-browse { display:block; overflow-y:auto; overscroll-behavior:contain; }
-  .repo-browse .repo-list { overflow:visible; border-right:0; border-bottom:1px solid var(--line); }
-  .repo-browse[data-open] .repo-list { display:none; }
+  .repo-browse .repo-tree { height:min(300px,45vh); border-right:0; border-bottom:1px solid var(--line); }
+  .repo-browse[data-open] .repo-tree { display:none; }
   .repo-view { overflow:visible; }
   .repo-shut { display:block; }
 }

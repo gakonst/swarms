@@ -1,5 +1,7 @@
 import { File } from '@pierre/diffs/react'
-import { useEffect, useMemo, useState } from 'react'
+import type { FileTreeOptions, FileTreeSsrPayload } from '@pierre/trees'
+import { FileTree, useFileTree } from '@pierre/trees/react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Code as Repo, Snapshot } from '../shared/Api.ts'
 import * as Site from '../shared/Site.ts'
 import * as Api from './api.ts'
@@ -12,11 +14,19 @@ type Commit = Snapshot['commits'][number]
 
 type Tree = { commits: Commit[]; files: string[]; readme: { path: string; text: string } | null }
 
-type Entry = { kind: 'dir' | 'file'; name: string; path: string }
+type Preload = (options: FileTreeOptions & { id: string }) => FileTreeSsrPayload
 
 const theme = { theme: 'pierre-light' } as const
 
 const kept = new Map<string, Promise<{ size: number; text?: string }>>()
+
+const prose = /\.(md|markdown)$/i
+
+let preload: Preload | undefined
+
+export function preloads(next: Preload) {
+  preload = next
+}
 
 function local(swarm: string) {
   return `/api/swarms/${encodeURIComponent(swarm)}/git`
@@ -40,22 +50,9 @@ function source(swarm: string, path: string, sha: string) {
   return pending
 }
 
-function readme(paths: readonly string[], dir: string) {
-  const inside = paths.filter((path) => (dir ? path.startsWith(dir + '/') && !path.slice(dir.length + 1).includes('/') : !path.includes('/')))
-  return inside.find((path) => /(^|\/)readme\.md$/i.test(path)) ?? inside.find((path) => /(^|\/)readme(\.[a-z]+)?$/i.test(path))
-}
-
-function listing(paths: readonly string[], dir: string): Entry[] {
-  const prefix = dir ? dir + '/' : ''
-  const seen = new Map<string, Entry>()
-  for (const path of paths) {
-    if (!path.startsWith(prefix)) continue
-    const rest = path.slice(prefix.length)
-    const [name = '', ...deeper] = rest.split('/')
-    if (!name || seen.has(name)) continue
-    seen.set(name, { kind: deeper.length ? 'dir' : 'file', name, path: prefix + name })
-  }
-  return [...seen.values()].sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'dir' ? -1 : 1))
+function readme(paths: readonly string[]) {
+  const top = paths.filter((path) => !path.includes('/'))
+  return top.find((path) => /^readme\.md$/i.test(path)) ?? top.find((path) => /^readme(\.[a-z]+)?$/i.test(path))
 }
 
 function Copy(props: { text: string }) {
@@ -65,6 +62,34 @@ function Copy(props: { text: string }) {
       {done ? 'Copied' : 'Copy'}
     </button>
   )
+}
+
+function Files(props: { files: readonly string[]; id: string; onOpen: (path: string) => void; open: string | undefined }) {
+  const options = { flattenEmptyDirectories: true, id: props.id, initialExpansion: 1, initialVisibleRowCount: 30, paths: props.files }
+  const [preloaded] = useState(() => (typeof document === 'undefined' ? preload?.(options) : document.getElementById(props.id)?.shadowRoot ? { id: props.id, shadowHtml: '' } : undefined))
+  const latest = useRef({ files: new Set(props.files), onOpen: props.onOpen })
+  latest.current = { files: new Set(props.files), onOpen: props.onOpen }
+  const { model } = useFileTree({
+    ...options,
+    onSelectionChange: (paths) => {
+      const path = paths.at(-1)
+      if (path && latest.current.files.has(path)) latest.current.onOpen(path)
+    },
+  })
+  const shown = useRef(props.files)
+
+  useEffect(() => {
+    if (shown.current === props.files) return
+    shown.current = props.files
+    model.resetPaths(props.files)
+  }, [model, props.files])
+
+  useEffect(() => {
+    for (const path of model.getSelectedPaths()) if (path !== props.open) model.getItem(path)?.deselect()
+    if (props.open && !model.getItem(props.open)?.isSelected()) model.getItem(props.open)?.select()
+  }, [model, props.open])
+
+  return <FileTree className="repo-tree" model={model} {...(preloaded ? { preloadedData: preloaded } : {})} />
 }
 
 function Viewer(props: { path: string; preset?: string | undefined; sha: string; swarm: string }) {
@@ -89,6 +114,13 @@ function Viewer(props: { path: string; preset?: string | undefined; sha: string;
   if (state.error) return <p className="repo-quiet">{state.error}</p>
   if (!state.text) return <p className="repo-quiet" aria-busy="true">Opening {props.path}…</p>
   if (!file) return <p className="repo-quiet">{props.path} is a binary file, {state.text.size.toLocaleString('en-US')} bytes.</p>
+  if (prose.test(props.path))
+    return (
+      <section className="repo-readme" aria-label={props.path}>
+        <header>{props.path.split('/').at(-1)}</header>
+        <Markdown text={file.contents} />
+      </section>
+    )
   return <File className="repo-source" file={file} options={narrow ? { ...theme, overflow: 'wrap' } : theme} />
 }
 
@@ -100,7 +132,6 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
     const known = Api.coded(swarm)
     return known && known.name === repo?.name ? { value: known } : {}
   })
-  const [at, setAt] = useState('')
   const [open, setOpen] = useState<string>()
   const [stirs, setStirs] = useState(0)
   Wire.useWire(swarm, 'room', (signal) => {
@@ -117,7 +148,7 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
       ])
       const paths = files.files.filter((file) => file.type !== 'tree').map((file) => file.path)
       const head = log.commits[0]?.sha
-      const path = readme(paths, '')
+      const path = readme(paths)
       const read = head && path ? await source(swarm, path, head).catch(() => undefined) : undefined
       return { commits: log.commits, files: paths, readme: path && read?.text !== undefined ? { path, text: read.text } : null }
     }
@@ -143,10 +174,7 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
   const command = `git clone ${repo.clone} ${repo.name}`
   const value = tree.value
   const head = value?.commits[0]
-  const entries = value ? listing(value.files, at) : []
-  const crumbs = at ? at.split('/') : []
-  const shownReadme = at ? (value ? readme(value.files, at) : undefined) : value?.readme?.path
-  const within = open !== undefined && open.split('/').slice(0, -1).join('/') === at
+  const crumbs = open ? open.split('/') : []
 
   return (
     <div className="repo">
@@ -177,41 +205,26 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
               {head.date && <span>{ago(Date.parse(head.date), now)}</span>}
             </div>
             <nav aria-label="Path" className="repo-crumbs">
-              <button onClick={() => { setAt(''); setOpen(undefined) }} type="button">{repo.name}</button>
+              <button onClick={() => setOpen(undefined)} type="button">{repo.name}</button>
               {crumbs.map((crumb, index) => (
                 <span key={index}>
                   <i aria-hidden="true">/</i>
-                  <button onClick={() => { setAt(crumbs.slice(0, index + 1).join('/')); setOpen(undefined) }} type="button">{crumb}</button>
+                  {index === crumbs.length - 1 ? <b>{crumb}</b> : crumb}
                 </span>
               ))}
-              {open && within && <span><i aria-hidden="true">/</i><b>{open.split('/').at(-1)}</b></span>}
               {open && <button className="repo-shut" onClick={() => setOpen(undefined)} type="button">← Files</button>}
             </nav>
             <div className="repo-browse" data-open={open !== undefined || undefined}>
-              <ul className="repo-list">
-                {at && (
-                  <li>
-                    <button onClick={() => setAt(crumbs.slice(0, -1).join('/'))} type="button"><span aria-hidden="true" className="repo-icon">↰</span><span>..</span></button>
-                  </li>
-                )}
-                {entries.map((entry) => (
-                  <li key={entry.path}>
-                    <button aria-current={entry.path === open || undefined} onClick={() => (entry.kind === 'dir' ? setAt(entry.path) : setOpen(entry.path))} type="button">
-                      <span aria-hidden="true" className="repo-icon" data-kind={entry.kind}>{entry.kind === 'dir' ? '▸' : '·'}</span>
-                      <span>{entry.name}{entry.kind === 'dir' ? '/' : ''}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <Files files={value.files} id={`repo-${swarm}`} onOpen={setOpen} open={open} />
               <div className="repo-view">
                 {open ? (
                   <div className="repo-file">
                     <Viewer path={open} preset={value.readme?.path === open ? value.readme.text : undefined} sha={head.sha} swarm={swarm} />
                   </div>
-                ) : shownReadme ? (
-                  <section className="repo-readme" aria-label={shownReadme}>
-                    <header>{shownReadme.split('/').at(-1)}</header>
-                    {value.readme?.path === shownReadme ? <Markdown text={value.readme.text} /> : <Readme path={shownReadme} sha={head.sha} swarm={swarm} />}
+                ) : value.readme ? (
+                  <section className="repo-readme" aria-label={value.readme.path}>
+                    <header>{value.readme.path}</header>
+                    <Markdown text={value.readme.text} />
                   </section>
                 ) : (
                   <p className="repo-quiet">Pick a file to read it.</p>
@@ -223,17 +236,4 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
       )}
     </div>
   )
-}
-
-function Readme(props: { path: string; sha: string; swarm: string }) {
-  const [text, setText] = useState<string>()
-  useEffect(() => {
-    let alive = true
-    setText(undefined)
-    source(props.swarm, props.path, props.sha).then((read) => alive && setText(read.text ?? ''), () => alive && setText(''))
-    return () => {
-      alive = false
-    }
-  }, [props.path, props.sha, props.swarm])
-  return text === undefined ? <p className="repo-quiet">Opening {props.path}…</p> : <Markdown text={text} />
 }
