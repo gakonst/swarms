@@ -293,7 +293,7 @@ export function stalled(self: Swarm, now: number) {
   if (self.kv.get<number>('stallNoted') === working.progressed) return
   self.kv.put('stallNoted', working.progressed)
   const minutes = Math.round((now - working.progressed) / 60_000)
-  self.log('error', `The agent has made no model call or tool call for ${minutes} minutes. Its session may be restarting without getting anywhere; after ${Math.round(Turns.leaseMs / 60_000)} minutes of it the swarm stops the turn and starts another.`, null)
+  console.warn(JSON.stringify({ stalled: self.kv.get<string>('id'), minutes, restartsAfter: Math.round(Turns.leaseMs / 60_000) }))
 }
 
 export function record(self: Swarm, who: string | null, type: string | undefined, payload: Record<string, unknown>, event: number, at: number) {

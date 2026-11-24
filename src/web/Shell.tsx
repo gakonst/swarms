@@ -6,7 +6,8 @@ import { seeded } from './boot.ts'
 import { cash } from './Branches.tsx'
 import { type Channel as Room, holding, type Thread, useShape } from './channels.ts'
 import { Spiral } from './Field.tsx'
-import { board, live, sown } from './Home.tsx'
+import * as Status from '../shared/Status.ts'
+import { board, live, sown, stood } from './Home.tsx'
 import { Inline } from './Markdown.tsx'
 import { Link } from './router.tsx'
 import { Mark } from './Tree.tsx'
@@ -78,13 +79,15 @@ function Servers(props: { current: string | undefined; items: readonly Summary[]
       <span aria-hidden="true" className="servers-rule" />
       <ol className="servers-list" data-loading={!props.listing}>
         {props.items.map((swarm) => {
-          const working = live(swarm, heads[swarm.id])
+          const word = stood(swarm, heads[swarm.id]).word
+          const working = word === 'Working'
+          const tag = Status.tag(word)
           return (
             <li key={swarm.id}>
               <Link
                 className="server"
                 data={{ 'data-live': String(working), 'data-old': String(!!swarm.archivedAt), 'data-unread': String(props.unread(swarm)) }}
-                label={`${swarm.title}, ${cash(swarm.balance)} from ${riders(swarm.contributors)}${working ? ', working now' : ''}`}
+                label={`${swarm.title}, ${cash(swarm.balance)} from ${riders(swarm.contributors)}${tag ? `, ${tag}` : ''}`}
                 lit={props.current === swarm.id}
                 title={`${swarm.title} · ${cash(swarm.balance)}`}
                 to={Nickname.path(swarm)}
@@ -134,19 +137,21 @@ function Home(props: { channel: string | undefined; items: readonly Summary[]; l
         <p className="rail-label"><span>Problems</span></p>
         <ol className="rail-list" data-loading={!props.listing}>
           {props.items.map((swarm) => {
-            const working = live(swarm, heads[swarm.id])
+            const word = stood(swarm, heads[swarm.id]).word
+            const working = word === 'Working'
+            const tag = Status.tag(word)
             return (
               <li key={swarm.id}>
                 <Link
                   className="rail-row rail-problem"
                   data={{ 'data-live': String(working), 'data-old': String(!!swarm.archivedAt), 'data-unread': String(props.unread(swarm)) }}
-                  label={`${swarm.title}, ${cash(swarm.balance)} from ${riders(swarm.contributors)}${working ? ', working now' : ''}`}
+                  label={`${swarm.title}, ${cash(swarm.balance)} from ${riders(swarm.contributors)}${tag ? `, ${tag}` : ''}`}
                   to={Nickname.path(swarm)}
                 >
                   <Spiral cells={sown(swarm, heads[swarm.id])} id={swarm.id} live={working} />
                   <Inline className="rail-name" text={swarm.title} />
                   <span className="rail-money">{cash(swarm.balance)}</span>
-                  <span className="rail-meta">{swarm.archivedAt ? 'Archived' : working ? <><i className="rail-live" />working now</> : riders(swarm.contributors)}</span>
+                  <span className="rail-meta" data-word={word}>{tag ? <>{working && <i className="rail-live" />}{tag}</> : riders(swarm.contributors)}</span>
                 </Link>
               </li>
             )
@@ -198,7 +203,7 @@ function ChannelRow(props: { base: string; channel: Room; lit: boolean; open: bo
   )
 }
 
-function SwarmSide(props: { general: boolean; id: string; room: string | undefined; swarm: Summary | undefined; thread: string | undefined; working: boolean }) {
+function SwarmSide(props: { general: boolean; id: string; room: string | undefined; swarm: Summary | undefined; thread: string | undefined; word: Status.Word | undefined }) {
   const shape = useShape(props.id)
   const swarm = props.swarm
   const base = swarm ? Nickname.path(swarm) : `/s/${encodeURIComponent(props.id)}`
@@ -209,7 +214,7 @@ function SwarmSide(props: { general: boolean; id: string; room: string | undefin
     <nav aria-label="Channels" className="rail">
       <header className="side-head">
         {swarm ? <Inline className="side-title" text={swarm.title} /> : <b className="side-title" />}
-        <span className="side-meta" data-ready={!!swarm}>{swarm ? <>{cash(swarm.balance)} · {riders(swarm.contributors)}{props.working && <> · <i className="rail-live" />working</>}</> : ' '}</span>
+        <span className="side-meta" data-ready={!!swarm}>{swarm ? <>{cash(swarm.balance)} · {riders(swarm.contributors)}{props.word && Status.tag(props.word) && <> · {props.word === 'Working' && <i className="rail-live" />}{Status.tag(props.word)}</>}</> : ' '}</span>
       </header>
       <div className="rail-scroll">
         <Link className="rail-row rail-general" lit={props.general && !held && !props.thread} to={base}>
@@ -278,7 +283,7 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
     <div className="hub" data-listing={props.listing || undefined} {...swiped}>
       <div className="drawer">
         <Servers current={props.channel} items={items} listing={list.data} unread={unread} />
-        {id ? <SwarmSide general={props.general} id={id} key={id} room={props.room} swarm={swarm} thread={props.thread} working={!!swarm && live(swarm, list.data?.heads?.[id])} /> : <Home channel={props.channel} items={items} listing={list.data} unread={unread} />}
+        {id ? <SwarmSide general={props.general} id={id} key={id} room={props.room} swarm={swarm} thread={props.thread} word={swarm && stood(swarm, list.data?.heads?.[id]).word} /> : <Home channel={props.channel} items={items} listing={list.data} unread={unread} />}
       </div>
       <div className="hub-main" inert={props.listing || undefined}>{props.children}</div>
     </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Branch, Entry } from '../shared/Api.ts'
 import * as Crew from '../shared/Crew.ts'
+import * as Status from '../shared/Status.ts'
 import * as Trace from '../shared/Trace.ts'
 import * as Api from './api.ts'
 import { clock, day } from './format.ts'
@@ -160,7 +161,11 @@ function Trail(props: { following: boolean; id: string; kept: Map<string, Kept>;
   )
 }
 
-export function Traces(props: { branches: readonly Branch[] | undefined; id: string; running: boolean; stalled: boolean; stir: number; visible: boolean }) {
+export function state(word: Status.Word) {
+  return word === 'Working' ? 'live' : word === 'Stuck' ? 'stalled' : 'idle'
+}
+
+export function Traces(props: { branches: readonly Branch[] | undefined; id: string; running: boolean; stir: number; visible: boolean; word: Status.Word }) {
   const [who, setWho] = useState<string>()
   const kept = useRef(new Map<string, Kept>()).current
   const shown = useVisible()
@@ -172,7 +177,7 @@ export function Traces(props: { branches: readonly Branch[] | undefined; id: str
     <section aria-labelledby="traces-title" className="traces">
       <header className="traces-head">
         <h2 id="traces-title">Traces</h2>
-        <span className="traces-state" data-mood={props.running ? (props.stalled ? 'stalled' : 'live') : 'idle'}>{props.running ? (props.stalled ? 'Stalled' : 'Live') : 'Idle'}</span>
+        <span className="traces-state" data-mood={state(props.word)}>{Status.pill(props.word)}</span>
         {crew.length > 0 && (
           <nav aria-label="Agent" className="traces-who">
             {chip(undefined, 'All')}

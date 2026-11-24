@@ -121,6 +121,31 @@ test('a turn the gateway stops answering for is stopped when its lease runs out,
   assert.match(String(w.sql.exec('SELECT message FROM turns WHERE n = 1').toArray()[0]?.['message']), /made no model call or tool call for 31 minutes/)
 })
 
+test('a swarm whose last turns failed without spending is stuck until its agent makes progress, and its stalls stay out of the feed', async (t) => {
+  const w = world(() => undefined)
+  t.after(w.restore)
+  await w.seed()
+  w.sql.exec("INSERT INTO turns (n, turn, started_at, ended_at, status, spent_before, spent) VALUES (1, 'agt_0:1', 1, 2, 'failed', '0', '0'), (2, 'agt_0:2', 3, 4, 'failed', '0', '0')")
+  await w.swarm.wake('money')
+  await w.ring()
+  assert.equal(w.swarm.run().state, 'working')
+  w.pass(60_000)
+  w.swarm.checked = 0
+  await w.ring()
+  assert.deepEqual(await w.status(), { status: 'running', why: 'stuck' })
+  assert.equal(w.swarm.why(), 'stuck')
+  w.swarm.kv.put('advanced', Date.now())
+  w.pass(60_000)
+  w.swarm.checked = 0
+  await w.ring()
+  assert.deepEqual(await w.status(), { status: 'running', why: null })
+  w.pass(22 * 60_000)
+  w.swarm.checked = 0
+  await w.ring()
+  assert.deepEqual(await w.status(), { status: 'running', why: 'stuck' })
+  assert.ok(!w.errors().some((text) => /no model call or tool call/.test(text)))
+})
+
 test('a turn the gateway keeps refusing is tried again on the board backoff, and after eight tries the swarm starts a new agent', async (t) => {
   const w = world((request, url) => (url.pathname === '/v1/agents/agt_1/turns' && request.method === 'POST' ? Response.json({ error: 'bad turn' }, { status: 400 }) : undefined))
   t.after(w.restore)

@@ -5,6 +5,12 @@ export type Row = { at: number; count: number; detail: string | null; kind: Kind
 
 const folded: ReadonlySet<Kind> = new Set(['error', 'status'])
 
+const plumbing = /^(The agent has made no model call or tool call|The agent stopped with an error after spending|The agent's turn failed \d+ tries in a row|The agent's session was reset|The swarm hit an error and will retry|The gateway did not|A model call failed|The run failed\.)/
+
+export function operator(entry: Pick<Entry, 'kind' | 'text'>) {
+  return entry.kind === 'error' && plumbing.test(entry.text)
+}
+
 function why(detail: string | null) {
   if (!detail) return null
   try {
@@ -28,6 +34,7 @@ export function rows(entries: readonly Entry[]) {
   let run = 0
   let kind: Kind | undefined
   for (const entry of entries) {
+    if (operator(entry)) continue
     const text = said(entry)
     if (text === null) continue
     if (entry.kind !== kind || !folded.has(entry.kind)) run = listed.length

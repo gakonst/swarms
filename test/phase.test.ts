@@ -82,6 +82,10 @@ test('D1 status and why come from one projection', () => {
   assert.deepEqual(Phase.project({ since: null, state: 'waiting', until: 0 }, 0), { status: 'funding', why: null })
   assert.deepEqual(Phase.project({ id: 'a:1', n: 1, since: null, state: 'starting', told: [] }, 1), { status: 'running', why: null })
   assert.deepEqual(Phase.project({ from: 0, n: 2, since: 1, started: 1, state: 'working', turn: 't' }, 2), { status: 'running', why: null })
+  assert.deepEqual(Phase.project({ from: 0, n: 2, since: 1, started: 1, state: 'working', turn: 't' }, 2, true), { status: 'running', why: 'stuck' })
+  assert.deepEqual(Phase.project({ since: 5, state: 'waiting', until: 0 }, 4, true), { status: 'running', why: 'stuck' })
+  assert.deepEqual(Phase.project({ at: 0, pause: money, state: 'paused' }, 4, true), { status: 'paused', why: 'money' })
+  assert.deepEqual(Phase.project({ state: 'new' }, 0, true), { status: 'funding', why: null })
 })
 
 test('a pause is stored as data and its sentence rendered when read', () => {

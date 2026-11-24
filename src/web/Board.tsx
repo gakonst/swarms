@@ -302,6 +302,7 @@ function Design() {
             <button className="btn btn-high" type="button">Ride it</button>
             <button className="btn btn-medium" type="button">Share</button>
             <span className="pill" data-mood="live"><i />Working now</span>
+            <span className="pill" data-mood="stuck"><i />Retrying</span>
             <span className="pill" data-mood="money"><i />Needs money</span>
             <span className="pill" data-mood="new"><i />No riders yet</span>
           </div>

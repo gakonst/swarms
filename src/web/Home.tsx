@@ -41,8 +41,12 @@ function keep(filter: Filter) {
   history.replaceState(history.state, '', href(`/ideas${filter === 'open' ? '' : `?filter=${filter}`}`))
 }
 
+export function stood(swarm: Summary, head: Tree.Headline | undefined) {
+  return Status.standing({ ...swarm, inFlight: head?.inFlight })
+}
+
 export function live(swarm: Summary, head: Tree.Headline | undefined) {
-  return !swarm.archivedAt && (swarm.status === 'running' || (head?.inFlight ?? 0) > 0)
+  return stood(swarm, head).word === 'Working'
 }
 
 export function board(listing: Listing | undefined) {
@@ -93,8 +97,8 @@ function told(swarm: Summary, head: Tree.Headline | undefined, said: Doing | und
 
 function Activity(props: { doing: Doing | undefined; head: Tree.Headline | undefined; now: number; swarm: Summary }) {
   const swarm = props.swarm
-  if (swarm.archivedAt) return <span className="lot-line">Archived</span>
-  if (!live(swarm, props.head)) return <span className="lot-line">{props.head?.proven ? `${props.head.proven} proven` : Status.pill(Status.word(swarm))}</span>
+  const word = stood(swarm, props.head).word
+  if (word !== 'Working') return <span className="lot-line" data-word={word}>{props.head?.proven && word !== 'Stopped' ? `${props.head.proven} proven` : Status.pill(word)}</span>
   const said = told(swarm, props.head, props.doing)
   return (
     <span className="lot-line" data-live="true">

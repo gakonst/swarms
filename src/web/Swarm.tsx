@@ -9,7 +9,7 @@ import { here, seeded } from './boot.ts'
 import { Box } from './Box.tsx'
 import { shareBranches } from './channels.ts'
 import * as Prose from '../shared/Prose.ts'
-import { pill } from './Card.tsx'
+import { line, pill } from './Card.tsx'
 import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
 import { usePoll, useWallet } from './hooks.ts'
@@ -127,8 +127,9 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   return (
     <article className="swarm-shell" data-tab={view}>
       <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : () => steer('')} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
-        <span className="strip-mood" data-mood={archived ? 'new' : stood.mood}><i />{archived ? 'Archived' : pill(stood.word)}</span>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
+        <span><b>{dollars(swarm.remaining)}</b> left</span>
+        <span className="strip-mood" data-mood={stood.mood} title={line(stood.word)}><i />{pill(stood.word)}</span>
       </Strip>
       <Tabs base={base} board="Board" onShow={show} unread={unread} view={view} />
       <div className="panel panel-chat" hidden={view !== 'chat'}>

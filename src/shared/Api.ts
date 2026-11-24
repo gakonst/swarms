@@ -185,7 +185,7 @@ export type Credit = { owner: `0x${string}`; recipient: `0x${string}` }
 
 export type Brief = Omit<Update, 'text'> & { excerpt: string }
 
-export type Why = 'unfunded' | 'money' | 'costly' | 'rest' | 'idle'
+export type Why = 'unfunded' | 'money' | 'costly' | 'rest' | 'idle' | 'stuck'
 
 export type Overview = Summary & {
   about: string | null

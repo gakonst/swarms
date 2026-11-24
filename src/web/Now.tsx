@@ -2,13 +2,14 @@ import { useState } from 'react'
 import type { Artifact, Branch, Detail, Update } from '../shared/Api.ts'
 import * as Brief from '../shared/Brief.ts'
 import * as Chatter from '../shared/Chatter.ts'
+import * as Status from '../shared/Status.ts'
 import * as Kinds from '../shared/Surface.ts'
 import { Board } from './Crew.tsx'
 import { ago } from './format.ts'
 import { useNow } from './hooks.ts'
 import { Inline } from './Markdown.tsx'
 import { Surface } from './Surface.tsx'
-import { Traces } from './Traces.tsx'
+import { state, Traces } from './Traces.tsx'
 
 export function Now(props: {
   artifacts: readonly Artifact[] | undefined
@@ -27,8 +28,8 @@ export function Now(props: {
   const told = props.updates?.filter((update) => update.text.trim() && !Chatter.idle(update.text)).at(-1) ?? (swarm.answer?.text.trim() && !Chatter.idle(swarm.answer.text) ? swarm.answer : undefined)
   const brief = Brief.brief({ status: Kinds.status(props.surface), surfaced: props.artifacts?.find(Kinds.is), update: told })
   const nodes = Kinds.shown(props.surface)
-  const running = swarm.status === 'running'
-  const stalled = running && !!swarm.working?.stalled
+  const stood = Status.standing(swarm)
+  const running = stood.word === 'Working' || stood.word === 'Stuck'
   const settled = props.artifacts !== undefined && props.updates !== undefined
 
   return (
@@ -40,7 +41,7 @@ export function Now(props: {
         ) : (
           <p className="result-quiet">{settled ? (running ? 'No status yet. The lead posts one as it works.' : 'No status yet.') : ' '}</p>
         )}
-        {stalled && swarm.working?.progressed && <p className="now-stalled">Stalled: its last progress was {ago(swarm.working.progressed, now)}.</p>}
+        {stood.word === 'Stuck' && <p className="now-stalled">{Status.line(stood.word)}</p>}
       </section>
       {nodes.length > 0 && (
         <section aria-labelledby="now-swarm" className="now-swarm">
@@ -51,9 +52,9 @@ export function Now(props: {
       {settled && props.branches && <Board branches={props.branches} />}
       {settled && props.branches && <section className="now-traces">
         <button aria-expanded={traced} className="now-traces-toggle" onClick={() => setTraced(!traced)} type="button">
-          <i aria-hidden="true" />{traced ? 'Hide traces' : 'Traces'}<span data-mood={running ? (stalled ? 'stalled' : 'live') : 'idle'}>{running ? (stalled ? 'Stalled' : 'Live') : 'Idle'}</span>
+          <i aria-hidden="true" />{traced ? 'Hide traces' : 'Traces'}<span data-mood={state(stood.word)}>{Status.pill(stood.word)}</span>
         </button>
-        {traced && <Traces branches={props.branches} id={swarm.id} running={running} stalled={stalled} stir={props.stir} visible={props.visible} />}
+        {traced && <Traces branches={props.branches} id={swarm.id} running={running} stir={props.stir} visible={props.visible} word={stood.word} />}
       </section>}
     </div>
   )

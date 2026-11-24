@@ -166,6 +166,19 @@ export function progress(self: Swarm, run: Turning) {
   return { progressed: Math.max(until === undefined ? 0 : until - leaseMs, run.started), stalled: until !== undefined && until - Date.now() <= leaseMs / 3 }
 }
 
+export const failsToStick = 2
+
+export function stuck(self: Swarm) {
+  const run = self.run()
+  if (run.state === 'new' || run.state === 'paused') return false
+  if (run.state === 'working') {
+    if (progress(self, run).stalled) return true
+    if ((self.kv.get<number>('advanced') ?? 0) >= run.started) return false
+  }
+  const ended = self.ctx.storage.sql.exec<{ spent: string; status: string }>('SELECT status, spent FROM turns WHERE ended_at IS NOT NULL ORDER BY n DESC LIMIT ?', failsToStick).toArray()
+  return ended.length === failsToStick && ended.every((turn) => turn.status !== 'completed' && BigInt(turn.spent) === 0n)
+}
+
 export async function progressed(self: Swarm) {
   const run = self.run()
   const at = self.kv.get<number>('advanced') ?? 0

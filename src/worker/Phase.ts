@@ -78,11 +78,11 @@ export function waking(run: Run, now: number) {
   return wake !== Infinity && wake > now ? wake : null
 }
 
-export function project(run: Run, n: number): { status: Status; why: Why | null } {
+export function project(run: Run, n: number, stuck = false): { status: Status; why: Why | null } {
   const pause = paused(run)
   if (pause) return { status: n ? 'paused' : 'funding', why: pause.why }
   if (run.state === 'new' || (run.state === 'waiting' && n === 0)) return { status: 'funding', why: null }
-  return { status: 'running', why: null }
+  return { status: 'running', why: stuck ? 'stuck' : null }
 }
 
 export function reason(pause: Pause) {

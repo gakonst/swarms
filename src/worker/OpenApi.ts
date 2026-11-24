@@ -298,7 +298,7 @@ const schemas = {
         hands: { items: ref('Hand'), type: 'array' },
         notes: { items: ref('Note'), type: 'array' },
         reason: nullable({ description: 'Why the swarm is waiting, when it is.', type: 'string' }),
-        why: nullable({ description: 'The reason as a code: unfunded (no money yet), money (too little payable), costly (the next call holds more than any one source can pay), rest (stopped after repeated errors) or idle (its agent ended its last update with Waiting for backers; new money or a funded steer wakes it).', enum: ['unfunded', 'money', 'costly', 'rest', 'idle'], type: 'string' }),
+        why: nullable({ description: 'The reason as a code: unfunded (no money yet), money (too little payable), costly (the next call holds more than any one source can pay), rest (stopped after repeated errors), idle (its agent ended its last update with Waiting for backers; new money or a funded steer wakes it) or, while running, stuck (its last turns failed without spending anything, or the current one has made no progress for 20 minutes; it keeps retrying with its money).', enum: ['unfunded', 'money', 'costly', 'rest', 'idle', 'stuck'], type: 'string' }),
         updates: { items: ref('Brief'), type: 'array' },
         working: nullable(ref('Working')),
       }),

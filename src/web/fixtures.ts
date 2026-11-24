@@ -446,14 +446,14 @@ const reasons = {
 
 function why(swarm: Live): Why | null {
   if (swarm.status === 'funding') return 'unfunded'
-  if (swarm.status !== 'paused') return null
+  if (swarm.status !== 'paused') return swarm.status === 'running' && scene.has('retrying') ? 'stuck' : null
   return (['costly', 'rest'] as const).find((key) => scene.has(key)) ?? (swarm.resting ? 'idle' : 'money')
 }
 
 function reason(swarm: Live) {
   const picked = why(swarm)
   if (picked === 'money' && scene.has('refused')) return 'Its last step could not be paid for, though it has money. It tries again by itself.'
-  return picked && picked !== 'unfunded' ? reasons[picked] : null
+  return picked && picked !== 'unfunded' && picked !== 'stuck' ? reasons[picked] : null
 }
 
 function find(key: string) {

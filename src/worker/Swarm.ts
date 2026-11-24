@@ -336,7 +336,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async project(row: Store.Row, fields: Store.Fields = {}) {
     const run = this.run()
-    const projected = Phase.project(run, run.state === 'starting' || run.state === 'working' ? run.n : this.turned())
+    const projected = Phase.project(run, run.state === 'starting' || run.state === 'working' ? run.n : this.turned(), Turns.stuck(this))
     const changed = projected.status !== row.status || projected.why !== (row.why ?? null)
     if (changed || Object.keys(fields).length) {
       await Store.update(this.env, row.id, { ...(changed ? projected : {}), ...fields })
@@ -398,7 +398,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   pulsed(row: Store.Row): Pulse {
     const paused = Phase.paused(this.run())
-    return { hands: this.kv.get<Hand[]>('hands') ?? [], reason: paused ? Phase.reason(paused) : null, swarm: Store.summary(row), why: paused?.why ?? null, working: this.working() }
+    return { hands: this.kv.get<Hand[]>('hands') ?? [], reason: paused ? Phase.reason(paused) : null, swarm: Store.summary(row), why: this.why(), working: this.working() }
   }
 
   rostered(roster: Roster) {
@@ -498,7 +498,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       hands: this.kv.get<Hand[]>('hands') ?? [],
       reason: paused ? Phase.reason(paused) : null,
       stamp,
-      why: paused?.why ?? null,
+      why: this.why(),
       steered: this.steered(),
       ended: this.ctx.storage.sql
         .exec<{ ended_at: number; n: number }>('SELECT n, ended_at FROM turns WHERE ended_at IS NOT NULL ORDER BY n DESC LIMIT 20')
@@ -520,6 +520,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   recent(limit: number): { updates: Update[]; working: Working | null } {
     return { updates: Feed.updates(Feed.rows(this, Feed.lastTurns, limit + 10)).slice(-limit), working: this.working() }
+  }
+
+  why(): Why | null {
+    return Phase.paused(this.run())?.why ?? (Turns.stuck(this) ? 'stuck' : null)
   }
 
   working(): Working | null {

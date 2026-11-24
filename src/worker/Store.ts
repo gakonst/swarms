@@ -118,7 +118,7 @@ export function summary(row: Row): Summary {
     steering: row.steering ?? 'open',
     title: row.title,
     updatedAt: row.updated_at,
-    why: row.status === 'paused' || row.status === 'funding' ? (row.why ?? null) : null,
+    why: row.status === 'paused' || row.status === 'funding' ? (row.why ?? null) : row.why === 'stuck' ? 'stuck' : null,
   }
 }
 

@@ -54,7 +54,7 @@ export function Card(props: { idea: Idea }) {
           {idea.pitch && <Inline className="card-pitch" text={idea.pitch} />}
           <span className="card-stats">
             <i />
-            {idea.archived ? 'Archived' : pill(idea.word)}
+            {pill(idea.word)}
             {idea.balance > 0 && <> · {usd(String(idea.balance))} · {idea.backers} rider{idea.backers === 1 ? '' : 's'}</>}
           </span>
         </span>

@@ -11,6 +11,11 @@ const palettes: Record<Mood, readonly (readonly [string, string, string, string]
     ['#f2e9f0', '#ff7ab8', '#d14fd1', '#ffffff'],
     ['#ff8a5c', '#ffe1cf', '#ff5fae', '#ffffff'],
   ],
+  stuck: [
+    ['#ffd166', '#f4f4ee', '#8d8d86', '#161616'],
+    ['#ffe29a', '#d9d9d2', '#ff8a5c', '#ffffff'],
+    ['#f2c14e', '#e6e6de', '#7a52e0', '#f4f4ee'],
+  ],
   new: [
     ['#bfe9e6', '#dff4f2', '#161616', '#49c6c0'],
     ['#9b9b9b', '#8a45f0', '#00ff00', '#c9c9c9'],
