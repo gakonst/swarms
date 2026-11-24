@@ -154,7 +154,7 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 .beat { list-style:none; max-width:46rem; }
 .beat[data-more='true'] { cursor:pointer; }
 .beat[data-kind='message'] + .beat { margin-top:6px; }
-.beat[data-kind='status'],.beat[data-kind='funds'],.beat[data-kind='machine'],.beat[data-kind='steer'] { max-width:none; margin:14px 0; text-align:center; }
+.beat[data-kind='status'],.beat[data-kind='funds'],.beat[data-kind='machine'],.beat[data-kind='steer'] { max-width:none; margin:14px 0; }
 .beat[data-fresh='true'] { animation:moment-in .9s var(--ease); }
 @media (prefers-reduced-motion:reduce) {
   .beat,
