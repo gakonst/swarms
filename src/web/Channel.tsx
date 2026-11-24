@@ -31,7 +31,7 @@ function rider(who: Tree.Who) {
 export function lines(node: Tree.Node, view: NodeView | undefined, updates: readonly Tree.Delta[] | undefined): Line[] {
   const out: Line[] = []
   for (const delta of updates ?? []) {
-    if (delta.event === 'funded' || delta.event === 'steered' || delta.event === 'moved') continue
+    if (delta.event === 'funded' || delta.event === 'steered' || delta.event === 'moved' || out.some((line) => line.id === `d${delta.seq}:${delta.event}`)) continue
     out.push({ at: delta.at, id: `d${delta.seq}:${delta.event}`, text: delta.text, who: { address: null, bot: true, name: worker.has(delta.event) ? 'AI' : 'Swarm' } })
   }
   for (const run of view?.runs ?? []) {

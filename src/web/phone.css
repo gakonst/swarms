@@ -1,0 +1,7 @@
+@media (max-width:899px) {
+  .thread .node-crumbs { flex-wrap:nowrap; min-height:24px; margin-inline:calc(var(--margin) * -1); padding-inline:var(--margin); overflow-x:auto; overflow-y:hidden; scrollbar-width:none; white-space:nowrap; }
+  .thread .node-crumbs::-webkit-scrollbar { display:none; }
+  .thread .node-crumbs > span { flex:none; }
+  :is(.grove, .swarm-shell)[data-thread] > :not(.thread):not(.overlay) { visibility:hidden; }
+}
+

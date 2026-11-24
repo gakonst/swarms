@@ -163,7 +163,7 @@ export function NodePanel(props: {
   const open = !Grove.closed(node)
   return (
     <div className="node" data-status={node.status}>
-      {trail.length > 1 && (
+      {node.parent !== null && (
         <nav aria-label="Where it sits" className="crumbs node-crumbs">
           {trail.slice(0, -1).map((step, index) => (
             <span key={step.id}>{index > 0 && <i aria-hidden="true">›</i>}<Link keep to={path(step.id)}><Inline text={step.title} /></Link></span>
