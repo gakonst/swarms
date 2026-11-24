@@ -6,7 +6,9 @@ export const templates = ['cheap', 'frontier-mix', 'fable', 'frontier-anthropic'
 
 export type Chosen = (typeof templates)[number]
 
-export type Template = Chosen | 'board'
+export const kinds = [...templates, 'board'] as const
+
+export type Template = (typeof kinds)[number]
 
 export type Offer = { harnesses: Harness[]; models: string[] }
 

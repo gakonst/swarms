@@ -8,13 +8,13 @@ const primaries = new WeakMap<Cloudflare.Env, Cloudflare.Env>()
 
 const sessions = new WeakMap<Cloudflare.Env, D1DatabaseSession>()
 
-const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|hands|answer|updates|search|wait|machines|machines\/export|machines\/[^/]+\/(commands|commands\/\d+|commands\/\d+\/log|logs|export)|backers|team|branches))?)?$/
+const swarm = /^\/(api|v1)\/swarms(\/[^/]+(\/(feed|code|git\/[^/]+|live|artifacts|chat|chat\/live|chat\/\d+|hands|answer|updates|search|wait|machines|machines\/export|machines\/[^/]+\/(commands|commands\/\d+|commands\/\d+\/log|logs|export)|backers|team|branches|progress|ledger|deltas|tree|proofs|nodes\/[^/]+|nodes\/[^/]+\/updates))?)?$/
 
-const pages = /^\/(|join|new|about|docs|x|x\/s\/[^/]+|tg|tg\/s\/[^/]+|s\/[^/]+|s\/[^/]+\/(?:code|results|board|about))$/
+const pages = /^\/(|join|ideas|new|about|docs|x|x\/s\/[^/]+|tg|tg\/s\/[^/]+|s\/[^/]+|s\/[^/]+\/(?:code|results|board|about|[ntc]\/[0-9a-z]+)|u\/[^/]+|oembed|og\/.+)$/
 
 export function readable(method: string, path: string) {
   if (method !== 'GET' && method !== 'HEAD') return false
-  return swarm.test(path) || pages.test(path) || ['', '/code', '/results', '/board', '/about'].includes(Nickname.parse(path)?.tail ?? '/chat') || /^\/(api|v1)\/me$/.test(path) || /^\/v1\/(search|problems|health)$/.test(path)
+  return swarm.test(path) || pages.test(path) || ['', '/code', '/results', '/board', '/about'].includes(Nickname.parse(path)?.tail ?? '/chat') || /^\/(api|v1)\/(me|me\/swarms\/[^/]+|riders\/[^/]+|names\/[^/]+|general\/chat)$/.test(path) || /^\/v1\/(search|problems|health)$/.test(path)
 }
 
 export function writes(method: string, path: string) {
