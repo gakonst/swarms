@@ -960,3 +960,17 @@ Georgios's screenshot of production after a $1 ride on the agent swarm "Megakern
 - Production, read-only on 2026-11-24 at 1700×950 (signed out, the deployed build predates this): Ride it on `s/f3a42cf87339` opened the full-width bottom sheet ($95.69 balance, $0.24 left, the steer field and Ride it · $5) across the whole window. Nothing was paid on production.
 - "What should it try next?" shows only where the rider may steer (`steerer`: open steering, or a seat on a team swarm), as before; tree swarms never show it.
 - The fixture world's agent swarms are all archived, so nothing could ride one; `?scene=open` keeps them open for checks.
+
+
+## A visual sweep of every page (2026-11-24)
+
+A harness outside the repository (`~/swarms-work/sweep`) opened 57 fixture pages (#general and its wait, empty, down and signed-in scenes; all swarms; /new and a nickname create page; every agent and tree swarm's Chat, Board, Results, Code and About; channels, threads and nodes; /u, /me, /faq, /about, /docs, not found and the storyboard) at 1440×900, 1100×800 and a 390×844 touch phone, then read each for sideways overflow, page scroll on the phone, text clipped by an ancestor, children running past their header, tap targets under 24 px, inputs under 16 px, raw markdown or JSON, buffered layout shifts, console errors, and whether chat and board are both on screen. The same ran read-only on production (13 pages) and on the local dev world's `/pequalsnp`.
+
+- Fixed: on a phone the header put the Channels and Share text buttons 6 px apart, reading as one "Channels Share" link; they are 16 px apart, like the header's other text links.
+- Fixed: the docs' "Why swarms…" line sat 2 px under its buttons; it sits `--space-3` below.
+- Fixed: on a phone the Code tab's repository head and clone box were inset 12 px from every row under them; they align with the rows.
+- Fixed: a thread's words ended in the markdown block's 24 px bottom padding before its own section gap, leaving a 50 px hole above Details; it is 26 px.
+- Measured: no sideways overflow, no phone page scroll, no input under 16 px, no raw markdown or JSON and no console errors on any page at any size. The brand mark (19×32) and wordmark (68×21) count as small only without their `::after` hit areas, which make them 31×32 and 80×43. Production's server-rendered pages shift 0; the fixture world shifts up to 0.69 (Results on a phone) because fixture data arrives after the first paint, which the server render does not do.
+- Chat and board are not on screen together in 74 page views across the three sizes (every chat view lacks the board and every Board tab lacks the chat, and phone #general has no site board); the layout that fixes it is the workspace change, which owns those files.
+- Left: #general offline shows "Loading…" under its welcome forever rather than "Can't reach Swarms." as swarm pages and all swarms do, and the rail keeps an empty PROBLEMS heading; rail threads of agent swarms (`/s/bench-coders/t/4`) open "This swarm has no tree"; a thread's run update repeats its message text on the line under it; a channel's header takes four rows (about 230 px) on a phone.
+

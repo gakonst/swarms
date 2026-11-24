@@ -1019,6 +1019,10 @@ kbd::after {
   margin-top: var(--space-5);
 }
 
+.docs-hero .actions + .fine {
+  margin-top: var(--space-3);
+}
+
 .docs-section {
   row-gap: var(--space-3);
 }

@@ -9,6 +9,7 @@
 .wordmark:hover { color:var(--fg); }
 .header-nav { grid-column:1; grid-row:1; display:flex; align-items:center; gap:var(--space-3); min-width:0; }
 .header-end { grid-column:3; grid-row:1; justify-self:end; display:flex; align-items:center; gap:6px; }
+.header-channels + .share-menu { margin-left:var(--space-3); }
 .wallet { gap:10px; }
 .wallet-balance { color:var(--muted); }
 .wallet > span:first-child { max-width:24ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

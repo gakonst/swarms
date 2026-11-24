@@ -59,7 +59,7 @@
 .node-part h3 { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font:400 11px var(--mono); letter-spacing:.02em; color:var(--muted); }
 .node-review { padding:1px 7px; border:1px solid var(--warn-line); border-radius:10px; background:var(--warn-wash); color:var(--warn-ink); }
 .node-lean { margin:0; padding:10px 12px; border-radius:var(--radius-small); background:var(--wash); font-size:12px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere; }
-.node-words .markdown { font-size:14px; }
+.node-words .markdown { padding-bottom:0; font-size:14px; }
 .node-check dl { display:grid; grid-template-columns:76px minmax(0,1fr); gap:3px 10px; margin:0; font-size:12px; }
 .node-check dt { font-family:var(--mono); color:var(--muted); }
 .node-check dd { margin:0; overflow-wrap:anywhere; }
