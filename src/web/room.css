@@ -332,6 +332,6 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 .own-error { margin:0; font:13px var(--mono); color:var(--bad, #c0392b); }
 .own-host { display:grid; gap:6px; margin-top:12px; }
 .own-toggle { display:flex; align-items:center; gap:10px; min-height:32px; font:13px var(--mono); cursor:pointer; }
-.own-toggle input { width:18px; height:18px; margin:0; }
+.own-toggle input { width:18px; height:18px; margin:0; accent-color:var(--fg); }
 .own-free { color:var(--muted); }
 .strip-ai { color:var(--muted); }

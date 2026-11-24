@@ -146,7 +146,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span><b>{dollars(swarm.remaining)}</b> left</span>
         <span className="strip-mood" data-mood={stood.mood} title={line(stood.word)}><i />{pill(stood.word)}</span>
-        {swarm.ai && <span className="strip-ai">on ${swarm.ai.handle}'s own AI</span>}
+        {swarm.ai && <span className="strip-ai">on @{swarm.ai.handle}'s own AI</span>}
       </Strip>
       <Tabs base={base} board="Board" onShow={show} unread={unread} view={view} />
       {branch && (
