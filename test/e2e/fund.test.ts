@@ -411,6 +411,161 @@ test('a sub-item and a new swarm say what they still need, then start in one go,
   }
 })
 
+test('a sub-item and a new swarm survive a cancel, an empty wallet, a ride sent but not counted at first, and a refusal', async () => {
+  for (const viewport of ['desktop', 'phone'] as const) {
+    const page = await browse(viewport)
+    const title: Spec = { name: 'Title', role: 'textbox' }
+    const add = go('Add it · $1')
+    const start = go('Start it · $5')
+    const problem: Spec = { name: 'Your problem', role: 'textbox' }
+    const shows = (role: 'alert' | 'status', name: RegExp, ...within: Spec[]) => page.until(`(${page.all(...within, { name, role })}).length > 0`, 20_000)
+    const draft = async (scene: string, name: string) => {
+      await page.open(lemma + '?fixture&scene=in,' + scene)
+      await page.tap(thread, go(/^Add a sub-item/))
+      await page.type(name, adding, title)
+      assert.ok(await page.until(page.has(adding, add)), 'the sub-item is ready to add')
+    }
+    const ask = async (scene: string) => {
+      await page.open('/new?fixture&scene=in,' + scene)
+      await page.type('Find the cheapest way to desalinate water for a village', problem)
+      assert.ok(await page.until(page.has(start)), 'signed in, it starts without signing in again')
+    }
+    try {
+      await draft('deny', 'A cancelled lemma')
+      await page.twice(adding, add)
+      assert.ok(await shows('status', /^Cancelled/, adding), 'a cancelled sub-item says so')
+      assert.match(await page.told(adding), /Cancelled\..*Nothing was charged/)
+      assert.ok(await page.evaluate(`!(${page.all(adding, add)})[0].disabled`), 'a cancelled sub-item can be tried again')
+      assert.equal(await page.evaluate('window.__cheers'), 0)
+
+      await draft('broke', 'A lemma paid after adding funds')
+      await page.tap(adding, add)
+      assert.ok(await shows('alert', /Not enough in your wallet/, adding), 'an empty wallet refuses before Tempo ID opens')
+      await page.shoot('sub-broke')
+      await page.tap(adding, go(/^Add funds/))
+      assert.ok(await shows('status', /Funds added/, adding), 'adding funds says it worked')
+      await page.tap(adding, add)
+      assert.ok(await page.until(page.has(cheer), 20_000), 'the added funds pay for the sub-item')
+      assert.match((await page.read(cheer)) ?? '', /A lemma paid after adding funds/)
+      await sleep(1000)
+      assert.equal(await page.evaluate('window.__cheers'), 1)
+
+      await draft('uncounted', 'A lemma counted late')
+      await page.tap(adding, add)
+      assert.ok(await page.until(`/A lemma counted late · \\$1 ?Sent, not counted yet\\. Trying again/.test([...document.querySelectorAll('[role=alert],[role=status]')].map((each) => each.textContent).join(' | '))`), 'the thread keeps the uncounted sub-item and says it is trying again: ' + (await page.told()))
+      await page.shoot('sub-owed')
+      assert.ok(await page.until(page.has(cheer), 20_000), 'the uncounted sub-item is counted by itself, with its sheet closed')
+      await sleep(1000)
+      assert.equal(await page.evaluate('window.__cheers'), 1)
+
+      await draft('reject', 'A refused lemma')
+      await page.tap(adding, add)
+      assert.ok(await shows('alert', /cannot be counted/, adding), 'a refused sub-item says so')
+      assert.ok(await page.evaluate(page.has(adding, { name: /^0x/, role: 'link' })), 'a refusal links the transaction')
+      assert.equal(await page.evaluate('window.__cheers'), 0)
+
+      await ask('deny')
+      await page.twice(start)
+      assert.ok(await shows('status', /^Cancelled/), 'a cancelled new swarm says so')
+      assert.match(await page.told(), /Cancelled\..*Nothing was charged/)
+      assert.equal(await page.evaluate('location.pathname'), '/swarms/new', 'a cancel stays on the form')
+      assert.ok(await page.evaluate(`!(${page.all(start)})[0].disabled`), 'a cancelled new swarm can be tried again')
+
+      await ask('broke')
+      await page.tap(start)
+      assert.ok(await shows('alert', /Not enough in your wallet/), 'an empty wallet refuses the start')
+      await page.shoot('new-broke')
+      await page.tap(go(/^Add funds/))
+      assert.ok(await shows('status', /Funds added/), 'adding funds says it worked')
+      await page.tap(start)
+      assert.ok(await page.until(page.has(cheer), 20_000), 'the added funds start the swarm')
+      assert.match(await page.evaluate<string>('location.pathname'), /\/s\/[0-9a-f]+$/)
+      assert.match((await page.read(cheer)) ?? '', /1 rider · \$5\.00 raised/, 'a start after a refusal makes one swarm with one ride')
+      await sleep(1000)
+      assert.equal(await page.evaluate('window.__cheers'), 1)
+
+      await ask('uncounted')
+      await page.tap(start)
+      assert.ok(await shows('status', /^Sent, but not counted yet/), 'an uncounted start says it was sent')
+      assert.ok(await page.until(page.has(cheer), 20_000), 'the uncounted start is counted by itself')
+      assert.match(await page.evaluate<string>('location.pathname'), /\/s\/[0-9a-f]+$/)
+      await sleep(1000)
+      assert.equal(await page.evaluate('window.__cheers'), 1)
+
+      await ask('reject')
+      await page.tap(start)
+      assert.ok(await shows('alert', /cannot be counted/), 'a refused start says so')
+      assert.ok(await page.evaluate(page.has({ name: /^0x/, role: 'link' })), 'a refusal links the transaction')
+      await page.shoot('new-refused')
+      assert.equal(await page.evaluate('window.__cheers'), 0)
+      assert.deepEqual(page.errors, [])
+    } finally {
+      await page.close()
+    }
+  }
+})
+
+test('a declined Add funds from the account menu says so and changes nothing', async () => {
+  for (const viewport of ['desktop', 'phone'] as const) {
+    const page = await browse(viewport)
+    try {
+      await page.open(grove + '?fixture&scene=in,broke,deny')
+      await page.tap(go(/^@ada/))
+      const item: Spec = { name: 'Add funds', role: 'menuitem' }
+      assert.ok(await page.until(page.has(item)), 'the account menu opens')
+      await page.tap(item)
+      assert.ok(await page.until(`(${page.all({ name: 'Cancelled.', role: 'status' })}).length > 0`), 'a declined top-up says it was cancelled')
+      assert.match(await page.evaluate<string>(`(${page.all(item)})[0]?.closest('[role=menu]')?.textContent ?? ''`), /\$0\.00 in your wallet/, 'and the wallet holds what it held')
+      assert.ok(await page.evaluate(`!(${page.all(item)})[0].disabled`), 'Add funds can be tried again')
+      await page.shoot('fund-declined')
+      await page.tap(channel, { role: 'heading' })
+      assert.ok(await page.until(`!(${page.has(item)})`, 3000), 'a tap elsewhere closes the menu')
+      assert.equal(await page.evaluate('window.__cheers'), 0)
+      assert.deepEqual(page.errors, [])
+    } finally {
+      await page.close()
+    }
+  }
+})
+
+test('an agent swarm ride says when it was cancelled, short or refused, and charges nothing', async () => {
+  for (const viewport of ['desktop', 'phone'] as const) {
+    const page = await browse(viewport)
+    const pay = go(/^Ride it · /)
+    try {
+      await page.open(agent + '?fixture&scene=in,open,deny')
+      const before = await page.raised()
+      await page.tap(channel, rideIt)
+      await page.twice(riding, pay)
+      assert.ok(await page.until(`(${page.all(riding, { name: /^Cancelled/, role: 'status' })}).length > 0`), 'a cancel says so')
+      assert.ok(await page.evaluate(`!(${page.all(riding, pay)})[0].disabled`))
+      assert.equal(await page.raised(), before, 'a cancel adds nothing')
+
+      await page.open(agent + '?fixture&scene=in,open,broke')
+      await page.tap(channel, rideIt)
+      await page.tap(riding, pay)
+      assert.ok(await page.until(`(${page.all(riding, { name: /Not enough in your wallet/, role: 'alert' })}).length > 0`))
+      await page.tap(riding, go(/^Add funds/))
+      assert.ok(await page.until(`(${page.all(riding, { name: /Funds added/, role: 'status' })}).length > 0`))
+      await page.tap(riding, pay)
+      assert.ok(await page.until(page.has(cheer)), 'the added funds ride the agent swarm')
+
+      await page.open(agent + '?fixture&scene=in,open,reject')
+      const held = await page.raised()
+      await page.tap(channel, rideIt)
+      await page.tap(riding, pay)
+      assert.ok(await page.until(`(${page.all(riding, { name: /cannot be counted/, role: 'alert' })}).length > 0`))
+      assert.ok(await page.evaluate(page.has(riding, { name: /^0x/, role: 'link' })), 'a refusal links the transaction')
+      assert.equal(await page.raised(), held, 'a refusal adds nothing')
+      await page.shoot('agent-refused')
+      assert.equal(await page.evaluate('window.__cheers'), 0)
+      assert.deepEqual(page.errors, [])
+    } finally {
+      await page.close()
+    }
+  }
+})
+
 test('a free nickname page starts its swarm in one go and stays at its address', async () => {
   for (const viewport of ['desktop', 'phone'] as const) {
     const page = await browse(viewport)
