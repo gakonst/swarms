@@ -327,12 +327,13 @@ test('a node card says its status, why, what is under it and, when proven, the c
 test('a node page shares its own card and player, and keys map both ways', () => {
   const subject = Share.node('pnp', 'Does P = NP?', lemmas[0]!)
   const shared = Share.share('https://swarms.example', subject)
-  assert.equal(shared.url, 'https://swarms.example/s/pnp/n/3fa91c2b0d')
+  assert.equal(shared.url, 'https://swarms.example/s/pnp/t/3fa91c2b0d')
   assert.equal(shared.player, 'https://swarms.example/x/s/pnp/n/3fa91c2b0d')
   assert.equal(shared.image.card.split('?')[0], 'https://swarms.example/og/s/pnp/n/3fa91c2b0d/card.png')
   assert.match(Share.tags(shared), /content="Proven, checked by Lean at abc1234"/)
   assert.equal(Share.page(new URL('https://swarms.example/s/pnp/n/3fa91c2b0d')), 's/pnp/n/3fa91c2b0d')
   assert.equal(Share.page(new URL('https://swarms.example/s/pnp/n/root')), 's/pnp/n/root')
+  assert.equal(Share.page(new URL('https://swarms.example/s/pnp/t/3fa91c2b0d')), 's/pnp/n/3fa91c2b0d')
   assert.equal(Share.page(new URL('https://swarms.example/s/pnp/n/NOPE!')), undefined)
 })
 
@@ -347,7 +348,7 @@ test('a card keeps its version while cents move, and changes when a lemma is pro
 test('proofs and dead ends are announced with links to their node, and nothing else is', () => {
   const proven = Share.announce('https://swarms.example', 'pnp', 'Does P = NP?', { at: 9, event: 'proven', node: lemmas[0]!, seq: 1, text: '' })
   assert.equal(proven?.text, 'Does P = NP?\nProven, checked by Lean at abc1234: Parity is not in <AC0> & co')
-  assert.equal(proven?.url, 'https://swarms.example/s/pnp/n/3fa91c2b0d')
+  assert.equal(proven?.url, 'https://swarms.example/s/pnp/t/3fa91c2b0d')
   assert.equal(proven?.frame, 'https://swarms.example/x/s/pnp/n/3fa91c2b0d')
   assert.match(proven?.intent ?? '', /^https:\/\/x\.com\/intent\/post\?text=Does%20P%20%3D%20NP%3F%0AProven.*&url=https%3A%2F%2Fswarms\.example%2Fx%2Fs%2Fpnp%2Fn%2F3fa91c2b0d$/)
   const dead = Share.announce('https://swarms.example', 'pnp', 'Does P = NP?', { at: 9, event: 'ended', node: lemmas[1]!, seq: 2, text: '' })

@@ -87,7 +87,7 @@ export function Profile(props: { who: string }) {
               const swarm = titles.get(item.swarm)
               return (
                 <li key={`${item.swarm}:${item.node}`}>
-                  <Link className="rider-row" to={`${Nickname.path(swarm ?? { id: item.swarm, nickname: null })}/n/${item.node}`}>
+                  <Link className="rider-row" to={`${Nickname.path(swarm ?? { id: item.swarm, nickname: null })}/t/${item.node}`}>
                     <span className="rider-title"><Mark status={item.status} /> <Inline text={item.title} /></span>
                     <span className="rider-meta">{item.created ? (own ? 'Your idea · ' : 'Their idea · ') : ''}{swarm?.title ?? item.swarm}</span>
                     <b className="rider-money">{Number(item.ridden) > 0 ? cut(item.ridden) : ''}</b>

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Config, Detail, Me, Member, Room as RoomState, Said, Summary } from '../shared/Api.ts'
-import * as Chatter from '../shared/Chatter.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
 import * as Status from '../shared/Status.ts'
@@ -9,18 +8,17 @@ import { useSurface, useWishes, Viewer } from './Artifacts.tsx'
 import { here, seeded } from './boot.ts'
 import { Box } from './Box.tsx'
 import * as Prose from '../shared/Prose.ts'
-import { lead, pill } from './Card.tsx'
+import { pill } from './Card.tsx'
 import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
-import { useMedia, usePoll, useWallet } from './hooks.ts'
-import { Inline } from './Markdown.tsx'
+import { usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import * as Names from './names.ts'
 import { Now } from './Now.tsx'
 import { Results } from './Results.tsx'
 import { Room } from './Room.tsx'
 import { Reins, steerer, useRoster } from './Steering.tsx'
-import { at, backers, dollars, Explainer, side, Strip, type Tab, Tabs } from './Strip.tsx'
+import { at, backers, dollars, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
 import { back, Link, navigate, useBase, useQuery } from './router.tsx'
 import { stamp } from './format.ts'
 import * as Wire from './wire.ts'
@@ -52,12 +50,11 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   const wishes = useWishes(shelf.data?.artifacts)
   const surface = useSurface(shelf.data?.artifacts, id)
   const opened = useQuery('r')
-  const phone = useMedia('(max-width: 899px)')
   const [prefill] = useState(() => asked())
   const [note, setNote] = useState(prefill.note)
   const [focus, setFocus] = useState(0)
   const [sheet, setSheet] = useState(() => !!prefill.note || here().searchParams.has('fund'))
-  const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([view, side(view)]))
+  const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([view]))
   const [stir, setStir] = useState(0)
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<RoomState>(`room:${id}`)?.members ?? [])
   const [unread, setUnread] = useState(0)
@@ -83,7 +80,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   }, [detail.data?.title])
 
   useEffect(() => {
-    setSeen((current) => (current.has(view) && current.has(side(view)) ? current : new Set([...current, view, side(view)])))
+    setSeen((current) => (current.has(view) ? current : new Set([...current, view])))
   }, [view])
 
   const heard = useCallback((_said: readonly Said[], _me: Me | null, list: readonly Member[]) => setMembers(list), [])
@@ -110,8 +107,6 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   const stood = Status.standing(swarm)
   const artifacts = shelf.data?.artifacts ?? []
   const viewing = opened ? artifacts.find((artifact) => artifact.slug === opened) : undefined
-  const told = news.data ? news.data.updates.filter((update) => update.text.trim() && !Chatter.idle(update.text)).at(-1)?.text : swarm.answer && !Chatter.idle(swarm.answer.text) ? swarm.answer.text : undefined
-  const latest = told ? <Inline text={lead(told, swarm.title)} /> : undefined
   const names = new Map(members.map((member) => [member.address.toLowerCase(), member.handle] as const))
   const named = (renamed: Summary) => {
     setDetail((data) => data && { ...data, nickname: renamed.nickname })
@@ -126,12 +121,12 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
 
   return (
     <article className="swarm-shell" data-tab={view}>
-      <Strip backers={backers(swarm.contributions, names)} latest={latest} onRide={archived ? undefined : () => steer('')} raised={swarm.balance} riders={swarm.contributors} title={swarm.title}>
+      <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : () => steer('')} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span className="strip-mood" data-mood={archived ? 'new' : stood.mood}><i />{archived ? 'Archived' : pill(stood.word)}</span>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
       </Strip>
-      <Tabs base={base} onShow={show} unread={unread} view={view} />
-      <div className="panel panel-chat" data-side="true" hidden={view !== 'chat'}>
+      <Tabs base={base} board="Board" onShow={show} unread={unread} view={view} />
+      <div className="panel panel-chat" hidden={view !== 'chat'}>
         <Room
           config={props.config}
           onArtifact={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`)}
@@ -140,11 +135,11 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
           onResults={() => show('results')}
           onUnread={setUnread}
           swarm={swarm}
-          visible={view === 'chat' || !phone}
+          visible={view === 'chat'}
         />
       </div>
-      <div className="panel panel-page" data-desk={view === 'chat' || undefined} hidden={side(view) !== 'board'}>
-        <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={side(view) === 'board'} />
+      <div className="panel panel-page" hidden={view !== 'board'}>
+        <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'board'} />
       </div>
       {seen.has('results') && (
         <div className="panel panel-page" hidden={view !== 'results'}>

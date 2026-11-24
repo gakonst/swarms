@@ -1427,7 +1427,7 @@ export async function transfer(env: Cloudflare.Env, input: Input<'transfer'>, or
   return Problem.ok({
     amount: amount === null ? null : Memo.decimal(amount),
     call: amount === null ? null : { data: encodeFunctionData({ abi: Abis.tip20, args: [Chain.recipient, amount, memo], functionName: 'transferWithMemo' }), to: token.address },
-    link: row.form === 'tree' && request.node ? `${origin}${Nickname.path(row)}/n/${request.node}?${query}` : `${origin}${Nickname.path(row)}?${query}`,
+    link: row.form === 'tree' && request.node ? `${origin}${Nickname.path(row)}/t/${request.node}?${query}` : `${origin}${Nickname.path(row)}?${query}`,
     memo,
     memoText: `bytes16(keccak256("gateway:credit:${Credit.chainId}:${owner}:${Credit.app(row.id)}")) ++ bytes16(keccak256("${note ? `note:${row.id}:${note}` : `swarm:${row.id}`}"))`,
     note,

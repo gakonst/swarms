@@ -44,6 +44,7 @@ test('a topic slugs to a nickname with its hyphens, and pages parse back to thei
   assert.equal(Nickname.topic('faster-json--parser'), 'faster json parser')
   assert.deepEqual(Nickname.parse('/pequalsnp'), { name: 'pequalsnp', tail: '' })
   assert.deepEqual(Nickname.parse('/pequalsnp/n/0123456789/'), { name: 'pequalsnp', tail: '/n/0123456789' })
+  assert.deepEqual(Nickname.parse('/pequalsnp/t/0123456789'), { name: 'pequalsnp', tail: '/t/0123456789' })
   assert.deepEqual(Nickname.parse('/pequalsnp/chat'), { name: 'pequalsnp', tail: '/chat' })
   for (const path of ['/new', '/s/abc', '/v1/swarms', '/pequalsnp/other', '/favicon.ico', '/', '/0123456789ab']) assert.equal(Nickname.parse(path), undefined, path)
   assert.equal(Nickname.path({ id: 'abc123abc123', nickname: 'pequalsnp' }), '/pequalsnp')

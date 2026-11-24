@@ -7,9 +7,8 @@ import * as Grove from './grove.ts'
 import { Inline } from './Markdown.tsx'
 import { Overlay } from './Overlay.tsx'
 import { Avatar } from './Room.tsx'
-import { why } from './Node.tsx'
 import * as Pay from './pay.ts'
-import { href, Link } from './router.tsx'
+import { href } from './router.tsx'
 import { Mark } from './Tree.tsx'
 
 export type Shape = 'tree' | 'spine'
@@ -181,21 +180,6 @@ function Limb(props: Props & { depth: number; id: string; index: number }) {
         </ol>
       )}
     </li>
-  )
-}
-
-export function Peek(props: { node: Tree.Node; nodes: Readonly<Record<string, Tree.Node>>; onRide: (node: Tree.Node, anchor: HTMLElement) => void; to: string }) {
-  const node = props.node
-  const rides = !Grove.closed(node) && node.form !== 'triage'
-  return (
-    <div className="peek" data-rides={rides || undefined}>
-      <Link className="peek-read" keep to={props.to}>
-        <span className="peek-head"><Mark checking={node.run?.checking} status={node.status} /><b>{node.form === 'goal' ? 'The whole swarm' : node.title}</b></span>
-        <span className="peek-why">{why(node, props.nodes)}</span>
-        <span className="peek-meta"><span className="bud-money">{cash(node.money.subtree.pledged)}</span><Faces funders={node.funders} riders={node.riders} /><span className="peek-go">Read more ›</span></span>
-      </Link>
-      {rides && <button className="btn btn-high peek-ride" onClick={(event) => props.onRide(node, event.currentTarget)} type="button">Ride it</button>}
-    </div>
   )
 }
 

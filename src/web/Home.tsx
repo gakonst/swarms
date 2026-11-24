@@ -45,11 +45,11 @@ function keep(filter: Filter) {
   history.replaceState(history.state, '', href(`/ideas${filter === 'open' ? '' : `?filter=${filter}`}`))
 }
 
-function live(swarm: Summary, head: Tree.Headline | undefined) {
+export function live(swarm: Summary, head: Tree.Headline | undefined) {
   return !swarm.archivedAt && (swarm.status === 'running' || (head?.inFlight ?? 0) > 0)
 }
 
-function board(listing: Listing | undefined) {
+export function board(listing: Listing | undefined) {
   return (listing?.swarms ?? [])
     .filter((swarm) => !Status.test(swarm) && Number(swarm.balance) >= least)
     .sort((a, b) => Number(!!a.archivedAt) - Number(!!b.archivedAt) || Number(b.balance) - Number(a.balance) || b.updatedAt - a.updatedAt)

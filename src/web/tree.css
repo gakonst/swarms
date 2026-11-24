@@ -1,5 +1,3 @@
-.app:has(> main > .grove) { height:var(--screen, 100dvh); min-height:0; overflow:hidden; }
-.app:has(> main > .grove) > main { display:flex; flex-direction:column; min-height:0; }
 .grove { flex:1; display:flex; flex-direction:column; width:100%; max-width:1752px; min-height:0; margin:0 auto; padding:0 var(--margin); }
 
 .headline { flex:none; display:grid; gap:6px; padding:10px 0 12px; border-bottom:1px solid var(--rule); }
@@ -16,10 +14,9 @@
 .headline-last { overflow:hidden; font-size:13px; color:var(--muted); white-space:nowrap; text-overflow:ellipsis; }
 .headline-last a { color:var(--fg); }
 
-.grove-body { flex:1; display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:var(--gutter); min-height:0; }
+.grove-body { flex:1; display:flex; flex-direction:column; min-height:0; }
 .grove-tree { position:relative; display:flex; flex-direction:column; min-width:0; min-height:0; }
 .grove-scroll { flex:1; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; padding-bottom:24px; }
-.grove-node { min-width:0; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; padding:14px 0 32px var(--gutter); border-left:1px solid var(--line); }
 
 
 .tree-filters { flex:none; margin:0; padding:10px 0 8px; }
@@ -49,7 +46,6 @@
 .crumbs b { font-weight:400; color:var(--fg); }
 
 .node { display:grid; align-content:start; gap:12px; min-width:0; }
-.node-back { display:none; }
 .node-title { font-size:var(--size-title); font-weight:400; line-height:1.1; letter-spacing:-.02em; overflow-wrap:anywhere; }
 .node-status { font-size:14px; line-height:1.35; color:var(--soft); }
 .node-status .mark { margin-right:7px; vertical-align:-1px; }
@@ -130,7 +126,7 @@
 .bud-meta { grid-column:3; grid-row:1; justify-content:flex-end; display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; min-height:22px; font:12px var(--mono); color:var(--muted); }
 .bud-money { order:3; min-width:52px; color:var(--fg); text-align:right; font-feature-settings:'tnum'; }
 .limb[data-depth='0'] > .bud .bud-meta { grid-column:2; grid-row:2; justify-content:flex-start; }
-.limb[data-depth='0'] > .bud .bud-money, .peek .bud-money { order:0; min-width:0; text-align:left; }
+.limb[data-depth='0'] > .bud .bud-money { order:0; min-width:0; text-align:left; }
 .bud-fold { color:var(--faint); }
 .bud-doing { grid-column:2; display:flex; align-items:baseline; gap:8px; min-width:0; font-size:13px; line-height:1.35; color:var(--soft); }
 .bud-doing::before { content:''; flex:none; width:6px; height:6px; border-radius:50%; background:var(--green); transform:translateY(-1px); }
@@ -185,12 +181,6 @@
 .branches[data-shape='spine'] [data-depth='2'] .bud-meta { grid-column:2; grid-row:auto; justify-content:flex-start; }
 .branches[data-shape='spine'] [data-side='left'][data-depth='2'] .bud { grid-template-columns:minmax(0,1fr) 10px; }
 .branches[data-shape='spine'] [data-side='left'][data-depth='2'] .bud-meta { grid-column:1; justify-content:flex-end; }
-.peek { flex:none; display:grid; gap:4px; margin:0 calc(var(--margin) * -1); padding:10px var(--margin) calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--rule); background:var(--bg); text-decoration:none; }
-.peek-head { display:flex; align-items:center; gap:8px; min-width:0; }
-.peek-head b { overflow:hidden; font-size:17px; font-weight:400; white-space:nowrap; text-overflow:ellipsis; }
-.peek-why { display:-webkit-box; overflow:hidden; font-size:13px; line-height:1.35; color:var(--muted); -webkit-box-orient:vertical; -webkit-line-clamp:2; }
-.peek-meta { display:flex; align-items:center; gap:10px; min-height:24px; font:12px var(--mono); }
-.peek-go { margin-left:auto; color:var(--fg); }
 
 @media (max-width:899px) {
   .grove { padding:0; }
@@ -200,11 +190,7 @@
   .headline-stats b { margin-right:3px; font-size:20px; }
   .headline-last { font-size:12px; }
   .grove-body { position:relative; display:block; }
-  .grove-tree, .grove-node { position:absolute; inset:0; }
-  .grove-tree { padding:0 var(--margin); }
-  .grove[data-node='open'] .grove-tree { visibility:hidden; }
-  .grove-node { z-index:2; padding:6px var(--margin) 32px; border-left:0; background:var(--bg); }
-  .node-back { display:inline-flex; align-items:center; justify-self:start; min-height:36px; font-size:14px; }
+  .grove-tree { position:absolute; inset:0; padding:0 var(--margin); }
   .tree-filters { flex-wrap:nowrap; gap:6px; margin:0 calc(var(--margin) * -1); padding:8px var(--margin); overflow-x:auto; scrollbar-width:none; }
   .tree-filters::-webkit-scrollbar { display:none; }
   .growth { width:104px; height:28px; }
@@ -251,9 +237,6 @@
 .ghost[data-at='refused'] .ghost-line { color:var(--red); }
 .ghost[data-at='refused'] .ghost-line::before { background:var(--red); }
 .ghost-go { flex:none; min-height:24px; margin-left:auto; padding:0 6px; border:0; background:none; font:12px var(--mono); color:var(--fg); text-decoration:underline; cursor:pointer; }
-.peek { grid-template-columns:minmax(0,1fr) auto; align-items:center; column-gap:12px; }
-.peek-read { display:grid; gap:4px; min-width:0; color:inherit; text-decoration:none; }
-.peek-ride { min-height:44px; padding:0 18px; border-radius:12px; }
 
 @media (prefers-reduced-motion:reduce) { .ghost[data-at='counting'] { animation:none; background:var(--wash); } }
 

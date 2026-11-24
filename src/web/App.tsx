@@ -12,6 +12,7 @@ import { Base, Link, navigate, usePath, warmer } from './router.tsx'
 import { Lost } from './Lost.tsx'
 import * as Names from './names.ts'
 import { Cheered, ShareSwarm } from './Share.tsx'
+import { Shell } from './Shell.tsx'
 import { Me, mine, Profile } from './Profile.tsx'
 import { page, preload } from './pages.ts'
 import { problems } from './research.ts'
@@ -46,7 +47,7 @@ if (typeof window !== 'undefined') {
     if (route === '/about') void import('./About.tsx').then((module) => preload('about', module.About))
     if (route === '/docs') void import('./Docs.tsx').then((module) => preload('docs', module.Docs))
     if (route === '/faq') void import('./Faq.tsx').then((module) => preload('faq', module.Faq))
-    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results|\/board|\/about|\/n\/[^/?#]+)?\/?(?:[?#]|$)/.exec(path)?.[1]
+    const id = /^\/s\/([^/?#]+)(?:\/chat|\/code|\/results|\/board|\/about|\/[nt]\/[^/?#]+)?\/?(?:[?#]|$)/.exec(path)?.[1]
     const named = Nickname.parse(route)
     if (named) void warmSwarm().then(() => Names.warm(named.name)).then((found) => found && warmDetail(found.swarm), () => {})
     if (!id) return
@@ -144,7 +145,7 @@ function WalletButton(props: { config: Config | undefined }) {
   )
 }
 
-function Header(props: { config: Config | undefined; free: boolean; path: string; swarm: string | undefined }) {
+function Header(props: { config: Config | undefined; free: boolean; listing: boolean | undefined; onList: (open: boolean) => void; path: string; swarm: string | undefined }) {
   const links = (
     <>
       <Link className={props.path === '/ideas' || props.path.startsWith('/s/') || (!props.free && Nickname.parse(props.path) !== undefined) ? 'game-nav game-nav-on' : 'game-nav'} to="/ideas">All swarms</Link>
@@ -154,7 +155,7 @@ function Header(props: { config: Config | undefined; free: boolean; path: string
     </>
   )
   return (
-    <header className="game-header">
+    <header className="game-header" data-shell={props.listing !== undefined || undefined}>
       <nav className="header-nav">{links}</nav>
       <details className="header-menu" key={props.path}>
         <summary className="game-nav">Menu</summary>
@@ -174,6 +175,7 @@ function Header(props: { config: Config | undefined; free: boolean; path: string
       </p>
       <div className="header-end">
         <a className="game-nav header-essay" href={Site.essay}>Swarm riding, by Paradigm</a>
+        {props.listing !== undefined && <button aria-expanded={props.listing} className="game-nav header-channels" onClick={() => props.onList(!props.listing)} type="button">{props.listing ? 'Close' : 'Channels'}</button>}
         {props.swarm && <ShareSwarm id={props.swarm} key={props.swarm} />}
         <WalletButton config={props.config} />
       </div>
@@ -220,6 +222,9 @@ function Picked(props: { base: string; config: Config | undefined; id: string; n
     if (nickname) Names.keep(nickname, { name: nickname, nickname, swarm: props.id })
     navigate(`${wanted}${props.tail}${location.search}`, { keep: true, replace: true })
   }, [nickname])
+  useEffect(() => {
+    if (props.tail.startsWith('/n/')) navigate(`${props.base}/t/${props.tail.slice(3)}${location.search}`, { keep: true, replace: true })
+  }, [props.base, props.tail])
   const page = data?.form === 'tree' && !data.archivedAt ? <TreePage config={props.config} detail={data} id={props.id} nid={props.nid} view={props.view} /> : !data && !detail.error ? <Busy /> : props.nid && data ? <Lost title="This swarm has no tree."><Link className="lost-row" replace to={props.base}>Open it <span aria-hidden="true">→</span></Link></Lost> : <Swarm config={props.config} id={props.id} view={props.view} />
   return <Base value={props.base}>{page}</Base>
 }
@@ -227,18 +232,21 @@ function Picked(props: { base: string; config: Config | undefined; id: string; n
 export function App() {
   const path = usePath()
   const config = useConfig()
-  const matched = /^\/s\/([^/]+)((?:\/chat|\/code|\/results|\/board|\/about)|\/n\/([^/]+))?\/?$/.exec(path)
+  const [listing, setListing] = useState(false)
+  const matched = /^\/s\/([^/]+)((?:\/chat|\/code|\/results|\/board|\/about)|\/[nt]\/([^/]+))?\/?$/.exec(path)
   const named = matched ? undefined : Nickname.parse(path)
   const found = Names.useNamed(named?.name)
   const swarm = matched?.[1] ? decodeURIComponent(matched[1]) : typeof found === 'object' && found ? found.swarm : undefined
   const tail = (matched ? matched[2] : named?.tail) ?? ''
-  const node = /^\/n\/([^/]+)$/.exec(tail)?.[1]
+  const node = /^\/[nt]\/([^/]+)$/.exec(tail)?.[1]
   const view: Tab = node || tail === '/board' ? 'board' : tail === '/code' ? 'code' : tail === '/results' ? 'results' : tail === '/about' ? 'about' : 'chat'
   const free = !!named && found === null
   const rider = /^\/u\/([^/]+)\/?$/.exec(path)?.[1]
+  const shelled = path === '/' || path === '/ideas' || path === '/new' || !!swarm || (!!named && (found === undefined || free))
 
   useEffect(() => {
     if (path === '/join') navigate(`/ideas${location.search}`, { replace: true })
+    setListing(false)
   }, [path])
 
   useEffect(() => {
@@ -266,13 +274,9 @@ export function App() {
       </Suspense>
     )
 
-  return (
-    <div className="app">
-      <Header config={config} free={free} path={path} swarm={swarm} />
-      <Cheered />
-      <main>
-        <Caught path={path}>
-        <Suspense fallback={<section aria-busy="true" className="page lost" />}>
+  const content = (
+    <Caught path={path}>
+      <Suspense fallback={<section aria-busy="true" className="page lost" />}>
         {path === '/' ? (
           <Home />
         ) : path === '/ideas' || path === '/join' ? (
@@ -305,8 +309,22 @@ export function App() {
             <Link className="lost-row" to="/new">Start a swarm <span aria-hidden="true">→</span></Link>
           </Lost>
         )}
-        </Suspense>
-        </Caught>
+      </Suspense>
+    </Caught>
+  )
+
+  return (
+    <div className="app" data-shell={shelled || undefined}>
+      <Header config={config} free={free} listing={shelled ? listing : undefined} onList={setListing} path={path} swarm={swarm} />
+      <Cheered />
+      <main>
+        {shelled ? (
+          <Shell channel={swarm ?? (path === '/' ? 'general' : undefined)} listing={listing} onList={setListing} thread={node && decodeURIComponent(node)}>
+            {content}
+          </Shell>
+        ) : (
+          content
+        )}
       </main>
     </div>
   )

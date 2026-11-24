@@ -13,7 +13,7 @@ import { message, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import { Overlay } from './Overlay.tsx'
 import * as Pay from './pay.ts'
-import { Back, Link, useBase, useQuery } from './router.tsx'
+import { Link, useBase, useQuery } from './router.tsx'
 import { Mark, word } from './Tree.tsx'
 import * as Wallet from './wallet.ts'
 
@@ -179,7 +179,6 @@ function Move(props: { mine: Tree.Funder; node: Tree.Node; nodes: Readonly<Recor
 }
 
 export function NodePanel(props: {
-  back: string | undefined
   config: Config | undefined
   error: string | undefined
   nid: string
@@ -198,11 +197,10 @@ export function NodePanel(props: {
   const view = props.view
   const node: Tree.Node | undefined = view ?? known
   const base = useBase(props.swarm)
-  const path = (nid: string) => `${base}/n/${nid}`
+  const path = (nid: string) => `${base}/t/${nid}`
   if (!node)
     return (
       <div className="node" aria-busy={!props.error}>
-        {props.back && <Back className="node-back" to={props.back}>← Back</Back>}
         {props.error ? <p className="tree-empty">{/not.found|no node/i.test(props.error) ? 'No node has this id.' : props.error}</p> : <p className="tree-empty">Loading…</p>}
       </div>
     )
@@ -213,7 +211,6 @@ export function NodePanel(props: {
   const rides = node.form !== 'triage' && (open || ride.at !== 'idle')
   return (
     <div className="node" data-status={node.status}>
-      {props.back && <Back className="node-back" to={props.back}>← Back</Back>}
       {trail.length > 1 && (
         <nav aria-label="Where it sits" className="crumbs node-crumbs">
           {trail.slice(0, -1).map((step, index) => (

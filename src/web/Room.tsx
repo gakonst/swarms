@@ -595,9 +595,9 @@ export const Room = memo(function Room(props: {
           const self = author === me?.address
           return (
             <div className="msg" data-first={row.first} data-last={row.last} data-me={self} data-mentioned={!!me && item.mentions.includes(me.address)} key={row.key}>
-              {!self && (row.last ? <Avatar address={author} handle={handle} /> : <span className="avatar-gap" />)}
+              {row.first ? <Avatar address={author} handle={handle} /> : <span className="avatar-gap" />}
               <div className="msg-col">
-                {row.first && !self && <p className="msg-who"><b style={{ color: tint(author) }}>{handle.startsWith('0x') ? Mention.short(author) : handle}</b><time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time></p>}
+                {row.first && <p className="msg-who"><b style={{ color: tint(author) }}>{handle.startsWith('0x') ? Mention.short(author) : handle}</b><time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time></p>}
                 <div className="msg-bubble">
                   <Markdown compact marks text={marked(item.text, handles, myNames)} />
                 </div>
@@ -607,7 +607,6 @@ export const Room = memo(function Room(props: {
                     {steers && <button onClick={() => props.onBack(item.steer?.note ?? '')} type="button">+ Steer this</button>}
                   </p>
                 )}
-                {self && row.last && <time className="msg-time" dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>}
               </div>
             </div>
           )

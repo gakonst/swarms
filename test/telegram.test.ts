@@ -73,7 +73,7 @@ const node = (status: 'proven' | 'in flight') => ({
 
 test('a proof is announced to the channel with a button that opens its node', async () => {
   const message = Telegram.notice('https://swarms.example', 'TempoSwarmsBot', 'pnp', 'Does P = NP?', { at: 1, event: 'proven', node: node('proven'), seq: 1, text: '' })
-  assert.equal(message?.text, 'Does P = NP?\nProven, checked by Lean at abc1234: Parity is not in AC0\nhttps://swarms.example/s/pnp/n/3fa91c2b0d')
+  assert.equal(message?.text, 'Does P = NP?\nProven, checked by Lean at abc1234: Parity is not in AC0\nhttps://swarms.example/s/pnp/t/3fa91c2b0d')
   assert.deepEqual(message?.reply_markup.inline_keyboard[0]?.[0], { text: 'See the proof', url: 'https://t.me/TempoSwarmsBot?startapp=pnp__3fa91c2b0d' })
   assert.equal(Telegram.notice('https://swarms.example', undefined, 'pnp', 'Does P = NP?', { at: 1, event: 'progress', node: node('in flight'), seq: 2, text: '' }), undefined)
   const env = { SWARMS_URL: 'https://swarms.example' } as unknown as Cloudflare.Env

@@ -28,7 +28,7 @@ const Page = await import('../src/worker/Page.ts')
 const url = (path: string) => new Request(new URL(path, 'https://swarms.test'))
 
 test('nickname pages render, and reserved or hex names stay off them', () => {
-  for (const path of ['/pequalsnp', '/pequalsnp/', '/pequalsnp/chat', '/pequalsnp/code', '/pequalsnp/results', '/pequalsnp/n/0123456789', '/s/abc123abc123', '/new', '/board']) assert.ok(Page.rendered(path), path)
+  for (const path of ['/pequalsnp', '/pequalsnp/', '/pequalsnp/chat', '/pequalsnp/code', '/pequalsnp/results', '/pequalsnp/n/0123456789', '/pequalsnp/t/0123456789', '/s/abc123abc123/t/0123456789', '/s/abc123abc123', '/new', '/board']) assert.ok(Page.rendered(path), path)
   for (const path of ['/v1', '/api', '/assets', '/fonts', '/favicon.ico', '/0123456789ab', '/ab', '/pequalsnp/other', '/Pequalsnp']) assert.ok(!Page.rendered(path), path)
 })
 

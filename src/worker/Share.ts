@@ -89,7 +89,7 @@ export function plain(kind: 'about' | 'docs'): Subject {
 
 export function page(url: URL) {
   const path = url.pathname.replace(/\/$/, '') || '/'
-  const leaf = /^\/s\/([A-Za-z0-9_-]{1,64})\/n\/([a-z0-9]{1,16})$/.exec(path)
+  const leaf = /^\/s\/([A-Za-z0-9_-]{1,64})\/[nt]\/([a-z0-9]{1,16})$/.exec(path)
   if (leaf) return `s/${leaf[1]}/n/${leaf[2]}`
   const id = /^\/s\/([A-Za-z0-9_-]{1,64})(?:\/chat|\/code|\/results|\/board|\/about)?$/.exec(path)?.[1]
   if (id) return `s/${id}`
@@ -152,7 +152,7 @@ export function title(subject: Subject) {
 }
 
 export function playing(origin: string, subject: Subject) {
-  if (subject.kind === 'node') return `${origin}/x${path(subject)}`
+  if (subject.kind === 'node') return `${origin}/x${Nickname.path({ id: subject.swarm, nickname: subject.name })}/n/${subject.node}`
   if (subject.kind === 'swarm' || subject.kind === 'tree') return `${origin}/x/s/${encodeURIComponent(subject.swarm)}`
   if (subject.kind === 'ideas') return `${origin}/x?view=join`
   if (subject.kind === 'new' || subject.kind === 'idea') return `${origin}/x?view=start`
@@ -161,7 +161,7 @@ export function playing(origin: string, subject: Subject) {
 }
 
 export function path(subject: Subject) {
-  if (subject.kind === 'node') return `${Nickname.path({ id: subject.swarm, nickname: subject.name })}/n/${subject.node}`
+  if (subject.kind === 'node') return `${Nickname.path({ id: subject.swarm, nickname: subject.name })}/t/${subject.node}`
   if (subject.kind === 'swarm' || subject.kind === 'tree') return Nickname.path({ id: subject.swarm, nickname: subject.name })
   if (subject.kind === 'idea') return Nickname.usable(subject.problem) ? `/${subject.problem}` : `/new?q=${subject.problem}`
   return subject.kind === 'home' ? '/' : `/${subject.kind}`

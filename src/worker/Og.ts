@@ -83,7 +83,7 @@ export async function keyed(env: Cloudflare.Env, url: URL) {
   const named = Nickname.parse(url.pathname)
   if (!named) return undefined
   const found = await Store.called(env, named.name).catch(() => undefined)
-  if (found) return `s/${found.swarm}${named.tail.startsWith('/n/') ? named.tail : ''}`
+  if (found) return `s/${found.swarm}${/^\/[nt]\//.test(named.tail) ? `/n/${named.tail.slice(3)}` : ''}`
   return found === null && !named.tail ? (Share.problem(named.name) ? `new/${named.name}` : 'new') : undefined
 }
 

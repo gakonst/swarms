@@ -1,6 +1,7 @@
 import type { MouseEvent, ReactNode } from 'react'
 import type { Contribution, Detail } from '../shared/Api.ts'
 import { decimal, units } from '../shared/Memo.ts'
+import * as Prose from '../shared/Prose.ts'
 import { usd } from './format.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import { Avatar } from './Room.tsx'
@@ -23,10 +24,6 @@ export function tab(tail: string): Tab {
   if (tail.startsWith('/n/')) return 'board'
   const name = tail.replace(/^\//, '')
   return tabs.some(([key]) => key === name) ? (name as Tab) : 'chat'
-}
-
-export function side(view: Tab): Tab {
-  return view === 'chat' ? 'board' : view
 }
 
 export function at(base: string, view: Tab) {
@@ -73,29 +70,29 @@ export function Backers(props: { list: readonly Backer[]; size: number }) {
   )
 }
 
-export function Strip(props: { backers: readonly Backer[]; children?: ReactNode; latest?: ReactNode; onRide: ((anchor: HTMLElement) => void) | undefined; raised: string; riders: number; title: string }) {
+export function Strip(props: { backers: readonly Backer[]; children?: ReactNode; onRide: ((anchor: HTMLElement) => void) | undefined; raised: string; riders: number; title: string; topic: string }) {
   return (
-    <header aria-label="The swarm" className="strip">
+    <header aria-label="The channel" className="strip">
       <div className="strip-head">
-        <h1 className="strip-title"><Inline text={props.title} /></h1>
-        {props.onRide && <button className="btn btn-high strip-ride" onClick={(event) => props.onRide?.(event.currentTarget)} type="button">Ride it</button>}
-      </div>
-      <div className="strip-line">
+        <h1 className="strip-title"><i aria-hidden="true">#</i><Inline text={props.title} /></h1>
         <p className="strip-stats">
           <span className="strip-big"><b>{props.riders.toLocaleString('en-US')}</b> rider{props.riders === 1 ? '' : 's'}</span>
           <span className="strip-big"><b>{dollars(props.raised)}</b> raised</span>
           {props.children}
         </p>
+        {props.onRide && <button className="btn btn-high strip-ride" onClick={(event) => props.onRide?.(event.currentTarget)} type="button">Ride it</button>}
+      </div>
+      <div className="strip-line">
+        <p className="strip-topic" title={Prose.plain(props.topic)}><Inline text={props.topic} /></p>
         <Backers list={props.backers} size={3} />
       </div>
-      <p className="strip-latest">{props.latest ?? ' '}</p>
     </header>
   )
 }
 
-export function Tabs(props: { base: string; onShow: (view: Tab) => void; unread: number; view: Tab }) {
+export function Tabs(props: { base: string; board: string; onShow: (view: Tab) => void; unread: number; view: Tab }) {
   return (
-    <nav aria-label="Swarm" className="tabs" data-view={props.view}>
+    <nav aria-label="Channel" className="tabs" data-view={props.view}>
       {tabs.map(([key, label]) => (
         <a
           aria-current={props.view === key ? 'page' : undefined}
@@ -109,7 +106,7 @@ export function Tabs(props: { base: string; onShow: (view: Tab) => void; unread:
             props.onShow(key)
           }}
         >
-          {label}
+          {key === 'board' ? props.board : label}
           {key === 'chat' && props.unread > 0 && props.view !== 'chat' && <i className="tab-unread">{props.unread}</i>}
         </a>
       ))}

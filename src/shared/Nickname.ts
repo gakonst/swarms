@@ -89,7 +89,7 @@ export function path(swarm: { id: string; nickname?: string | null }) {
   return swarm.nickname ? `/${swarm.nickname}` : `/s/${encodeURIComponent(swarm.id)}`
 }
 
-const route = /^\/([a-z0-9-]+)(\/chat|\/code|\/results|\/board|\/about|\/n\/[0-9a-z]+)?\/?$/
+const route = /^\/([a-z0-9-]+)(\/chat|\/code|\/results|\/board|\/about|\/[nt]\/[0-9a-z]+)?\/?$/
 
 export function parse(path: string): { name: string; tail: string } | undefined {
   const [, name = '', tail = ''] = route.exec(path) ?? []
