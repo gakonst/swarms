@@ -8,6 +8,7 @@ import * as Grove from './grove.ts'
 import { Branches } from './Branches.tsx'
 import { Composer, lines, TreeChannel } from './Channel.tsx'
 import { Code } from './Code.tsx'
+import { Divider } from './Divider.tsx'
 import { ago } from './format.ts'
 import { Headline, Since } from './Headline.tsx'
 import { useMedia, useNow, usePoll } from './hooks.ts'
@@ -290,6 +291,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
           </section>
         </div>
       )}
+      <Divider hidden={(view !== 'board' && view !== 'chat') || !!held} />
       {seen.has('results') && (
         <div className="panel panel-page" hidden={view !== 'results' || !!held}>
           <Headline burn={burn.data?.burn} headline={head} id={id} last={last} now={now} />

@@ -14,6 +14,7 @@ import * as Prose from '../shared/Prose.ts'
 import { line, pill } from './Card.tsx'
 import { Code } from './Code.tsx'
 import { asked } from './Contribute.tsx'
+import { Divider } from './Divider.tsx'
 import { useMedia, useNow, usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Overlay } from './Overlay.tsx'
@@ -177,6 +178,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
       <div className="panel panel-page panel-board" hidden={(view !== 'board' && view !== 'chat') || !!branch}>
         <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'board' || view === 'chat'} />
       </div>
+      <Divider hidden={(view !== 'board' && view !== 'chat') || !!branch} />
       {seen.has('results') && (
         <div className="panel panel-page" hidden={view !== 'results' || !!branch}>
           <Results artifacts={shelf.data?.artifacts} branches={tree.data?.branches} progress={progress.data ? progress.data.progress : undefined} members={members} onChat={() => show('chat')} onOpen={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`, { keep: true })} onSteer={steers ? steer : undefined} swarm={swarm} updates={news.data?.updates} wishes={wishes} />

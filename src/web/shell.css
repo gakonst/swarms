@@ -297,3 +297,31 @@
   :is(.grove, .swarm-shell) .tabs .tab[data-tab='chat'] { display:none; }
   :is(.grove, .swarm-shell) .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
 }
+
+.split-handle { display:none; }
+
+@media (max-width:719px) {
+  :is(.grove, .swarm-shell):not([data-room]) > .split-handle:not([hidden]) { order:2; display:grid; flex:none; place-items:center; height:24px; border-top:1px solid var(--line); cursor:row-resize; touch-action:none; }
+  .split-handle > i { width:36px; height:4px; border-radius:2px; background:var(--rule); }
+  .split-handle:hover > i, .split-handle:focus-visible > i { background:var(--muted); }
+  .split-handle:focus-visible { outline:none; }
+  :is(.grove, .swarm-shell):not([data-room]) > .panel-chat { order:3; }
+  :is(.grove, .swarm-shell):not([data-room]):is([data-tab='chat'], [data-tab='board']) > .panel-board { flex:0 0 var(--board, 40%); border-top:0; border-bottom:0; }
+  :is(.grove, .swarm-shell):not([data-room]):is([data-tab='chat'], [data-tab='board']) > .panel-chat { flex:1 1 0; border-top:0; }
+  :is(.grove, .swarm-shell) .tabs .tab[data-tab='chat'] { display:none; }
+  :is(.grove, .swarm-shell) .tabs[data-view='chat'] .tab[data-tab='board'] { border-bottom-color:var(--fg); color:var(--fg); }
+}
+
+
+@media (max-width:899px) {
+  .channel-head { grid-template-columns:minmax(0, 1fr) auto auto; grid-template-areas:'title title title' 'stats stats stats' 'topic add ride'; align-items:center; gap:4px 8px; }
+  .channel-top, .channel-acts { display:contents; }
+  .channel-title { grid-area:title; font-size:22px; }
+  .channel-stats { grid-area:stats; }
+  .channel-topic { grid-area:topic; }
+  .channel-acts .channel-ride { grid-area:ride; }
+  .channel-acts .channel-add { grid-area:add; }
+  .channel-acts .btn { flex:none; height:32px; padding:0 12px; }
+  .channel-head:not(:has(.channel-add)) { grid-template-areas:'title title title' 'stats stats stats' 'topic topic ride'; }
+}
+
