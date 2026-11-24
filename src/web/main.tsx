@@ -2,7 +2,7 @@ import { createRoot, hydrateRoot } from 'react-dom/client'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
 import { App } from './App.tsx'
-import { highlight } from './Markdown.tsx'
+import { highlight, read } from './Markdown.tsx'
 import { preload } from './pages.ts'
 import '@pierre/words/styles.css'
 import './style.css'
@@ -42,7 +42,8 @@ const route = /^\/s\/[^/]+(\/chat|\/code|\/results|\/board|\/about|\/[ntc]\/[^/]
           : undefined
 const coding = route && /\/code\/?$/.test(path) ? import('./Code.tsx').then((module) => preload('code', module.Code)) : undefined
 const root = document.getElementById('root')!
-const coded = root.querySelector('[data-markdown="code-block"]') ? highlight() : undefined
+if (root.querySelector('[data-markdown="code-block"]')) void highlight()
+void read().catch(() => {})
 
-if (root.firstChild && globalThis.__SWARMS_BOOT__) void Promise.all([route, coded, coding]).catch(() => {}).then(() => hydrateRoot(root, <App />, { onRecoverableError: (error) => console.warn('Hydration', error) }))
+if (root.firstChild && globalThis.__SWARMS_BOOT__) void Promise.all([route, coding]).catch(() => {}).then(() => hydrateRoot(root, <App />, { onRecoverableError: (error) => console.warn('Hydration', error) }))
 else createRoot(root).render(<App />)
