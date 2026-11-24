@@ -86,6 +86,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const [riding, setRiding] = useState<{ anchor?: HTMLElement | undefined; nid: string } | undefined>()
   const [composing, setComposing] = useState<string | undefined>()
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set())
+  const [settled, setSettled] = useState<string | undefined>()
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<{ members: Member[] }>(`room:${id}`)?.members ?? [])
   const swarm = detail.data ?? props.detail
   useShown(swarm)
@@ -171,7 +172,8 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
       if (top?.parent && !grove.nodes[top.parent]) await climb(top.parent, steps + 1)
       else if (top?.parent) setOpen((current) => new Set([...current, top.parent!]))
     }
-    void climb(node.data.parent, 0)
+    const climbed = selected
+    void climb(node.data.parent, 0).finally(() => alive && setSettled(climbed))
     return () => {
       alive = false
     }
@@ -284,7 +286,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
         <div className="grove-body panel panel-board" hidden={view !== 'board' && view !== 'chat'}>
           <section aria-label="Threads" className="grove-tree">
             <Filters filter={filter} nodes={nodes} onFilter={filtered} />
-            <div className="grove-scroll" ref={scroller}>
+            <div className="grove-scroll" data-finding={(thread && !nodes[selected] && !node.error && settled !== selected) || undefined} ref={scroller}>
               <Branches
                 composing={composing}
                 config={props.config}
