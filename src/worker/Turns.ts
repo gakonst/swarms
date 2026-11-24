@@ -306,6 +306,7 @@ export async function advance(self: Swarm, found: Store.Row) {
   const sent = await Gateway.prompt(self.env, row.id, agent.id, { ...(credentials ? { credentials } : {}), id: claim, prompt, steer: false })
   if (!sent.ok && credentials && sent.status === 400) {
     await Store.host(self.env, row.id, null)
+    self.hosted(row.id)
     return Date.now()
   }
   if (!sent.ok && sent.status !== 409) {

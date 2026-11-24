@@ -247,6 +247,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.touches += 1
   }
 
+  hosted(swarm: string) {
+    this.marked += 1
+    this.kv.put('id', swarm)
+    this.changed('detail')
+  }
+
   stamp(): Stamp {
     const tuple = `${Store.epoch(this.kv.get<string>('id') ?? '')}.${this.marked}.${this.touches}`
     const now = Date.now()

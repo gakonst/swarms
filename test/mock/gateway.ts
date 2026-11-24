@@ -34,7 +34,7 @@ type Sub = {
   task: string
 }
 
-type Turn = { createdAt: number; error?: string; prompt: string; request_id: string; spent: bigint; status: string }
+type Turn = { createdAt: number; credentials?: string; error?: string; prompt: string; request_id: string; spent: bigint; status: string }
 
 export type Event = { created_at: number; event: Record<string, unknown>; request_id?: string; seq: number }
 
@@ -130,6 +130,7 @@ export async function start(options: Options = {}) {
   const errors: string[] = []
   const settings = { dispatcherBudget: options.dispatcherBudget, dispatcherUsd: options.dispatcherUsd ?? 0.0005, spawnRoute: options.spawnRoute ?? true, unsolicited: options.unsolicited ?? false }
   const keyed = new Map<string, number>()
+  const owned = new Map<string, { claude: string; keys: Map<string, { added_at: number; hint: string }> }>()
   let agentCount = 0
   let closing = false
 
@@ -487,6 +488,33 @@ export async function start(options: Options = {}) {
       return { backings: found.backings, left: '0.000000', spent: '0.000000' }
     }
 
+    const credential = /^\/v1\/credentials\/([^/]+)(\/keys\/(anthropic|openai)|\/plans\/claude(\/complete)?)?$/.exec(path)
+    if (credential) {
+      const subject = decodeURIComponent(credential[1] ?? '')
+      const own = owned.get(subject) ?? { claude: 'none', keys: new Map() }
+      owned.set(subject, own)
+      const provider = credential[3]
+      if (provider && method === 'PUT') {
+        const typed = typeof body['key'] === 'string' ? body['key'] : ''
+        if (!/^sk-/.test(typed) || /bad/.test(typed)) throw new Problem(400, 'invalid_request', `The ${provider} key was refused by ${provider}.`)
+        const kept = { added_at: Date.now(), hint: typed.slice(-4) }
+        own.keys.set(provider, kept)
+        return { ...kept, provider }
+      }
+      if (provider && method === 'DELETE') return { deleted: own.keys.delete(provider) }
+      if (credential[4] && method === 'POST') {
+        if (body['code'] !== 'mock-code') throw new Problem(400, 'invalid_request', 'That code is not the one Claude showed.')
+        own.claude = 'authenticated'
+        return { state: own.claude }
+      }
+      if (credential[2] && method === 'POST') return { authorization_url: 'https://claude.ai/oauth/authorize?mock=1', expires_at: Date.now() + 600_000 }
+      if (credential[2] && method === 'DELETE') {
+        own.claude = 'none'
+        return { deleted: true }
+      }
+      return { keys: [...own.keys].map(([each, kept]) => ({ ...kept, provider: each })), plans: { claude: { state: own.claude } }, subject }
+    }
+
     if (path === '/v1/teams/create') return { address: Chain.address('team:' + String(body['name'])) }
     if (path === '/v1/teams/members') return { memberBudget: null, members: [] }
     if (path.startsWith('/v1/teams/')) return { removed: true }
@@ -534,7 +562,7 @@ export async function start(options: Options = {}) {
         const request = typeof body['id'] === 'string' && body['id'] ? body['id'] : `${agent.id}:${agent.turns.size + 1}`
         const known = agent.turns.get(request)
         if (known) return { request_id: known.request_id, status: known.status }
-        const turn: Turn = { createdAt: Date.now(), prompt: String(body['prompt'] ?? ''), request_id: request, spent: 0n, status: 'queued' }
+        const turn: Turn = { createdAt: Date.now(), ...(typeof body['credentials'] === 'string' ? { credentials: body['credentials'] } : {}), prompt: String(body['prompt'] ?? ''), request_id: request, spent: 0n, status: 'queued' }
         agent.turns.set(request, turn)
         setTimeout(() => void play(agent, turn).catch((error: unknown) => errors.push(String(error))), 5)
         return { request_id: request, status: 'queued' }
@@ -719,7 +747,7 @@ export async function start(options: Options = {}) {
     name: agent.name,
     offer: agent.subagents,
     subagents: [...agent.subs.values()].map((each) => ({ ...raw(agent, each), messages: each.messages.map(({ message, priority, read }) => ({ message, priority, read })) })),
-    turns: [...agent.turns.values()].map(({ prompt, request_id, status }) => ({ prompt, request_id, status })),
+    turns: [...agent.turns.values()].map(({ credentials, prompt, request_id, status }) => ({ credentials: credentials ?? null, prompt, request_id, status })),
   })
 
   const server = createServer((request, response) => {

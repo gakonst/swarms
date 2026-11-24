@@ -116,5 +116,9 @@ export async function open() {
     fs.rmSync(profile, { force: true, recursive: true })
   }
 
-  return { close, send, shoot }
+  const on = (method: string, listener: (params: never) => void) => {
+    listeners.push((heard, params) => heard === method && listener(params as never))
+  }
+
+  return { close, on, send, shoot }
 }

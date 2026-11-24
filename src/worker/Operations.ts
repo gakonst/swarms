@@ -913,10 +913,12 @@ export async function hostAi(env: Cloudflare.Env, input: Input<'ownAi'>, address
   const row = await Store.find(env, parsed.value.swarm)
   if (!row) return missing()
   if (row.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived: nothing runs on it.')
+  if (row.form === 'tree' && parsed.value.on) return Problem.fail(409, 'conflict', "A tree swarm's items run on its own money: your own AI runs agent swarms only.")
   const rider = address.toLowerCase() as Address
   if (!parsed.value.on) {
     if (row.ai !== rider) return Problem.fail(403, 'access_denied', "Only the rider whose AI runs this swarm hands it back.")
     await Store.host(env, row.id, null)
+    await stub(env, row.id).hosted(row.id)
     return Problem.ok(Store.summary({ ...row, ai: null }))
   }
   const members = await Store.members(env, row.id)
@@ -928,6 +930,7 @@ export async function hostAi(env: Cloudflare.Env, input: Input<'ownAi'>, address
   if (!runsOn(own.value, harness))
     return Problem.fail(409, 'conflict', `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect an Anthropic key or your Claude plan' : 'Codex: connect an OpenAI key'} under Use your own AI first.`)
   await Store.host(env, row.id, rider)
+  await stub(env, row.id).hosted(row.id)
   return Problem.ok(Store.summary({ ...row, ai: rider, ai_name: (await Store.account(env, rider)).name }))
 }
 
