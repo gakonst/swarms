@@ -15,8 +15,19 @@ export function Overlay(props: { anchor?: HTMLElement | null | undefined; childr
   useEffect(() => {
     setMounted(true)
     const escape = (event: KeyboardEvent) => event.key === 'Escape' && close.current()
+    const mark = Math.random().toString(36).slice(2)
+    const marked = () => (history.state as { overlay?: string } | null)?.overlay === mark
+    const popped = () => {
+      if (!marked()) close.current()
+    }
+    history.pushState({ ...(history.state as object | null), overlay: mark }, '')
     addEventListener('keydown', escape)
-    return () => removeEventListener('keydown', escape)
+    addEventListener('popstate', popped)
+    return () => {
+      removeEventListener('keydown', escape)
+      removeEventListener('popstate', popped)
+      if (marked()) history.back()
+    }
   }, [])
   useLayoutEffect(() => {
     const own = card.current
