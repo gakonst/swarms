@@ -11,5 +11,6 @@
   .general .welcome-mark, .general .welcome-go, .general .welcome-hot { display:none; }
   .general .welcome-title { font-size:26px; line-height:1.08; }
   .general .welcome-text { font-size:15px; line-height:1.4; }
+  .general-chat > .chat-list > .welcome:first-child, .channel-list > .channel-intro:first-child { margin-top:0; }
 }
 

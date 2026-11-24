@@ -1016,7 +1016,7 @@ An agent swarm's board drew its lead's brief first and redrew it once its surfac
 
 A thread on a phone shifted twice as it loaded (CLS 0.05 to 0.17): its crumbs appeared only once the tree arrived and wrapped to two lines, and the channel under the full-screen sheet kept laying out behind it. The crumbs now hold their row from the first frame whenever the item has a parent and scroll sideways on one line, and below 900 px everything in the page but the sheet and its overlays is hidden while a thread is open: CLS 0 on the thread, its ride and its add overlays at 390 and 568. The same delta could arrive twice in a thread's lines, which React warned about on every thread; lines keep the first.
 
-Below 600 px #general's welcome is its title and one paragraph: the # badge, the two buttons and the hot list repeated what the problems strip above and the strip's Start button already show, and the hot list arriving late moved the welcome (CLS 0.025 at 390, 0.062 at 568, now 0).
+Below 600 px #general's welcome is its title and one paragraph: the # badge, the two buttons and the hot list repeated what the problems strip above and the strip's Start button already show, and the hot list arriving late moved the welcome (CLS 0.025 at 390, 0.062 at 568, now 0). It also starts at the top of the chat, as a channel's intro does: with few messages the chat pinned it to the bottom and left half the phone blank above it, the gap Georgios saw at about 570 px (537 px blank at 568×1024 on an empty site, now below the welcome where the next messages land).
 
 ## Desktop hill-climb (2026-11-24)
 
