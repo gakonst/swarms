@@ -21,11 +21,13 @@ export type World = {
   artifact?: string
   branch?: string
   command?: number
+  job?: number
   machine?: string
   message?: number
   name?: string
   node?: string
   rider?: string
+  socket?: string
   swarm: string
   tree?: string
 }
@@ -167,6 +169,10 @@ async function socket(url: string) {
   const started = now()
   return new Promise<{ ms: number; note: string; status: number | 'error' }>((done) => {
     const ws = new WebSocket(url.replace(/^http/, 'ws'))
+    let opened = 0
+    ws.addEventListener('open', () => {
+      opened = now() - started
+    })
     const timer = setTimeout(() => {
       ws.close()
       done({ ms: now() - started, note: 'no message in 6 s', status: 'error' })
@@ -179,7 +185,7 @@ async function socket(url: string) {
         type = String((JSON.parse(text) as { type?: unknown }).type ?? '')
       } catch {}
       ws.close()
-      done({ ms: now() - started, note: type ? `first: ${type}` : `first: ${text.slice(0, 40)}`, status: type === 'welcome' ? 101 : 'error' })
+      done({ ms: now() - started, note: `open in ${Math.round(opened)} ms, then ${type ? `first: ${type}` : `first: ${text.slice(0, 40)}`}`, status: type === 'welcome' ? 101 : 'error' })
     })
     ws.addEventListener('error', () => {
       clearTimeout(timer)
@@ -188,14 +194,14 @@ async function socket(url: string) {
   })
 }
 
-export async function call(root: string, probe: Probe, token: string | undefined, spec: Spec | undefined, samples: number): Promise<Row> {
+export async function call(root: string, probe: Probe, token: string | undefined, spec: Spec | undefined, samples: number, sockets = root): Promise<Row> {
   const signed = probe.signed ?? 'out'
   const route = probe.route ?? probe.path
   const headers: Record<string, string> = { accept: probe.accept ?? (probe.kind === 'html' ? 'text/html' : 'application/json') }
   if (signed === 'in' && token) headers['authorization'] = `Bearer ${token}`
   const url = root + probe.path
   if (probe.kind === 'socket') {
-    const opened = await socket(url)
+    const opened = await socket(sockets + probe.path)
     return { method: 'WS', ms: Math.round(opened.ms), note: opened.note, ok: opened.status === 101, route, samples: [opened.ms], server: undefined, signed, status: opened.status }
   }
   if (probe.skip) return { method: probe.method, ms: 0, note: `skipped: ${probe.skip}`, ok: true, route, samples: [], server: undefined, signed, status: 'skip' }
@@ -272,16 +278,18 @@ export async function discover(root: string): Promise<World> {
   let swarm = agents[0]?.id ?? swarms[0]!.id
   let machine: string | undefined
   for (const candidate of agents.slice(0, 12)) {
-    const found = await json<{ machines: { name: string; runs: { count: number } }[] }>(root, `/v1/swarms/${candidate.id}/machines`)
-    const busy = found?.machines.find((each) => each.runs.count > 0)
+    const found = await json<{ machines: { kind: string; name: string; runs: { count: number } | null }[] }>(root, `/v1/swarms/${candidate.id}/machines`)
+    const busy = found?.machines.find((each) => each.kind === 'sandbox' && (each.runs?.count ?? 0) > 0)
     if (busy) {
       swarm = candidate.id
       machine = busy.name
       break
     }
   }
+  const page = await fetch(root + '/', { headers: { accept: 'text/html' } }).then((response) => response.text(), () => '')
+  const socketed = /"socket":"(wss?:\/\/[^"]+)"/.exec(page)?.[1]
   const [commands, chat, branches, artifacts, nodes] = await Promise.all([
-    machine ? json<{ commands: { seq: number }[] }>(root, `/v1/swarms/${swarm}/machines/${encodeURIComponent(machine)}/commands?limit=1`) : undefined,
+    machine ? json<{ commands: { log: string | null; seq: number }[] }>(root, `/v1/swarms/${swarm}/machines/${encodeURIComponent(machine)}/commands?limit=100`) : undefined,
     json<{ messages: { id: number }[] }>(root, `/v1/swarms/${swarm}/chat`),
     json<{ branches: { id: string }[] }>(root, `/v1/swarms/${swarm}/branches`),
     json<{ artifacts: { url: string }[] }>(root, `/v1/swarms/${swarm}/artifacts`),
@@ -293,11 +301,13 @@ export async function discover(root: string): Promise<World> {
     ...(artifact ? { artifact } : {}),
     ...(branches?.branches[0] ? { branch: branches.branches[0].id } : {}),
     ...(commands?.commands[0] ? { command: commands.commands[0].seq } : {}),
+    ...(commands?.commands.find((each) => each.log) ? { job: commands.commands.find((each) => each.log)!.seq } : {}),
     ...(machine ? { machine } : {}),
     ...(chat?.messages.length ? { message: chat.messages[chat.messages.length - 1]!.id } : {}),
     ...(named ? { name: named } : {}),
     ...(nodes?.nodes[0] ? { node: nodes.nodes[0].id } : {}),
     ...(listed?.funders[swarm]?.[0] ? { rider: listed.funders[swarm]![0]!.who.address } : {}),
+    ...(socketed ? { socket: socketed.replace(/^ws/, 'http') } : {}),
     ...(tree ? { tree } : {}),
   }
 }
@@ -406,7 +416,9 @@ export function probes(world: World): Probe[] {
           ...(world.command !== undefined
             ? [
                 { kind: 'json' as const, method: 'GET', path: `${v}/machines/${m}/commands/${world.command}`, route: '/v1/swarms/:id/machines/:machine/commands/:seq', schema: 'GET /v1/swarms/{id}/machines/{machine}/commands/{seq}', status: read },
-                { kind: 'json' as const, method: 'GET', path: `${v}/machines/${m}/commands/${world.command}/log`, route: '/v1/swarms/:id/machines/:machine/commands/:seq/log', schema: 'GET /v1/swarms/{id}/machines/{machine}/commands/{seq}/log', status: [200, 404] },
+                world.job !== undefined
+                  ? { kind: 'json' as const, method: 'GET', path: `${v}/machines/${m}/commands/${world.job}/log`, route: '/v1/swarms/:id/machines/:machine/commands/:seq/log', schema: 'GET /v1/swarms/{id}/machines/{machine}/commands/{seq}/log', status: read }
+                  : { kind: 'json' as const, method: 'GET', path: `${v}/machines/${m}/commands/${world.command}/log`, route: '/v1/swarms/:id/machines/:machine/commands/:seq/log (not a job)', status: [404] },
               ]
             : []),
         ]
@@ -550,7 +562,7 @@ function argued(tool: Tool, world: World) {
     node: world.node,
     q: 'proof',
     query: 'proof',
-    seq: world.command,
+    seq: tool.name === 'swarm_machine_job' ? world.job : world.command,
     swarm: tree && world.tree ? world.tree : world.swarm,
     timeout: 1,
     who: world.rider,
@@ -603,7 +615,7 @@ export async function run(options: { root?: string | undefined; samples?: number
   const world = await discover(root)
   const list = [...probes(world), ...(token ? signedIn(world) : [])]
   const rows: Row[] = []
-  for (const probe of list) rows.push(await call(root, probe, token, spec, samples))
+  for (const probe of list) rows.push(await call(root, probe, token, spec, samples, world.socket))
   rows.push(...(await mcp(root, world)))
   return { root, rows, spec: !!spec, world }
 }
