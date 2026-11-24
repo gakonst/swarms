@@ -254,6 +254,18 @@ export function ghosts(swarm: string, parent: string): readonly { act: Act; owed
   return [...found.values()]
 }
 
+export function resume() {
+  for (const owed of owing()) if (flow(home(owed)).at === 'owed') void retry(home(owed))
+}
+
+if (typeof document !== 'undefined') {
+  addEventListener('beforeunload', (event) => {
+    if ([...acts.values()].some((act) => act.at === 'creating' || act.at === 'paying')) event.preventDefault()
+  })
+  addEventListener('online', resume)
+  setTimeout(resume, 1_000)
+}
+
 function useVersion() {
   return useSyncExternalStore(useCallback((listener: () => void) => watch('*', listener), []), () => version, () => 0)
 }
