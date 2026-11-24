@@ -4,6 +4,7 @@ import * as Memo from '../shared/Memo.ts'
 import * as Setup from '../shared/Setup.ts'
 import * as Tree from '../shared/Tree.ts'
 import { clip, redact } from '../shared/Trail.ts'
+import * as Chat from './Chat.ts'
 import * as Flow from './Flow.ts'
 import * as Gateway from './Gateway.ts'
 import * as Nodes from './Nodes.ts'
@@ -25,7 +26,7 @@ export type Plant = {
   swarm: string
 }
 
-export type Proposal = { by: string; form: Tree.Form; parent: string; statement: string | null; title: string; words: string }
+export type Proposal = { by: string; form: Tree.Form; parent: string; said?: { mentions: Address[]; text: string } | null; statement: string | null; title: string; words: string }
 
 export type Fault = { detail: string; status: 400 | 403 | 404 | 409 | 410 }
 
@@ -196,6 +197,7 @@ export async function pledge(self: Swarm, input: { amount: bigint; contributor: 
     if (input.amount >= Nodes.units(self).ideaMin && parent && !Work.terminal(parent.phase)) {
       await Nodes.post(self, { by: proposal.by, form: proposal.form, needs: [], nid: input.nid, parent: proposal.parent, statement: proposal.statement, title: proposal.title, words: proposal.words })
       self.kv.delete('proposal:' + input.nid)
+      if (proposal.said) Chat.speak(self, proposal.by as Address, redact(proposal.said.text), proposal.said.mentions, null, null, { node: input.nid })
     } else target = Flow.free
   } else if (!found.nodes.has(target)) target = Nodes.root
   const task = target === Flow.free ? undefined : found.nodes.get(target) ?? (await self.board.task(Nodes.nodeId(target))) ?? undefined

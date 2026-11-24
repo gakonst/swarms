@@ -219,6 +219,7 @@ export function emit(self: Swarm, nid: string, event: Event, text: string) {
   const at = Date.now()
   const seq = Number(self.ctx.storage.sql.exec<{ seq: number }>('INSERT INTO tree_deltas (at, node, event, text) VALUES (?, ?, ?, ?) RETURNING seq', at, nid, event, redact(text)).one().seq)
   changed(self)
+  if (Chat.threadedEvents.has(event)) Chat.follow(self, nid, text)
   self.ctx.waitUntil(
     Store.find(self.env, swarm(self))
       .then((row) => row && self.beacon(row))

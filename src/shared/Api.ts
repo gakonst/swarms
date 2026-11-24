@@ -269,15 +269,27 @@ export type Artifact = {
 
 export type Shown = { slug: string; title: string }
 
+export type Reaction = { emoji: string; who: `0x${string}`[] }
+
+export type Replies = { at: number; count: number; who: (`0x${string}` | null)[] }
+
 export type Said = {
   artifact: Shown | null
   at: number
   author: `0x${string}` | null
   id: number
   mentions: `0x${string}`[]
+  node?: string
+  parent?: number
+  reactions?: Reaction[]
+  replies?: Replies
   steer: Steer | null
   text: string
 }
+
+export type Replied = { me: Me | null; members: Member[]; next: number; parent: Said; replies: Said[] }
+
+export type Reacted = { id: number; reactions: Reaction[] }
 
 export type Room = { me: Me | null; members: Member[]; messages: Said[]; next: number }
 
@@ -289,6 +301,8 @@ export type Pulse = { hands: Hand[]; reason: string | null; swarm: Summary; why:
 
 export type Chatter =
   | { message: Said; type: 'said' }
+  | { id: number; reactions: Reaction[]; type: 'reacted' }
+  | { id: number; replies: Replies; type: 'replies' }
   | { online: `0x${string}`[]; type: 'presence'; watching: number }
   | { address: `0x${string}`; type: 'typing' }
   | { type: 'welcome'; version: string }

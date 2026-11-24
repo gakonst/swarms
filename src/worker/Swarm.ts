@@ -8,6 +8,7 @@ import * as Memo from '../shared/Memo.ts'
 import * as Shelf from '../shared/Artifact.ts'
 import * as Site from '../shared/Site.ts'
 import * as Mention from '../shared/Mention.ts'
+import * as Reaction from '../shared/Reaction.ts'
 import * as About from './About.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
@@ -67,6 +68,7 @@ export type Stamp = { quiet: boolean; version: string }
 export type Spoken = {
   author: Address
   mentions: Address[]
+  parent?: number | undefined
   steer: { amount: string; context?: string; note: string; noteId: string } | null
   swarm: string
   text: string
@@ -133,6 +135,7 @@ const schema = [
   "CREATE VIRTUAL TABLE IF NOT EXISTS feed_search USING fts5(body, content='', contentless_delete=1, tokenize='porter unicode61 remove_diacritics 2')",
   ...Runs.schema,
   ...Nodes.schema,
+  ...Chat.schema,
 ]
 
 const columns = [
@@ -142,9 +145,10 @@ const columns = [
   ['feed', 'event', 'ALTER TABLE feed ADD COLUMN event INTEGER'],
   ['chat', 'artifact', 'ALTER TABLE chat ADD COLUMN artifact TEXT'],
   ['steered', 'weight', 'ALTER TABLE steered ADD COLUMN weight TEXT'],
+  ...Chat.columns,
 ] as const
 
-const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)', `CREATE INDEX IF NOT EXISTS feed_machines ON feed (seq) WHERE ${Feed.machined}`, ...Runs.indexes]
+const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)', `CREATE INDEX IF NOT EXISTS feed_machines ON feed (seq) WHERE ${Feed.machined}`, ...Runs.indexes, ...Chat.indexes]
 
 const healMs = 5 * 60_000
 
@@ -772,7 +776,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return { messages: Chat.messages(this, query), stamp }
   }
 
-  async say(input: Spoken): Promise<Said> {
+  async say(input: Spoken): Promise<Said | null> {
+    const parent = input.parent === undefined ? undefined : Chat.root(this, input.parent)
+    if (parent === null) return null
     this.marked += 1
     this.kv.put('id', input.swarm)
     let steer: Steer | null = null
@@ -792,8 +798,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       }
     }
     if (steer) this.changed('detail', 'members')
-    const said = await Chat.speak(this, input.author, redact(input.text), input.mentions, steer)
-    return said
+    return Chat.speak(this, input.author, redact(input.text), input.mentions, steer, null, parent === undefined ? {} : { parent })
+  }
+
+  react(input: { author: Address; emoji: string; message: number; on: boolean }) {
+    return Chat.react(this, input)
+  }
+
+  replies(id: number, query: { after: number; limit: number }) {
+    return Chat.thread(this, id, query)
   }
 
   tell(notes: Note[]): Note[] {
@@ -868,11 +881,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return { ok: true, value: closed.value.agents.map(Gateway.subagent) }
   }
 
-  paced(address: Address) {
+  paced(address: Address, kind: 'said' | 'reacted' = 'said') {
     const now = Date.now()
-    const key = 'said:' + address.toLowerCase()
+    const key = kind + ':' + address.toLowerCase()
     const recent = (this.kv.get<number[]>(key) ?? []).filter((at) => at > now - Clock.minuteMs)
-    if (recent.length >= Chat.postsPerMinute) return false
+    if (recent.length >= (kind === 'said' ? Chat.postsPerMinute : Reaction.perMinute)) return false
     this.kv.put(key, [...recent, now])
     return true
   }

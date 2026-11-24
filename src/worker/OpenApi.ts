@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import * as Reaction from '../shared/Reaction.ts'
 import * as Setup from '../shared/Setup.ts'
 import * as Feedback from './Feedback.ts'
 import * as Machines from './Machines.ts'
@@ -28,6 +29,10 @@ function object(properties: Record<string, unknown>, description?: string): Json
     required: Object.keys(properties),
     type: 'object',
   }
+}
+
+function optional(schema: Json, keys: readonly string[]): Json {
+  return { ...schema, required: (schema['required'] as string[]).filter((key) => !keys.includes(key)) }
 }
 
 function input(schema: z.ZodType): Json {
@@ -412,17 +417,38 @@ const schemas = {
     "One of the swarm agent's subagents. A branch is one the agent started itself, with the subagents under it.",
   ),
   Branches: object({ branches: { items: ref('Branch'), type: 'array' }, steering: string }),
-  Said: object(
+  Said: optional(object(
     {
       at: time,
       author: nullable({ ...address, description: 'The backer who wrote it; null for the swarm\'s own messages about money, its agent starting and stopping, and its updates.' }),
       id: integer,
       mentions: { description: 'Backers the message mentions with @<handle>.', items: address, type: 'array' },
+      node: { description: "The board item this message made: it was posted with the item's proposal once riders paid for it, and the item's run updates arrive as its replies.", type: 'string' },
+      parent: { description: 'The thread this reply is in: the id of its first message. Absent on messages in the room itself.', type: 'integer' },
+      reactions: { description: 'Emoji reactions, each with who reacted, oldest emoji first. Absent without any.', items: ref('Reaction'), type: 'array' },
+      replies: { ...ref('Replies'), description: 'Its thread, when it has replies.' },
       steer: nullable(ref('Steer')),
       text: string,
     },
-    'A message in a swarm\'s room.',
+    'A message in a swarm\'s room, or a reply in one of its threads.',
+  ), ['node', 'parent', 'reactions', 'replies']),
+  Reaction: object({ emoji: { enum: [...Reaction.emojis], type: 'string' }, who: { description: 'Who reacted with it, oldest first.', items: address, type: 'array' } }, 'One emoji on a message and who reacted with it.'),
+  Replies: object(
+    {
+      at: time,
+      count: integer,
+      who: { description: 'The latest repliers, newest first, at most 3; null is the swarm itself posting its runs\' updates.', items: nullable(address), type: 'array' },
+    },
+    'A thread under a message: how many replies, when the last came and who wrote the latest.',
   ),
+  Replied: object({
+    me: nullable({ ...ref('Me'), description: 'The signed-in caller, when the request carries a session token.' }),
+    members: { items: ref('Member'), type: 'array' },
+    next: { description: 'The newest reply id; pass it as after to read what comes next.', type: 'integer' },
+    parent: ref('Said'),
+    replies: { items: ref('Said'), type: 'array' },
+  }),
+  Reacted: object({ id: integer, reactions: { items: ref('Reaction'), type: 'array' } }),
   Steer: object(
     {
       amount: { ...usd, description: "What the author put behind the idea from their backing." },
@@ -943,6 +969,30 @@ export function document(origin: string) {
           summary: 'Post to the room',
         },
       },
+      '/v1/swarms/{id}/chat/{message}': {
+        get: {
+          description: "A thread in the room: its first message and its replies, oldest first, with the room's members and, with a session token, the caller's standing. Any reply's id reads the same thread. Post a reply with POST /v1/swarms/{id}/chat and parent. A board item made from the room has the message that proposed it as its thread, and its runs post their updates there.",
+          operationId: 'getThread',
+          parameters: [
+            swarm,
+            parameter('message', 'path', { minimum: 1, type: 'integer' }, 'The first message of the thread, or any reply in it.'),
+            parameter('after', 'query', { default: 0, minimum: 0, type: 'integer' }, 'Replies after this id.'),
+            parameter('limit', 'query', { default: 200, maximum: 200, minimum: 1, type: 'integer' }, 'Replies at most.'),
+          ],
+          responses: { ...ok(ref('Replied'), 'The thread.'), ...failures(400, 404) },
+          summary: 'Read a thread',
+        },
+      },
+      '/v1/swarms/{id}/chat/{message}/reactions': {
+        post: {
+          description: `Adds (on true, the default) or takes back (on false) the signed-in backer's emoji reaction on a message or a reply; either is idempotent. emoji is one of ${Reaction.emojis.join(' ')}. Everyone in the room sees the message's reactions change live on its socket. At most ${Reaction.perMinute} a minute.`,
+          operationId: 'react',
+          parameters: [swarm, parameter('message', 'path', { minimum: 1, type: 'integer' }, 'The message or reply.')],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.react.omit({ message: true, swarm: true })) } }, required: true },
+          responses: { ...ok(ref('Reacted'), "The message's reactions after the change."), ...failures(400, 401, 403, 404, 410, 429) },
+          summary: 'React to a message',
+        },
+      },
       '/v1/swarms/{id}/team': {
         get: {
           description:
@@ -1036,7 +1086,7 @@ export function document(origin: string) {
       '/v1/swarms/{id}/chat/live': {
         get: {
           description:
-            'A WebSocket. The server sends {type: said, message} for every new message, {type: presence, online, watching} as people come and go, and {type: typing, address}. Send {type: hello, token} to be counted online as the session\'s backer, {type: typing} while writing, and the text ping to get pong.',
+            'A WebSocket. The server sends {type: said, message} for every new message (a reply in a thread carries parent, and is followed by {type: replies, id, replies} with its thread\'s new count and latest repliers), {type: reacted, id, reactions} when a message\'s reactions change, {type: presence, online, watching} as people come and go, and {type: typing, address}. Send {type: hello, token} to be counted online as the session\'s backer, {type: typing} while writing, and the text ping to get pong.',
           operationId: 'chatLive',
           parameters: [swarm],
           responses: { '101': { description: 'Switching to the WebSocket.' }, ...failures(400, 404) },

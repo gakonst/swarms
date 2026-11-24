@@ -30,6 +30,8 @@ import type {
   Page,
   Posted,
   Prepared,
+  Reacted,
+  Replied,
   Room,
   Snapshot,
   Update,
@@ -64,6 +66,7 @@ import * as Credit from '../shared/Credit.ts'
 import * as Door from '../shared/Door.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
+import * as Reaction from '../shared/Reaction.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
@@ -343,6 +346,7 @@ export const schema = {
       .describe(
         "With @swarm in text: how many dollars of the author's backing not yet behind a note go behind this idea, as a decimal string or a number.",
       ),
+    parent: z.coerce.number().int().min(1).optional().describe("Reply in this message's thread instead of the room; a reply to a reply goes in the same thread. Replies carry no @swarm steer."),
     swarm: id,
     text: z
       .string()
@@ -350,6 +354,18 @@ export const schema = {
       .min(1)
       .max(Mention.maxText)
       .describe('The message. @<handle> mentions a backer. @swarm steers the swarm with the rest of the text as a note, weighted by steer.'),
+  }),
+  react: z.object({
+    emoji: z.string().refine(Reaction.known, `emoji is one of ${Reaction.emojis.join(' ')}`).describe(`One of ${Reaction.emojis.join(' ')}.`),
+    message: z.coerce.number().int().min(1).describe('The message, a top-level one or a reply in a thread.'),
+    on: z.boolean().default(true).describe('true adds your reaction, false takes it back; either way the call is idempotent.'),
+    swarm: id,
+  }),
+  replies: z.object({
+    after: z.coerce.number().int().min(0).default(0).describe('Return the replies after this id; 0 returns them from the first.'),
+    limit: z.coerce.number().int().min(1).max(200).default(200).describe('At most this many replies, oldest first.'),
+    message: z.coerce.number().int().min(1).describe("The thread's first message, or any reply in it."),
+    swarm: id,
   }),
   search: z.object({
     kind: z.enum(sources).optional().describe('Only hits of this kind.'),
@@ -379,6 +395,7 @@ export const schema = {
     amount: decimal.optional().describe('How much the proposer will ride it with; at least ideaMin ($1) makes it a node.'),
     form: z.enum(['program', 'approach', 'lemma', 'idea']).default('lemma'),
     parent: nid.default('root').describe('The node it goes under.'),
+    said: z.string().trim().min(1).max(Mention.maxText).optional().describe("Your message to the room, posted under your name once the node is made: the node's thread, where its runs post their updates as replies."),
     spec: z.string().max(8000).default('').describe('The proposal in words: what it claims and why it helps.'),
     statement: lean.nullable().optional().describe('For a lemma: its Lean statement, frozen once the node is posted.'),
     swarm: id,
@@ -922,25 +939,12 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   const shown = await Store.find(env, request.swarm)
   if (shown?.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived and read-only.')
   if (shown?.form === 'tree' && request.steer !== undefined) return Problem.fail(410, 'gone', 'Tree swarms have no steering notes: steer a node with POST /v1/swarms/:id/nodes/:nid/steer.')
-  const [found, account] = await Promise.all([Store.rostered(env, request.swarm), Store.account(env, address)])
-  if (!found) return missing()
-  if (!account.name) return unnamed()
-
-  const row = found.row
-  let members = found.members
-  let author = members.find((member) => member.address === address)
-  const steers = await Team.steerer(env, row, address, members)
-  if (!steers.ok) return steers
-  const seat = steers.value
-  if (!author && !seat && (await lender(env, row.id, address))) {
-    members = await Store.members(env, row.id)
-    author = members.find((member) => member.address === address)
-  }
-  const door = Door.of(row.steering, { rider: !!author, seat: !!seat })
-  if (!door.posts)
-    return Problem.fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
+  const seated = await poster(env, request.swarm, address)
+  if (!seated.ok) return seated
+  const { author, door, members, row, seat } = seated.value
 
   const steering = Mention.steers(request.text)
+  if (steering && request.parent !== undefined) return Problem.fail(400, 'invalid_request', '@swarm goes in the room, not in a thread: post it as its own message.')
   if (steering && !door.steers)
     return Problem.fail(403, 'not_member', "Only this swarm's team steers it. Its admins add who may: ask one of them in the room.")
   if (!steering && request.steer !== undefined) return Problem.fail(400, 'invalid_request', 'steer goes with a message that mentions @swarm.')
@@ -982,15 +986,65 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
     steer = { amount: Memo.decimal(amount), note, noteId, ...(request.btw ? { context: Btw.collapse(request.btw, request.artifact) } : {}) }
   }
 
-  const named = Mention.mentioned(request.text)
   const message = await stub(env, row.id).say({
     author: address,
-    mentions: members.filter((member) => named.includes(member.handle) || named.includes(Mention.handle(member.address))).map((member) => member.address),
+    mentions: mentioned(members, request.text),
+    parent: request.parent,
     steer,
     swarm: row.id,
     text: request.text,
   })
+  if (!message) return Problem.fail(404, 'not_found', 'No message in this room has that id to reply to.')
   return Problem.ok({ me: await self(env, backing ? spend(members, address, backing) : members, address), message })
+}
+
+function mentioned(members: readonly Member[], text: string) {
+  const named = Mention.mentioned(text)
+  return members.filter((member) => named.includes(member.handle) || named.includes(Mention.handle(member.address))).map((member) => member.address)
+}
+
+async function poster(env: Cloudflare.Env, swarm: string, address: Address) {
+  const [found, account] = await Promise.all([Store.rostered(env, swarm), Store.account(env, address)])
+  if (!found) return missing()
+  if (!account.name) return unnamed()
+  const row = found.row
+  let members = found.members
+  let author = members.find((member) => member.address === address)
+  const steers = await Team.steerer(env, row, address, members)
+  if (!steers.ok) return steers
+  const seat = steers.value
+  if (!author && !seat && (await lender(env, row.id, address))) {
+    members = await Store.members(env, row.id)
+    author = members.find((member) => member.address === address)
+  }
+  const door = Door.of(row.steering, { rider: !!author, seat: !!seat })
+  if (!door.posts) return Problem.fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
+  return Problem.ok({ author, door, members, row, seat })
+}
+
+export async function react(env: Cloudflare.Env, input: Input<'react'>, address?: Address): Promise<Problem.Result<Reacted>> {
+  const parsed = parse(schema.react, input)
+  if (!parsed.ok) return parsed
+  const request = parsed.value
+  if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to react in a room.')
+  const shown = await Store.find(env, request.swarm)
+  if (shown?.archived_at) return Problem.fail(410, 'gone', 'This swarm is archived and read-only.')
+  const seated = await poster(env, request.swarm, address)
+  if (!seated.ok) return seated
+  const room = stub(env, seated.value.row.id)
+  if (!(await room.paced(address, 'reacted'))) return Problem.fail(429, 'rate_limited', `At most ${Reaction.perMinute} reactions a minute in a room; wait a moment.`)
+  const reactions = await room.react({ author: address, emoji: request.emoji, message: request.message, on: request.on })
+  return reactions ? Problem.ok({ id: request.message, reactions }) : Problem.fail(404, 'not_found', 'No message in this room has that id.')
+}
+
+export async function replies(env: Cloudflare.Env, input: Input<'replies'>, address?: Address): Promise<Problem.Result<Replied>> {
+  const parsed = parse(schema.replies, input)
+  if (!parsed.ok) return parsed
+  const query = parsed.value
+  if (!Store.seen(query.swarm) && !(await Store.exists(env, query.swarm))) return missing()
+  const [thread, members] = await Promise.all([stub(env, query.swarm).replies(query.message, { after: query.after, limit: query.limit }), Store.members(env, query.swarm)])
+  if (!thread) return Problem.fail(404, 'not_found', 'No message in this room has that id.')
+  return Problem.ok({ me: address ? await self(env, members, address) : null, members, ...thread })
 }
 
 function spend(members: readonly Member[], address: Address, amount: bigint) {
@@ -1761,7 +1815,8 @@ export async function propose(env: Cloudflare.Env, input: Input<'propose'>, orig
   const row = await treeRow(env, request.swarm, true)
   if (!row.ok) return row
   const nid = await Nodes.nid(request.parent, request.title)
-  const proposal: Riding.Proposal = { by: address.toLowerCase(), form: request.form, parent: request.parent, statement: request.statement ?? null, title: request.title, words: request.spec }
+  const said = request.said === undefined ? null : { mentions: mentioned(await Store.members(env, row.value.id), request.said), text: request.said }
+  const proposal: Riding.Proposal = { by: address.toLowerCase(), form: request.form, parent: request.parent, said, statement: request.statement ?? null, title: request.title, words: request.spec }
   const kept = answered(await stub(env, row.value.id).treePropose(row.value.id, nid, proposal))
   if (!kept.ok) return kept
   const prepared = await transfer(env, { amount: request.amount ?? Nodes.defaults.ideaMin, node: nid, swarm: row.value.id, token: request.token }, origin)

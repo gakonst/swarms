@@ -231,6 +231,14 @@ app.post('/api/swarms/:id/chat', async (c) =>
   ),
 )
 
+app.get('/api/swarms/:id/chat/:message{[0-9]+}', async (c) =>
+  Problem.respond(await Operations.replies(c.env, { ...c.req.query(), message: c.req.param('message'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
+)
+
+app.post('/api/swarms/:id/chat/:message{[0-9]+}/reactions', async (c) =>
+  Problem.respond(await Operations.react(c.env, { ...(await Rest.body(c.req.raw)), message: c.req.param('message'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
+)
+
 app.get('/api/swarms/:id/team', async (c) => Problem.respond(await Operations.team(c.env, { swarm: c.req.param('id') })))
 
 app.post('/api/swarms/:id/team', async (c) =>
