@@ -54,6 +54,8 @@ export function Results(props: {
   ].sort((a, b) => b.at - a.at)
   const shown = more ? items : items.slice(0, 5)
 
+  if (!props.artifacts) return <div aria-busy="true" className="results" />
+
   return (
     <div className="results">
       <section className="result-section" aria-labelledby="made-title">
@@ -90,7 +92,7 @@ export function Results(props: {
             ))}
           </ul>
         )}
-        {!made.length && <p className="result-quiet">{props.artifacts ? 'Results show up here as the AI makes them.' : ' '}</p>}
+        {!made.length && <p className="result-quiet">Results show up here as the AI makes them.</p>}
       </section>
 
       <section className="result-section" aria-labelledby="explored-title">
