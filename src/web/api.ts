@@ -3,6 +3,7 @@ import type * as Tree from '../shared/Tree.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
 import type { Job, Listed, Logged, Machine, Shown } from '../shared/Fleet.ts'
+import type { Color } from '../shared/Picture.ts'
 import * as Site from '../shared/Site.ts'
 import * as Connect from '../shared/Connect.ts'
 import { boot, seeded } from './boot.ts'
@@ -175,6 +176,23 @@ export function named(name: string) {
 
 export function nickname(id: string, nickname: string | null) {
   return signed(() => (fixture ? Promise.reject(new Error('The fixture world keeps no nicknames.')) : request<Summary>(path(id), { nickname }, 'PATCH')))
+}
+
+export type Edits = { nickname?: string | null; picture?: { color: Color; emoji: string } | null; title?: string }
+
+export function edit(id: string, edits: Edits) {
+  return signed(() => (fixture ? staged((fixtures) => fixtures.edit(id, who(), edits)) : request<Summary>(path(id), edits, 'PATCH')))
+}
+
+export function paint(id: string, image: Blob) {
+  return signed(async () => {
+    if (fixture) return staged((fixtures) => fixtures.paint(id, who(), image))
+    const headers: Record<string, string> = bearer ? { authorization: 'Bearer ' + bearer } : {}
+    const response = await fetch(Site.at(path(id) + '/picture'), { body: image, headers: { ...headers, 'content-type': image.type }, method: 'PUT' })
+    const data: unknown = await response.json().catch(() => undefined)
+    if (response.ok) return data as Summary
+    throw new Failure((data ?? {}) as Partial<Problem>, response.status)
+  })
 }
 
 export function create(input: { goal: string; nickname?: string; problem?: string; steering?: Steering; title: string }) {

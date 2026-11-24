@@ -477,6 +477,7 @@ function summary(swarm: Live): Summary {
     id: swarm.id,
     machines: swarm.machines,
     nickname: swarm.nickname,
+    picture: swarm.picture ?? null,
     pool: swarm.pool,
     problem: swarm.problem,
     remaining: swarm.remaining,
@@ -1394,6 +1395,21 @@ function rostered(swarm: Live): Roster {
   const owner = swarm.owner.toLowerCase() as `0x${string}`
   const seats = swarm.steering === 'team' ? [{ address: owner, handle: called(owner), left: swarm.balance, limit: null, role: 'admin' as const, spent: '0.000000' }] : []
   return { admins: [owner], memberBudget: null, seats, steering: swarm.steering, team: null }
+}
+
+export async function edit(key: string, who: `0x${string}` | undefined, edits: { nickname?: string | null; picture?: Summary['picture']; title?: string }): Promise<Summary> {
+  const swarm = seed(await find(key))
+  if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo ID as one of the swarm's admins.")
+  if (!rostered(swarm).admins.includes(who.toLowerCase() as `0x${string}`)) throw fail(403, 'access_denied', "Only the swarm's admins and the operator name it.")
+  if (edits.nickname && fixtures.some((other) => other.id !== swarm.id && other.nickname === edits.nickname)) throw fail(409, 'conflict', 'Another swarm is called ' + edits.nickname + '.')
+  if (edits.title !== undefined) swarm.title = edits.title.trim()
+  if (edits.nickname !== undefined) swarm.nickname = edits.nickname
+  if (edits.picture !== undefined) swarm.picture = edits.picture
+  return delay(summary(swarm))
+}
+
+export async function paint(key: string, who: `0x${string}` | undefined, image: Blob): Promise<Summary> {
+  return edit(key, who, { picture: { url: URL.createObjectURL(image) } })
 }
 
 export async function team(key: string): Promise<Roster> {

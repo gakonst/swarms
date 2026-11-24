@@ -31,6 +31,7 @@ import { back, Link, navigate, useBase, useQuery } from './router.tsx'
 import { stamp } from './format.ts'
 import { ChatThread } from './Thread.tsx'
 import * as Wire from './wire.ts'
+import { Edit } from './Edit.tsx'
 
 const detailMs = 10_000
 
@@ -145,7 +146,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
 
   return (
     <article className="swarm-shell" data-view={view} data-replying={replying !== undefined && !roomed ? '' : undefined} data-room={roomed ? '' : undefined}>
-      <Strip backers={backers(swarm.contributions, names)} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
+      <Strip backers={backers(swarm.contributions, names)} edit={<Edit swarm={swarm} />} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span><b>{dollars(swarm.remaining)}</b> left</span>
         <span className="strip-mood" data-mood={stood.mood} title={line(stood.word)}><i />{pill(stood.word)}</span>

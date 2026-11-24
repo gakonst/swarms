@@ -69,11 +69,12 @@ export function Backers(props: { list: readonly Backer[]; size: number }) {
   )
 }
 
-export function Strip(props: { backers: readonly Backer[]; children?: ReactNode; onRide: ((anchor: HTMLElement) => void) | undefined; raised: string; riders: number; title: string; topic: string }) {
+export function Strip(props: { backers: readonly Backer[]; children?: ReactNode; edit?: ReactNode; onRide: ((anchor: HTMLElement) => void) | undefined; raised: string; riders: number; title: string; topic: string }) {
   return (
     <header aria-label="The channel" className="strip">
       <div className="strip-head">
         <h1 className="strip-title"><i aria-hidden="true">#</i><Inline text={props.title} /></h1>
+        {props.edit}
         <p className="strip-stats">
           <span className="strip-big"><b>{props.riders.toLocaleString('en-US')}</b> rider{props.riders === 1 ? '' : 's'}</span>
           <span className="strip-big"><b>{dollars(props.raised)}</b> raised</span>

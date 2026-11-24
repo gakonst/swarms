@@ -29,6 +29,7 @@ import { scene } from './stage.ts'
 import { at, backers, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
 import { Filters, Mark } from './Tree.tsx'
 import * as Wire from './wire.ts'
+import { Edit } from './Edit.tsx'
 
 const downMs = 15_000
 
@@ -280,7 +281,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const count = root ? root.children.length : 0
   return (
     <article className="grove" data-view={view} data-replying={replying !== undefined && !held && !thread ? '' : undefined} data-room={held ? '' : undefined} data-thread={thread || undefined} data-wire={wired}>
-      <Strip backers={top} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
+      <Strip backers={top} edit={<Edit swarm={swarm} />} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{head.proven.toLocaleString('en-US')}</b> proven</span>
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>
         <span className="strip-mood" data-mood={stood.mood} title={Status.line(stood.word)}><i />{Status.pill(stood.word)}</span>
