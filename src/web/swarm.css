@@ -179,5 +179,14 @@ button.crew-bud:hover, .crew-row[data-open] .crew-bud { background:var(--wash); 
   .channel-list > .channel-intro:first-child { margin-top:0; }
   .channel > .talk-foot { width:100%; max-width:710px; }
   .general-chat > .chat-foot { width:100%; max-width:790px; }
+  .general-chat .welcome-hot { display:none; }
   .chat-list .msg-bubble { max-width:46em; }
 }
+
+@media (min-width:1280px) and (max-height:960px) {
+  .general-chat .welcome { gap:10px; padding:16px 0 18px; }
+  .general-chat .welcome-mark { display:none; }
+  .general-chat .welcome-title { font-size:34px; }
+  .general-chat .welcome-text { font-size:16px; }
+}
+
