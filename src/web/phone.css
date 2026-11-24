@@ -5,3 +5,11 @@
   :is(.grove, .swarm-shell)[data-thread] > :not(.thread):not(.overlay) { visibility:hidden; }
 }
 
+
+@media (max-width:599px) {
+  .general .welcome { gap:8px; padding:14px 0 16px; }
+  .general .welcome-mark, .general .welcome-go, .general .welcome-hot { display:none; }
+  .general .welcome-title { font-size:26px; line-height:1.08; }
+  .general .welcome-text { font-size:15px; line-height:1.4; }
+}
+

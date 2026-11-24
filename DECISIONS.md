@@ -1015,6 +1015,8 @@ An agent swarm's board drew its lead's brief first and redrew it once its surfac
 
 A thread on a phone shifted twice as it loaded (CLS 0.05 to 0.17): its crumbs appeared only once the tree arrived and wrapped to two lines, and the channel under the full-screen sheet kept laying out behind it. The crumbs now hold their row from the first frame whenever the item has a parent and scroll sideways on one line, and below 900 px everything in the page but the sheet and its overlays is hidden while a thread is open: CLS 0 on the thread, its ride and its add overlays at 390 and 568. The same delta could arrive twice in a thread's lines, which React warned about on every thread; lines keep the first.
 
+Below 600 px #general's welcome is its title and one paragraph: the # badge, the two buttons and the hot list repeated what the problems strip above and the strip's Start button already show, and the hot list arriving late moved the welcome (CLS 0.025 at 390, 0.062 at 568, now 0).
+
 ## Desktop hill-climb (2026-11-24)
 
 - A scorer outside the repository (`~/swarms-work/hill-desktop/score.mjs`, headless Chrome) loads #general, a tree swarm and its Board, Results, Code and About tabs, a thread, a board channel, an agent swarm and its Board and Results, a profile, `/new`, `/faq`, `/about`, `/ideas`, `/docs` and the ride overlay at 1280×800, 1440×900, 1728×1117 and 2560×1440 on the fixture world, and counts sideways overflow, text clipped by the viewport, overlapping text, tap targets under 24 px, inputs under 16 px, layout shift over 0.01, blank bands over 30% of the viewport, text cut short beside free room, lines over 48 em, stretched filled controls and console errors. On origin/main dc5c9ca it scored 161 (20, 31, 51 and 59 by width).
