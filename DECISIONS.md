@@ -1066,3 +1066,14 @@ Asked for on 2026-11-24: bring your own subscription, as nanocode-ts supports, a
 - `Markdown` normalizes its text; `Inline` (one-line places) turns display math into inline math, so a one-line title or bullet never gets a block, keeps the `svg`, `g` and `text` elements and passes `math` to the renderer. `Prose.clip`, `sentences`, `plain` and `line` treat a formula as one unit, so a cut never ends inside it and its underscores are not emphasis. Bare unicode math (`ν = Σ⌊m_j/2⌋`) is untouched.
 - Client JS gzipped (every chunk but the highlighter and wasm, concatenated): 2,328,162 to 2,328,764 bytes (+0.6 KB); `index` 81,603 to 81,599, `Strip` 146,321 to 146,324. Glyphs use the reader's system math font (STIX Two Math on Apple systems).
 - Checked on the fixture world under `vite` at 1440×900 and 390×844: the board's "Latest from the lead" (`/s/bench-coders`) and the #general chat show inline and display formulas, no sideways overflow (scroll width 1440 and 390). The fixtures carry one formula in each. `test/math.test.ts` covers the parsing; `pnpm check`, `pnpm build` and 377 tests pass.
+
+## Round trips, explicit states and layouts (2026-11-24)
+
+Measured read-only on https://swarms.new from Honolulu (curl, five runs, and headless Chrome with a cold then warm cache) before changing anything:
+
+- Server time (`server-timing` total): `/` 0–9 ms (page cache), `/new` 5–24 ms, `/v1/health` 18–30 ms warm and 171 ms on a cold isolate, `/api/swarms` 8–12 ms, `/api/general/chat` 117–143 ms (no cache), and a swarm page `/s/<id>` 70–95 ms even on a page-cache hit, all of it one D1 read (`d1;dur=70–84;desc="1"`).
+- Time to first byte, network included: `/` 69–206 ms, `/s/<id>` 148–270 ms, `/v1/health` 85–340 ms.
+- Browser, cold: `/` 48 requests and 1.01 MB, 369 KB before first paint, FCP 292 ms; `/s/<id>` 56 requests and 1.12 MB, 601 KB before first paint, FCP 344 ms. Warm: `/` 32 KB over the wire, FCP 244 ms; `/s/<id>` 87 KB, FCP 584 ms.
+- Duplicate reads after hydration: `/` fetches `/api/general/chat` twice and `/api/swarms` twice at once; `/s/<id>` fetches `team`, `progress` and `branches` twice and re-reads the detail, chat and artifacts the page already carries.
+
+- A swarm page's one D1 read was the nickname redirect check (`Page.renamed`: `/s/<id>` to `/<nickname>`, and `/<name>` to its current name), run on every request before the page cache. Those lookups now hold settled answers per isolate for 30 s (`Store.calledRecently`, `Store.nicknamedRecently`); an unclaimed name is never held, so a name claimed a moment ago opens its swarm, and a rename forgets the swarm's entries in the isolate that made it. Another isolate can redirect to a former name for up to 30 s.

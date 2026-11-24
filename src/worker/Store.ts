@@ -240,6 +240,37 @@ export async function called(env: Cloudflare.Env, name: string) {
   return fresh(env, (db) => db.prepare('select n.swarm, c.name as current from swarm_names n left join swarm_names c on c.swarm = n.swarm and c.current = 1 where n.name = ?').bind(name).first<Called>())
 }
 
+const recent = new Map<string, { at: number; swarm: string; value: unknown }>()
+
+const recency = 30_000
+
+async function recalled<T>(key: string, read: () => Promise<T>, swarm: (value: T) => string | undefined) {
+  const held = recent.get(key)
+  if (held && Date.now() - held.at < recency) return held.value as T
+  const value = await read()
+  const owner = swarm(value)
+  if (owner === undefined) return value
+  recent.delete(key)
+  recent.set(key, { at: Date.now(), swarm: owner, value })
+  for (const old of recent.keys()) {
+    if (recent.size <= 2000) break
+    recent.delete(old)
+  }
+  return value
+}
+
+function forget(swarm: string) {
+  for (const [key, held] of recent) if (held.swarm === swarm) recent.delete(key)
+}
+
+export function calledRecently(env: Cloudflare.Env, name: string) {
+  return recalled(`called/${name}`, () => called(env, name), (found) => found?.swarm)
+}
+
+export function nicknamedRecently(env: Cloudflare.Env, swarm: string) {
+  return recalled(`nicknamed/${swarm}`, () => nicknamed(env, swarm), () => swarm)
+}
+
 export async function nicknamed(env: Cloudflare.Env, swarm: string) {
   const row = await env.DB.prepare('select name from swarm_names where swarm = ? and current = 1').bind(swarm).first<{ name: string }>()
   return row?.name ?? null
@@ -248,7 +279,10 @@ export async function nicknamed(env: Cloudflare.Env, swarm: string) {
 export async function nickname(env: Cloudflare.Env, swarm: string, name: string | null) {
   const at = Date.now()
   const letting = env.DB.prepare('update swarm_names set current = 0 where swarm = ? and current = 1').bind(swarm)
-  await (name ? env.DB.batch([freeing(env, name), letting, claiming(env, name, swarm, at)]).catch(taken) : letting.run()).finally(() => wrote(swarm))
+  await (name ? env.DB.batch([freeing(env, name), letting, claiming(env, name, swarm, at)]).catch(taken) : letting.run()).finally(() => {
+    forget(swarm)
+    wrote(swarm)
+  })
 }
 
 export async function archive(env: Cloudflare.Env, id: string, at: number) {

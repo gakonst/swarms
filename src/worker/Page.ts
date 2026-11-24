@@ -39,7 +39,7 @@ const looked = new WeakMap<Request, Promise<Store.Called | null | undefined>>()
 function lookup(env: Cloudflare.Env, request: Request, name: string) {
   const held = looked.get(request)
   if (held) return held
-  const found = within(Store.called(env, name), 1500)
+  const found = within(Store.calledRecently(env, name), 1500)
   looked.set(request, found)
   return found
 }
@@ -58,7 +58,7 @@ export async function renamed(env: Cloudflare.Env, request: Request) {
   }
   const [, raw, tail = ''] = swarmed.exec(path) ?? []
   if (raw) {
-    const name = await within(Store.nicknamed(env, decodeURIComponent(raw)), 1500)
+    const name = await within(Store.nicknamedRecently(env, decodeURIComponent(raw)), 1500)
     return name ? `/${name}${tail}${url.search}` : undefined
   }
   const named = Nickname.parse(path)
