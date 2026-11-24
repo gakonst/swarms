@@ -74,3 +74,11 @@ test('the server renders the problems rail the way this session left it', async 
   const closed = await (await Page.lost(request(), env)).text()
   assert.match(closed, /"rail":"collapsed"/)
 })
+
+test('the server tells the page whether this visitor has seen the welcome', async () => {
+  configured = async () => ({ ready: true })
+  const fresh = await (await Page.lost(new Request('https://swarms.test/docs'), env)).text()
+  assert.match(fresh, /"hello":"new"/)
+  const back = await (await Page.lost(new Request('https://swarms.test/docs', { headers: { cookie: 'swarms_hello=1' } }), env)).text()
+  assert.match(back, /"hello":"seen"/)
+})

@@ -309,7 +309,7 @@ export function NoMatch(props: { query: string }) {
   return (
     <div className="find-none">
       <p>{asked ? <>Nothing matches <b>{asked}</b> yet.</> : 'No problems yet.'}</p>
-      <Link className="btn btn-high find-start" to={asked ? `/new?q=${encodeURIComponent(asked)}` : '/new'}>Start {asked ? 'it' : 'a problem'}<span>$1+</span></Link>
+      <Link className="btn btn-high find-start" to={asked ? `/new?q=${encodeURIComponent(asked)}` : '/new'}>Start a problem<span>$1+</span></Link>
     </div>
   )
 }
