@@ -492,13 +492,17 @@ export async function list(env: Cloudflare.Env, input: Input<'list'>): Promise<P
 
   const status = parsed.value.status
   const [swarms, riding] = await Promise.all([
-    Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row))),
+    summaries(env, status),
     Edge.cached(env, 'riding', listSeconds, () => Store.riding(env)),
   ])
   const heads = await Edge.cached(env, `heads?status=${status ?? ''}`, listSeconds, () => headlines(env, swarms))
   resume(env, swarms)
   Store.know(swarms.map((swarm) => swarm.id))
   return Problem.ok({ funders: Object.fromEntries(swarms.flatMap((swarm) => (riding.funders[swarm.id] ? [[swarm.id, riding.funders[swarm.id]!]] : []))), heads, riders: riding.riders, swarms })
+}
+
+function summaries(env: Cloudflare.Env, status?: Summary['status']) {
+  return Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row)))
 }
 
 async function headlines(env: Cloudflare.Env, swarms: readonly Summary[]) {
@@ -1636,11 +1640,11 @@ function excerpt(entry: Entry, terms: readonly string[], size = 240) {
 }
 
 export async function health(env: Cloudflare.Env): Promise<Problem.Result<{ ledgers: Ledgered[]; ok: boolean; refused: { id: string; remaining: string; title: string }[]; running: number; swarms: number }>> {
-  const listed = await list(env, {})
-  if (!listed.ok) return listed
-  const refused = listed.value.swarms.filter((swarm) => swarm.form !== 'tree' && !swarm.archivedAt && Standing.refused(swarm)).map((swarm) => ({ id: swarm.id, remaining: swarm.remaining, title: swarm.title }))
-  const books = await ledgers(env)
-  return Problem.ok({ ledgers: books, ok: refused.length === 0 && books.every((book) => book.ok), refused, running: listed.value.swarms.filter((swarm) => swarm.status === 'running').length, swarms: listed.value.swarms.length })
+  const [swarms, books] = await Promise.all([summaries(env), ledgers(env)])
+  resume(env, swarms)
+  Store.know(swarms.map((swarm) => swarm.id))
+  const refused = swarms.filter((swarm) => swarm.form !== 'tree' && !swarm.archivedAt && Standing.refused(swarm)).map((swarm) => ({ id: swarm.id, remaining: swarm.remaining, title: swarm.title }))
+  return Problem.ok({ ledgers: books, ok: refused.length === 0 && books.every((book) => book.ok), refused, running: swarms.filter((swarm) => swarm.status === 'running').length, swarms: swarms.length })
 }
 
 export async function problems(env: Cloudflare.Env): Promise<Problem.Result<{ problems: (Brief.Problem & { open: boolean; swarm: string | null })[] }>> {
