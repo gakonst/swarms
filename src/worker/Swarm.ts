@@ -483,8 +483,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async unlend(swarm: string, name: string) {
     const removed = await Hands.remove(this, swarm, name)
     if (!removed.ok) return removed
-    this.kv.put('removed', [...new Set([...(this.kv.get<string[]>('removed') ?? []), name])])
-    this.kv.put('hands', (this.kv.get<Hand[]>('hands') ?? []).filter((hand) => hand.name !== name))
     this.changed('hands', 'members')
     return removed
   }

@@ -1,5 +1,6 @@
 import type { Lent, Terms } from '../shared/Api.ts'
 import * as Gateway from './Gateway.ts'
+import * as Machine from './machines/Hand.ts'
 import type { Swarm } from './Swarm.ts'
 import type * as Work from './Work.ts'
 
@@ -66,6 +67,82 @@ async function adopt(board: Work.Board, rows: readonly Row[], now: number) {
   }
 }
 
+const lives = new WeakMap<Swarm, string>()
+
+const working = new WeakMap<Swarm, Set<string>>()
+
+function busy(self: Swarm) {
+  let names = working.get(self)
+  if (!names) working.set(self, (names = new Set()))
+  return names
+}
+
+async function guarded<T>(self: Swarm, name: string, work: () => Promise<T>) {
+  busy(self).add(name)
+  try {
+    return await work()
+  } finally {
+    busy(self).delete(name)
+  }
+}
+
+function life(self: Swarm) {
+  let one = lives.get(self)
+  if (!one) lives.set(self, (one = crypto.randomUUID()))
+  return one
+}
+
+function record(self: Swarm, name: string) {
+  return Machine.machine.read(self.kv.get(Machine.key(name)))
+}
+
+function step(self: Swarm, name: string, event: Machine.HandEvent) {
+  const stepped = Machine.machine.step(record(self, name), event)
+  if (stepped.ok) self.kv.put(Machine.key(name), stepped.state)
+  return stepped
+}
+
+function revoke(self: Swarm, name: string, by: 'evicted' | 'failed' | 'owner') {
+  if (!record(self, name)) self.kv.put(Machine.key(name), Machine.legacy(life(self), Date.now()))
+  return step(self, name, { at: Date.now(), by, kind: 'revoke', life: life(self) })
+}
+
+function retired(self: Swarm, name: string, by: 'evicted' | 'failed' | 'owner') {
+  const stepped = step(self, name, { at: Date.now(), kind: 'return' })
+  if (by !== 'owner') return stepped
+  self.kv.put('removed', [...new Set([...(self.kv.get<string[]>('removed') ?? []), name])])
+  self.kv.put(
+    'hands',
+    (self.kv.get<{ name: string }[]>('hands') ?? []).filter((hand) => hand.name !== name),
+  )
+  return stepped
+}
+
+async function retire(self: Swarm, swarm: string, name: string, by: 'evicted' | 'failed' | 'owner', resumed: boolean) {
+  const revoked = await Gateway.detach(self.env, swarm, name).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
+  if ((by === 'owner' || resumed) && !revoked.ok && revoked.status !== 404) {
+    if (!resumed) step(self, name, { at: Date.now(), kind: 'kept' })
+    return revoked
+  }
+  await free(self, swarm, name)
+  if (by === 'owner') await self.env.DB.prepare('delete from hands where swarm = ? and name = ? and returned_at is not null').bind(swarm, name).run()
+  retired(self, name, by)
+  return { ok: true as const }
+}
+
+export async function repair(self: Swarm, swarm: string) {
+  for (const [key, raw] of [...self.kv.list({ prefix: 'lent:' })]) {
+    const at = Machine.machine.read(raw)
+    const name = key.slice('lent:'.length)
+    if (!at || !Machine.machine.unfinished(at, busy(self).has(name))) continue
+    const by = at.state === 'issued' ? 'failed' : (at.by ?? 'failed')
+    await guarded(self, name, async () => {
+      revoke(self, name, by)
+      await retire(self, swarm, name, by, at.state === 'revoking')
+    })
+  }
+}
+
 export type Issued =
   | { minted: Gateway.Minted; name: string; ok: true }
   | { ok: false; reason: 'full' | 'unnamed' }
@@ -73,6 +150,7 @@ export type Issued =
 
 export async function issue(self: Swarm, swarm: string, label: string, contributor: string | null): Promise<Issued> {
   const board = self.board
+  await repair(self, swarm)
   const all = await list(self.env, swarm)
   const rows = all.filter((row) => row.returned_at === null)
   await adopt(board, rows, Date.now())
@@ -82,43 +160,57 @@ export async function issue(self: Swarm, swarm: string, label: string, contribut
   const evicted = await evictable(board, listed, now)
   const holding = (await slots(board)).filter((found) => holds(found, now))
   if (holding.length - holding.filter((found) => evicted.includes(named(found))).length >= limit) return { ok: false, reason: 'full' }
-  for (const name of evicted) {
-    await free(self, swarm, name)
-    await Gateway.detach(self.env, swarm, name).catch(() => undefined)
-  }
+  for (const name of evicted)
+    await guarded(self, name, async () => {
+      revoke(self, name, 'evicted')
+      await retire(self, swarm, name, 'evicted', false)
+    })
 
   for (let attempt = 0; attempt < 3; attempt++) {
     if ((await slots(board)).filter((found) => holds(found, Date.now())).length >= limit) return { ok: false, reason: 'full' }
     const name = `${slug(label)}-${suffix()}`
     // A name returned before hands moved onto the swarm's board has no task here, only its row.
     if (all.some((row) => row.name === name)) continue
-    const posted = await board.post({ id: task(name), labels: slot, spec: label })
-    if (!posted.ok) continue
-    const claimed = await board.claim(task(name), { cap, leaseMs: unseenMs })
-    if (!claimed.ok) return { ok: false, reason: 'full' }
-    await self.env.DB.prepare('insert or ignore into hands (swarm, name, label, contributor, created_at) values (?, ?, ?, ?, ?)')
-      .bind(swarm, name, label, contributor, Date.now())
-      .run()
-    const minted = await self.hand(swarm, name)
-    if (minted.ok) return { minted: minted.value, name, ok: true }
-    await board.finish(task(name), claimed.claim, { failed: minted.detail })
-    await self.env.DB.prepare('delete from hands where swarm = ? and name = ?').bind(swarm, name).run()
-    if (minted.status !== 409) return { detail: minted.detail, ok: false, reason: 'upstream' }
+    const tried = await guarded(self, name, () => mint(self, swarm, name, label, contributor))
+    if (tried !== 'again') return tried
   }
   return { ok: false, reason: 'unnamed' }
+}
+
+async function mint(self: Swarm, swarm: string, name: string, label: string, contributor: string | null): Promise<Issued | 'again'> {
+  const board = self.board
+  const posted = await board.post({ id: task(name), labels: slot, spec: label })
+  if (!posted.ok) return 'again'
+  const claimed = await board.claim(task(name), { cap, leaseMs: unseenMs })
+  if (!claimed.ok) return { ok: false, reason: 'full' }
+  step(self, name, { at: Date.now(), kind: 'issue', life: life(self) })
+  await self.env.DB.prepare('insert or ignore into hands (swarm, name, label, contributor, created_at) values (?, ?, ?, ?, ?)')
+    .bind(swarm, name, label, contributor, Date.now())
+    .run()
+  const minted = await self.hand(swarm, name)
+  if (minted.ok) {
+    step(self, name, { at: Date.now(), kind: 'mint' })
+    return { minted: minted.value, name, ok: true }
+  }
+  await board.finish(task(name), claimed.claim, { failed: minted.detail })
+  await self.env.DB.prepare('delete from hands where swarm = ? and name = ? and seen_at is null and returned_at is null').bind(swarm, name).run()
+  retired(self, name, 'failed')
+  return minted.status === 409 ? 'again' : { detail: minted.detail, ok: false, reason: 'upstream' }
 }
 
 export type Removed = { ok: true } | { ok: false; reason: 'missing' } | { detail: string; ok: false; reason: 'upstream' }
 
 export async function remove(self: Swarm, swarm: string, name: string): Promise<Removed> {
+  await repair(self, swarm)
+  if (record(self, name)?.state === 'returned' && record(self, name)?.by === 'owner') return { ok: false, reason: 'missing' }
   const [rows, listed] = await Promise.all([list(self.env, swarm), listing(self.env, swarm)])
   if (!rows.some((row) => row.name === name) && !listed?.some((hand) => hand.name === name)) return { ok: false, reason: 'missing' }
-  const revoked = await Gateway.detach(self.env, swarm, name)
-  // A 404 means the gateway no longer holds the hand: nothing is left to revoke there.
-  if (!revoked.ok && revoked.status !== 404) return { detail: revoked.detail, ok: false, reason: 'upstream' }
-  await free(self, swarm, name)
-  await self.env.DB.prepare('delete from hands where swarm = ? and name = ?').bind(swarm, name).run()
-  return { ok: true }
+  const retired = await guarded(self, name, async () => {
+    const resumed = record(self, name)?.state === 'revoking'
+    revoke(self, name, 'owner')
+    return retire(self, swarm, name, 'owner', resumed)
+  })
+  return retired.ok ? { ok: true } : { detail: retired.detail, ok: false, reason: 'upstream' }
 }
 
 export async function listing(env: Cloudflare.Env, swarm: string) {
@@ -157,7 +249,8 @@ export async function seen(self: Swarm, swarm: string, rows: readonly Row[], lis
   const now = Date.now()
   await adopt(board, rows, now)
   for (const row of rows) {
-    const found = row.returned_at === null && used(listed?.find((hand) => hand.name === row.name)) ? await board.task(task(row.name)) : null
+    const at = record(self, row.name)
+    const found = row.returned_at === null && (!at || at.state === 'minted') && used(listed?.find((hand) => hand.name === row.name)) ? await board.task(task(row.name)) : null
     if (found?.phase === 'claimed' && found.claim) await board.renew(found.id, found.claim, unseenMs)
     else if (found?.phase === 'open') await board.claim(found.id, { leaseMs: unseenMs })
   }
@@ -165,7 +258,7 @@ export async function seen(self: Swarm, swarm: string, rows: readonly Row[], lis
     .filter((row) => (row.seen_at === null || row.seen_at < now - freshMs) && used(listed?.find((hand) => hand.name === row.name)))
     .map((row) => row.name)
   if (!names.length) return rows
-  await self.env.DB.batch(names.map((name) => self.env.DB.prepare('update hands set seen_at = ? where swarm = ? and name = ?').bind(now, swarm, name)))
+  await self.env.DB.batch(names.map((name) => self.env.DB.prepare('update hands set seen_at = ? where swarm = ? and name = ? and returned_at is null').bind(now, swarm, name)))
   return rows.map((row) => (names.includes(row.name) ? { ...row, seen_at: now } : row))
 }
 

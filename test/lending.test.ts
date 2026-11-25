@@ -49,7 +49,7 @@ function world(listing: Listing) {
     changed: () => undefined,
     env,
     hand: async () => ({ ok: true, value: { command: 'nc hand', short: 'nc', token: 'token', url: 'wss://gateway.test' } }),
-    kv: { get: (key: string) => kv.get(key), put: (key: string, value: unknown) => void kv.set(key, value) },
+    kv: { delete: (key: string) => kv.delete(key), get: (key: string) => kv.get(key), list: ({ prefix = '' }: { prefix?: string } = {}) => [...kv].filter(([key]) => key.startsWith(prefix))[Symbol.iterator](), put: (key: string, value: unknown) => void kv.set(key, value) },
     log: (_kind: string, text: string) => void logged.push(text),
     remember: () => undefined,
     board: fresh('swarm:' + id),
