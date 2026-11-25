@@ -403,6 +403,7 @@ export async function once<T>(self: Swarm, id: string, parent: string, work: () 
   await Work.ensure(self.board, { id, labels: { kind: 'settle', of: parent }, spec: 'settle ' + parent })
   const held = await self.board.claim(id, { leaseMs: lockMs })
   if (!held.ok) return { ran: false }
+  self.settling.add(held.claim)
   try {
     const value = await work()
     await self.board.finish(id, held.claim, { done: '' })
@@ -410,6 +411,8 @@ export async function once<T>(self: Swarm, id: string, parent: string, work: () 
   } catch (error) {
     await self.board.release(id, held.claim, String(error))
     throw error
+  } finally {
+    self.settling.delete(held.claim)
   }
 }
 

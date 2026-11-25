@@ -189,6 +189,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   treeVersion = 0
 
+  settling = new Set<string>()
+
   treeView: { value: Nodes.View; version: number } | undefined
 
   treeWatchers = new Set<WritableStreamDefaultWriter<Uint8Array>>()

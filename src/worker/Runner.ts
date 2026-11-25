@@ -798,7 +798,8 @@ export async function tick(self: Swarm): Promise<number | null> {
   if (rt.first) {
     rt.first = false
     for (const task of await self.board.held())
-      if ((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && task.claim && !rt.claims.has(task.claim)) await self.board.release(task.id, task.claim, 'its worker restarted')
+      if (task.claim && (((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && !rt.claims.has(task.claim)) || (task.labels['kind'] === 'settle' && !self.settling.has(task.claim))))
+        await self.board.release(task.id, task.claim, 'its worker restarted')
     await Nodes.reconcile(self, (run) => spentOf(self, run))
   }
   await late(self).catch((error: unknown) => console.error('Charging late spend failed', error))
