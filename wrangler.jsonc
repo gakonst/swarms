@@ -5,14 +5,8 @@
   "main": "./src/worker/index.ts",
   "workers_dev": true,
   "preview_urls": true,
-  "routes": [{ "pattern": "swarms.new", "custom_domain": true }, { "pattern": "www.swarms.new", "custom_domain": true }],
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "assets": {
-    "binding": "ASSETS",
-    "not_found_handling": "none",
-    "run_worker_first": ["/", "/ideas", "/join", "/new", "/about", "/docs", "/faq", "/s/*", "/a/*", "/api/*", "/v1/*", "/x", "/x/*", "/og/*", "/oembed", "/tg", "/tg/*", "/telegram", "/mcp", "/openapi.json", "/feedback", "/feedback/*", "/me", "/u/*"]
-  },
   "observability": { "enabled": true },
   "vars": {
     "GATEWAY_URL": "https://gateway.tempo-dev.workers.dev",
@@ -31,7 +25,7 @@
       "migrations_dir": "migrations"
     }
   ],
-  "services": [{ "binding": "GATEWAY", "service": "gateway" }],
+  "services": [{ "binding": "GATEWAY", "service": "gateway" }, { "binding": "SITE", "service": "swarms-site" }],
   "durable_objects": {
     "bindings": [
       { "name": "SWARMS", "class_name": "Swarm" },

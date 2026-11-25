@@ -18,7 +18,7 @@ registerHooks({
 
 Object.assign(globalThis, { WebSocketRequestResponsePair: class {}, caches: { default: { match: async () => undefined, put: async () => undefined } } })
 
-const worker = (await import('../src/worker/index.ts')).default
+const worker = (await import('../src/worker/site.ts')).default
 const d1 = open()
 d1.sqlite.prepare('insert into swarms (id, title, goal, created_at, updated_at) values (?, ?, ?, 1, 1)').run('abc123abc123', 'P vs NP', 'Settle it.')
 const db = d1.env.DB as unknown as Record<string, unknown>

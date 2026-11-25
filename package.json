@@ -10,7 +10,7 @@
     "check:e2e": "tsc -p test/e2e/tsconfig.json",
     "db:migrate": "wrangler d1 migrations apply swarms --remote",
     "db:migrate:local": "wrangler d1 migrations apply swarms --local",
-    "deploy": "vite build && wrangler deploy",
+    "deploy": "vite build && wrangler deploy -c dist/swarms/wrangler.json && wrangler deploy",
     "endpoints": "node --experimental-strip-types test/e2e/endpoints.ts",
     "e2e": "node --test --experimental-strip-types --test-concurrency=1 test/e2e/*.test.ts",
     "gen:types": "wrangler types worker-configuration.d.ts",

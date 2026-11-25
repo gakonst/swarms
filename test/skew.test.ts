@@ -27,7 +27,8 @@ registerHooks({
 void site
 
 const { Swarm } = await import('../src/worker/Swarm.ts')
-const worker = (await import('../src/worker/index.ts')).default
+const worker = (await import('../src/worker/site.ts')).default
+const objects = (await import('../src/worker/index.ts')).default
 
 const missing = (name: string) => Promise.reject(new TypeError('The RPC receiver does not implement the method "' + name + '".'))
 
@@ -55,7 +56,7 @@ function previous(swarm: object, methods: readonly string[]) {
 function workerCalls() {
   const dir = new URL('../src/worker/', import.meta.url)
   const called = new Set<string>()
-  for (const file of ['Operations.ts', 'Machines.ts', 'Og.ts', 'Page.ts', 'Rest.ts', 'Mcp.ts', 'index.ts', 'Telegram.ts', 'Watch.ts', 'Lobby.ts']) {
+  for (const file of ['Operations.ts', 'Machines.ts', 'Og.ts', 'Page.ts', 'Rest.ts', 'Mcp.ts', 'index.ts', 'site.ts', 'Posters.ts', 'Telegram.ts', 'Watch.ts', 'Lobby.ts']) {
     let source = ''
     try { source = readFileSync(new URL(file, dir), 'utf8') } catch { continue }
     for (const match of source.matchAll(/\bstub\(env, [^)]*\)\.(\w+)\(/g)) called.add(match[1]!)
@@ -96,6 +97,7 @@ test('the Worker serves a swarm whose object is one version behind', async (t) =
     SWARMS: { get: () => previous(w.swarm, older.methods), idFromName: (name: string) => name },
   } as unknown as Cloudflare.Env
   const context = { passThroughOnException() {}, props: {}, waitUntil() {} } as never
+  env.OBJECTS = { fetch: (request: Request) => objects.fetch(request, env) } as unknown as Fetcher
   const base = 'https://swarms.new'
   const get = (path: string, init: RequestInit = {}) => worker.fetch(new Request(base + path, init), env, context)
   const errors: unknown[] = []

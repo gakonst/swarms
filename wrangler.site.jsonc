@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "swarms-site",
+  "account_id": "0a39052b0a32ba8c8444345fe21b7595",
+  "main": "./src/worker/site.ts",
+  "workers_dev": true,
+  "preview_urls": true,
+  "routes": [{ "pattern": "swarms.new", "custom_domain": true }, { "pattern": "www.swarms.new", "custom_domain": true }],
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    "run_worker_first": ["/", "/ideas", "/join", "/new", "/about", "/docs", "/faq", "/s/*", "/a/*", "/api/*", "/v1/*", "/x", "/x/*", "/og/*", "/oembed", "/tg", "/tg/*", "/telegram", "/mcp", "/openapi.json", "/feedback", "/feedback/*", "/me", "/u/*"]
+  },
+  "observability": { "enabled": true },
+  "vars": {
+    "GATEWAY_URL": "https://gateway.tempo-dev.workers.dev",
+    "GITHUB_API": "https://api.github.com",
+    "SWARMS_PROOFS_REPO": "gakonst/swarms-proofs",
+    "SWARMS_URL": "https://paradigm.xyz/swarms",
+    "TELEGRAM_BOT": "TempoSwarmsBot",
+    "TEMPO_RPC": "https://rpc.tempo.xyz"
+  },
+  "secrets": { "required": ["SWARMS_GATEWAY_KEY", "SWARMS_GITHUB_WEBHOOK_SECRET"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "swarms",
+      "database_id": "e500285b-17a8-4ce3-beb8-b35480defc50",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "services": [{ "binding": "GATEWAY", "service": "gateway" }, { "binding": "OBJECTS", "service": "swarms" }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "SWARMS", "class_name": "Swarm", "script_name": "swarms" },
+      { "name": "LOBBY", "class_name": "Lobby", "script_name": "swarms" }
+    ]
+  }
+}
+

@@ -1,4 +1,4 @@
-import { cloudflare } from '@cloudflare/vite-plugin'
+import { cloudflare, type WorkerConfig } from '@cloudflare/vite-plugin'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
@@ -53,7 +53,7 @@ function unhighlighted(): Plugin {
   const unused = (id: string, importer = '') =>
     ['shiki/wasm', 'shiki/engine/oniguruma', 'shiki/engine/javascript', '@pierre/theming/themes'].includes(id) || id.startsWith('@shikijs/themes/') || (id === './fixtures.ts' && importer.includes('/src/web/'))
   return {
-    applyToEnvironment: (environment) => environment.name === 'swarms',
+    applyToEnvironment: (environment) => environment.name === 'swarms' || environment.name === 'swarms_site',
     enforce: 'pre',
     name: 'swarms-unhighlighted',
     resolveId: (id, importer) => (id === 'shiki/langs' ? stub : unused(id, importer) ? absent : undefined),
@@ -64,12 +64,23 @@ export default defineConfig(({ command }) => {
   const gateway = command === 'serve' ? process.env['SWARMS_GATEWAY'] : undefined
   const passed = ['GITHUB_API', 'SWARMS_GITHUB_TOKEN', 'SWARMS_GITHUB_WEBHOOK_SECRET', 'SWARMS_PROOFS_REPO', 'SWARMS_SPAWN', 'SWARMS_LEASE_MS', 'SWARMS_TRIAGE_MS'].flatMap((name) => (process.env[name] ? [[name, process.env[name]] as const] : []))
 
+  const local = (config: WorkerConfig) => {
+    config.services = config.services?.filter((service) => service.binding !== 'GATEWAY')
+    if (passed.length) config.vars = { ...config.vars, ...Object.fromEntries(passed) }
+    if (!gateway) return
+    config.vars = { ...config.vars, GATEWAY_URL: gateway }
+    config.compatibility_flags = (config.compatibility_flags ?? []).filter(
+      (flag) => flag !== 'global_fetch_strictly_public',
+    )
+  }
+
   return {
     experimental: { renderBuiltUrl: (file: string) => `${base}/${file}` },
     resolve: { alias: { '#ssr': fileURLToPath(new URL('./src/web/server.tsx', import.meta.url)) } },
     environments: {
       client: { build: { rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'hash', test: /\/viem\/_esm\/utils\/(hash\/keccak256|encoding\/toHex)\.js$/ }] } } } } },
       swarms: { build: { minify: true } },
+      swarms_site: { build: { minify: true } },
     },
     server: { allowedHosts: ['terminal.local', 'swarms.new', 'www.swarms.new'], cors: { origin: '*' } },
     plugins: [
@@ -77,18 +88,12 @@ export default defineConfig(({ command }) => {
       preloads(),
       unhighlighted(),
       cloudflare({
+        auxiliaryWorkers: [{ configPath: './wrangler.jsonc', ...(command === 'serve' ? { config: local } : {}) }],
+        configPath: './wrangler.site.jsonc',
         ...(process.env['SWARMS_STATE'] ? { persistState: { path: process.env['SWARMS_STATE'] } } : {}),
         ...(command === 'serve'
           ? {
-              config: (config) => {
-                config.services = []
-                if (passed.length) config.vars = { ...config.vars, ...Object.fromEntries(passed) }
-                if (!gateway) return
-                config.vars = { ...config.vars, GATEWAY_URL: gateway }
-                config.compatibility_flags = (config.compatibility_flags ?? []).filter(
-                  (flag) => flag !== 'global_fetch_strictly_public',
-                )
-              },
+              config: local,
             }
           : {}),
       }),

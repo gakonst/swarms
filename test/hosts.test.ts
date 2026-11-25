@@ -20,7 +20,7 @@ registerHooks({
 
 Object.assign(globalThis, { WebSocketRequestResponsePair: class {}, caches: { default: { match: async () => undefined, put: async () => undefined } } })
 
-const worker = (await import('../src/worker/index.ts')).default
+const worker = (await import('../src/worker/site.ts')).default
 const assets: string[] = []
 const env = {
   ...open().env,
