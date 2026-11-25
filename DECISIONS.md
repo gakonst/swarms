@@ -1285,3 +1285,15 @@ Georgios's screenshots from Brave on an iPhone at https://paradigm.xyz/swarms, p
 - Rule: a new Durable Object method the Worker calls has a fallback to the method it replaces for at least one deploy.
 - Checks: `pnpm check`, `pnpm test`, `pnpm build`. Needs a deploy; then `curl -s -o /dev/null -w '%{http_code}' https://swarms.new/v1/swarms/06cf5d7c8f92` answers 200.
 
+
+## A Worker and its objects can be one version apart for minutes after a deploy (2026-11-25)
+
+- What happened: deploying ce697e7 made the Worker call the swarm object's new `viewed` (51b69c3) while busy objects (open sockets, a running turn) kept running the previous code for minutes, so every read of their view answered 500 ("The RPC receiver does not implement the method \"viewed\""): `/v1|api/swarms/:id`, `/answer`, `/backers`, `/live`, `/x/s/:id`, `/tg/s/:id`, `/og/s/:id/card.png`, `/oembed` and MCP `swarm_get`, `swarm_answer`, `swarm_backers`. Quiet objects restarted on the new code and were fine. It was rolled back.
+- Rule (version skew): every Worker to object RPC tolerates one version of difference in both directions. A new Worker meets objects still on the previous code; during a gradual deploy the previous Worker also serves, against objects already on the new code.
+  - New Worker, previous object: a call to an object method the previous release lacks goes through `older(call, fallback, why)` in `Operations.ts`, which falls back to the method it replaces, and is listed in `test/rpc-older.json` `fallbacks`. A field the previous object's result may lack is read with a default (`failure ?? null`, `reason ?? null`), so `GET /v1/swarms/:id` always carries `failure`.
+  - Previous Worker, new object: an object method keeps its name and accepts its previous arguments for at least one release after the Worker stops calling it; new parameters are optional.
+- Audit of `git diff 2abe416..origin/main -- src/worker`: the only new Worker to object call is `viewed` (falls back to `view`); `reason` and `tend` are new object methods called only inside the object; no object method was removed or renamed, and `view`, `pulsed` and `lent` keep their signatures. The Lobby object did not change.
+- `test/skew.test.ts` holds it: (1) every object method the Worker calls is either on the previous object (`test/rpc-older.json` `methods`, from 2abe416, the version in production) or has a listed fallback; (2) the object still has every method of the previous one; (3) the Worker runs against a stub of the previous object, whose missing methods reject like RPC does and whose view has no `failure` or `reason`, and every route above answers 200, the detail with `failure: null`. Without the fallback, (3) answers 500.
+- After a release has fully rolled out, regenerate `methods` from its `Swarm` class and drop the fallbacks it made unnecessary, in the next release.
+- Checks: `pnpm check`, `pnpm test`, `pnpm build`. Not deployed.
+

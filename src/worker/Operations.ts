@@ -483,15 +483,28 @@ function logged(task: Promise<unknown>) {
 
 type Shape = { excerpts?: boolean; feed?: number; pushed?: boolean; texts?: boolean }
 
+// A Worker and its objects can be one version apart for minutes after a
+// deploy, so a call to an object method newer than the previous release falls
+// back to the method it replaces. List each in test/rpc-older.json fallbacks.
+async function older<T>(call: () => T | Promise<T>, fallback: () => T | Promise<T>, why: string): Promise<Awaited<T>> {
+  try {
+    return await call()
+  } catch (error) {
+    console.error(why, error)
+    return await fallback()
+  }
+}
+
 async function viewed(env: Cloudflare.Env, id: string, shape: Shape): Promise<View> {
   const key = `view/${id}/${new URLSearchParams(Object.entries(shape).map(([name, value]) => [name, String(value)]))}`
   const minute = Edge.minute()
   const held = await Edge.held<{ minute: string; view: View }>(env, key)
   const known = held?.minute === minute ? held.view : undefined
-  const view = (await Promise.resolve(stub(env, id).viewed(shape, known?.stamp.version ?? null)).catch((error: unknown) => {
-    console.error('A conditional swarm view failed, so the whole view was read', error)
-    return stub(env, id).view(shape)
-  })) as View | null
+  const view = (await older(
+    () => stub(env, id).viewed(shape, known?.stamp.version ?? null),
+    () => stub(env, id).view(shape),
+    'A conditional swarm view failed, so the whole view was read',
+  )) as View | null
   if (!view) return known!
   if (view.stamp.quiet) Edge.hold(env, key, { minute, view }, 60)
   return view
