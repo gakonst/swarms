@@ -10,6 +10,7 @@ import * as Machine from './machines/Tree.ts'
 import * as Nodes from './Nodes.ts'
 import * as Persona from './Persona.ts'
 import * as Phase from './Phase.ts'
+import * as Sub from './machines/Sub.ts'
 import type { Swarm } from './Swarm.ts'
 import * as Triage from './Triage.ts'
 import * as Verify from './Verify.ts'
@@ -349,8 +350,10 @@ async function running(self: Swarm, task: Work.Task, lease: Board.PoolLease): Pr
       const adopted = listed.ok ? listed.value.find((sub) => sub.role === role && sub.parent_agent_id === null) : undefined
       const prompted = self.kv.get<string>('prompted:' + task.id)
       const kept = self.kv.get<Nodes.Pick>('picked:' + task.id)
-      if (adopted) spawned = { agent: agent.value, at: Date.now(), sub: adopted.agent_id, ...(prompted ? { turn: prompted } : {}), ...(kept ? { pick: kept } : {}) }
-      else {
+      if (adopted) {
+        Sub.observe(self.kv, agent.value, adopted)
+        spawned = { agent: agent.value, at: Date.now(), sub: adopted.agent_id, ...(prompted ? { turn: prompted } : {}), ...(kept ? { pick: kept } : {}) }
+      } else {
         const steers = triaging ? [] : await Nodes.unheeded(self, nid)
         const words = triaging ? await Triage.task(self, found) : await brief(self, found, nid, steers.map((steer) => steer.body))
         const chosen = boarded(self) ? await pick(self, swarm, agent.value, task, { budget, nid, node: found.nodes.get(nid), notes: steers.map((steer) => steer.body) }, abort.signal) : undefined
@@ -366,6 +369,7 @@ async function running(self: Swarm, task: Work.Task, lease: Board.PoolLease): Pr
         if (last) await Nodes.heedNode(self, nid, last.seq)
       }
       track(self, spawned, task)
+      Sub.seed(self.kv, spawned.agent, spawned.sub, role)
       self.kv.put('run:' + task.id, spawned)
       if (!budgeted) {
         const set = await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(budget - Memo.units(spawned.pick?.spent ?? '0')))
@@ -452,7 +456,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
     }
     const heard = runtime(self).heard
     const listed = await list(self, swarm, spawned.agent)
-    sub = listed.ok ? listed.value.find((one) => one.agent_id === spawned.sub) : sub
+    sub = await observed(self, swarm, spawned, listed, sub)
     if (listed.ok && !sub) break
     if (sub) {
       const now = Flow.micro(sub.spent_usd)
@@ -484,8 +488,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   const ended = sub ? finished.has(state) : true
   if (sub && (!ended || state === 'completed')) {
     await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
-    const after = await list(self, swarm, spawned.agent, true)
-    if (after.ok) sub = after.value.find((one) => one.agent_id === spawned.sub) ?? sub
+    sub = await observed(self, swarm, spawned, await list(self, swarm, spawned.agent, true), sub)
   }
   const used = (sub ? Flow.micro(sub.spent_usd) : Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')) + (await dispatched(self, swarm, spawned))
   for (const steer of await lease.steers().catch(() => [])) if (steer.seq > relayed) await self.board.steer(Nodes.nodeId(nid), steer.body, { key: 'relay:' + task.id + ':' + steer.seq })
@@ -507,6 +510,21 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   Machine.settle(self.kv, task.id, JSON.stringify(outcome))
   await Nodes.consider(self)
   return { done: JSON.stringify(outcome) }
+}
+
+async function observed(self: Swarm, swarm: string, spawned: Nodes.Spawned, listed: Gateway.Result<Gateway.Subagent[]>, last: Gateway.Subagent | undefined): Promise<Gateway.Subagent | undefined> {
+  if (!listed.ok) return last
+  const found = listed.value.find((one) => one.agent_id === spawned.sub)
+  if (found) return Sub.view(Sub.observe(self.kv, spawned.agent, found))
+  const kept = Sub.get(self.kv, spawned.agent, spawned.sub)
+  if (!kept || !Sub.guards.monotonic) return undefined
+  if (Sub.done(kept)) return Sub.view(kept)
+  for (let tries = 0; tries < 2; tries++) {
+    const again = await list(self, swarm, spawned.agent, true)
+    const found = again.ok ? again.value.find((one) => one.agent_id === spawned.sub) : undefined
+    if (found) return Sub.view(Sub.observe(self.kv, spawned.agent, found))
+  }
+  return undefined
 }
 
 export async function postVerify(self: Swarm, nid: string, sha: string, theorem: string, refutes: boolean) {
@@ -644,14 +662,16 @@ async function charge(self: Swarm) {
     const run = key.slice('charged:'.length)
     if (Date.now() - held.at > lateMs) {
       self.kv.delete(key)
+      if (held.sub) self.kv.delete(Sub.key(held.agent, held.sub))
       continue
     }
     const listed = await list(self, swarm, held.agent, true)
     const role = 'n:' + Flow.runNode(run) + '#' + Nodes.kOf(run)
     const sub = listed.ok ? listed.value.find((one) => (held.sub ? one.agent_id === held.sub : one.parent_agent_id === null && one.role === role)) : undefined
     if (!sub) continue
-    if (!held.sub && !finished.has(sub.status.state)) await Gateway.close(self.env, swarm, held.agent, sub.agent_id)
-    const now = Flow.micro(sub.spent_usd)
+    const kept = Sub.observe(self.kv, held.agent, sub)
+    if (!held.sub && !Sub.done(kept)) await Gateway.close(self.env, swarm, held.agent, sub.agent_id)
+    const now = Sub.spent(kept)
     const extra = now - Memo.units(held.spent)
     if (extra <= 0n) continue
     const nid = Flow.runNode(run)
@@ -693,11 +713,10 @@ export async function spentOf(self: Swarm, run: string, close = false): Promise<
   }
   const listed = await list(self, swarm, spawned.agent, true)
   if (!listed.ok) return null
-  let sub = listed.value.find((one) => one.agent_id === spawned.sub)
+  let sub = await observed(self, swarm, spawned, listed, undefined)
   if (close && sub && !finished.has(sub.status.state)) {
     await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
-    const after = await list(self, swarm, spawned.agent, true)
-    if (after.ok) sub = after.value.find((one) => one.agent_id === spawned.sub) ?? sub
+    sub = await observed(self, swarm, spawned, await list(self, swarm, spawned.agent, true), sub)
   }
   return Flow.micro(sub?.spent_usd) + (await dispatched(self, swarm, spawned))
 }

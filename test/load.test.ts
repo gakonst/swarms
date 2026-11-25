@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import * as Sub from '../src/worker/machines/Sub.ts'
 import { simulate, type Fault, type Options } from './load/sim.ts'
 
 const small: Partial<Options> = { activeMs: 30 * 60_000, children: 4, pledges: 4, swarms: 2, tailMs: 2 * 60 * 60_000 }
@@ -46,7 +47,21 @@ test('a settlement claimed by an earlier life is let go on restart, so its spend
   assert.equal(report.ledger.drift, '0.000000')
 })
 
-test('a subagent list that lags loses no result and no spend', { todo: 'pnpm load --seed 2 --swarms 2 --children 4 --pledges 4 --active 30 --tail 120 --faults staleList loses sim 0 sub 7 and $0.718736' }, async () => {
-  const report = await simulate({ ...small, faults: ['staleList'], seed: '2' })
-  assert.deepEqual(report.violations, [])
+for (const seed of ['1', '2', '3', '4', '5', '6', '7', '8'])
+  test(`a subagent list that answers an older state loses no result and no spend (seed ${seed})`, async () => {
+    const report = await simulate({ ...small, faults: ['staleList'], seed })
+    assert.deepEqual(report.violations, [])
+    assert.equal(report.counts.folds, report.counts.subagents)
+    assert.equal(report.ledger.drift, '0.000000')
+  })
+
+test('mutant: a subagent record that takes an older list over a newer one loses a result or spend', async () => {
+  Sub.guards.monotonic = false
+  try {
+    const report = await simulate({ ...small, faults: ['staleList'], seed: '3' })
+    assert.ok(report.violations.some((one) => one.invariant === 'lost result'))
+    assert.ok(report.violations.some((one) => one.invariant === 'ledger drift'))
+  } finally {
+    Sub.guards.monotonic = true
+  }
 })

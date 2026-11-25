@@ -708,7 +708,7 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation, request: Reques
   }
   if (agent && path === `/v1/agents/${agent}/subagents`) {
     const history = sw.history.get(agent) ?? []
-    if (faults.includes('staleList') && history.length > 1 && sw.random.gateway.chance(sim.rate.staleList)) return Response.json({ agents: JSON.parse(sw.random.gateway.pick(history.slice(0, -1))) as unknown[] })
+    if (faults.includes('staleList') && history.length > 1 && sw.random.faults.chance(sim.rate.staleList)) return Response.json({ agents: JSON.parse(sw.random.faults.pick(history.slice(0, -1))) as unknown[] })
     return Response.json({ agents: JSON.parse(listing(sw, agent)) as unknown[] })
   }
   const one = agent ? path.match(/^\/v1\/agents\/[^/]+\/subagents\/(\d+)\/(budget|close|messages)$/) : null
