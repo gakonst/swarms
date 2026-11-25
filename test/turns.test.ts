@@ -46,6 +46,11 @@ test("a turn the gateway refused because the swarm's credit ran out counts as ou
   assert.ok(!Turns.sponsorless("Boundless was not paid: fetch failed"))
 })
 
+test("a refused payment's wake doubles from 10 minutes, but a fee-sponsor outage retries every 15 minutes at most", () => {
+  assert.deepEqual([1, 2, 3, 8].map((attempts) => Turns.wakeIn(attempts, false) / 60_000), [10, 20, 40, 1280])
+  assert.deepEqual([1, 2, 3, 8, 50].map((attempts) => Turns.wakeIn(attempts, true) / 60_000), [10, 15, 15, 15, 15])
+})
+
 test('a swarm paused for money reads its credit once its calls are over, and goes on when enough came back', async () => {
   const now = Date.now()
   const swarm = (left: string, pause: Phase.Pause, at = now - 60_000, settled?: number) => {

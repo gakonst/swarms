@@ -71,6 +71,13 @@ export const retry: Work.Retry = { backoffMs: 15_000, maxAttempts: 8 }
 
 export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: retry.maxAttempts }
 
+export const sponsorWaitMs = 15 * 60_000
+
+export function wakeIn(attempts: number, sponsor: boolean) {
+  const backoff = Work.delay(paying, attempts)
+  return sponsor ? Math.min(backoff, sponsorWaitMs) : backoff
+}
+
 export const noteboard = 'notes'
 
 const resetsToRenew = 2
@@ -474,7 +481,8 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   const kinds = new Set((['kv', 'bucket', 'git'] as const).filter((kind) => stored[kind] > 0 || !self.kv.get<number>('published')))
   if (kinds.size) await expose(self, row, kinds).catch((error: unknown) => console.error('Making the swarm data public failed', error))
   if (refused) {
-    await pause(self, money.row, { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: short ? null : Date.now() + Work.delay(paying, attempt.attempts), why: 'money', ...(!short && (sponsorless(message) || sponsorless(unpaidBy?.error)) ? { sponsor: true } : {}) })
+    const sponsor = !short && (sponsorless(message) || sponsorless(unpaidBy?.error))
+    await pause(self, money.row, { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: short ? null : Date.now() + wakeIn(attempt.attempts, sponsor), why: 'money', ...(sponsor ? { sponsor: true } : {}) })
     return null
   }
   const renewed = status !== 'completed' && resets(self) >= resetsToRenew && renew(self, message)

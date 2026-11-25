@@ -648,6 +648,7 @@ test("a turn the gateway's empty fee sponsor could not pay waits on the sponsor,
   const paused = w.swarm.run()
   assert.ok(paused.state === 'paused' && paused.pause.why === 'money' && paused.pause.sponsor === true)
   assert.match(paused.state === 'paused' ? Phase.reason(paused.pause) : '', /^Waiting on the gateway's fee sponsor/)
+  assert.ok(paused.state === 'paused' && paused.pause.why === 'money' && paused.pause.wake !== null && paused.pause.wake <= Date.now() + 15 * 60_000)
   assert.equal(w.swarm.agent()?.id, agent)
 })
 
