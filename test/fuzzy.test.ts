@@ -38,3 +38,10 @@ test('accents fold, and marks cover exactly the matched letters', () => {
   const spread = Fuzzy.match('pqs', 'Better post-quantum signatures')!
   assert.deepEqual(spread.marks.map((at) => 'Better post-quantum signatures'[at]), ['p', 'q', 's'])
 })
+
+test('a goal that only repeats the title counts as the same text', () => {
+  assert.ok(Fuzzy.same('Solve P = NP.', 'Solve P = NP.'))
+  assert.ok(Fuzzy.same('solve p=np', 'Solve P = NP.'))
+  assert.ok(Fuzzy.same('Café', 'cafe'))
+  assert.ok(!Fuzzy.same('Solve P = NP. Work in the open.', 'Solve P = NP.'))
+})

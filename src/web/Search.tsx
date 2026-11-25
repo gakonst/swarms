@@ -32,7 +32,8 @@ function excerpt(text: string, marks: readonly number[]) {
 }
 
 function goalOf(swarm: Summary) {
-  return Prose.plain(Prose.line(swarm.goal)).slice(0, reach)
+  const goal = Prose.plain(Prose.line(swarm.goal)).slice(0, reach)
+  return Fuzzy.same(goal, Prose.plain(swarm.title)) ? '' : goal
 }
 
 export function find(query: string, listing: Listing | undefined, shapes: readonly (readonly [string, Shape])[]): Found[] {

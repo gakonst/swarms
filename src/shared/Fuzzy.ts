@@ -71,3 +71,8 @@ export function spans(text: string, marks: readonly number[]): { lit: boolean; t
   }
   return out
 }
+
+export function same(a: string, b: string) {
+  const bare = (text: string) => fold(text).replace(/[^\p{L}\p{N}]+/gu, '')
+  return bare(a) === bare(b)
+}
