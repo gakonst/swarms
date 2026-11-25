@@ -40,6 +40,8 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261023.3-beta",
     "nanocode-ts-old": "https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz",
     "typescript": "6.0.2",
     "vite": "^8.3.5",
