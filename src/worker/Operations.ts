@@ -495,14 +495,22 @@ async function older<T>(call: () => T | Promise<T>, fallback: () => T | Promise<
   }
 }
 
+const unconditional = new Map<string, number>()
+
+export const unconditionalMs = 5 * 60_000
+
 async function viewed(env: Cloudflare.Env, id: string, shape: Shape): Promise<View> {
+  if ((unconditional.get(id) ?? 0) > Date.now()) return (await stub(env, id).view(shape)) as View
   const key = `view/${id}/${new URLSearchParams(Object.entries(shape).map(([name, value]) => [name, String(value)]))}`
   const minute = Edge.minute()
   const held = await Edge.held<{ minute: string; view: View }>(env, key)
   const known = held?.minute === minute ? held.view : undefined
   const view = (await older(
     () => stub(env, id).viewed(shape, known?.stamp.version ?? null),
-    () => stub(env, id).view(shape),
+    () => {
+      unconditional.set(id, Date.now() + unconditionalMs)
+      return stub(env, id).view(shape)
+    },
     'A conditional swarm view failed, so the whole view was read',
   )) as View | null
   if (!view) return known!
@@ -1662,11 +1670,13 @@ export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise
   if (!gone.ok) return gone
   const cached = lending.get(parsed.value.swarm)
   if (cached && Date.now() - cached.at < lendingMs) return Problem.ok({ hands: cached.hands })
-  const [exists, issued] = await Promise.all([Store.exists(env, parsed.value.swarm), Hands.list(env, parsed.value.swarm)])
+  const swarm = parsed.value.swarm
+  const [exists, issued] = await Promise.all([Store.exists(env, swarm), Hands.list(env, swarm)])
   if (!exists) return missing()
   if (!issued.length) return Problem.ok({ hands: [] })
-  const { listed, rows }: { listed: Gateway.Listed[] | undefined; rows: Hands.Row[] } = await stub(env, parsed.value.swarm).lent(parsed.value.swarm)
-  const lent = Hands.lent(rows, listed)
+  const listed = await Hands.listing(env, swarm)
+  if (listed?.some((hand) => Hands.used(hand))) waitUntil(Promise.resolve(stub(env, swarm).lent(swarm)).catch((error: unknown) => console.error('Marking lent hands seen failed', error)))
+  const lent = Hands.lent(issued, listed)
   if (listed) lending.set(parsed.value.swarm, { at: Date.now(), hands: lent })
   return Problem.ok({ hands: lent })
 }

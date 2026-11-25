@@ -185,10 +185,25 @@ export function know(ids: readonly string[]) {
   for (const id of ids) known.add(id)
 }
 
+const absent = new Map<string, number>()
+
+export const absentMs = 30_000
+
+function missed(id: string) {
+  return (absent.get(id) ?? 0) > Date.now()
+}
+
+function miss(id: string) {
+  if (absent.size > 1000) absent.clear()
+  absent.set(id, Date.now() + absentMs)
+}
+
 export async function exists(env: Cloudflare.Env, id: string) {
   if (known.has(id)) return true
+  if (missed(id)) return false
   const found = (await fresh(env, (db) => db.prepare('select 1 from swarms where id = ?').bind(id).first())) !== null
   if (found) known.add(id)
+  else miss(id)
   return found
 }
 
@@ -200,8 +215,10 @@ export async function findAll(env: Cloudflare.Env, ids: readonly string[]) {
 }
 
 export async function find(env: Cloudflare.Env, id: string) {
+  if (!known.has(id) && missed(id)) return null
   const row = await fresh(env, (db) => db.prepare(totals + ' where s.id = ?').bind(id).first<Row>())
   if (row) known.add(row.id)
+  else miss(id)
   return row
 }
 
@@ -232,6 +249,7 @@ export async function insert(
   input: Pick<Row, 'creator' | 'goal' | 'id' | 'problem' | 'steering' | 'title'> & Partial<Pick<Row, 'setup' | 'form'>> & { nickname?: string | undefined },
 ) {
   const now = Date.now()
+  absent.delete(input.id)
   const swarm = env.DB.prepare(
     'insert into swarms (id, title, goal, problem, creator, steering, created_at, updated_at, setup, form) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning *, 0 as balance, pool_spent + sponsor_spent + spent_before as spent, 0 - (pool_spent + sponsor_spent + spent_before) as remaining, 0 as contributors, ? as nickname',
   ).bind(input.id, input.title, input.goal, input.problem, input.creator, input.steering, now, now, input.setup ?? null, input.form ?? 'agent', input.nickname ?? null)
