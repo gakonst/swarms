@@ -494,6 +494,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   else self.kv.delete('bounded:' + nid)
   await Nodes.ran(self, task.id, outcome, (node, sha, theorem, refutes) => postVerify(self, node, sha, theorem, refutes))
   self.kv.put('folded:' + task.id, JSON.stringify(outcome))
+  self.kv.delete(Nodes.foldKey(task.id))
   await Nodes.consider(self)
   return { done: JSON.stringify(outcome) }
 }

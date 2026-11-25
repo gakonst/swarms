@@ -274,7 +274,7 @@ export async function post(self: Swarm, input: Posting) {
     spec: spec(input),
   })
   if (posted.ok) {
-    emit(self, id, 'posted', normalized(input.title))
+    if (fresh) emit(self, id, 'posted', normalized(input.title))
     if (input.statement !== null && fresh) {
       self.kv.put('statement:' + id, input.statement)
       if (self.kv.get<number>('seeded')) self.ctx.waitUntil(statements(self).catch((error: unknown) => console.error('Committing statements failed', error)))
@@ -664,22 +664,39 @@ function resolveNeeds(names: readonly string[], titled: Map<string, string>, fou
   })
 }
 
+export type Folding = { checking?: boolean; fresh?: string[]; quieted?: boolean }
+
+export function foldKey(run: string) {
+  return 'ran:' + run
+}
+
 export async function ran(self: Swarm, run: string, result: Result, verify: (nid: string, sha: string, theorem: string, refutes: boolean) => Promise<void>) {
   const nid = Flow.runNode(run)
-  emit(self, nid, 'progress', result.summary || result.outcome)
-  if (result.outcome === 'stuck') self.kv.put('stuck:' + nid, (self.kv.get<number>('stuck:' + nid) ?? 0) + 1)
-  else self.kv.delete('stuck:' + nid)
+  const key = foldKey(run)
+  const kept = () => self.kv.get<Folding>(key) ?? {}
+  if (self.kv.get<Folding>(key) === undefined) {
+    emit(self, nid, 'progress', result.summary || result.outcome)
+    if (result.outcome === 'stuck') self.kv.put('stuck:' + nid, (self.kv.get<number>('stuck:' + nid) ?? 0) + 1)
+    else self.kv.delete('stuck:' + nid)
+    self.kv.put(key, {})
+  }
   if ((result.outcome === 'proved' || result.outcome === 'refuted') && result.commit && /^[0-9a-f]{40}$/.test(result.commit) && result.theorem) {
     await verify(nid, result.commit, result.theorem, result.outcome === 'refuted')
-    emit(self, nid, 'checking', 'Checking ' + result.commit.slice(0, 7) + ' in Lean')
+    if (!kept().checking) {
+      emit(self, nid, 'checking', 'Checking ' + result.commit.slice(0, 7) + ' in Lean')
+      self.kv.put(key, { ...kept(), checking: true })
+    }
   }
   let split = 0
   if (result.outcome === 'split' && result.children.length) {
     const found = await state(self)
     const titled = new Map<string, string>()
     for (const child of result.children) titled.set(normalized(child.title).toLowerCase(), await childId(nid, child.title))
-    for (const child of result.children.slice(0, 20)) {
-      if (!found.nodes.has(titled.get(normalized(child.title).toLowerCase()) ?? '')) split += 1
+    const listed = result.children.slice(0, 20)
+    const fresh = kept().fresh ?? listed.map((child) => titled.get(normalized(child.title).toLowerCase()) ?? '').filter((id) => !found.nodes.has(id))
+    if (!kept().fresh) self.kv.put(key, { ...kept(), fresh })
+    split = fresh.length
+    for (const child of listed)
       await post(self, {
         by: 'agent:n:' + nid,
         form: child.statement ? 'lemma' : 'approach',
@@ -689,10 +706,11 @@ export async function ran(self: Swarm, run: string, result: Result, verify: (nid
         title: child.title,
         words: child.spec,
       })
-    }
   }
+  if (kept().quieted) return
   if (result.outcome === 'proved' || result.outcome === 'refuted' || split > 0) self.kv.delete('quiet:' + nid)
   else self.kv.put('quiet:' + nid, (self.kv.get<number>('quiet:' + nid) ?? 0) + 1)
+  self.kv.put(key, { ...kept(), quieted: true })
 }
 
 export async function reconcile(self: Swarm, spentOf: (run: string) => Promise<bigint | null>) {
