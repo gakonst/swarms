@@ -42,7 +42,8 @@ async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {
     const worth = each.ended ? spent : reach
     const counted = held > worth ? worth : held < spent ? spent : held
     if (held === counted) continue
-    const taken = await Store.lower(self.env, row.id, id, String(counted))
+    const taken = await Store.lower(self.env, row.id, id, String(counted), gift.amount)
+    if (!taken) continue
     if (counted < held) {
       self.log(
         'funds',

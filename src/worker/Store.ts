@@ -4,6 +4,7 @@ import * as Mention from '../shared/Mention.ts'
 import * as Pictures from '../shared/Picture.ts'
 import * as Setup from '../shared/Setup.ts'
 import type * as Tree from '../shared/Tree.ts'
+import * as Payment from './machines/Payment.ts'
 import * as Replica from './Replica.ts'
 import * as Search from './Search.ts'
 
@@ -412,9 +413,9 @@ export async function backings(env: Cloudflare.Env, swarm: string) {
   return found.results.filter((gift) => gift.id.startsWith('backing:'))
 }
 
-export async function lower(env: Cloudflare.Env, swarm: string, id: string, amount: string) {
-  const [, taken] = await env.DB.batch<{ agent: string | null; branch: number | null }>([
-    env.DB.prepare('update contributions set amount = ? where id = ? and swarm = ?').bind(amount, id.toLowerCase(), swarm),
+export async function lower(env: Cloudflare.Env, swarm: string, id: string, amount: string, was: string) {
+  const [set, taken] = await env.DB.batch<{ agent: string | null; branch: number | null }>([
+    env.DB.prepare(`update contributions set amount = ?1 where id = ?2 and swarm = ?3${Payment.guards.fenced ? ' and amount = ?4' : ' and ?4 is not null'}`).bind(amount, id.toLowerCase(), swarm, was),
     env.DB.prepare(
       `with over as (
         select owner.contributor,
@@ -432,10 +433,11 @@ export async function lower(env: Cloudflare.Env, swarm: string, id: string, amou
       )
       insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
       select lower(hex(randomblob(6))), ?1, over.contributor, ranked.note, ranked.note_id, -min(ranked.net, over.excess - ranked.before), ?3, 0, ranked.branch, ranked.agent
-      from ranked, over where over.excess > ranked.before
+      from ranked, over where over.excess > ranked.before and changes() > 0
       returning agent, branch`,
     ).bind(swarm, id.toLowerCase(), Date.now()),
   ]).finally(() => wrote(swarm))
+  if (!set?.meta.changes) return null
   return (taken?.results ?? []).flatMap((row) => (row.branch === null ? [] : [{ agent: row.agent ?? '', branch: row.branch }]))
 }
 
@@ -652,7 +654,8 @@ export async function steer(
     select ?3, ?1, ?2, ?4, ?5, ?6, ?7, ?8, ?9 where (
       select coalesce(sum(b.amount), 0) - coalesce(sum(case when b.note_id is not null then b.amount else 0 end), 0) - ${steered}
       from (${backing}) b where b.contributor = ?2
-    ) >= cast(?6 as integer) and (?8 is null or ${open})`,
+    ) >= cast(?6 as integer) and (?8 is null or ${open})
+    on conflict (id) do nothing`,
   )
     .bind(input.swarm, input.contributor.toLowerCase(), input.id, input.note, input.note_id, String(input.amount), Date.now(), input.branch?.id ?? null, input.branch?.agent ?? null)
     .run().finally(() => wrote(input.swarm))
@@ -667,7 +670,8 @@ export async function allot(
     `insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
     select ?3, ?1, ?2, ?4, ?5, ?6, ?7, 1, ?8, ?9 where (
       select coalesce(sum(cast(amount as integer)), 0) from steers where swarm = ?1 and contributor = ?2 and budget = 1 and created_at > ?11
-    ) + cast(?6 as integer) <= coalesce(cast(?10 as integer), (select coalesce(sum(cast(amount as integer)), 0) from contributions where swarm = ?1)) and (?8 is null or ${open})`,
+    ) + cast(?6 as integer) <= coalesce(cast(?10 as integer), (select coalesce(sum(cast(amount as integer)), 0) from contributions where swarm = ?1)) and (?8 is null or ${open})
+    on conflict (id) do nothing`,
   )
     .bind(
       input.swarm,
@@ -738,6 +742,10 @@ export async function replaced(env: Cloudflare.Env, swarm: string, current: stri
   const agents = new Map<string, number[]>()
   for (const row of results) agents.set(row.agent, [...new Set([...(agents.get(row.agent) ?? []), row.branch])])
   return [...agents].map(([agent, branches]) => ({ agent, branches }))
+}
+
+export async function placed(env: Cloudflare.Env, swarm: string, id: string, contributor: string) {
+  return !!(await env.DB.prepare('select 1 from steers where id = ?1 and swarm = ?2 and contributor = ?3').bind(id, swarm, contributor.toLowerCase()).first())
 }
 
 export async function unsteer(env: Cloudflare.Env, ids: readonly string[]) {

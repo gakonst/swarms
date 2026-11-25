@@ -15,6 +15,7 @@ import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
+import * as Payment from './machines/Payment.ts'
 import * as Phase from './Phase.ts'
 import type { Why } from '../shared/Api.ts'
 import * as Search from './Search.ts'
@@ -291,26 +292,32 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.marked += 1
     this.kv.put('id', input.swarm)
     await this.wake('money')
-    if (input.kind === 'noted') {
-      this.log('funds', `${Words.short(input.contributor)} put their ${Words.trim(input.amount)} ${Chain.symbol(input.token)} behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
-      Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed "${input.note ?? ''}" with $${Words.trim(input.amount)}.`)
-      if (input.noteId) await this.steer(input.swarm, input.noteId)
-      this.changed('detail', 'members')
-      return
-    }
-    this.log(
-      'funds',
-      `${Words.short(input.contributor)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
-      [input.note, input.hash].filter(Boolean).join('\n'),
-    )
-    Chat.announce(this, `${Mention.at((await Store.account(this.env, input.contributor)).handle)} backed it with $${Words.trim(input.amount)}${input.note ? `: "${input.note}"` : ''}.`)
+    const handle = (await Store.account(this.env, input.contributor)).handle
+    const told = Payment.once(this.kv, 'told:' + input.kind + ':' + input.hash.toLowerCase(), () => {
+      if (input.kind === 'noted') {
+        this.log('funds', `${Words.short(input.contributor)} put their ${Words.trim(input.amount)} ${Chain.symbol(input.token)} behind a note`, [input.note, input.hash].filter(Boolean).join('\n'))
+        Chat.announce(this, `${Mention.at(handle)} backed "${input.note ?? ''}" with $${Words.trim(input.amount)}.`)
+        return
+      }
+      this.log(
+        'funds',
+        `${Words.short(input.contributor)} sent ${Words.trim(input.amount)} ${Chain.symbol(input.token)}${input.note ? ' with a note' : ''}`,
+        [input.note, input.hash].filter(Boolean).join('\n'),
+      )
+      Chat.announce(this, `${Mention.at(handle)} backed it with $${Words.trim(input.amount)}${input.note ? `: "${input.note}"` : ''}.`)
+      this.cue('credit')
+    })
     if (input.noteId) await this.steer(input.swarm, input.noteId)
-    this.cue('credit')
+    if (!told) return
     this.changed('detail', 'members')
-    if (this.listened()) {
-      const row = await this.found(input.swarm)
-      if (row) this.beacon(row)
-    }
+    if (input.kind === 'noted' || !this.listened()) return
+    const row = await this.found(input.swarm)
+    if (row) this.beacon(row)
+  }
+
+  async counted(input: Contributed) {
+    await this.contributed(input)
+    await this.funded(input.swarm)
   }
 
   run(): Phase.Run {
@@ -1016,12 +1023,12 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return Riding.pledge(this, { ...input, amount: Memo.units(input.amount) })
   }
 
-  async treeSteer(swarm: string, input: { amount: string; contributor: string; nid: string; note: string }) {
+  async treeSteer(swarm: string, input: { amount: string; contributor: string; key?: string | null; nid: string; note: string }) {
     this.kv.put('id', swarm)
     return Riding.steer(this, { ...input, amount: Memo.units(input.amount) })
   }
 
-  async treeMove(swarm: string, input: { amount: string; contributor: string; from: string; to: string }) {
+  async treeMove(swarm: string, input: { amount: string; contributor: string; from: string; key?: string | null; to: string }) {
     this.kv.put('id', swarm)
     return Riding.move(this, { ...input, amount: Memo.units(input.amount) })
   }

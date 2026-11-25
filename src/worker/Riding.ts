@@ -7,6 +7,7 @@ import { clip, redact } from '../shared/Trail.ts'
 import * as Chat from './Chat.ts'
 import * as Flow from './Flow.ts'
 import * as Gateway from './Gateway.ts'
+import * as Payment from './machines/Payment.ts'
 import * as Nodes from './Nodes.ts'
 import * as Runner from './Runner.ts'
 import * as Store from './Store.ts'
@@ -202,13 +203,21 @@ export async function pledge(self: Swarm, input: { amount: bigint; contributor: 
   } else if (!found.nodes.has(target)) target = Nodes.root
   const task = target === Flow.free ? undefined : found.nodes.get(target) ?? (await self.board.task(Nodes.nodeId(target))) ?? undefined
   if (target !== Flow.free && (!task || Work.terminal(task.phase) || target === Nodes.triage)) target = Flow.free
-  const wrote = await Nodes.budgeting(self, () => Flow.write(self.env, { from: null, id: input.hash.toLowerCase(), kind: 'pledge', parts: [[contributor, input.amount]], swarm: Nodes.swarm(self), to: { node: target, run: null } }))
-  if (wrote) {
-    Nodes.resume(self, target)
-    Nodes.changed(self)
+  const id = input.hash.toLowerCase()
+  const swarm = Nodes.swarm(self)
+  const handle = (await Store.account(self.env, contributor as Address)).handle
+  const done = await Payment.settle(
+    self.kv,
+    'pledge:' + id,
+    { write: () => Flow.write(self.env, { from: null, id, kind: 'pledge', parts: [[contributor, input.amount]], swarm, to: { node: target, run: null } }), written: () => Flow.written(self.env, swarm, id) },
+    () => {
+      Nodes.resume(self, target)
+      Nodes.changed(self)
+      Nodes.emit(self, target === Flow.free ? Nodes.root : target, 'funded', '@' + handle + ' rode it with $' + trim(input.amount) + (target === Flow.free ? ', kept free to move' : ''))
+    },
+  )
+  if (done.at === 'paid') {
     await seed(self)
-    const handle = (await Store.account(self.env, contributor as Address)).handle
-    Nodes.emit(self, target === Flow.free ? Nodes.root : target, 'funded', '@' + handle + ' rode it with $' + trim(input.amount) + (target === Flow.free ? ', kept free to move' : ''))
     await Runner.tick(self).then((next) => (next === null ? undefined : arm(self, next)))
   }
   return { nid: target }
@@ -225,17 +234,14 @@ function trim(amount: bigint) {
   return Memo.decimal(amount).replace(/\.?0+$/, '')
 }
 
-export async function steer(self: Swarm, input: { amount: bigint; contributor: string; nid: string; note: string }): Promise<Answer<Tree.Node>> {
+export async function steer(self: Swarm, input: { amount: bigint; contributor: string; key?: string | null; nid: string; note: string }): Promise<Answer<Tree.Node>> {
   const contributor = input.contributor.toLowerCase()
   const found = await Nodes.state(self)
   const task = found.nodes.get(input.nid)
   if (!task || Work.terminal(task.phase) || input.nid === Nodes.triage) return fail(409, 'This node is not open.')
   if (input.amount > 0n) {
-    const moved = await Nodes.budgeting(self, async () => {
-      const rows = await Flow.rows(self.env, Nodes.swarm(self))
-      return Flow.write(self.env, { from: { node: Flow.free, run: null }, id: 'steer:' + input.nid + ':' + contributor + ':' + rows.length, kind: 'move', parts: [[contributor, input.amount]], swarm: Nodes.swarm(self), to: { node: input.nid, run: null } })
-    })
-    if (!moved) return fail(409, 'You have less free money in this swarm than that. Ride the node instead.')
+    const moved = await shift(self, { amount: input.amount, contributor, from: Flow.free, id: Payment.id('steer', input.nid, contributor, input.key), to: input.nid }, () => undefined)
+    if (moved.at !== 'paid') return fail(409, 'You have less free money in this swarm than that. Ride the node instead.')
   }
   const after = await Nodes.state(self)
   const behind = after.ledger.funders.get(input.nid)?.get(contributor)?.amount ?? 0n
@@ -252,7 +258,20 @@ export async function steer(self: Swarm, input: { amount: bigint; contributor: s
   return { ok: true, value: view.nodes.get(input.nid) as Tree.Node }
 }
 
-export async function move(self: Swarm, input: { amount: bigint; contributor: string; from: string; to: string }): Promise<Answer<Tree.Node | null>> {
+async function shift(self: Swarm, input: { amount: bigint; contributor: string; from: string; id: string; to: string }, effects: () => void) {
+  const swarm = Nodes.swarm(self)
+  return Payment.settle(
+    self.kv,
+    input.id,
+    {
+      write: () => Flow.write(self.env, { from: { node: input.from, run: null }, id: input.id, kind: 'move', parts: [[input.contributor, input.amount]], swarm, to: { node: input.to, run: null } }),
+      written: () => Flow.written(self.env, swarm, input.id),
+    },
+    effects,
+  )
+}
+
+export async function move(self: Swarm, input: { amount: bigint; contributor: string; from: string; key?: string | null; to: string }): Promise<Answer<Tree.Node | null>> {
   const contributor = input.contributor.toLowerCase()
   const found = await Nodes.state(self)
   for (const nid of [input.from, input.to]) {
@@ -262,15 +281,13 @@ export async function move(self: Swarm, input: { amount: bigint; contributor: st
     if (nid === input.to && Work.terminal(task.phase)) return fail(409, 'Money moves only onto an open node.')
   }
   if (input.from === input.to) return fail(400, 'Move money between two different places.')
-  const moved = await Nodes.budgeting(self, async () => {
-    const rows = await Flow.rows(self.env, Nodes.swarm(self))
-    return Flow.write(self.env, { from: { node: input.from, run: null }, id: 'move:' + input.from + ':' + input.to + ':' + contributor + ':' + rows.length, kind: 'move', parts: [[contributor, input.amount]], swarm: Nodes.swarm(self), to: { node: input.to, run: null } })
-  })
-  if (!moved) return fail(409, 'You have less uncommitted money there than that.')
-  Nodes.changed(self)
   const handle = (await Store.account(self.env, contributor as Address)).handle
-  if (input.to !== Flow.free) Nodes.emit(self, input.to, 'moved', '@' + handle + ' moved $' + trim(input.amount) + ' here')
-  if (input.from !== Flow.free) Nodes.emit(self, input.from, 'moved', '@' + handle + ' moved $' + trim(input.amount) + ' away')
+  const moved = await shift(self, { amount: input.amount, contributor, from: input.from, id: Payment.id('move', input.from + '>' + input.to, contributor, input.key), to: input.to }, () => {
+    Nodes.changed(self)
+    if (input.to !== Flow.free) Nodes.emit(self, input.to, 'moved', '@' + handle + ' moved $' + trim(input.amount) + ' here')
+    if (input.from !== Flow.free) Nodes.emit(self, input.from, 'moved', '@' + handle + ' moved $' + trim(input.amount) + ' away')
+  })
+  if (moved.at !== 'paid') return fail(409, 'You have less uncommitted money there than that.')
   await Runner.tick(self).then((next) => (next === null ? undefined : arm(self, next)))
   const view = await Nodes.view(self)
   return { ok: true, value: view.nodes.get(input.to === Flow.free ? input.from : input.to) ?? null }
@@ -334,7 +351,7 @@ export async function health(self: Swarm): Promise<Ledgered> {
   const credit = await Gateway.credit(self.env, swarm)
   const gateway = credit.ok ? { deposited: credit.value.deposited, left: credit.value.left, spent: credit.value.spent } : null
   const drift = gateway ? Memo.units(gateway.left) - (totals.held - live) : 0n
-  const balanced = totals.held === totals.pledged - totals.spent
+  const balanced = Payment.balanced(Payment.audit(rows))
   const ok = balanced && gateway !== null && (drift < 0n ? -drift : drift) <= tolerance
   return { drift: Flow.usd(drift), gateway, held: Flow.usd(totals.held), live: Flow.usd(live), ok, pledged: Flow.usd(totals.pledged), spent: Flow.usd(totals.spent), swarm }
 }

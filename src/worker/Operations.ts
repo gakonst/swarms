@@ -76,6 +76,7 @@ import * as Edge from './Edge.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Lobby from './Lobby.ts'
+import * as Payment from './machines/Payment.ts'
 import * as Persona from './Persona.ts'
 import * as Progress from '../shared/Progress.ts'
 import * as Phase from './Phase.ts'
@@ -86,7 +87,7 @@ import * as Sessions from './Sessions.ts'
 import * as Timing from './Timing.ts'
 import * as Store from './Store.ts'
 import * as Team from './Team.ts'
-import type { Stamp, Swarm, View } from './Swarm.ts'
+import type { Contributed as Told, Stamp, Swarm, View } from './Swarm.ts'
 import * as Words from './Words.ts'
 import * as Fleet from '../shared/Fleet.ts'
 import * as Brief from '../shared/ResearchBrief.ts'
@@ -108,6 +109,8 @@ const providers = z.enum(['anthropic', 'openai']).describe('Whose API key: anthr
 const nid = z.string().trim().regex(/^(root|triage|[0-9a-f]{10})$/, 'A node id is root, triage or 10 hex characters.').describe('A node id, as in /s/<id>/n/<nid>.')
 
 const free = z.union([nid, z.literal('')])
+
+const idempotency = z.string().regex(/^[\w-]{8,64}$/).optional().describe('An idempotency key the caller picks once per action and sends again on every retry of it, so the money moves once.')
 
 const alias = z
   .string()
@@ -274,6 +277,7 @@ export const schema = {
       .refine((value) => units(value) <= 100_000_000n, 'A branch is funded with at most 100.')
       .describe("How many dollars go behind the branch: of the caller's backing not yet behind a note, or of the swarm's money within their team budget when only its team steers."),
     branch: subagentId.describe('The branch, the id of one of the subagents the swarm\'s agent started itself, from GET /v1/swarms/:id/branches.'),
+    key: idempotency,
     message: z
       .string()
       .trim()
@@ -431,11 +435,13 @@ export const schema = {
   nodeSteer: z.object({
     amount: z.string().regex(/^\d+(\.\d{1,6})?$/).default('0').describe('Dollars of your free money in this swarm to move onto the node with the note; 0 steers with what you already have on it.'),
     node: nid,
+    key: idempotency,
     note: z.string().trim().min(1).max(Memo.maxNote).describe('The note; the node\'s run reads it with the money behind it.'),
     swarm: id,
   }),
   nodeMove: z.object({
     amount: decimal.refine((value) => units(value) > 0n, 'Move more than nothing.'),
+    key: idempotency,
     node: free.describe('Where the money is now: a node id, or "" for your free money.'),
     swarm: id,
     to: free.describe('Where it goes: a node id, or "" for your free money.'),
@@ -1307,13 +1313,12 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
   if (!seat && !author) return Problem.fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you direct its money.')
 
   const amount = units(request.amount)
-  const identity = identifier()
+  const identity = request.key ? Payment.id('fund', row.id + ':' + target.id, allowed.value.address, request.key) : identifier()
   const message = request.message ?? null
   const note = message ? clip(message.split('\n')[0] ?? message, Memo.maxNote) : `branch ${target.id}`
   const entry = { amount, branch: { agent, id: target.id }, contributor: allowed.value.address, id: identity, note, note_id: `branch:${target.id}`, swarm: row.id }
-  const placed = seat
-    ? await Store.allot(env, { ...entry, limit: seat.limit === null ? null : Memo.units(seat.limit), since: Date.now() - Team.period })
-    : await Store.steer(env, entry)
+  const first = seat ? await Store.allot(env, { ...entry, limit: seat.limit === null ? null : Memo.units(seat.limit), since: Date.now() - Team.period }) : await Store.steer(env, entry)
+  const placed = first || (!!request.key && (await Store.placed(env, row.id, identity, allowed.value.address)))
   if (!placed)
     return Problem.fail(
       409,
@@ -1335,7 +1340,9 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
     stub(env, row.id).direct(row.id, {
       agent,
       branch: target.id,
-      said: message
+      said: !first
+        ? null
+        : message
         ? `${who} steered ${target.who} (branch ${target.id}) with ${dollars(Memo.decimal(amount))}. ${standing} ${Mention.quoted(note, 140)}`
         : `${who} put ${dollars(Memo.decimal(amount))} behind ${target.who} (branch ${target.id}). ${standing}`,
       ...(message
@@ -1760,7 +1767,8 @@ export async function contribute(
   if (existing) {
     written = text && noteId && !existing.note ? await Store.annotate(env, row.id, request.hash, { note: text, note_id: noteId }) : null
     if (!written) {
-      await stub(env, row.id).funded(row.id)
+      const again: Told = { amount: Memo.decimal(total), contributor: first.from, hash: request.hash, kind: 'new', note: existing.note, noteId: existing.note_id, swarm: row.id, token: first.token }
+      await older(() => stub(env, row.id).counted(again), () => stub(env, row.id).funded(row.id), 'Counting a contribution again failed, so the swarm was only told of new money')
       return Problem.fail(409, 'conflict', `This transaction is already counted${text && !existing.note ? ', and its money is already behind another idea or a branch' : ''}.`)
     }
   } else {
@@ -1953,7 +1961,7 @@ export async function nodeSteer(env: Cloudflare.Env, input: Input<'nodeSteer'>, 
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to steer a node.')
   const row = await treeRow(env, parsed.value.swarm, true)
   if (!row.ok) return row
-  return answered(await stub(env, row.value.id).treeSteer(row.value.id, { amount: parsed.value.amount, contributor: address, nid: parsed.value.node, note: parsed.value.note }))
+  return answered(await stub(env, row.value.id).treeSteer(row.value.id, { amount: parsed.value.amount, contributor: address, key: parsed.value.key ?? null, nid: parsed.value.node, note: parsed.value.note }))
 }
 
 export async function nodeMove(env: Cloudflare.Env, input: Input<'nodeMove'>, address?: Address): Promise<Problem.Result<Tree.Node | null>> {
@@ -1962,7 +1970,7 @@ export async function nodeMove(env: Cloudflare.Env, input: Input<'nodeMove'>, ad
   if (!address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID to move your money.')
   const row = await treeRow(env, parsed.value.swarm, true)
   if (!row.ok) return row
-  return answered(await stub(env, row.value.id).treeMove(row.value.id, { amount: Memo.decimal(units(parsed.value.amount)), contributor: address, from: parsed.value.node, to: parsed.value.to }))
+  return answered(await stub(env, row.value.id).treeMove(row.value.id, { amount: Memo.decimal(units(parsed.value.amount)), contributor: address, from: parsed.value.node, key: parsed.value.key ?? null, to: parsed.value.to }))
 }
 
 export async function nodeEnd(env: Cloudflare.Env, input: Input<'nodeEnd'>, address?: Address): Promise<Problem.Result<Tree.Node>> {

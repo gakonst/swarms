@@ -26,7 +26,7 @@ function swarm(gifts: { amount: string; channel: string; id: string }[], behind:
   const read = (sql: string) =>
     sql.includes('json_each') ? credited.known.map((id) => ({ id })) : sql.includes('channel is not null') ? gifts : sql.includes('returning agent, branch') || sql.includes('from branches') || sql.includes('group by agent, branch, contributor') ? behind.map((each) => ({ ...each, contributor: backer, settled_at: null })) : []
   const statement = (sql: string, args: unknown[] = []) => ({
-    all: async () => ({ results: read(sql) }),
+    all: async () => ({ meta: { changes: 1 }, results: read(sql) }),
     bind: (...bound: unknown[]) => statement(sql, bound),
     first: async () => {
       writes.push({ args, sql })
@@ -100,7 +100,7 @@ test('a backing that ended is lowered to what it paid, since the rest never left
   ])
   await Money.refresh(known.self, row, { credit: true, hands: false })
   const lowered = known.writes.filter((write) => write.sql.startsWith('update contributions set amount'))
-  assert.deepEqual(lowered.map((write) => write.args), [['1200000', 'backing:' + ended, 'abc123abc123']])
+  assert.deepEqual(lowered.map((write) => write.args), [['1200000', 'backing:' + ended, 'abc123abc123', '5000000']])
   assert.equal(known.writes.filter((write) => write.sql.startsWith('insert or ignore into contributions')).length, 0)
   assert.ok(known.logged.some((text) => /ended after paying \$1\.2/.test(text)))
   assert.ok(known.writes.some((write) => write.sql.includes('insert into steers') && write.args[0] === 'abc123abc123' && write.args[1] === 'backing:' + ended))
@@ -118,7 +118,7 @@ test('a backing that ended is lowered to what it paid, since the rest never left
     { amount: '1200000', channel: ended, id: 'backing:' + ended },
   ])
   await Money.refresh(paying.self, row, { credit: true, hands: false })
-  assert.deepEqual(paying.writes.filter((write) => write.sql.startsWith('update contributions set amount')).map((write) => write.args), [['1000000', 'backing:' + live, 'abc123abc123']])
+  assert.deepEqual(paying.writes.filter((write) => write.sql.startsWith('update contributions set amount')).map((write) => write.args), [['1000000', 'backing:' + live, 'abc123abc123', '400000']])
   assert.ok(!paying.logged.some((text) => /ended after paying/.test(text)))
 
   const stranded = swarm([
@@ -126,7 +126,7 @@ test('a backing that ended is lowered to what it paid, since the rest never left
     { amount: '1200000', channel: ended, id: 'backing:' + ended },
   ])
   await Money.refresh(stranded.self, row, { credit: true, hands: false })
-  assert.deepEqual(stranded.writes.filter((write) => write.sql.startsWith('update contributions set amount')).map((write) => write.args), [['5000000', 'backing:' + live, 'abc123abc123']])
+  assert.deepEqual(stranded.writes.filter((write) => write.sql.startsWith('update contributions set amount')).map((write) => write.args), [['5000000', 'backing:' + live, 'abc123abc123', '25000000']])
   assert.ok(stranded.logged.some((text) => /approval of \$25 can pay \$5 in all/.test(text)))
 })
 

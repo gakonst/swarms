@@ -99,6 +99,7 @@
     "working"
   ],
   "fallbacks": {
-    "viewed": "view"
+    "viewed": "view",
+    "counted": "funded"
   }
 }

@@ -96,16 +96,18 @@ test('a backing lowered to what it paid takes back what was steered with the res
   assert.equal(await Store.steer(db.env, { amount: 2_000_000n, contributor: rider, id: 'new', note: 'newer idea', note_id: 'n2', swarm: 's' }), true)
   assert.deepEqual(await member(db), ['12.000000', '12.000000', '0.000000'])
 
-  assert.deepEqual(await Store.lower(db.env, 's', 'backing:0xkey', '4000000'), [{ agent: 'agt', branch: 3 }])
+  assert.deepEqual(await Store.lower(db.env, 's', 'backing:0xkey', '4000000', '10000000'), [{ agent: 'agt', branch: 3 }])
   const row = await Store.find(db.env, 's')
   const notes = await Store.notes(db.env, 's', BigInt(row?.balance ?? 0), new Set())
   assert.deepEqual(notes.map((note) => [note.id, note.weight]), [['n1', '3.000000'], ['n0', '2.000000']])
   assert.equal((await Store.funds(db.env, 's', 'agt')).shares.get(3)?.get(rider), 0n)
   assert.deepEqual(await member(db), ['6.000000', '6.000000', '0.000000'])
 
-  assert.deepEqual(await Store.lower(db.env, 's', 'backing:0xkey', '2000000'), [])
+  assert.deepEqual(await Store.lower(db.env, 's', 'backing:0xkey', '2000000', '4000000'), [])
   assert.deepEqual(await member(db), ['4.000000', '4.000000', '0.000000'])
-  assert.deepEqual(await Store.lower(db.env, 's', 'backing:0xkey', '2000000'), [])
+  assert.equal(await Store.lower(db.env, 's', 'backing:0xkey', '2000000', '4000000'), null)
+  assert.equal(await Store.lower(db.env, 's', 'backing:0xkey', '3000000', '4000000'), null)
+  assert.deepEqual(await member(db), ['4.000000', '4.000000', '0.000000'])
   assert.equal(db.sqlite.prepare('select count(*) as n from steers').get()?.['n'], 7)
 })
 

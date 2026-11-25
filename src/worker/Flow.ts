@@ -11,7 +11,9 @@ export type Row = { amount: bigint; contributor: string; first: number; kind: Ki
 export const free = ''
 
 export async function write(env: Cloudflare.Env, input: { at?: number; from: Bucket | null; id: string; kind: Kind; parts: readonly Part[]; swarm: string; to: Bucket | null }) {
-  const parts = input.parts.filter(([, amount]) => amount > 0n).map(([contributor, amount]) => [contributor.toLowerCase(), String(amount)])
+  const merged = new Map<string, bigint>()
+  for (const [contributor, amount] of input.parts) if (amount > 0n) merged.set(contributor.toLowerCase(), (merged.get(contributor.toLowerCase()) ?? 0n) + amount)
+  const parts = [...merged].map(([contributor, amount]) => [contributor, String(amount)])
   if (!parts.length) return false
   const result = await env.DB.prepare(
     `with parts as (
