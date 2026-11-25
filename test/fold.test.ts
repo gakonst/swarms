@@ -39,7 +39,7 @@ test("a run's result whose fold stopped half way, as when the object restarts or
   assert.equal(w.swarm.kv.get('quiet:root'), undefined)
 })
 
-test("a turn whose end stopped half way, as when the object restarts, is folded again: its update is posted and announced twice", { todo: 'Turns.finish is not idempotent by turn: it logs and announces before it moves the run out of working (docs/CONCURRENCY.md, "Double folds")' }, async (t) => {
+test("a turn whose end stopped half way, as when the object restarts, is folded once: its update is posted and announced once", async (t) => {
   let report = { request_id: 'agt_1:1', status: 'running' } as Record<string, unknown>
   let hung = 0
   let wake = () => undefined as void

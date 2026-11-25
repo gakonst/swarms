@@ -7,6 +7,7 @@ import * as Store from './Store.ts'
 import * as Relay from './Relay.ts'
 import * as Clock from './Clock.ts'
 import * as Money from './Money.ts'
+import * as Cursor from './machines/Cursor.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
 
 export function frame(block: string) {
@@ -74,10 +75,14 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
         down = read.status >= 500
         break
       }
-      for (const event of read.value.events) ended = digest(self, event, run.turn) || ended
+      // Fold only events past the saved cursor, and save the cursor in the
+      // same step as the rows they wrote, before the next await.
+      const page = Cursor.fresh(read.value.events, cursor)
+      for (const event of page.events) ended = digest(self, event, run.turn) || ended
+      const next = Math.max(page.cursor, read.value.next_cursor)
+      if (next !== cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor: next })
+      cursor = next
       await Turns.progressed(self)
-      if (read.value.next_cursor !== cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor: read.value.next_cursor })
-      cursor = read.value.next_cursor
       if (!read.value.has_more) break
     }
   }
@@ -147,6 +152,7 @@ export async function listen(self: Swarm, row: Store.Row, agent: Lead, run: Turn
         const found = frame(block)
         if (!found) continue
         const event = JSON.parse(found.data) as Gateway.Event
+        if (!found.live && Cursor.fresh([event], cursor).events.length === 0) continue
         if (found.live) {
           for (const delta of deltas(self, event, agent.id)) {
             if (delta.type === 'delta' && delta.channel === 'thinking') pondered(self, delta.who, delta.item, delta.offset, delta.delta)
@@ -157,8 +163,8 @@ export async function listen(self: Swarm, row: Store.Row, agent: Lead, run: Turn
         ended = digest(self, event, run.turn) || ended
         cursor = Math.max(cursor, event.seq)
       }
-      await Turns.progressed(self)
       if (cursor !== (self.agent() ?? agent).cursor) self.kv.put('agent', { ...(self.agent() ?? agent), cursor })
+      await Turns.progressed(self)
       if (ended || Date.now() >= closing) stop.abort()
     }
   } finally {

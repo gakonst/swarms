@@ -9,6 +9,7 @@
 // the board: locks, once-only steps and letting go of a past life's locks.
 
 import type { Board as Boards } from 'nanocode-ts'
+import * as Lease from './machines/Lease.ts'
 
 export type Board = Boards.Board
 export type Cap = Boards.Cap
@@ -85,30 +86,93 @@ export async function reclaim(board: Board) {
   for (const task of await board.held()) if (task.labels['lock'] === instance.lock && task.claim) await board.release(task.id, task.claim, 'its holder restarted')
 }
 
-// Run `work` holding the lock `id`, renewing its lease every third of it while
-// the work runs; while another holds it, `work` does not run and the refusal
-// comes back instead.
-export async function holding<T>(board: Board, id: string, leaseMs: number, work: () => Promise<T>): Promise<{ value: T } | { rejection: Rejection }> {
-  const held = await lock(board, id, leaseMs)
-  if (!held.ok) return { rejection: held.rejection }
-  const timer = setInterval(() => void board.renew(id, held.claim, leaseMs).catch(() => undefined), Math.max(1, Math.floor(leaseMs / 3)))
-  try {
-    return { value: await work() }
-  } finally {
-    clearInterval(timer)
-    await board.release(id, held.claim)
+// A claim's holder, as the work under it sees it: the lease's epoch, a signal
+// that aborts when the lease is lost, and whether a write may land now.
+export type Held = { epoch: number; signal: AbortSignal; writable: () => boolean }
+
+// The lease was lost while the work ran: a renew was refused, or the lease ran
+// out with no renew answering. The work's signal aborted when it happened.
+export class Lost extends Error {
+  readonly id: string
+  readonly why: string
+  constructor(id: string, why: string) {
+    super('The lock ' + id + ' was lost: ' + why)
+    this.id = id
+    this.why = why
   }
 }
 
-// Run `work` once the lock `id` is free: callers take turns, one at a time.
-export async function serial<T>(board: Board, id: string, leaseMs: number, work: () => Promise<T>, waitMs = 50): Promise<T> {
+// A wait for a lock ran past its deadline (rule 6): a typed refusal, not a spin.
+export class Busy extends Error {
+  readonly id: string
+  readonly waitedMs: number
+  constructor(id: string, waitedMs: number) {
+    super('The lock ' + id + ' stayed held for ' + waitedMs + ' ms')
+    this.id = id
+    this.waitedMs = waitedMs
+  }
+}
+
+// Guards the tests turn off to check that the simulation catches each broken
+// invariant. Never changed outside tests.
+export const guards = { deadline: true }
+
+// Run 'work' holding the lock 'id', renewing its lease every third of it while
+// the work runs, as the lease machine (machines/Lease.ts) says: a refused
+// renew, or a lease that runs out unrenewed, is Lost, which aborts the work's
+// signal and answers 'lost' rather than the work's value, and a lost lock is
+// not released (it is no longer ours). While another holds it, 'work' does not
+// run and the refusal comes back instead.
+export async function holding<T>(board: Board, id: string, leaseMs: number, work: (held: Held) => Promise<T>): Promise<{ value: T } | { rejection: Rejection } | { lost: string }> {
+  let state = Lease.step(Lease.unowned, { type: 'claim' })
+  const held = await lock(board, id, leaseMs)
+  if (!held.ok) return { rejection: held.rejection }
+  state = Lease.step(state, { claim: held.claim, type: 'claimed', until: held.untilMs })
+  const epoch = state.epoch
+  const stop = new AbortController()
+  const apply = (event: Lease.Event) => {
+    state = Lease.step(state, event)
+    if (state.kind === 'Lost' && !stop.signal.aborted) stop.abort(new Lost(id, state.why))
+  }
+  const timer = setInterval(() => {
+    apply({ now: Date.now(), type: 'tick' })
+    if (state.kind !== 'Owned') return
+    void board.renew(id, held.claim, leaseMs).then(
+      (verdict) => apply(verdict.ok ? { type: 'renewed', until: until(verdict) ?? Date.now() + leaseMs } : { type: 'refused', why: verdict.rejection.kind }),
+      () => apply({ type: 'transport' }),
+    )
+  }, Math.max(1, Math.floor(leaseMs / 3)))
+  try {
+    const value = await work({ epoch, signal: stop.signal, writable: () => Lease.writable(state, epoch, Date.now()) })
+    apply({ now: Date.now(), type: 'tick' })
+    if (state.kind === 'Lost') return { lost: state.why }
+    return { value }
+  } finally {
+    clearInterval(timer)
+    if (state.kind === 'Owned') {
+      state = Lease.step(state, { type: 'drain' })
+      const released = await board.release(id, held.claim)
+      state = Lease.step(state, released.ok ? { type: 'released' } : { type: 'refused', why: released.rejection.kind })
+    }
+  }
+}
+
+// Run 'work' once the lock 'id' is free: callers take turns, one at a time.
+// A caller waits at most 'deadlineMs' and then gets Busy; a lost lock is Lost.
+export const serialWaitMs = 30_000
+
+export async function serial<T>(board: Board, id: string, leaseMs: number, work: (held: Held) => Promise<T>, waitMs = 50, deadlineMs = serialWaitMs): Promise<T> {
+  const deadline = Date.now() + deadlineMs
   for (;;) {
     const ran = await holding(board, id, leaseMs, work)
     if ('value' in ran) return ran.value
+    if ('lost' in ran) throw new Lost(id, ran.lost)
     if (ran.rejection.kind !== 'Held') throw new Error(`The lock ${id} was refused: ${ran.rejection.kind}`)
+    if (guards.deadline && Date.now() + waitMs > deadline) throw new Busy(id, deadlineMs)
     await new Promise((resolve) => setTimeout(resolve, waitMs))
   }
 }
+
 
 // A once-only step, keyed by `id`: claimed here, finished when `work` returns,
 // and never run again by anyone once finished. A step that threw opens again.

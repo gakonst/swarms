@@ -27,7 +27,7 @@ It holds the rules as they apply to a Cloudflare Worker with Durable Objects and
 
 | Scope | Owner | Durable state | Read model |
 |---|---|---|---|
-| Agent swarm run (`Phase.Run`: new, waiting, starting, working, paused) | Swarm object, alarm under the `stepping` claim | object kv `run`, `agent`, `lease`, `heard`; board tasks `turn:<n>` | D1 `swarms.status/why/rounds` |
+| Agent swarm run (`Phase.Run`: new, waiting, starting, working, ending, paused) | Swarm object: the alarm is its only stepper, and every write is a typed transition of `machines/Run.ts` fenced on the record's `rev` | object kv `run`, `agent`, `lease`, `heard`; board tasks `turn:<n>` | D1 `swarms.status/why/rounds` |
 | Turn | the `turn:<n>` board claim | object SQL `turns`, `feed` | D1 `reports`, `search` |
 | Tree swarm node, run, check | Swarm object, `Board.pool` claims of `r:<nid>:<k>` and `v:<nid>:<sha>` | board tasks `n:`, `r:`, `v:`, `s:`; kv `run:`, `folded:`, `picked:`, `quiet:`, `stuck:` | object SQL `tree_deltas` |
 | Tree ledger (pledge, grant, commit, spend, settle, return, move) | the `budgeting` claim on the swarm's board | D1 `flows` (balance-checked insert) | `Flow.fold` |
@@ -45,8 +45,8 @@ Hazard: **High** loses money, folds a result twice or wedges a swarm; **Medium**
 
 | Entry | Location | What can race | Guard today | Hazard |
 |---|---|---|---|---|
-| `stepping`, the agent swarm's single step | `Swarm.alarm` `src/worker/Swarm.ts:709`, `Work.holding` `src/worker/Work.ts:91` | Alarm retry against a step still running; a request (`wake`, `funded`) setting the alarm mid-step | A 5 min lease renewed every third by `setInterval` (`Work.ts:94`). The step awaits the gateway for up to a 5 min stream window, a 3 s sleep and many D1 reads while holding it (rule 3). A refused renew is swallowed (`.catch(() => undefined)`), so work goes on after the lease is lost (rule 1). A held lock makes the alarm return without re-arming | High |
-| `budgeting`, the tree ledger's mutex | `Nodes.budgeting` `src/worker/Nodes.ts:381`, `Work.serial` `src/worker/Work.ts:104` | Every pledge, steer, move, top-up, settle, late charge and `consider` in the object | `Work.serial` spins every 50 ms with **no deadline** (rule 6) while the holder awaits D1 (`Flow.rows`, `Flow.write`) and the board. Each try appends a claim and a release to the board log. Callers include request paths (`Riding.pledge` `src/worker/Riding.ts:205`) and the pool (`Nodes.topUp` from `Runner.watch`). **Rider paths fixed:** `Riding.pledge`, `steer` and `move` no longer take it; their one balance-checked insert is the compare-and-set and their ids are keys, so they need no lock (Payment and ride below). The pool's grants, commits, top-ups and `Triage` still spin on it | High (rider paths fixed) |
+| `stepping`, the agent swarm's single step | `Swarm.alarm` `src/worker/Swarm.ts:709`, `Work.holding` `src/worker/Work.ts:91` | Alarm retry against a step still running; a request (`wake`, `funded`) setting the alarm mid-step | A 5 min lease renewed every third by `setInterval` (`Work.ts:94`). The step awaits the gateway for up to a 5 min stream window, a 3 s sleep and many D1 reads while holding it (rule 3). A refused renew is swallowed (`.catch(() => undefined)`), so work goes on after the lease is lost (rule 1). A held lock makes the alarm return without re-arming. **Fixed:** `stepping` is gone. The alarm is the only stepper (alarms do not overlap, requests only move the alarm), so nothing is held across the stream window or the gateway; a past life still stepping is refused by the run record's `rev` (`machines/Run.ts`), and the alarm always re-arms from the step's answer. `Work.holding` follows the lease machine (`machines/Lease.ts`): a refused renew, or a lease that runs out unrenewed, is `Lost`, which aborts the work's signal, answers `lost` instead of the work's value and does not release a claim that is no longer its own | High (fixed) |
+| `budgeting`, the tree ledger's mutex | `Nodes.budgeting` `src/worker/Nodes.ts:381`, `Work.serial` `src/worker/Work.ts:104` | Every pledge, steer, move, top-up, settle, late charge and `consider` in the object | `Work.serial` spins every 50 ms with **no deadline** (rule 6) while the holder awaits D1 (`Flow.rows`, `Flow.write`) and the board. Each try appends a claim and a release to the board log. Callers include request paths (`Riding.pledge` `src/worker/Riding.ts:205`) and the pool (`Nodes.topUp` from `Runner.watch`). **Rider paths fixed:** `Riding.pledge`, `steer` and `move` no longer take it; their one balance-checked insert is the compare-and-set and their ids are keys, so they need no lock (Payment and ride below). The pool's grants, commits, top-ups and `Triage` still take it. **Spin bounded:** `Work.serial` waits at most 30 s (`Work.serialWaitMs`) and then throws the typed `Work.Busy` (rule 6), and a lease lost while holding it throws `Work.Lost`; the lock is still held across D1, which the owning loop of Payment and ride below replaces | High (rider paths fixed, spin bounded) |
 | `budgeting` for branch budgets | `Branching.rebudget` `src/worker/Branching.ts:36` | Two funds or stops of one branch | Same spin, held across `Store.funds` (D1) and `Gateway.budget` (network, up to 120 s) | Medium |
 | `exposing`, `snapping` | `Swarm.heal` `src/worker/Swarm.ts:483`, `Swarm.code` `src/worker/Swarm.ts:730` | Concurrent views each starting the same background work | Claim refused means skip: correct, but held across gateway calls | Low |
 | `notes` heed lock | `Turns.heed` `src/worker/Turns.ts:224` | Two turns' ends heeding notes | Claim, heed, release with no await outside the board: fine | Low |
@@ -74,9 +74,9 @@ Hazard: **High** loses money, folds a result twice or wedges a swarm; **Medium**
 
 | Entry | Location | What a restart in the middle leaves | Hazard |
 |---|---|---|---|
-| Turn end | `Turns.finish` `src/worker/Turns.ts:424-491` | See "Double folds" below: the turn's update is posted and announced again | High |
+| Turn end | `Turns.finish` `src/worker/Turns.ts:424-491` | See "Double folds" below: the turn's update is posted and announced again. **Fixed:** the `ending` state, below | High (fixed) |
 | Run result fold | `Runner.watch` `src/worker/Runner.ts:482-498`, `Nodes.ran` `src/worker/Nodes.ts:673` | Fixed by this commit, see below | High (fixed) |
-| Event cursor | `Follow.listen` `src/worker/Follow.ts:157-161`, polling `:77-79` | Events are digested (feed rows written) and then the board renew is awaited before the cursor is saved, so a restart there replays the batch: feed rows, runs and room lines from those events are written twice | Medium |
+| Event cursor | `Follow.listen` `src/worker/Follow.ts:157-161`, polling `:77-79` | Events are digested (feed rows written) and then the board renew is awaited before the cursor is saved, so a restart there replays the batch: feed rows, runs and room lines from those events are written twice. **Fixed:** events at or below the saved cursor are skipped (`machines/Cursor.ts`: a page read again or a stream that reconnects from an older cursor folds nothing twice), and the cursor is saved in the same synchronous step as the rows its events wrote, before the renew is awaited | Medium (fixed) |
 | Steer to the lead | `Swarm.steer` `src/worker/Swarm.ts:746-773` | Two requests steering the same note both pass the `steered`/`heard` check before either records it (`Gateway.prompt` is awaited in between), and both send it to the agent; a restart after the prompt and before `hear` sends it again next time | Medium |
 | Steer to a run's subagent | `Runner.watch` `src/worker/Runner.ts:461-467` | `Gateway.tell`, then `lease.heed`: a restart in between tells the subagent twice; steers left unrelayed are reposted to the node from a local counter (`:480`) | Medium |
 | Spawn | `Runner.run` `src/worker/Runner.ts:336-358` | `run:<task>` is saved after the spawn; a restart in between adopts the subagent by role (`:338`) or by the spawn key: correct | Low |
@@ -103,14 +103,14 @@ Hazard: **High** loses money, folds a result twice or wedges a swarm; **Medium**
 
 | Entry | Location | Deadline | Hazard |
 |---|---|---|---|
-| `Work.serial` spin | `src/worker/Work.ts:104` | None | High |
+| `Work.serial` spin | `src/worker/Work.ts:104` | **Fixed:** 30 s, then `Work.Busy` | High (fixed) |
 | Wait for a Lean check | `Runner.check` `src/worker/Runner.ts:537` | None but the lease, which the pool renews while it waits, so a callback that never comes holds a verifier slot forever | High |
 | Spawn retry | `Runner.spawn` `src/worker/Runner.ts:196`, `:208` | 120 s | Low |
 | Turn report poll | `Runner.ask` `src/worker/Runner.ts:233` | 120 s | Low |
 | Run watch loop | `Runner.watch` `src/worker/Runner.ts:437` | Ends when nothing changed for the lease length | Low |
 | Dispatcher follow stream | `Runner.follow` `src/worker/Runner.ts:673` | Reconnects with backoff while runs are open, unowned (`void`) | Low |
-| Event stream window | `Follow.listen` `src/worker/Follow.ts:120` | At most 5 min, under `stepping` | Medium (it is why `stepping` is held across the network) |
-| Settle sleep | `Turns.finish` `src/worker/Turns.ts:434` | 3 s, under `stepping` | Low |
+| Event stream window | `Follow.listen` `src/worker/Follow.ts:120` | At most 5 min, under no claim (`stepping` is gone) | Low (fixed) |
+| Settle sleep | `Turns.finish` `src/worker/Turns.ts:434` | 3 s, under no claim, once per turn end (before its first effect lands) | Low (fixed) |
 | Verify request retry | `Runner.check` `src/worker/Runner.ts:532` | 3 tries with backoff | Low |
 | `wait` long poll | `Operations.wait` `src/worker/Operations.ts:774` | The caller's timeout | Low |
 | Gateway calls | `Gateway.send` `src/worker/Gateway.ts:92` | 120 s each, no retry inside; D1 calls have no client deadline at all | Medium |
@@ -119,7 +119,7 @@ Hazard: **High** loses money, folds a result twice or wedges a swarm; **Medium**
 
 | Entry | Location | Hazard |
 |---|---|---|
-| Swarm alarm | `Swarm.alarm` `src/worker/Swarm.ts:698` | Re-armed by `getAlarm` then `setAlarm` pairs in nine places (`Swarm.wake`, `funded`, `heal`, `plant`, `Turns.pause`, `Riding.arm`, `Runner.arm`, `Feed`), each an await apart, so two of them can both read the old alarm and the later of two times wins. Every one only moves the alarm earlier or to now, and the step recomputes its next time, so the cost is an extra wake, not a lost one, except when `stepping` is held and the alarm returns without re-arming | Medium |
+| Swarm alarm | `Swarm.alarm` `src/worker/Swarm.ts:698` | Re-armed by `getAlarm` then `setAlarm` pairs in nine places (`Swarm.wake`, `funded`, `heal`, `plant`, `Turns.pause`, `Riding.arm`, `Runner.arm`, `Feed`), each an await apart, so two of them can both read the old alarm and the later of two times wins. Every one only moves the alarm earlier or to now, and the step recomputes its next time, so the cost is an extra wake, not a lost one, except when `stepping` is held and the alarm returns without re-arming. **Fixed for that case:** `stepping` is gone, so the agent swarm's alarm always re-arms from its step | Low (fixed for the agent form) |
 | Lobby alarm | `Lobby.alarm` `src/worker/Lobby.ts:106` | Coalescing only | Low |
 
 ### Version skew
@@ -138,7 +138,7 @@ Still open in the table below: an RPC whose arguments or answer change shape und
 | Entry | Location | Failure | Hazard |
 |---|---|---|---|
 | New RPC on an old object | `Operations.viewed` `src/worker/Operations.ts:498`, `test/skew.test.ts`, `test/rpc-older.json` | During a deploy the new Worker called `viewed` on objects still running the old class and every swarm page answered 500. Since 817a88a every new object method the Worker calls falls back to the one it replaces (Version skew above). What it does not cover: a method whose arguments or answer change shape under the same name | Medium |
-| Shapes in object storage | kv `run`, `agent`, `lease`, `folded:`, board labels | An old object reads what a new one wrote after a rollback, and the board's log format follows the nanocode-ts pin | Medium |
+| Shapes in object storage | kv `run`, `agent`, `lease`, `folded:`, board labels | An old object reads what a new one wrote after a rollback, and the board's log format follows the nanocode-ts pin. **Fixed for kv `run`:** the record carries `v` and `rev`, which the previous code ignores, and `ending` is stored as `working` with an `ending` field, which the previous code reads as a turn still running (after a rollback it ends that turn again, as it did before); a record the previous code writes back drops `rev`, which reads as 0 and makes a fenced write refuse rather than overwrite it | Medium |
 | D1 migrations | `migrations/`, AGENTS.md's deploy order | Correct only by the order AGENTS.md prescribes | Medium |
 
 ## Double folds
@@ -151,11 +151,11 @@ Path: the pool claims `r:<nid>:<k>` and runs `Runner.run` → `Runner.watch` (`s
 
 Reproduced by `test/fold.test.ts` ("a run's result whose fold stopped half way…"): the second child's post throws `LeaseLost`, the object restarts (`Runner.stop`, a fresh runtime, `Runner.tick`), and the run finishes from a second fold. Before this commit: 2 `progress` deltas for one result. Fix: `Nodes.ran` keeps its progress in `ran:<task>` (`Nodes.Folding`), written in the same synchronous step as each effect it guards (the `progress` emit and `stuck`, the `checking` emit, the set of children that were new at the first attempt, the `quiet` count), and `Nodes.post` emits `posted` only for a node it created. `watch` drops `ran:<task>` in the same step that writes `folded:<task>`. The test now passes; it fails on the code before.
 
-### A turn's end (agent swarms), still open
+### A turn's end (agent swarms), fixed
 
 Path: the alarm holds `stepping` → `Turns.step` → `Follow.follow` reads the turn's report → `Turns.finish` (`src/worker/Turns.ts:424`) writes `turns.ended_at`, finishes the `turn:<n>` task, posts the D1 report (`Work.once`, idempotent), logs "Posted an update…" (`:466`), announces "Update: …" in the room (`:473`), then awaits `expose` (gateway listings) and the money refresh, and only then moves the run out of `working` (`:490`). A restart anywhere after the log leaves the run `working` with its claim, so the next alarm adopts the same turn, reads the same completed report and runs `finish` again: the update is logged and announced twice (and `heed`, `publish`, `expose` run again).
 
-Reproduced by `test/fold.test.ts` ("a turn whose end stopped half way…", marked `todo`): `expose`'s first gateway call never answers, a second life of the object over the same storage rings its alarm, and the feed has 2 "Posted an update" rows and the room 2 "Update:" lines. Not fixed here, because the fix is the turn state machine below (`working → ending{n} → waiting`, entered before the first effect), which moves `finish`'s effects behind one durable transition rather than another kv flag.
+Reproduced by `test/fold.test.ts` ("a turn whose end stopped half way", until then marked `todo`): `expose`'s first gateway call never answers, a second life of the object over the same storage rings its alarm, and the feed had 2 "Posted an update" rows and the room 2 "Update:" lines. Fix: the turn state machine (`machines/Run.ts`). `Turns.finish` moves the run `working → ending` in one write with the report it ends on, before any effect; each effect (`turned`, `heard`, `attempted`, `reported`, `logged`, `published`, `announced`, `exposed`) is marked done in the record, the synchronous ones (the `turns` row, the feed line, the room line) in the same step as the effect, and the figures the end decided on (spent, commits, whether money refused it) are kept with `turned`. A restart, a second report for the turn or the next alarm resumes from the record (`Turns.ended`) and repeats nothing that landed; `ending → waiting | paused` is fenced on the record's `rev`, so the first life, waking late, is refused and stops. The test passes, `test/lifecycle.test.ts` adds the first life waking late, and with the done marks turned off it goes red.
 
 ### The same shape elsewhere
 
@@ -182,7 +182,8 @@ Archived  { at }                         terminal
 ```
 
 - `Working → Ending` is written in the same step as the report it ends on, and `Ending` replays only the effects not in `done` (update logged, room announced, D1 report, heed, publish, expose), each keyed `turn:<n>:<effect>`. `Ending → Waiting | Paused` closes it. This fixes the turn double fold.
-- The step no longer holds `stepping` across the stream: the alarm is the only stepper (alarms do not overlap) and a request only moves the alarm, so `stepping` goes away. The stream window becomes an effect whose cursor is written in the same step as the rows it produced.
+- Landed: `Ending` as above (stored as `working` with an `ending` field for rollback), the transition table in `machines/Run.ts` (`working` leaves only through `ending`) and the `rev` fence on every write that passes the rev it read. Not yet: the D1 `swarms.status` epoch compare-and-set, which needs a column and a migration.
+- Landed: the step no longer holds `stepping` across the stream: the alarm is the only stepper (alarms do not overlap) and a request only moves the alarm, so `stepping` goes away. The stream window becomes an effect whose cursor is written in the same step as the rows it produced.
 - D1 `swarms.status` is written with `where id = ? and epoch < ?` from a per-swarm epoch the object bumps on every transition, so an older life or an older Worker cannot overwrite a newer status.
 
 ### Node, run and check (tree form)
@@ -200,6 +201,8 @@ Check: Requested { sha } → Waiting { deadline } → Passed | Failed | Expired
 ### Run lease
 
 The nanocode lease: `Unowned → Claiming → Owned { epoch, until } → Draining → Released`, and `Lost` when a renew is refused. `Work.holding` stops swallowing a refused renew: `Lost` aborts the work's signal, and every write after it is refused because it carries the old epoch.
+
+Landed in `machines/Lease.ts` and `Work.holding`: the lease is that machine, with `Lost` also when the lease runs out with no renew answering, and a renew that throws (a transport error) changes nothing (rule 5). The work gets `{ epoch, signal, writable }`: the signal aborts at `Lost`, `holding` answers `{ lost }` instead of the work's value, and a lost claim is not released. Not yet: the work's D1 and gateway writes do not carry the epoch, so a fenced write needs nanocode's claim epoch (item 4 below) or a check of `writable()` before it.
 
 ### Payment and ride
 
@@ -224,8 +227,8 @@ The D1 row is written in the same transition as the claim's result, from the boa
 
 ### Which awaits may hold a claim, and which waits need deadlines
 
-- May hold a claim: the scope's own object storage writes and board verdicts. Must not: gateway calls, D1 reads, timers, streams. Today `stepping`, `budgeting` and `exposing` break this.
-- Need deadlines: `Work.serial` (becomes `Busy`), `Runner.check`'s wait (becomes `Expired`), every D1 call (a client timeout), the board's open.
+- May hold a claim: the scope's own object storage writes and board verdicts. Must not: gateway calls, D1 reads, timers, streams. Today `budgeting` and `exposing` break this (`stepping` is gone).
+- Need deadlines: `Work.serial` (`Busy` after 30 s, landed), `Runner.check`'s wait (becomes `Expired`), every D1 call (a client timeout), the board's open.
 
 ### D1 writes that need a revision or epoch compare-and-set
 

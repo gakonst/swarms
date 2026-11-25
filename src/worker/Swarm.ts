@@ -31,6 +31,7 @@ import * as Branching from './Branching.ts'
 import * as Chat from './Chat.ts'
 import * as Turns from './Turns.ts'
 import * as Work from './Work.ts'
+import * as Run from './machines/Run.ts'
 import * as Host from './Host.ts'
 import * as Feed from './Feed.ts'
 import * as Runs from './Runs.ts'
@@ -85,7 +86,6 @@ export type Turning = Extract<Phase.Run, { state: 'working' }>
 
 const version = 6
 
-const stepLeaseMs = 5 * 60_000
 
 const dead = ['turn', 'started', 'since', 'paused', 'why', 'failures', 'wanted', 'checked', 'n', 'fresh', 'unreachable', 'url', 'persona', 'cursor', 'shelved', 'terms', 'left', 'expected', 'poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'round', 'resting', 'stuck', 'kicked', 'rechecked', 'retired', 'retiring', 'tallied', 'workers', 'refundAt', 'refunded', 'closing', 'returning', 'open', 'source', 'pledge', 'swept']
 
@@ -320,8 +320,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     await this.funded(input.swarm)
   }
 
-  run(): Phase.Run {
-    return this.kv.get<Phase.Run>('run') ?? { state: 'new' }
+  run(): Run.Stored {
+    return Run.read(Run.kv(this.kv))
   }
 
   agent(): Lead | undefined {
@@ -341,13 +341,19 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return Number(this.ctx.storage.sql.exec<{ n: number | null }>('SELECT MAX(n) AS n FROM turns').one().n ?? 0)
   }
 
-  set(run: Phase.Run) {
-    Phase.check(this.run().state, run.state)
-    this.kv.put('run', run)
+  // The run's one writer: a typed transition (machines/Run.ts), fenced on the
+  // rev the caller read when it passes 'expect'.
+  set(run: Phase.Run, expect?: number) {
+    return Run.write(Run.kv(this.kv), run, expect)
   }
 
-  async move(row: Store.Row, run: Phase.Run, fields: Store.Fields = {}) {
-    this.set(run)
+  async move(row: Store.Row, run: Phase.Run, fields: Store.Fields = {}, expect?: number) {
+    this.set(run, expect)
+    await this.moved(row, fields)
+  }
+
+  // What follows a write of the run: waiters, the D1 projection and the lobby.
+  async moved(row: Store.Row, fields: Store.Fields = {}) {
     for (const waiter of [...this.waiters]) waiter()
     await this.project(row, fields)
     this.beacon(row)
@@ -716,9 +722,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       return
     }
     const indexing = Feed.indexed(this)
-    const stepping = await Work.holding(this.board, 'stepping', stepLeaseMs, () => Turns.step(this).catch((error: unknown) => Turns.threw(this, error)))
-    if (!('value' in stepping)) return
-    const stepped = stepping.value
+    // The alarm is the agent swarm's only stepper: alarms do not overlap, and
+    // requests only move the alarm, so no claim is held across the step's
+    // gateway calls and stream window. A past life still stepping is fenced by
+    // the run's rev (machines/Run.ts).
+    const stepped = await Turns.step(this).catch((error: unknown) => Turns.threw(this, error))
     const next = indexing && this.run().state === 'paused' ? Math.min(stepped ?? Infinity, Date.now() + Feed.indexMs) : stepped
     if (next === null) return
     const pending = await this.ctx.storage.getAlarm()
