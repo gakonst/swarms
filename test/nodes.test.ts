@@ -185,3 +185,19 @@ test('a node pauses after its cap of runs in a row without a proof, split or ref
   assert.equal(Nodes.paused(w.swarm, b.nid), null)
   await until(() => g.subs.some((sub) => sub.role === 'n:' + b.nid + '#1'))
 })
+
+test('a node posted again is a repost: created only the first time, one posted delta, its statement queued once', async (t) => {
+  const g = gateway()
+  const w = await planted(g.route)
+  t.after(async () => {
+    await Runner.stop(w.swarm)
+    w.restore()
+  })
+  const input = { by: 'seed', form: 'lemma', needs: [], parent: 'root', statement: 'True', title: 'Again', words: '' } as const
+  const first = await Nodes.post(w.swarm, input)
+  w.swarm.kv.delete('statement:' + first.nid)
+  const second = await Nodes.post(w.swarm, input)
+  assert.deepEqual([first.created, second.created, second.nid], [true, false, first.nid])
+  assert.equal(w.swarm.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM tree_deltas WHERE node = ? AND event = 'posted'", first.nid).one().n, 1)
+  assert.equal(w.swarm.kv.get('statement:' + first.nid), undefined)
+})

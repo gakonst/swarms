@@ -40,7 +40,7 @@ export function until(verdict: Verdict) {
   return typeof renewed?.until_ms === 'number' ? renewed.until_ms : undefined
 }
 
-const methods = ['cancel', 'charter', 'claim', 'close', 'finish', 'grant', 'group', 'heed', 'held', 'post', 'ready', 'refresh', 'release', 'renew', 'reply', 'revoke', 'steer', 'steers', 'submit', 'task', 'tasks', 'work'] as const satisfies readonly Exclude<keyof Board, 'actor' | 'scope'>[]
+const methods = ['cancel', 'charter', 'checkpoint', 'claim', 'close', 'finish', 'grant', 'group', 'heed', 'held', 'opened', 'post', 'ready', 'refresh', 'release', 'renew', 'reply', 'revoke', 'steer', 'steers', 'submit', 'task', 'tasks', 'work'] as const satisfies readonly Exclude<keyof Board, 'actor' | 'scope'>[]
 
 // A board that opens on its first call: `open` runs once, and every call
 // waits for it, so the object can hand out its board before the open lands.
@@ -86,7 +86,8 @@ export async function reclaim(board: Board) {
   for (const task of await board.held()) if (task.labels['lock'] === instance.lock && task.claim) await board.release(task.id, task.claim, 'its holder restarted')
 }
 
-// A claim's holder, as the work under it sees it: the lease's epoch, a signal
+// A claim's holder, as the work under it sees it: the claim's epoch (the
+// board's seq for it, which rises with every claim of the task), a signal
 // that aborts when the lease is lost, and whether a write may land now.
 export type Held = { epoch: number; signal: AbortSignal; writable: () => boolean }
 
@@ -127,7 +128,7 @@ export async function holding<T>(board: Board, id: string, leaseMs: number, work
   let state = Lease.step(Lease.unowned, { type: 'claim' })
   const held = await lock(board, id, leaseMs)
   if (!held.ok) return { rejection: held.rejection }
-  state = Lease.step(state, { claim: held.claim, type: 'claimed', until: held.untilMs })
+  state = Lease.step(state, { claim: held.claim, epoch: held.seq, type: 'claimed', until: held.untilMs })
   const epoch = state.epoch
   const stop = new AbortController()
   const apply = (event: Lease.Event) => {

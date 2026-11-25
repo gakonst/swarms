@@ -3,8 +3,10 @@
 //   Unowned -> Claiming -> Owned { claim, epoch, until } -> Draining -> Released
 //                                  \-> Lost  (a renew or a fenced write was refused, or 'until' passed unrenewed)
 //
-// The epoch counts this holder's claims, so a write made under an older claim
-// is told apart from one under the current claim. A transport error (a
+// The epoch is the board's seq for the claim (Claimed.seq, Task.claimSeq),
+// which rises with every claim of the task, a takeover included, so a write
+// made under an older claim, by this holder or another, is told apart from
+// one under the current claim. A transport error (a
 // renew that threw rather than answered) changes nothing: ownership is lost
 // only when the board refuses, or when the lease runs out (rule 5).
 
@@ -18,7 +20,7 @@ export type State =
 
 export type Event =
   | { type: 'claim' }
-  | { claim: string; type: 'claimed'; until: number }
+  | { claim: string; epoch: number; type: 'claimed'; until: number }
   | { type: 'held'; why: string }
   | { type: 'renewed'; until: number }
   | { type: 'refused'; why: string }
@@ -38,10 +40,10 @@ export class Illegal extends Error {}
 export function step(state: State, event: Event): State {
   switch (event.type) {
     case 'claim':
-      if (state.kind === 'Unowned' || state.kind === 'Released' || state.kind === 'Lost') return { epoch: state.epoch + 1, kind: 'Claiming' }
+      if (state.kind === 'Unowned' || state.kind === 'Released' || state.kind === 'Lost') return { epoch: state.epoch, kind: 'Claiming' }
       break
     case 'claimed':
-      if (state.kind === 'Claiming') return { claim: event.claim, epoch: state.epoch, kind: 'Owned', until: event.until }
+      if (state.kind === 'Claiming') return { claim: event.claim, epoch: event.epoch, kind: 'Owned', until: event.until }
       break
     case 'held':
       if (state.kind === 'Claiming') return { epoch: state.epoch, kind: 'Unowned' }

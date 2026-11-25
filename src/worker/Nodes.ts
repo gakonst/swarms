@@ -279,7 +279,6 @@ export type Posting = { by: string; form: Tree.Form; needs: string[]; nid?: stri
 
 export async function post(self: Swarm, input: Posting) {
   const id = input.nid ?? (input.parent === null ? root : await nid(input.parent, input.title))
-  const fresh = !(await self.board.task(nodeId(id)))
   const posted = await self.board.post({
     id: nodeId(id),
     ...(input.parent === null ? {} : { parent: nodeId(input.parent) }),
@@ -287,12 +286,12 @@ export async function post(self: Swarm, input: Posting) {
     spec: spec(input),
   })
   if (posted.ok) {
-    if (!told(self, id)) emit(self, id, 'posted', normalized(input.title))
-    if (input.statement !== null && fresh) {
+    if (!posted.found || !told(self, id)) emit(self, id, 'posted', normalized(input.title))
+    if (input.statement !== null && !posted.found) {
       self.kv.put('statement:' + id, input.statement)
       if (self.kv.get<number>('seeded')) self.ctx.waitUntil(statements(self).catch((error: unknown) => console.error('Committing statements failed', error)))
     }
-    return { created: true, nid: id }
+    return { created: !posted.found, nid: id }
   }
   if (posted.rejection.kind === 'Exists') return { created: false, nid: id }
   throw new Error('Posting node ' + id + ' was refused: ' + posted.rejection.kind)

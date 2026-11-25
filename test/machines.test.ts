@@ -349,7 +349,7 @@ function leaseSim(seed: number, steps = 300) {
       apply(h, { type: 'claim' })
       if (!board) {
         board = { claim: 'c' + ++claims, holder: who, until: now + leaseMs }
-        apply(h, { claim: board.claim, type: 'claimed', until: board.until })
+        apply(h, { claim: board.claim, epoch: claims, type: 'claimed', until: board.until })
       } else apply(h, { type: 'held', why: 'Held' })
     } else if (roll < 0.45 && h.state.kind === 'Owned') {
       const fate = rand()
