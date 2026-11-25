@@ -38,7 +38,11 @@ async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {
       continue
     }
     const held = BigInt(gift.amount)
-    const reach = spent + Memo.units(each.left)
+    // What a key paid left the backer's wallet, so a backing never counts below it, even when the gateway
+    // lets it pay past its limit and answers a negative left: otherwise one refresh lowers it to spent + left
+    // and the next raises it back to spent, and the swarm's balance flips between two totals.
+    const left = Memo.units(each.left)
+    const reach = spent + (left > 0n ? left : 0n)
     const worth = each.ended ? spent : reach
     const counted = held > worth ? worth : held < spent ? spent : held
     if (held === counted) continue

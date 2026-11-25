@@ -16,7 +16,7 @@ const live = '0x' + 'a1'.repeat(20)
 const ended = '0x' + 'b2'.repeat(20)
 const backer = '0x' + 'c3'.repeat(20)
 
-function swarm(gifts: { amount: string; channel: string; id: string }[], behind: { agent: string; amount: number; base: string; branch: number }[] = [], credited: { deposited: string; deposits: unknown[]; known: string[] } = { deposited: '0.5', deposits: [], known: [] }) {
+function swarm(gifts: { amount: string; channel: string; id: string }[], behind: { agent: string; amount: number; base: string; branch: number }[] = [], credited: { deposited: string; deposits: unknown[]; known: string[] } = { deposited: '0.5', deposits: [], known: [] }, keys?: { ended: boolean; key: string; left: string; limit: string; spent: string }[]) {
   const writes: { args: unknown[]; sql: string }[] = []
   const logged: string[] = []
   const budgets: [string, unknown][] = []
@@ -61,7 +61,7 @@ function swarm(gifts: { amount: string; channel: string; id: string }[], behind:
             return Response.json({ deposits: credited.deposits })
           }
           return Response.json({
-            backings: [
+            backings: keys?.map((each) => ({ backer, createdAt: 1, expiresAt: null, tag: null, token: 'mach', ...each })) ?? [
               { backer, createdAt: 1, ended: false, expiresAt: null, key: live, left: '4', limit: '5', spent: '1', tag: null, token: 'mach' },
               { backer, createdAt: 1, ended: true, expiresAt: null, key: ended, left: '0', limit: '1.2', spent: '1.2', tag: null, token: 'mach' },
             ],
@@ -165,4 +165,20 @@ test('a transfer the gateway credited and Swarms never counted is found by its h
   const empty = swarm([], [], { deposited: '0', deposits, known: [] })
   await Money.refresh(empty.self, row, { credit: true, hands: false })
   assert.deepEqual(empty.listed, [])
+})
+
+test('a backing that paid past its limit counts at what it paid on every refresh, so the balance never flips between two totals', async () => {
+  // Production, 2026-11-24 and 25: f3a42cf87339's backing said $9.834302 paid with $5 within reach, and every
+  // refresh lowered it to $5 and the next raised it back, so the rail, switcher and detail read $100.52 or $95.69.
+  const keys = [{ ended: false, key: live, left: '-4.834302', limit: '5', spent: '9.834302' }]
+  for (const amount of ['9834302', '5000000']) {
+    const each = swarm([{ amount, channel: live, id: 'backing:' + live }], [], undefined, keys)
+    await Money.refresh(each.self, row, { credit: true, hands: false })
+    const written = each.writes.filter((write) => write.sql.startsWith('update contributions set amount')).map((write) => write.args)
+    assert.deepEqual(written, amount === '9834302' ? [] : [['9834302', 'backing:' + live, 'abc123abc123', '5000000']])
+    assert.ok(!each.logged.some((text) => /can pay \$5 in all/.test(text)))
+  }
+  const ended = swarm([{ amount: '9834302', channel: live, id: 'backing:' + live }], [], undefined, [{ ...keys[0]!, ended: true }])
+  await Money.refresh(ended.self, row, { credit: true, hands: false })
+  assert.equal(ended.writes.filter((write) => write.sql.startsWith('update contributions set amount')).length, 0)
 })
