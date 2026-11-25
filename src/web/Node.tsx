@@ -182,7 +182,7 @@ export function NodePanel(props: {
           <Add asked={asked} config={props.config} key={`${node.id}:${asked}`} nodes={props.nodes} parent={node} swarm={props.swarm} />
         </div>
       )}
-      {open && node.form !== 'triage' && <Pendings nodes={props.nodes} parent={node.id} swarm={props.swarm} />}
+      {open && node.form !== 'triage' && <Pendings config={props.config} nodes={props.nodes} parent={node.id} swarm={props.swarm} />}
       {text && <section className="node-part node-words"><Markdown text={text} /></section>}
       {node.statement && (
         <section className="node-part">

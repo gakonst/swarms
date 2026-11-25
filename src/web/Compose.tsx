@@ -4,6 +4,7 @@ import type * as Tree from '../shared/Tree.ts'
 import { Alert } from './Alert.tsx'
 import * as Api from './api.ts'
 import { cash } from './Branches.tsx'
+import { short } from './format.ts'
 import { asked, dollars, Fuel } from './Contribute.tsx'
 import * as Pay from './pay.ts'
 import { Mark } from './Tree.tsx'
@@ -81,7 +82,7 @@ export function titled(text: string) {
 function said(act: Pay.Act) {
   if (act.at === 'counting') return 'Counting…'
   if (act.at === 'owed') return act.tries < Pay.retries.length ? 'Sent, not counted yet. Trying again…' : 'Sent, not counted yet.'
-  if (act.at === 'refused') return `Sent, but not counted: ${act.error}`
+  if (act.at === 'refused') return `Sent, but it cannot be counted: ${act.error}`
   return ''
 }
 
@@ -104,12 +105,30 @@ export function Pending(props: { act: Pay.Act; owed: Pay.Owed }) {
   )
 }
 
-export function Pendings(props: { nodes: Readonly<Record<string, Tree.Node>>; parent: string; swarm: string }) {
+export function Pendings(props: { config: Config | undefined; nodes: Readonly<Record<string, Tree.Node>>; parent: string; swarm: string }) {
   const ghosts = Pay.useGhosts(props.swarm, props.parent).filter((ghost) => !ghost.owed.node || !props.nodes[ghost.owed.node])
   if (!ghosts.length) return null
   return (
     <div className="node-part node-pending">
-      {ghosts.map((ghost) => <Alert key={ghost.owed.hash} title={`${ghost.owed.title ?? 'Your new item'} · ${dollars(ghost.owed.amount)}`} tone={ghost.act.at === 'refused' ? 'bad' : 'warn'}>{said(ghost.act)}</Alert>)}
+      {ghosts.map((ghost) => <Ghost act={ghost.act} config={props.config} key={ghost.owed.hash} owed={ghost.owed} />)}
     </div>
+  )
+}
+
+function Ghost(props: { act: Pay.Act; config: Config | undefined; owed: Pay.Owed }) {
+  const owed = props.owed
+  const at = Pay.slot(owed.swarm, owed.node)
+  const title = `${owed.title ?? 'Your new item'} · ${dollars(owed.amount)}`
+  if (props.act.at === 'refused')
+    return (
+      <Alert action={{ label: 'Dismiss', onClick: () => Pay.forget(at) }} title={title} tone="bad">
+        {said(props.act)}
+        {props.config && <> <a href={`${props.config.explorer}/tx/${owed.hash}`} rel="noreferrer" target="_blank">{short(owed.hash)} ↗</a></>}
+      </Alert>
+    )
+  return (
+    <Alert action={props.act.at === 'owed' ? { label: 'Try again', onClick: () => void Pay.retry(at) } : undefined} title={title} tone="warn">
+      {said(props.act)}
+    </Alert>
   )
 }

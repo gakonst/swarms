@@ -460,8 +460,12 @@ test('a sub-item and a new swarm survive a cancel, an empty wallet, a ride sent 
 
       await draft('reject', 'A refused lemma')
       await page.tap(adding, add)
-      assert.ok(await shows('alert', /cannot be counted/, adding), 'a refused sub-item says so')
-      assert.ok(await page.evaluate(page.has(adding, { name: /^0x/, role: 'link' })), 'a refusal links the transaction')
+      const refused: Spec = { name: /^A refused lemma · \$1 ?Sent, but it cannot be counted/, role: 'alert' }
+      assert.ok(await page.until(page.has(refused), 20_000), 'the thread says the refused sub-item cannot be counted: ' + (await page.told()))
+      assert.ok(await page.evaluate(page.has(refused, { name: /^0x/, role: 'link' })), 'a refusal links the transaction')
+      await page.shoot('sub-refused')
+      await page.tap(refused, go(/^Dismiss/))
+      assert.ok(await page.until(`!(${page.has(refused)})`, 3000), 'a refusal can be dismissed')
       assert.equal(await page.evaluate('window.__cheers'), 0)
 
       await ask('deny')
@@ -486,8 +490,8 @@ test('a sub-item and a new swarm survive a cancel, an empty wallet, a ride sent 
 
       await ask('uncounted')
       await page.tap(start)
-      assert.ok(await shows('status', /^Sent, but not counted yet/), 'an uncounted start says it was sent')
-      assert.ok(await page.until(page.has(cheer), 20_000), 'the uncounted start is counted by itself')
+      assert.ok(await page.until(page.has(cheer), 20_000), 'the uncounted start lands on its swarm and is counted by itself: ' + (await page.told()))
+      assert.match((await page.read(cheer)) ?? '', /1 rider · \$5\.00 raised/, 'an uncounted start is counted once')
       assert.match(await page.evaluate<string>('location.pathname'), /\/s\/[0-9a-f]+$/)
       await sleep(1000)
       assert.equal(await page.evaluate('window.__cheers'), 1)
