@@ -86,7 +86,7 @@ import * as Sessions from './Sessions.ts'
 import * as Timing from './Timing.ts'
 import * as Store from './Store.ts'
 import * as Team from './Team.ts'
-import type { Stamp, Swarm } from './Swarm.ts'
+import type { Stamp, Swarm, View } from './Swarm.ts'
 import * as Words from './Words.ts'
 import * as Fleet from '../shared/Fleet.ts'
 import * as Brief from '../shared/ResearchBrief.ts'
@@ -483,21 +483,32 @@ function logged(task: Promise<unknown>) {
 
 type Shape = { excerpts?: boolean; feed?: number; pushed?: boolean; texts?: boolean }
 
+async function viewed(env: Cloudflare.Env, id: string, shape: Shape): Promise<View> {
+  const key = `view/${id}/${new URLSearchParams(Object.entries(shape).map(([name, value]) => [name, String(value)]))}`
+  const minute = Edge.minute()
+  const held = await Edge.held<{ minute: string; view: View }>(env, key)
+  const known = held?.minute === minute ? held.view : undefined
+  const view = (await stub(env, id).viewed(shape, known?.stamp.version ?? null)) as View | null
+  if (!view) return known!
+  if (view.stamp.quiet) Edge.hold(env, key, { minute, view }, 60)
+  return view
+}
+
 async function load(env: Cloudflare.Env, id: string, shape: Shape = {}) {
-  const viewing = Store.seen(id) ? Promise.resolve(stub(env, id).view(shape)) : undefined
+  const viewing = Store.seen(id) ? viewed(env, id, shape) : undefined
   const row = await Store.find(env, id)
   if (!row) return undefined
-  const view = await (viewing ?? stub(env, id).view(shape))
+  const view = await (viewing ?? viewed(env, id, shape))
   await backfill(env, row, view.updates.at(-1), shape)
   return { row, view }
 }
 
 async function ledgered(env: Cloudflare.Env, id: string, shape: Shape) {
-  const viewing = Store.seen(id) ? Promise.resolve(stub(env, id).view(shape)) : undefined
+  const viewing = Store.seen(id) ? viewed(env, id, shape) : undefined
   const ledger = await Store.ledger(env, id)
   if (!ledger) return undefined
   const row = ledger.row
-  const view = await (viewing ?? stub(env, id).view(shape))
+  const view = await (viewing ?? viewed(env, id, shape))
   await backfill(env, row, view.updates.at(-1), shape)
   if (Search.lags(view.ended, ledger.reports)) {
     const after = Math.min(...view.ended.map((turn) => turn.n)) - 1
@@ -1635,7 +1646,9 @@ export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise
   if (!gone.ok) return gone
   const cached = lending.get(parsed.value.swarm)
   if (cached && Date.now() - cached.at < lendingMs) return Problem.ok({ hands: cached.hands })
-  if (!(await Store.exists(env, parsed.value.swarm))) return missing()
+  const [exists, issued] = await Promise.all([Store.exists(env, parsed.value.swarm), Hands.list(env, parsed.value.swarm)])
+  if (!exists) return missing()
+  if (!issued.length) return Problem.ok({ hands: [] })
   const { listed, rows }: { listed: Gateway.Listed[] | undefined; rows: Hands.Row[] } = await stub(env, parsed.value.swarm).lent(parsed.value.swarm)
   const lent = Hands.lent(rows, listed)
   if (listed) lending.set(parsed.value.swarm, { at: Date.now(), hands: lent })
@@ -1786,10 +1799,10 @@ export async function backers(env: Cloudflare.Env, input: Input<'swarm'>): Promi
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
   const id = parsed.value.swarm
-  const viewing = Store.seen(id) ? Promise.resolve(stub(env, id).view({ feed: 0, pushed: true, texts: false })) : undefined
+  const viewing = Store.seen(id) ? viewed(env, id, { feed: 0, pushed: true, texts: false }) : undefined
   const found = await Store.backed(env, id)
   if (!found) return missing()
-  const view = await (viewing ?? stub(env, id).view({ feed: 0, pushed: true, texts: false }))
+  const view = await (viewing ?? viewed(env, id, { feed: 0, pushed: true, texts: false }))
   const members = found.members
   const ideas = found.notes(new Set(view.steered))
   return Problem.ok({ backers: [...members].sort((a, b) => Number(BigInt(Math.round(Number(b.backed) * 1e6)) - BigInt(Math.round(Number(a.backed) * 1e6)))), ideas })

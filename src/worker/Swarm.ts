@@ -500,10 +500,21 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     await this.ctx.storage.setAlarm(now)
   }
 
-  view(shape: { excerpts?: boolean; feed?: number; pushed?: boolean; texts?: boolean } = {}): View {
+  viewed(shape: { excerpts?: boolean; feed?: number; pushed?: boolean; texts?: boolean }, known: string | null): View | null {
     const stamp = this.stamp()
+    if (!stamp.quiet || stamp.version !== known) return this.view(shape)
+    this.tend()
+    return null
+  }
+
+  tend() {
     this.ctx.waitUntil(this.heal())
     this.ctx.waitUntil(About.ensure(this).catch((error: unknown) => console.error('About failed', error)))
+  }
+
+  view(shape: { excerpts?: boolean; feed?: number; pushed?: boolean; texts?: boolean } = {}): View {
+    const stamp = this.stamp()
+    this.tend()
     const sql = this.ctx.storage.sql
     const limit = shape.feed ?? 200
     const feed = limit > 0
@@ -1199,7 +1210,7 @@ const maxWaitMs = 60_000
 
 const coalesceMs = 2_000
 
-const viewKeys = new Set(['run', 'hands', 'repo', 'owner', 'id'])
+const viewKeys = new Set(['about', 'failure', 'hands', 'id', 'owner', 'repo', 'run'])
 
 function touched(kv: SyncKvStorage, touch: () => void): SyncKvStorage {
   return {

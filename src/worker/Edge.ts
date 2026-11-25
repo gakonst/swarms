@@ -29,6 +29,15 @@ export async function cached<T>(env: Cloudflare.Env, key: string, seconds: numbe
   return (await refresh(key, request, stale, read)) as T
 }
 
+export async function held<T>(env: Cloudflare.Env, key: string): Promise<T | undefined> {
+  const hit = await Timing.span('cache', caches.default.match(new Request(new URL(`/__cache/${key}`, env.SWARMS_URL))).catch(() => undefined))
+  return hit ? ((await hit.json().catch(() => undefined)) as T | undefined) : undefined
+}
+
+export function hold<T>(env: Cloudflare.Env, key: string, value: T, seconds: number) {
+  waitUntil(caches.default.put(new Request(new URL(`/__cache/${key}`, env.SWARMS_URL)), Response.json(value, { headers: { 'cache-control': `public, max-age=${seconds}` } })).catch(() => undefined))
+}
+
 export function put<T>(env: Cloudflare.Env, key: string, value: T, stale: number) {
   const at = Date.now()
   memory.set(key, { at, value })
