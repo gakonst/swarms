@@ -7,6 +7,7 @@ import type { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { Board } from 'nanocode-ts'
 import { Sql } from 'nanocode-ts/node'
+import { module } from '../board.ts'
 import * as Chain from '../mock/chain.ts'
 import * as Mock from '../mock/gateway.ts'
 
@@ -31,7 +32,7 @@ test('runner processes on one Board: a killed runner\'s lease lapses, another ta
 
     const db = path.join(dir, 'board.db')
     const sql = Sql.open(db)
-    const board = await Board.open({ actor: 'agent:lead', scope: 'swarm:' + swarm, sql })
+    const board = await Board.open({ actor: 'agent:lead', module, scope: 'swarm:' + swarm, sql })
     assert.ok((await board.grant({ can: { '*': ['manage'] }, who: [{ id: 'agent', kind: 'kind' }] }, { key: 'swarm' })).ok)
     assert.ok((await board.post({ id: 'n:root', labels: { form: 'goal', kind: 'node' }, spec: 'Does P = NP?' }, { key: 'n:root' })).ok)
     const runs = { fast: 1, over: 1.2, slow: 2, steer: 1 } as Record<string, number>

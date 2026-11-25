@@ -1,5 +1,6 @@
 import { Board } from 'nanocode-ts'
 import { Sql } from 'nanocode-ts/node'
+import { module } from '../board.ts'
 
 type Raw = { agent_id: number; budget_usd?: number; parent_agent_id: number | null; role: string; spent_usd?: number; status: { error?: string; output?: unknown; state: string } }
 
@@ -16,7 +17,7 @@ const key = read('GATEWAY_KEY')
 const app = read('GATEWAY_APP')
 const agent = read('AGENT')
 const sql = Sql.open(read('BOARD_DB'))
-const board = await Board.open({ actor: 'agent:' + worker, scope: read('BOARD_SCOPE'), sql })
+const board = await Board.open({ actor: 'agent:' + worker, module, scope: read('BOARD_SCOPE'), sql })
 const ended = new Set(['closed', 'completed', 'failed', 'interrupted'])
 const lane = Number(worker.replace(/\D/g, '')) || 0
 

@@ -28,7 +28,7 @@ fs.rmSync(dir, { recursive: true, force: true })
 fs.mkdirSync(dir, { recursive: true })
 const db = path.join(dir, 'board.db')
 const sql = Sql.open(db)
-const board = await Board.open({ sql, scope: Swarm.scope, actor: Swarm.actor('lead') })
+const board = await Board.open({ sql, scope: Swarm.scope, actor: Swarm.actor('lead'), module: await Swarm.board() })
 // Opening a new board charters it for the lead; let every agent in the swarm work on it.
 const granted = await board.grant({ who: [{ kind: 'kind', id: 'agent' }], can: { '*': ['manage'] } }, { key: 'swarm' })
 if (!granted.ok) throw new Error(`the board refused the grant: ${JSON.stringify(granted.rejection)}`)

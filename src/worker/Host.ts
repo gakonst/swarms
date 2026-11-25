@@ -4,7 +4,7 @@
 
 import { Board } from 'nanocode-ts'
 import { Sql } from 'nanocode-ts/cloudflare'
-import wasm from 'nanocode-ts/nanocode_wasm.wasm?module'
+import wasm from 'nanocode-ts/nanocode_board.wasm?module'
 
 export function open(storage: DurableObjectStorage, scope: string, actor: string): Promise<Board.Board> {
   return Board.open({ actor, module: wasm, scope, sql: Sql.create(storage) })

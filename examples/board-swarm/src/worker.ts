@@ -9,7 +9,7 @@ const dir = Swarm.env('BOARD_DIR')
 const leaseMs = Number(Swarm.env('LEASE_MS'))
 const tickMs = Number(process.env['TICK_MS'] ?? 100)
 const sql = Sql.open(Swarm.env('BOARD_DB'))
-const board = await Board.open({ sql, scope: Swarm.scope, actor: Swarm.actor(worker) })
+const board = await Board.open({ sql, scope: Swarm.scope, actor: Swarm.actor(worker), module: await Swarm.board() })
 const lane = Number(worker.replace(/\D/g, '')) || 0
 
 type Lease = { claim: string; untilMs: number; tookOver: boolean }

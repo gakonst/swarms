@@ -1,4 +1,4 @@
-export const release = 'https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz'
+export const release = 'https://github.com/nanocodexyz/nanocode-ts/releases/download/build-3274348/nanocode-ts-3274348.tgz'
 
 export const install = `npm install ${release}`
 

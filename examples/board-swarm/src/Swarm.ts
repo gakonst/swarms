@@ -52,3 +52,8 @@ export function env(name: string): string {
 export function module(): Promise<WebAssembly.Module> {
   return WebAssembly.compile(fs.readFileSync(url.fileURLToPath(import.meta.resolve('nanocode-ts/nanocode_wasm.wasm'))))
 }
+
+/** The board-only wasm module, which is all a board needs. */
+export function board(): Promise<WebAssembly.Module> {
+  return WebAssembly.compile(fs.readFileSync(url.fileURLToPath(import.meta.resolve('nanocode-ts/nanocode_board.wasm'))))
+}
