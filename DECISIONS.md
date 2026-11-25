@@ -1534,6 +1534,7 @@ Since e7632bd, `Host.open` handed `Board.open` the board-only wasm (`nanocode_bo
 - Measured on ede1895: the test takes about 0.5 s (`node --test`), and `pnpm test` runs 556 tests in 57 s.
 - It catches the configure bug: with 17a0f1b's change reverted, it fails on the first open with ``unknown variant `configure`, expected `board` ``; restored, it passes.
 - The tree-swarm path: the local sweep (`SWARMS_BASE=local node --test --experimental-strip-types test/e2e/endpoints.test.ts`) already asserts in its seed that `POST /v1/swarms` with `form: 'tree'` answers 201, through the Worker under workerd. On ede1895 it passed (32 s); with 17a0f1b reverted it failed there, 500 !== 201 (`endpoints.test.ts:24`).
+- nanocode-ts build-ce85934 accepts `configure` in the board-only module, and Swarms now uses it; `Host.open` still passes only `transaction` (17a0f1b), as a second guard. The workerd test now also opens a board with `Board.open` over `Sql.create(storage)` directly, the runtime's `configure` included: on build-3274348 that case fails with the `configure` error and the `Host.open` case passes; on build-ce85934 both pass, with 17a0f1b reverted as well.
 
 ## The site and the objects are two Workers (2026-11-25)
 
