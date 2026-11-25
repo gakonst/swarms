@@ -58,30 +58,34 @@ async function call(worker: Miniflare, path: string) {
   return body
 }
 
-test('Host.open opens the board-only wasm over Durable Object SQLite in workerd, and a fresh object reads it back', { timeout: 60_000 }, async () => {
-  assert.deepEqual(imported.map(([name]) => name), ['nanocode_board.wasm'])
-  let claim: string | undefined
-  const first = start()
-  try {
-    const wrote = await call(first, '/write')
-    assert.equal(wrote.opened[0]?.from, 'replay')
-    assert.equal(wrote.task?.spec, 'a task posted in workerd')
-    assert.equal(wrote.task?.phase, 'claimed')
-    assert.deepEqual(wrote.task?.replies.map((reply) => reply.body), ['a reply from workerd'])
-    claim = wrote.task?.claim
-    assert.ok(claim)
-  } finally {
-    await first.dispose()
-  }
-  const second = start()
-  try {
-    const read = await call(second, '/read')
-    assert.equal(read.opened[0]?.from, 'checkpoint')
-    assert.deepEqual(read.tasks, ['t1'])
-    assert.equal(read.task?.phase, 'claimed')
-    assert.equal(read.task?.claim, claim)
-    assert.deepEqual(read.task?.replies.map((reply) => reply.body), ['a reply from workerd'])
-  } finally {
-    await second.dispose()
-  }
-})
+for (const [name, query] of [
+  ['Host.open', ''],
+  ["Board.open over Sql.create, the runtime's configure and all", '?sql=create'],
+] as const)
+  test(`${name} opens the board-only wasm over Durable Object SQLite in workerd, and a fresh object reads it back`, { timeout: 60_000 }, async () => {
+    assert.deepEqual(imported.map(([name]) => name), ['nanocode_board.wasm'])
+    let claim: string | undefined
+    const first = start()
+    try {
+      const wrote = await call(first, '/write' + query)
+      assert.equal(wrote.opened[0]?.from, 'replay')
+      assert.equal(wrote.task?.spec, 'a task posted in workerd')
+      assert.equal(wrote.task?.phase, 'claimed')
+      assert.deepEqual(wrote.task?.replies.map((reply) => reply.body), ['a reply from workerd'])
+      claim = wrote.task?.claim
+      assert.ok(claim)
+    } finally {
+      await first.dispose()
+    }
+    const second = start()
+    try {
+      const read = await call(second, '/read' + query)
+      assert.equal(read.opened[0]?.from, 'checkpoint')
+      assert.deepEqual(read.tasks, ['t1'])
+      assert.equal(read.task?.phase, 'claimed')
+      assert.equal(read.task?.claim, claim)
+      assert.deepEqual(read.task?.replies.map((reply) => reply.body), ['a reply from workerd'])
+    } finally {
+      await second.dispose()
+    }
+  })

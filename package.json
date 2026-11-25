@@ -28,7 +28,7 @@
     "@resvg/resvg-wasm": "2.6.2",
     "accounts": "1.3.20261123214053",
     "hono": "^4.13.14",
-    "nanocode-ts": "https://github.com/nanocodexyz/nanocode-ts/releases/download/build-3274348/nanocode-ts-3274348.tgz",
+    "nanocode-ts": "https://github.com/nanocodexyz/nanocode-ts/releases/download/build-ce85934/nanocode-ts-ce85934.tgz",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "viem": "2.57.19",

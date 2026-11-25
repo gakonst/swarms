@@ -33,8 +33,8 @@ importers:
         specifier: ^4.13.14
         version: 4.13.14
       nanocode-ts:
-        specifier: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-3274348/nanocode-ts-3274348.tgz
-        version: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-3274348/nanocode-ts-3274348.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7)
+        specifier: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-ce85934/nanocode-ts-ce85934.tgz
+        version: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-ce85934/nanocode-ts-ce85934.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7)
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -1473,8 +1473,8 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-3274348/nanocode-ts-3274348.tgz:
-    resolution: {integrity: sha512-/YUchrlQXkA5lr0+ItGZNyAzvnA5nnV/BZCN5dLiI4rXwqECy8MsYNkDuVCOQCeVP8pXbzLd1mHMlQ0Z9qGbyw==, tarball: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-3274348/nanocode-ts-3274348.tgz}
+  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz:
+    resolution: {integrity: sha512-9jxWKtgLyNUgUv8kWoGxHeHUbnNhTgRsHVjC3nlqvbH0gZAkOYjQnpYkVvV/VWZQ+TPeZjlvINROO8w2yVR0bQ==, tarball: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz}
     version: 0.1.0
     peerDependencies:
       '@pierre/highlights': ^0.2.0
@@ -1501,8 +1501,8 @@ packages:
       - nanocode-egress
       - undici
 
-  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz:
-    resolution: {integrity: sha512-9jxWKtgLyNUgUv8kWoGxHeHUbnNhTgRsHVjC3nlqvbH0gZAkOYjQnpYkVvV/VWZQ+TPeZjlvINROO8w2yVR0bQ==, tarball: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz}
+  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-ce85934/nanocode-ts-ce85934.tgz:
+    resolution: {integrity: sha512-vjeuiYnq8IkzkovxfIpulbMXeafwp0TUpkMOjcXyS2PUxn2N000Tlw4KR1d0dVuDAxWHRbAVkkDBSpLeKgh4HQ==, tarball: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-ce85934/nanocode-ts-ce85934.tgz}
     version: 0.1.0
     peerDependencies:
       '@pierre/highlights': ^0.2.0
@@ -3322,7 +3322,7 @@ snapshots:
 
   ms@2.1.3: {}
 
-  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-3274348/nanocode-ts-3274348.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7):
+  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7):
     dependencies:
       accounts: 1.0.0-alpha.20261117214203-d38fbea(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7)
       hast-util-to-jsx-runtime: 2.3.6(supports-color@10.2.2)
@@ -3361,7 +3361,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7):
+  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-ce85934/nanocode-ts-ce85934.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7):
     dependencies:
       accounts: 1.0.0-alpha.20261117214203-d38fbea(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7)
       hast-util-to-jsx-runtime: 2.3.6(supports-color@10.2.2)

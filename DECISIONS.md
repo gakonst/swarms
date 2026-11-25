@@ -1521,3 +1521,83 @@ After 60 s idle, production's (8d7318a) cold first `/v1/health` had a p95 of 2,0
 - These reads already run in the replica session (`Replica.readable` matches `/`, `/v1/swarms` and `/v1/health`, so `c.env.DB` is `withSession('first-unconstrained')`, and the background refresh keeps that env). D1 has no constraint that requires a replica: `first-unconstrained` and a bookmark both let D1 pick the primary, which is what the idle tail shows. So the fix is to not read D1 on the request path after an idle pause, not a different session.
 - Checked: `pnpm check`, `pnpm test` (a new `edge.test.ts` case: a value kept 40 minutes ago answers within 150 ms and is refreshed once behind it, one kept 61 minutes ago is read again), `pnpm build`. Not deployed here.
 
+
+
+## Boards open without the runtime's configure command (2026-11-25)
+
+Since e7632bd, `Host.open` handed `Board.open` the board-only wasm (`nanocode_board.wasm`) and `Sql.create(storage)`, whose `value_limit` (8 MiB) makes nanocode-ts's `AgentRuntime.create` send `configure` to the wasm. The board-only wasm knows only `board`, so every board open in workerd failed with ``unknown variant `configure`, expected `board` ``: under `SWARMS_BASE=local`, creating a tree swarm answered 500 (`Operations.plant`), on 7fb17be as well. `test/compat.test.ts` missed it because its SQL host has no `value_limit`. `Host.open` now passes only the host's `transaction`, so no `configure` is sent; the 8 MiB bound value check stays in `Sql.create`'s `transaction`. Production has run main since 20a8a58, so any board open there (tree swarms, subagent work boards) is likely failing the same way until this deploys; not checked on production, which takes a write. 17a0f1b is that fix alone on the single-Worker layout, deployable with the old `pnpm run deploy` before the split below. Upstream, `Board.open` should not send `configure` to the board wasm.
+
+## Boards are tested in workerd (2026-11-25)
+
+`test/workerd-board.test.ts`, part of `pnpm test`, bundles `test/workerd/board.ts` with esbuild (the real `src/worker/Host.ts`, its `nanocode-ts/nanocode_board.wasm?module` import kept as a `CompiledWasm` module) and runs it under Miniflare (workerd 1.20261023.1) in a Durable Object with SQLite storage persisted to a temporary directory. The object opens the board through `Host.open`, posts a task, claims it, replies and refreshes; a second Miniflare over the same storage, so a fresh object, opens it again from its checkpoint and reads the task back claimed, with the same claim and reply. It also checks that the bundle imports only `nanocode_board.wasm`. `esbuild` 0.28.2 and `miniflare` 5.20261023.3-beta (the versions vite and wrangler already pin) are now direct dev dependencies. Miniflare 5 takes `workers: [{ config, dev }]`, so the test passes v4-style options through `convertV4MiniflareOptions`.
+
+- Measured on ede1895: the test takes about 0.5 s (`node --test`), and `pnpm test` runs 556 tests in 57 s.
+- It catches the configure bug: with 17a0f1b's change reverted, it fails on the first open with ``unknown variant `configure`, expected `board` ``; restored, it passes.
+- The tree-swarm path: the local sweep (`SWARMS_BASE=local node --test --experimental-strip-types test/e2e/endpoints.test.ts`) already asserts in its seed that `POST /v1/swarms` with `form: 'tree'` answers 201, through the Worker under workerd. On ede1895 it passed (32 s); with 17a0f1b reverted it failed there, 500 !== 201 (`endpoints.test.ts:24`).
+- nanocode-ts build-ce85934 accepts `configure` in the board-only module, and Swarms now uses it; `Host.open` still passes only `transaction` (17a0f1b), as a second guard. The workerd test now also opens a board with `Board.open` over `Sql.create(storage)` directly, the runtime's `configure` included: on build-3274348 that case fails with the `configure` error and the `Host.open` case passes; on build-ce85934 both pass, with 17a0f1b reverted as well.
+
+## The site and the objects are two Workers (2026-11-25)
+
+The next step from "The Worker's startup is its bytes": the site no longer shares a script with the Durable Objects.
+
+- `swarms` (`wrangler.jsonc`, `src/worker/index.ts`) keeps `Swarm` and `Lobby`, their migrations (v1, v2, unchanged, no `transferred_classes`, so storage stays where it is), D1, `GATEWAY`, the vars and secrets, and `workers_dev`. Its `fetch` serves `GET|HEAD /og/*` (`Posters`: resvg, fonts, the h264 encoder), and `POST /v1/auth`, `/v1/auth/challenge` and `/v1/auth/logout` (`Signin`: the `accounts` client), and hands every other request to `SITE` unchanged, so `swarms.tempo-dev.workers.dev` (the paradigm.xyz/swarms proxy's target) still serves the whole site. It has no routes and no assets.
+- `swarms-site` (`wrangler.site.jsonc`, `src/worker/site.ts`, the Hono app that was `index.ts`) takes the custom domains swarms.new and www.swarms.new, assets, D1, `GATEWAY`, the same vars and secrets, `OBJECTS` (a service binding to `swarms`), and `SWARMS`/`LOBBY` with `script_name: "swarms"`. It exports no class and carries neither the board nor the resvg wasm: `/og/*` and the three auth writes go to `OBJECTS`, and a bot's preview warm-up (`Og.warm`) fetches the three cards through `OBJECTS` at the address `Posters` caches them under, as before.
+- `Og.ts` keeps what the site reads (`parse`, `keyed`, `subject`, `embed`, `head`, `frame`, `warm`); the drawing moved to `Posters.ts`.
+- `Sessions` reads a session with no `accounts` code: `holder` reads `tempo-id:session:<token>` from the same D1 store and takes it when `method` is `siwe` and `expiresAt` is ahead, which is what `backend.get` returned for a SIWE session. Starting and completing a sign-in and logging out stay on `accounts` in `Signin.ts`, in `swarms`. A logout in `swarms` clears the 30 s per-isolate session cache only there, so a site isolate can take a logged-out token for up to 30 s, as another isolate of the one Worker could before.
+- The web app's `wallet.ts` loads `accounts`, `accounts/plugins`, `viem`, `viem/tempo` and `viem/tempo/chains` with `import()` in the browser only; the Worker builds now resolve those imports from `src/web/` to `Absent.ts`, as they did `./fixtures.ts`. The worker's own `viem` imports (`Operations`, `Chain`, `shared/Credit`) are unchanged.
+- Vite: `wrangler.site.jsonc` is the plugin's main Worker and `wrangler.jsonc` an auxiliary one, so `pnpm dev` runs both and `vite build` writes `dist/swarms_site` and `dist/swarms`. `pnpm run deploy` stops unless `swarms-site` exists (`wrangler deployments list --name swarms-site`), then deploys `swarms` and then `swarms-site`.
+
+Measured on dev-georgios (load 9 to 13), the `vite build` output under the workerd from `wrangler` 4.156.0's miniflare (1.20261023.1), launch to the first answer of `/x/card.svg`, median of 9 launches, three interleaved rounds (`~/swarms-work/a91/meas`):
+
+| script | upload (`wrangler deploy --dry-run`) | JS | wasm | first answer |
+|---|---|---|---|---|
+| `swarms` before (7fb17be) | 11,539.78 KiB (3,653.19 gzip) | 4,448,744 | 7,178,275 | 171 to 180 ms |
+| `swarms-site`, split only | 4,421.61 KiB (1,334.64 gzip) | 4,123,339 | 404,394 | 138 to 144 ms |
+| `swarms-site` | 3,144.65 KiB (970.77 gzip) | 2,815,726 | 404,394 | 105 to 110 ms |
+| `swarms` (objects) | 8,716.74 KiB (2,762.66 gzip) | 1,962,367 | 6,773,881 | 95 to 100 ms |
+
+- The site's wasm is `@pierre/highlights` (303,786) and `@pierre/words` (100,608); the objects' is the board (4,210,065), resvg (2,478,606) and the encoder (85,210), plus the two fonts (189,692). What is left in the site's JS: its entry chunk 0.98 MB (react-dom, the pages, the worker modules), `Machines` 0.33 MB, `/mcp` 0.32 MB, and about 0.4 MB of viem for `Operations`' ABI encoding and `Credit`.
+- A cold `/v1/swarms/:id` now waits for both: the site's isolate (about 105 ms here) and the object's (the objects' script, about 95 ms, which it also waited for before, then with 4.4 MB of JS).
+- Checked: `pnpm check`, `pnpm test` (555 pass; `test/hosts`, `skew` and `sockets` run `site.ts`, and `skew` serves `/og` through `index.ts` as `OBJECTS`), `pnpm build`; `wrangler dev -c dist/swarms/wrangler.json -c dist/swarms_site/wrangler.json` (objects first, as workers.dev sees it) served `/swarms/`, `/swarms/docs`, `/swarms/v1/config`, `/swarms/api/swarms`, `/swarms/openapi.json`, an asset, two `/og` cards drawn by `swarms`, and an unknown `/swarms/s/:id` as the 404 page; the route sweep under `SWARMS_BASE=local` (both Workers under `pnpm dev`): 273 routes, 0 failed, all six sockets to their `welcome`, `/og` cards and the three `/v1/auth` writes through `OBJECTS`. Its one failure on 7fb17be plus the board fix, `swarms byok` signed out answering `unauthorized` because own AI is on in the local world, is now an accepted answer (7a3f95a). Before the board fix the local sweep could not seed its tree swarm. `pnpm check:e2e` fails on main already (`test/board.ts`, `WebAssembly.compile`) and is not part of the checks.
+
+### Deploy plan
+
+Run from the pushed `origin/main`, with the Cloudflare credentials, on a machine that has them. `swarms-site` is created before `swarms` changes because each binds the other: `swarms-site` binds `OBJECTS` and the classes of `swarms`, which exist today, while the new `swarms` binds `SITE`, which must exist first. Uploading `swarms-site` without its domains changes nothing anyone reaches; the objects' script is the first change that serves traffic, and the domains move last.
+
+0. Build and record what to roll back to:
+   ```
+   git pull --rebase && pnpm install && pnpm build
+   CTX=tempo wrangler ctx exec pnpm exec wrangler deployments list --name swarms
+   CTX=tempo wrangler ctx exec pnpm exec wrangler secret list --name swarms
+   ```
+   Write the values of every secret that list names (`SWARMS_GATEWAY_KEY`, `SWARMS_GITHUB_WEBHOOK_SECRET`, and `SWARMS_GITHUB_TOKEN` if listed) into a JSON file outside the repository, such as `~/.swarms-site.secrets.json`, from where they are kept; Cloudflare cannot read them back from `swarms`.
+1. Create `swarms-site` without its custom domains:
+   ```
+   jq 'del(.routes)' dist/swarms_site/wrangler.json > dist/swarms_site/wrangler.first.json
+   CTX=tempo wrangler ctx exec pnpm exec wrangler deploy -c dist/swarms_site/wrangler.first.json --secrets-file ~/.swarms-site.secrets.json
+   ```
+   It serves only `swarms-site.tempo-dev.workers.dev`, against today's `swarms` (which still serves `/og` and `/v1/auth` itself). Check it: `curl -s https://swarms-site.tempo-dev.workers.dev/swarms/v1/health`, `curl -s https://swarms-site.tempo-dev.workers.dev/swarms/v1/swarms/06cf5d7c8f92 | jq '{id, failure}'`, `curl -s -o /dev/null -w '%{http_code}\n' https://swarms-site.tempo-dev.workers.dev/swarms/og/about/card.png`.
+2. Deploy the objects' script:
+   ```
+   CTX=tempo wrangler ctx exec pnpm exec wrangler deploy -c dist/swarms/wrangler.json
+   ```
+   Its config lists no custom domains, so wrangler leaves swarms.new and www.swarms.new on `swarms`: from now on every host reaches the site through `swarms` → `SITE`. Run the verification below.
+3. Move the custom domains:
+   ```
+   CTX=tempo wrangler ctx exec pnpm exec wrangler deploy -c dist/swarms_site/wrangler.json
+   ```
+   Without a terminal wrangler moves a domain held by another Worker on its own; with one, it asks "Update them to point to this script instead?": answer yes. Then check that both domains name `swarms-site` (the dashboard's Domains & Routes, or `CTX=tempo wrangler ctx exec sh -c 'curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts/0a39052b0a32ba8c8444345fe21b7595/workers/domains' | jq '.result[] | {hostname, service}'`) and run the verification again.
+4. Afterwards `CTX=tempo wrangler ctx exec pnpm run deploy` deploys `swarms`, then `swarms-site`.
+
+Verification, GETs only:
+- The pinned sweep on both hosts, 0 failed: `pnpm endpoints https://swarms.new` and `pnpm endpoints https://paradigm.xyz/swarms` (no `SWARMS_SWEEP_WRITES`). Its six sockets (lobby, general chat and a room, `/api` and `/v1`) must reach their `welcome`.
+- The busy swarms, on both hosts: `for id in 06cf5d7c8f92 f3a42cf87339; do curl -s https://swarms.new/v1/swarms/$id | jq '{id, failure, reason}'; curl -s -o /dev/null -w "%{http_code} card\n" https://swarms.new/og/s/$id/card.png; curl -s -o /dev/null -w "%{http_code} page\n" -H 'accept: text/html' https://paradigm.xyz/swarms/s/$id; done`.
+- paradigm.xyz and workers.dev: `curl -s -o /dev/null -w '%{http_code}\n' https://paradigm.xyz/swarms/` and `curl -s https://swarms.tempo-dev.workers.dev/swarms/v1/health`.
+- www: `curl -sI https://www.swarms.new/docs` answers 301 to https://swarms.new/docs, and https://swarms.new/ itself answers 200 with no redirect.
+- Cold starts: first `/v1/health` and `/` after 60 and 300 s idle, against the numbers in "Idle public reads answer what the colo kept".
+- Sign-in is a write, so the sweep does not send it to production: after step 2, sign in once on the page to see `/v1/auth` answered by `swarms`.
+
+Rollback (Durable Object storage never moves, so each is only code and routes):
+- After step 1: nothing reaches `swarms-site`; leave it, or `CTX=tempo wrangler ctx exec pnpm exec wrangler delete --name swarms-site`.
+- After step 2: `CTX=tempo wrangler ctx exec pnpm exec wrangler rollback --name swarms <version from step 0>` puts back the single Worker with its assets; the domains never left `swarms`.
+- After step 3, or any time: deploy the single-Worker layout from 17a0f1b, whose config lists the custom domains and so moves them back to `swarms`: `git checkout 17a0f1b && pnpm install && CTX=tempo wrangler ctx exec pnpm run deploy`, then the verification. `swarms-site` can stay deployed and idle.
