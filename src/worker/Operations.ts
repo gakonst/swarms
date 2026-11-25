@@ -577,16 +577,16 @@ export async function list(env: Cloudflare.Env, input: Input<'list'>): Promise<P
   const status = parsed.value.status
   const [swarms, riding] = await Promise.all([
     summaries(env, status),
-    Edge.cached(env, 'riding', listSeconds, () => Store.riding(env)),
+    Edge.cached(env, 'riding', listSeconds, () => Store.riding(env), idleSeconds),
   ])
-  const heads = await Edge.cached(env, `heads?status=${status ?? ''}`, listSeconds, () => headlines(env, swarms))
+  const heads = await Edge.cached(env, `heads?status=${status ?? ''}`, listSeconds, () => headlines(env, swarms), idleSeconds)
   resume(env, swarms)
   Store.know(swarms.map((swarm) => swarm.id))
   return Problem.ok({ funders: Object.fromEntries(swarms.flatMap((swarm) => (riding.funders[swarm.id] ? [[swarm.id, riding.funders[swarm.id]!]] : []))), heads, riders: riding.riders, swarms })
 }
 
 function summaries(env: Cloudflare.Env, status?: Summary['status']) {
-  return Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row)))
+  return Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row)), idleSeconds)
 }
 
 async function headlines(env: Cloudflare.Env, swarms: readonly Summary[]) {
@@ -641,6 +641,8 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
 const firstFeed = 80
 
 const listSeconds = 3
+
+const idleSeconds = 3600
 
 export async function stamp(env: Cloudflare.Env, swarm: string): Promise<Stamp | undefined> {
   return Store.seen(swarm) ? stub(env, swarm).version() : undefined
@@ -848,7 +850,7 @@ export async function progress(env: Cloudflare.Env, input: Input<'burn'>): Promi
     })()
     const graphed = tree ? Progress.fromGit({ ...tree, hint: Progress.hint(json), live: tree.branches.length ? await exploring(env, swarm, tree.branches) : [] }) : undefined
     return graphed ?? Progress.parse(json, main) ?? null
-  })
+  }, idleSeconds)
   return Problem.ok({ progress: value })
 }
 
@@ -2200,7 +2202,7 @@ export async function ledgers(env: Cloudflare.Env): Promise<Ledgered[]> {
   return Edge.cached(env, 'ledgers', ledgerSeconds, async () => {
     const { results } = await env.DB.prepare("select id from swarms where form = 'tree' and archived_at is null limit 20").all<{ id: string }>()
     return Promise.all(results.map((row) => stub(env, row.id).treeHealth(row.id)))
-  })
+  }, idleSeconds)
 }
 
 async function plant(env: Cloudflare.Env, row: Store.Row, request: z.output<typeof schema.create>, setup: Setup.Setup) {

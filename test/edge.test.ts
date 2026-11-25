@@ -65,3 +65,22 @@ test('a page is kept apart for each host it was drawn for', async () => {
   assert.equal(draws, 2)
 })
 
+
+test('after an idle stretch inside the stale window, the first read answers the kept value and the database is read behind it', async () => {
+  stored.set('https://swarms.test/__cache/idle', Response.json('old', { headers: { 'x-cached-at': String(Date.now() - 40 * 60_000) } }))
+  let reads = 0
+  const read = async () => {
+    reads += 1
+    await sleep(300)
+    return 'new'
+  }
+  const started = Date.now()
+  assert.equal(await Edge.cached(env, 'idle', 10, read, 3600), 'old')
+  assert.ok(Date.now() - started < 150)
+  await Promise.all(waited.splice(0))
+  assert.equal(reads, 1)
+  assert.equal(await Edge.cached(env, 'idle', 10, read, 3600), 'new')
+  stored.set('https://swarms.test/__cache/gone', Response.json('old', { headers: { 'x-cached-at': String(Date.now() - 61 * 60_000) } }))
+  assert.equal(await Edge.cached(env, 'gone', 10, read, 3600), 'new')
+})
+
