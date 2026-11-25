@@ -665,6 +665,7 @@ export function create(input: { goal: string; nickname?: string; problem?: strin
   const key = id(`${input.title}:${Date.now()}`)
   const swarm = build({ age: 0, goal: input.goal, id: key, problem: input.problem, owner: who ?? visitor, setup: setup({ ...input, template: input.template ?? Setup.fallback }), lines: [['status', 'Created. The first contribution starts its agent.']], spent: '0', status: 'funding', steering, title: input.title, updates: [] })
   swarm.nickname = input.nickname ?? null
+  swarm.archivedAt = null
   fixtures.unshift(swarm)
   return delay(summary(swarm), 400)
 }

@@ -498,7 +498,7 @@ test('a sub-item and a new swarm survive a cancel, an empty wallet, a ride sent 
 
       await ask('reject')
       await page.tap(start)
-      assert.ok(await shows('alert', /cannot be counted/), 'a refused start says so')
+      assert.ok(await shows('alert', /cannot be counted/), 'a refused start says so: ' + viewport + ' ' + (await page.evaluate<string>('location.pathname')) + ' ' + (await page.told()))
       assert.ok(await page.evaluate(page.has({ name: /^0x/, role: 'link' })), 'a refusal links the transaction')
       await page.shoot('new-refused')
       assert.equal(await page.evaluate('window.__cheers'), 0)
