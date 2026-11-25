@@ -1527,6 +1527,14 @@ After 60 s idle, production's (8d7318a) cold first `/v1/health` had a p95 of 2,0
 
 Since e7632bd, `Host.open` handed `Board.open` the board-only wasm (`nanocode_board.wasm`) and `Sql.create(storage)`, whose `value_limit` (8 MiB) makes nanocode-ts's `AgentRuntime.create` send `configure` to the wasm. The board-only wasm knows only `board`, so every board open in workerd failed with ``unknown variant `configure`, expected `board` ``: under `SWARMS_BASE=local`, creating a tree swarm answered 500 (`Operations.plant`), on 7fb17be as well. `test/compat.test.ts` missed it because its SQL host has no `value_limit`. `Host.open` now passes only the host's `transaction`, so no `configure` is sent; the 8 MiB bound value check stays in `Sql.create`'s `transaction`. Production has run main since 20a8a58, so any board open there (tree swarms, subagent work boards) is likely failing the same way until this deploys; not checked on production, which takes a write. 17a0f1b is that fix alone on the single-Worker layout, deployable with the old `pnpm run deploy` before the split below. Upstream, `Board.open` should not send `configure` to the board wasm.
 
+## Boards are tested in workerd (2026-11-25)
+
+`test/workerd-board.test.ts`, part of `pnpm test`, bundles `test/workerd/board.ts` with esbuild (the real `src/worker/Host.ts`, its `nanocode-ts/nanocode_board.wasm?module` import kept as a `CompiledWasm` module) and runs it under Miniflare (workerd 1.20261023.1) in a Durable Object with SQLite storage persisted to a temporary directory. The object opens the board through `Host.open`, posts a task, claims it, replies and refreshes; a second Miniflare over the same storage, so a fresh object, opens it again from its checkpoint and reads the task back claimed, with the same claim and reply. It also checks that the bundle imports only `nanocode_board.wasm`. `esbuild` 0.28.2 and `miniflare` 5.20261023.3-beta (the versions vite and wrangler already pin) are now direct dev dependencies. Miniflare 5 takes `workers: [{ config, dev }]`, so the test passes v4-style options through `convertV4MiniflareOptions`.
+
+- Measured on ede1895: the test takes about 0.5 s (`node --test`), and `pnpm test` runs 556 tests in 57 s.
+- It catches the configure bug: with 17a0f1b's change reverted, it fails on the first open with ``unknown variant \`configure\`, expected \`board\```; restored, it passes.
+- The tree-swarm path: the local sweep (`SWARMS_BASE=local node --test --experimental-strip-types test/e2e/endpoints.test.ts`) already asserts in its seed that `POST /v1/swarms` with `form: 'tree'` answers 201, through the Worker under workerd. On ede1895 it passed (32 s); with 17a0f1b reverted it failed there, 500 !== 201 (`endpoints.test.ts:24`).
+
 ## The site and the objects are two Workers (2026-11-25)
 
 The next step from "The Worker's startup is its bytes": the site no longer shares a script with the Durable Objects.
