@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fleet, folded } from '../src/shared/Fleet.ts'
+import { fleet, folded, removes } from '../src/shared/Fleet.ts'
 
 const entry = (seq: number, kind: string, text: string, detail: string | null = null, who: string | null = null) => ({ at: seq * 1000, detail, event: seq, kind, seq, text, who }) as never
 
@@ -150,4 +150,13 @@ test('a machine that left and joined again is running since it came back, whiche
     machines.map((machine) => [machine.name, machine.kind, machine.label, machine.connected, machine.started, machine.ended]),
     [['box-1', 'hand', null, true, 7000, null], ['mbp-abc123', 'hand', 'laptop', true, 6000, null], ['gone-1', 'hand', null, false, 5000, 8000]],
   )
+})
+
+test("only the swarm's admins and the operator see Remove on a lent hand", () => {
+  const owner = '0x' + 'a'.repeat(40)
+  const operator = '0x' + 'B'.repeat(40)
+  assert.equal(removes(owner.toUpperCase().replace('0X', '0x'), [owner], undefined), true)
+  assert.equal(removes(operator.toLowerCase(), [owner], operator), true)
+  assert.equal(removes('0x' + 'c'.repeat(40), [owner], operator), false)
+  assert.equal(removes(undefined, [owner], operator), false)
 })

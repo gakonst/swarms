@@ -13,6 +13,11 @@
 .reins-list span { font:12px var(--mono); letter-spacing:.02em; color:var(--muted); }
 .reins-list button { position:relative; margin-left:auto; padding:0; border:0; background:none; font:inherit; font-size:var(--size-body); color:var(--fg); text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:.2em; cursor:pointer; }
 .reins-list button::after { content:''; position:absolute; inset:-10px -8px; }
+.reins-list button + button { margin-left:0; }
+.machines { display:flex; flex-direction:column; gap:var(--space-2); width:100%; margin-top:var(--space-4); }
+.machines h2 { font-size:var(--size-title); font-weight:400; letter-spacing:-.02em; }
+.machines .reins-list b { flex:1 1 auto; min-width:0; }
+.machines .reins-list button { flex:none; white-space:nowrap; }
 .reins-add { display:flex; align-items:center; gap:12px; }
 .reins-add input { flex:1; min-width:0; height:44px; padding:0; border:0; border-bottom:1px solid var(--edge); border-radius:0; background:none; color:var(--fg); font:16px var(--serif); outline:none; }
 .reins-add input::placeholder { color:var(--faint); }

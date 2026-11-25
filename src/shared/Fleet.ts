@@ -355,3 +355,8 @@ export function readable(text: string) {
   }
   return current
 }
+
+export function removes(me: string | undefined, admins: readonly string[], operator: string | undefined) {
+  const who = me?.toLowerCase()
+  return !!who && (admins.some((admin) => admin.toLowerCase() === who) || operator?.toLowerCase() === who)
+}

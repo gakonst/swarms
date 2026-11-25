@@ -245,6 +245,10 @@ export function hand(id: string, label: string) {
   )
 }
 
+export function unhand(id: string, hand: string) {
+  return signed(() => (fixture ? Promise.resolve({ hand, removed: true as const, swarm: id }) : request<{ hand: string; removed: true; swarm: string }>(`${path(id)}/hands/${encodeURIComponent(hand)}`, undefined, 'DELETE')))
+}
+
 export function progress(id: string) {
   return fixture ? staged((fixtures) => fixtures.progress(id)) : request<{ progress: Progress | null }>(`${path(id)}/progress`)
 }

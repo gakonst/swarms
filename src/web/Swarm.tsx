@@ -17,6 +17,7 @@ import { asked } from './Contribute.tsx'
 import { Divider } from './Divider.tsx'
 import { useNow, usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
+import { Machines } from './Machines.tsx'
 import { Overlay } from './Overlay.tsx'
 import { Host } from './OwnAi.tsx'
 import * as Names from './names.ts'
@@ -201,6 +202,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
         <div className="panel panel-page" hidden={view !== 'about'}>
           <Explainer swarm={swarm} />
           {archived ? <Archived swarm={swarm} /> : <Reins onNamed={named} swarm={swarm} />}
+          {!archived && <Machines config={props.config} swarm={swarm} />}
         </div>
       )}
       </section>
