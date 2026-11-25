@@ -165,6 +165,7 @@ test('scopes: anonymous reads, a write asks for OAuth, a narrow token is refused
   assert.match(challenge, /^Bearer /)
   assert.ok(challenge.includes('resource_metadata="' + dev.url + '/.well-known/oauth-protected-resource/mcp"'), challenge)
   assert.equal(created.body.error?.data?.['scope'], 'swarms:write')
+  assert.ok(challenge.includes('scope="swarms:read swarms:write"'), challenge)
 
   const narrow = await connect(ana, 'swarms:read swarms:write')
   const made = ok(await call('swarm_create', { goal: 'Made with a read and write token, on mocks.', template: 'cheap', title: 'Narrow (e2e)' }, narrow.access), 'write scope creates')

@@ -20,7 +20,8 @@ function instructions(origin: string) {
     'To answer questions about what the swarms found or did, search first (swarms_search with keywords; set swarm to include that swarm\'s feed of tool calls, commands, machines and messages), then read what matched with swarm_updates, swarm_answer, swarm_get or swarm_feed, and cite the swarm and when. swarms_list shows the funded swarms. Reading is free and needs no account.',
     "When something in Swarms is broken or confusing, or the user wants to report it, swarm_feedback files it with the team that runs Swarms and answers a link where its status shows.",
     `Tools answer once. To follow a swarm in real time, open the same read over HTTP as server-sent events: ${origin}/v1/swarms/<id>/tree, /chat, /feed, /ledger or any other GET under /v1 with Accept: text/event-stream sends a snapshot and then each change, and resumes from Last-Event-ID.`,
-    `Fund only when the user asks to. swarm_contribute prepares a transfer (the gateway's address, the memo that names the swarm and its note, call data and a link to the page that sends it) and counts one by its hash. swarm_wait waits up to ${Operations.maxWait} s for the agent's next update.`,
+    'Reading needs no account. Tools that write sign in with OAuth (the user signs in with Tempo ID and picks scopes: swarms:write, swarms:money, swarms:admin); each tool names its scope, and a call past the granted scopes answers 401 or 403 so the client can sign in again. Tools that move money or cannot be undone (swarm_fund, swarm_contribute with a hash, swarm_hand_remove, swarm_archive, a nickname change) refuse with the exact confirm phrase to send: show the user what will happen, and send the phrase only after they agree.',
+    `Fund only when the user asks to. swarm_contribute prepares a transfer (the gateway's address, the memo that names the swarm and its note, call data and a link to the page that sends it) and counts one by its hash. swarm_wait waits up to ${Operations.maxWait} s for the agent's next update, and swarm_watch up to ${watchMost} s, answering the feed since a cursor.`,
   ].join('\n\n')
 }
 
@@ -68,7 +69,7 @@ function refuse(site: string, caller: OAuth.Caller, refused: { id: unknown; scop
     : `${refused.tool} needs the ${refused.scope} scope: connect with OAuth (sign in with Tempo ID) first. Reading tools need no account.`
   return Response.json(
     { error: { code: -32001, data: { scope: refused.scope, tool: refused.tool }, message }, id: refused.id, jsonrpc: '2.0' },
-    { headers: { 'www-authenticate': OAuth.challenge(site, signed ? { code: 'insufficient_scope', description: message, scope: wanted } : undefined) }, status: signed ? 403 : 401 },
+    { headers: { 'www-authenticate': OAuth.challenge(site, { ...(signed ? { error: { code: 'insufficient_scope', description: message } } : {}), scope: wanted }) }, status: signed ? 403 : 401 },
   )
 }
 
@@ -80,7 +81,7 @@ export async function handle(request: Request, env: Cloudflare.Env) {
   const caller = await OAuth.caller(env, request)
   if (caller.bearer === 'invalid') {
     const description = 'The access token expired or was revoked: refresh it or sign in again.'
-    return Response.json({ error: { code: -32001, message: description }, id: null, jsonrpc: '2.0' }, { headers: { 'www-authenticate': OAuth.challenge(site, { code: 'invalid_token', description }) }, status: 401 })
+    return Response.json({ error: { code: -32001, message: description }, id: null, jsonrpc: '2.0' }, { headers: { 'www-authenticate': OAuth.challenge(site, { error: { code: 'invalid_token', description } }) }, status: 401 })
   }
   const registry: Registry = new Map()
   const server = create(env, Replica.read(env, request), site, caller, registry)

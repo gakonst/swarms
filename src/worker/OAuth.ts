@@ -78,10 +78,10 @@ export function server(site: string) {
   }
 }
 
-export function challenge(site: string, error?: { code: 'insufficient_scope' | 'invalid_token'; description: string; scope?: string }) {
+export function challenge(site: string, options: { error?: { code: 'insufficient_scope' | 'invalid_token'; description: string }; scope?: string } = {}) {
   const parts = [`resource_metadata="${metadata(site)}"`]
-  if (error) parts.push(`error="${error.code}"`, `error_description="${error.description.replace(/"/g, "'")}"`)
-  parts.push(`scope="${error?.scope ?? scopes.join(' ')}"`)
+  if (options.error) parts.push(`error="${options.error.code}"`, `error_description="${options.error.description.replace(/"/g, "'")}"`)
+  parts.push(`scope="${options.scope ?? fallback.join(' ')}"`)
   return `Bearer ${parts.join(', ')}`
 }
 
