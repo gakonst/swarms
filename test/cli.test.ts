@@ -8,6 +8,9 @@ import { completion } from '../cli/src/commands/completion.ts'
 import { context, Failure, host, swarm } from '../cli/src/context.ts'
 import { aliases, commands, parse, usage } from '../cli/src/run.ts'
 import { version } from '../cli/src/version.ts'
+import { asked } from '../cli/src/commands/fund.ts'
+import { type Overview, said, state } from '../cli/src/commands/swarms.ts'
+import * as Status from '../src/shared/Status.ts'
 import * as Device from '../src/worker/Device.ts'
 
 test('the CLI parses flags, aliases and its host the way its help says', () => {
@@ -24,7 +27,7 @@ test('the CLI parses flags, aliases and its host the way its help says', () => {
 test('the CLI version is the package version', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 'cli', 'package.json'), 'utf8')) as { bin: Record<string, string>; name: string; version: string }
   assert.equal(manifest.version, version)
-  assert.deepEqual(manifest.bin, { swarms: 'dist/main.js' })
+  assert.deepEqual(manifest.bin, { swarms: 'dist/cli/src/main.js' })
 })
 
 test('a swarm is named by its nickname, its id, or its address on either site', async () => {
@@ -90,4 +93,33 @@ test('a device sign-in code is used once, expires, and waits for a signed-in app
   await w.env.DB.prepare('update sessions set expires_at = 1 where key = ?').bind(`cli:device:${started.value.device_code}`).run()
   const expired = await Device.poll(w.env, { device_code: started.value.device_code })
   assert.equal(expired.ok ? 200 : expired.status, 410)
+})
+
+
+const base: Overview = { archivedAt: null, balance: '56.710051', contributors: 7, form: 'agent', goal: 'Solve it', id: '06cf5d7c8f92', machines: 0, nickname: null, reason: null, remaining: '27.973444', spent: '28.736607', status: 'running', title: 'Solve P = NP.', updatedAt: 0, updates: [], why: null, working: null }
+
+test("swarms status and swarms ls say what the page's pill says, from src/shared/Status.ts", () => {
+  const now = 1_000_000_000
+  const waiting: Overview = { ...base, failure: { at: 0, code: 'api_error', message: "Tempo Agents cannot pay the network fee to open your key's channel right now: its fee sponsor is out of funds.", route: 'Messages', status: 503 }, reason: Status.reasons.sponsor, waiting: 'tempo', why: 'stuck', working: { since: now - 240_000, stalled: false } }
+  assert.deepEqual(said(waiting, now), { status: 'Waiting on Tempo', why: Status.reasons.sponsor })
+  assert.equal(said(waiting, now).status, Status.badge(waiting))
+  assert.equal(state(waiting), 'Waiting on Tempo')
+  const stuck: Overview = { ...waiting, failure: null, reason: Status.reasons.stalled, waiting: null }
+  assert.deepEqual(said(stuck, now), { status: 'Retrying', why: Status.reasons.stalled })
+  const broke: Overview = { ...base, reason: Status.reasons.broke, remaining: '0.010000', status: 'paused', why: 'money' }
+  assert.deepEqual(said(broke, now), { status: 'Needs money', why: Status.reasons.broke })
+  assert.equal(state(broke), 'Needs money')
+  const working: Overview = { ...base, working: { since: now - 240_000 } }
+  assert.deepEqual(said(working, now), { status: 'Working now · working for 4m', why: null })
+  assert.equal(said({ ...working, working: { since: now - 240_000, stalled: true } }, now).status, 'Working now · working for 4m (stalled)')
+  assert.equal(state({ ...base, archivedAt: 1 }), 'Archived')
+  assert.equal(state({ ...base, balance: '0', remaining: '0', status: 'funding', why: 'unfunded' }), 'No riders yet')
+  assert.equal(state({ ...base, status: 'paused', why: 'idle' }, { inFlight: 2 }), 'Working now')
+})
+
+test("the ride prompt asks one question even when the title ends in punctuation", () => {
+  assert.equal(asked('Solve P = NP.'), 'Solve P = NP')
+  assert.equal(asked('Is it prime?  '), 'Is it prime')
+  assert.equal(asked('Megakernel for Muse Spark Open (Frontier Mix)'), 'Megakernel for Muse Spark Open (Frontier Mix)')
+  assert.equal(asked('...'), '...')
 })

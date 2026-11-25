@@ -1,3 +1,5 @@
+import type { Failure as Failed, Summary as Shared, Waiting, Why } from '../../../src/shared/Api.ts'
+import * as Status from '../../../src/shared/Status.ts'
 import { ask, browse, confirm, type Context, Failure, line, page, swarm, table, usd } from '../context.ts'
 
 export type Summary = {
@@ -11,12 +13,35 @@ export type Summary = {
   nickname: string | null
   remaining: string
   spent: string
+  setup?: Shared['setup'] | undefined
   status: string
   title: string
   updatedAt: number
+  waiting?: Waiting | null
+  why?: Why | null
 }
 
-type Overview = Summary & { reason: string | null; updates: { at: number; done: boolean; excerpt?: string; spent: string }[]; waiting?: unknown; working: { since: number; stalled?: boolean } | null }
+export type Overview = Summary & { failure?: Failed | null; reason: string | null; updates: { at: number; done: boolean; excerpt?: string; spent: string }[]; working: { since: number; stalled?: boolean } | null }
+
+type Headline = { inFlight?: number }
+
+type Told = Summary & { failure?: Failed | null; reason?: string | null }
+
+function stood(swarm: Told, head?: Headline): Status.Stood {
+  return { ...swarm, inFlight: head?.inFlight, status: swarm.status as Status.Stood['status'] }
+}
+
+// The same words the page's pill and status line use (src/shared/Status.ts), never the CLI's own.
+export function state(swarm: Told, head?: Headline) {
+  return Status.badge(stood(swarm, head))
+}
+
+export function said(read: Overview, now = Date.now()) {
+  const swarm = stood(read)
+  const word = Status.word(swarm)
+  const working = word === 'Working' && read.working ? ` · working for ${ago(read.working.since, now)}${read.working.stalled ? ' (stalled)' : ''}` : ''
+  return { status: Status.badge(swarm, word) + working, why: word === 'Stuck' || word === 'Needs money' ? Status.told(swarm) : null }
+}
 
 type Entry = { at: number; kind: string; seq: number; text: string; who: string | null }
 
@@ -26,8 +51,8 @@ type TreeView = { headline: { deadEnds: number; frontier: number; inFlight: numb
 
 type Machine = { by: string | null; connected: boolean; kind: string; label: string | null; name: string; runs: { count: number; failed: number } | null }
 
-function ago(at: number) {
-  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000))
+function ago(at: number, now = Date.now()) {
+  const seconds = Math.max(0, Math.round((now - at) / 1000))
   return seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.round(seconds / 60)}m` : seconds < 86_400 ? `${Math.round(seconds / 3600)}h` : `${Math.round(seconds / 86_400)}d`
 }
 
@@ -37,12 +62,12 @@ function clock(at: number) {
 
 export async function ls(ctx: Context) {
   const status = ctx.flag('status')
-  const listing = await ctx.api<{ swarms: Summary[] }>('GET', `/v1/swarms${status ? `?status=${encodeURIComponent(status)}` : ''}`)
+  const listing = await ctx.api<{ heads?: Record<string, Headline>; swarms: Summary[] }>('GET', `/v1/swarms${status ? `?status=${encodeURIComponent(status)}` : ''}`)
   ctx.out(listing, () => {
     const shown = ctx.flags['all'] === true ? listing.swarms : listing.swarms.filter((each) => !each.archivedAt)
     if (!shown.length) return 'No swarms yet. Start one with swarms new <name>.'
     const hidden = listing.swarms.length - shown.length
-    return table([['NAME', 'STATUS', 'LEFT', 'RIDERS', 'TITLE'], ...shown.map((each) => [each.nickname ?? each.id, each.archivedAt ? 'archived' : each.status, usd(each.remaining), String(each.contributors), line(each.title, 60)])]) + (hidden ? `\n\n+${hidden} archived (--all shows them)` : '')
+    return table([['NAME', 'STATUS', 'LEFT', 'RIDERS', 'TITLE'], ...shown.map((each) => [each.nickname ?? each.id, state(each, listing.heads?.[each.id]), usd(each.remaining), String(each.contributors), line(each.title, 60)])]) + (hidden ? `\n\n+${hidden} archived (--all shows them)` : '')
   })
 }
 
@@ -89,14 +114,14 @@ export async function status(ctx: Context) {
   const read = await ctx.api<Overview>('GET', `/v1/swarms/${encodeURIComponent(id)}`)
   ctx.out(read, () => {
     const latest = read.updates.at(-1)
-    const waiting = typeof read.waiting === 'string' ? read.waiting : read.waiting && typeof read.waiting === 'object' && 'text' in read.waiting ? String((read.waiting as { text: unknown }).text) : read.reason
+    const told = said(read)
     return table(
       [
         ['swarm', `${read.title}  ${page(ctx.host, read)}`],
-        ['status', `${read.archivedAt ? 'archived' : read.status}${read.working ? ` · working for ${ago(read.working.since)}${read.working.stalled ? ' (stalled)' : ''}` : ''}`],
+        ['status', told.status],
         ['money', `${usd(read.remaining)} left of ${usd(read.balance)} · ${usd(read.spent)} spent · ${read.contributors} rider${read.contributors === 1 ? '' : 's'}`],
         ['goal', line(read.goal, 200)],
-        ...(waiting ? [['waiting', line(waiting, 200)]] : []),
+        ...(told.why ? [['why', line(told.why, 200)]] : []),
         ...(latest ? [['latest', `${ago(latest.at)} ago: ${line(latest.excerpt ?? '', 200)}`]] : []),
       ],
     )

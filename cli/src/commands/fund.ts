@@ -8,6 +8,11 @@ function units(value: string) {
   return BigInt(whole) * 1_000_000n + BigInt((part + '000000').slice(0, 6))
 }
 
+// A title that already ends in punctuation ("Solve P = NP.") reads as one question, not "NP.?".
+export function asked(title: string) {
+  return title.trim().replace(/[\s.,;:!?…]+$/u, '') || title.trim()
+}
+
 export type Ridden = { amount: string; balance: string; counted: boolean; hash: string | null; link: string | null; swarm: Summary; url: string }
 
 export async function ride(ctx: Context, summary: Summary, amount: string): Promise<Ridden> {
@@ -22,7 +27,7 @@ export async function ride(ctx: Context, summary: Summary, amount: string): Prom
     return { amount: counted.contribution.amount, balance: counted.swarm.balance, counted: true, hash, link: null, swarm: counted.swarm, url: page(ctx.host, counted.swarm) }
   }
   if (summary.archivedAt) throw new Failure(`${summary.title} is archived: it takes no new rides.`, { code: 'gone', next: 'Pick another swarm with swarms ls.', status: 410 })
-  await confirm(ctx, `Send ${usd(given)} of real money to ${summary.title}?`)
+  await confirm(ctx, `Send ${usd(given)} of real money to ${asked(summary.title)}?`)
   const token = ctx.flag('token')
   const prepared = await ctx.api<Prepared>('POST', `${path}/transfer`, { amount: given, ...(note ? { note } : {}), ...(node ? { node } : {}), ...(token ? { token } : {}) })
   const before = units((await ctx.api<Summary>('GET', path)).balance)

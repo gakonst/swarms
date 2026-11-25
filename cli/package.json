@@ -4,7 +4,7 @@
   "description": "The Swarms command line: start, ride, watch and steer crowdfunded AI agents on swarms.new.",
   "type": "module",
   "bin": {
-    "swarms": "dist/main.js"
+    "swarms": "dist/cli/src/main.js"
   },
   "files": [
     "dist",
