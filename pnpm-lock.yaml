@@ -63,6 +63,12 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(yaml@2.9.1))
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      miniflare:
+        specifier: 5.20261023.3-beta
+        version: 5.20261023.3-beta(@types/node@26.6.6)
       nanocode-ts-old:
         specifier: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz
         version: nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7)
