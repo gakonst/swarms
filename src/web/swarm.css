@@ -154,7 +154,8 @@ button.crew-bud:hover, .crew-row[data-open] .crew-bud { background:var(--wash); 
   .strip-stats { order:3; flex:1 1 100%; gap:0 14px; overflow:hidden; font-size:11px; }
   .strip-stats b { margin-right:4px; font-size:17px; }
   .strip-stats .strip-big b { font-size:22px; }
-  .strip-stats > :not(.strip-big):not(.strip-mood) { display:none; }
+  .strip-stats > :not(.strip-big):not(.strip-mood):not(.strip-left) { display:none; }
+  .strip-stats:has(> .strip-left) > .strip-riders { display:none; }
   .strip-line { flex-wrap:nowrap; gap:10px; }
   .strip-topic { font-size:13px; }
   .backers { flex:none; flex-wrap:nowrap; gap:0; }

@@ -76,7 +76,7 @@ export function Strip(props: { backers: readonly Backer[]; children?: ReactNode;
         <h1 className="strip-title"><i aria-hidden="true">#</i><Inline text={props.title} /></h1>
         {props.edit}
         <p className="strip-stats">
-          <span className="strip-big"><b>{props.riders.toLocaleString('en-US')}</b> rider{props.riders === 1 ? '' : 's'}</span>
+          <span className="strip-big strip-riders"><b>{props.riders.toLocaleString('en-US')}</b> rider{props.riders === 1 ? '' : 's'}</span>
           <span className="strip-big"><b>{dollars(props.raised)}</b> raised</span>
           {props.children}
         </p>

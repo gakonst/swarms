@@ -41,7 +41,7 @@ export function Now(props: {
         ) : (
           <p className="result-quiet">{settled ? (running ? 'No status yet. The lead posts one as it works.' : 'No status yet.') : ' '}</p>
         )}
-        {stood.word === 'Stuck' && <p className="now-stalled">{Status.line(stood.word)}</p>}
+        {(stood.word === 'Stuck' || stood.word === 'Needs money') && <p className="now-stalled">{Status.told(swarm)}</p>}
       </section>
       {nodes.length > 0 && (
         <section aria-labelledby="now-swarm" className="now-swarm">

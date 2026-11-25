@@ -11,6 +11,19 @@ export type Stood = Pick<Summary, 'balance' | 'remaining' | 'status'> & {
   inFlight?: number | undefined
   setup?: Summary['setup'] | undefined
   why?: Summary['why'] | undefined
+  reason?: string | null | undefined
+}
+
+export const reasons = {
+  broke: 'Out of money. Ride it to keep it going.',
+  refused: 'Its last step could not be paid for, though it has money. It tries again by itself.',
+  sponsor: "Waiting on Tempo, not on money: Tempo can't pay the network fee for its AI calls right now. It tries again by itself.",
+  stalled: 'Its last turns made no progress. It tries again by itself.',
+  unfunded: 'Nobody is riding it yet.',
+} as const
+
+export function failing(answer: number | string | null) {
+  return answer === null ? 'Its AI calls keep failing. It tries again by itself.' : `Its AI calls keep failing (error ${answer}). It tries again by itself.`
 }
 
 const pills: Record<Word, string> = {
@@ -27,7 +40,7 @@ const lines: Record<Word, string> = {
   'Not started': 'Ride it to get it started.',
   Starting: 'Getting back to work.',
   Stopped: 'Archived: nothing here runs or takes rides.',
-  Stuck: 'Stuck: its AI calls keep failing, so the swarm keeps retrying.',
+  Stuck: 'Stalled: it hit a problem and tries again by itself.',
   Working: 'AI is working on it right now.',
 }
 
@@ -66,10 +79,15 @@ export function standing(swarm: Stood): Standing {
   if (swarm.archivedAt) return { action: null, mood: 'new', word: 'Stopped' }
   if ((swarm.inFlight ?? 0) > 0) return { action: null, mood: 'live', word: 'Working' }
   if (swarm.status === 'funding' && Number(swarm.balance) <= 0) return { action: 'Ride it to start it', mood: 'new', word: 'Not started' }
-  if (!fueled(swarm) || swarm.why === 'unfunded') return { action: 'Ride it to keep it going', mood: 'money', word: 'Needs money' }
+  if (!fueled(swarm) || swarm.why === 'unfunded' || (swarm.status === 'paused' && swarm.why === 'money' && swarm.reason === reasons.broke)) return { action: 'Ride it to keep it going', mood: 'money', word: 'Needs money' }
   if (swarm.why === 'money' || (swarm.status === 'running' && swarm.why === 'stuck')) return { action: null, mood: 'stuck', word: 'Stuck' }
   if (swarm.status === 'running') return { action: null, mood: 'live', word: 'Working' }
   return { action: null, mood: 'live', word: 'Starting' }
+}
+
+export function told(swarm: Stood) {
+  const word = standing(swarm).word
+  return (word === 'Needs money' || word === 'Stuck') && swarm.reason ? swarm.reason : line(word)
 }
 
 export function word(swarm: Stood): Word {

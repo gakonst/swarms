@@ -55,6 +55,20 @@ test('every word has one pill, one line and a rail tag only when riders need to 
   assert.doesNotMatch(Status.line('Stuck'), /model call|tool call|session|minutes/)
 })
 
+test('a money pause the server calls out of money needs money even with money left on paper, and the page says the server reason', () => {
+  const megakernel = { balance: '100.519583', reason: Status.reasons.broke, remaining: '5.033962', setup: { most: '220480' }, status: 'paused', why: 'money' } as const
+  assert.equal(Status.word(megakernel), 'Needs money')
+  assert.equal(Status.told(megakernel), 'Out of money. Ride it to keep it going.')
+  assert.equal(Status.word({ ...megakernel, reason: undefined }), 'Stuck')
+  const sponsored = { ...megakernel, reason: Status.reasons.sponsor }
+  assert.equal(Status.word(sponsored), 'Stuck')
+  assert.match(Status.told(sponsored), /^Waiting on Tempo, not on money/)
+  assert.doesNotMatch(Status.told(sponsored), /fee sponsor|gateway/)
+  assert.equal(Status.told({ ...megakernel, reason: Status.failing(503), status: 'running', why: 'stuck' }), 'Its AI calls keep failing (error 503). It tries again by itself.')
+  assert.equal(Status.told({ ...megakernel, reason: null, status: 'running', why: 'stuck' }), Status.line('Stuck'))
+  assert.equal(Status.told({ ...megakernel, reason: 'stale', status: 'running', why: null }), Status.line('Working'))
+})
+
 test('counts and rank count only swarms that are really working', () => {
   const now = 10_000_000
   const working = { ...swarm, createdAt: 1, status: 'running', updatedAt: now } as const

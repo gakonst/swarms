@@ -7,6 +7,7 @@ import { problems } from '../shared/ResearchBrief.ts'
 import * as Progress from '../shared/Progress.ts'
 import * as Setup from '../shared/Setup.ts'
 import * as Site from '../shared/Site.ts'
+import * as Standing from '../shared/Status.ts'
 import * as Tree from '../shared/Tree.ts'
 import { usd } from './format.ts'
 import { pace, scene, visitor } from './stage.ts'
@@ -441,7 +442,7 @@ function steady<T>(value: T, ms = 160) {
 const reasons = {
   idle: 'Resting: the agent found nothing worth spending on, so the swarm stopped asking it and spends nothing. $0.052 is kept for later; a note or new money wakes it.',
   costly: "Waiting for money: the agent's next model call holds $0.2147, more than the $0.2083 any one contribution can pay at once. A contribution that can cover it starts it again.",
-  money: 'Out of money. Ride it to keep it going.',
+  money: Standing.reasons.broke,
   rest: 'The agent hit 3 errors in a row, so the swarm stopped to rest. New money restarts it.',
 } as const
 
@@ -453,7 +454,8 @@ function why(swarm: Live): Why | null {
 
 function reason(swarm: Live) {
   const picked = why(swarm)
-  if (picked === 'money' && scene.has('refused')) return 'Its last step could not be paid for, though it has money. It tries again by itself.'
+  if (picked === 'money' && scene.has('refused')) return Standing.reasons.refused
+  if (picked === 'money' && scene.has('sponsor')) return Standing.reasons.sponsor
   return picked && picked !== 'unfunded' && picked !== 'stuck' ? reasons[picked] : null
 }
 

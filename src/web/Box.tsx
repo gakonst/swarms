@@ -3,7 +3,7 @@ import type { Config, Member, Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Status from '../shared/Status.ts'
 import { site } from './boot.ts'
-import { Gauge, line } from './Card.tsx'
+import { Gauge } from './Card.tsx'
 import { Fuel, type Prefill, type Target } from './Contribute.tsx'
 import * as Pay from './pay.ts'
 import { usd } from './format.ts'
@@ -67,7 +67,7 @@ export const Box = forwardRef<HTMLElement, {
           <span>{usd(swarm.remaining)} left</span>
         </p>
       )}
-      {!props.bare && <p className="box-state" data-mood={stood.mood}>{balance > 0 || swarm.contributors > 0 ? ((stood.word === 'Needs money' || (stood.word === 'Stuck' && (swarm.why === 'money' || swarm.why === 'stuck'))) && swarm.reason) || line(stood.word) : 'Be the first to ride it.'}</p>}
+      {!props.bare && <p className="box-state" data-mood={stood.mood}>{balance > 0 || swarm.contributors > 0 ? Status.told(swarm) : 'Be the first to ride it.'}</p>}
       {props.open || flow.at !== 'idle' ? (
         <Fuel config={props.config} creates={props.creates} extra={props.extra} first={props.first} focus={props.focus} least={props.least} locked={props.locked} note={props.note} onDone={props.onDone} onNote={props.onNote} onSent={props.onSent} prefill={props.prefill} slot={swarm.id} steers={props.steers} target={props.target} wants={props.wants} />
       ) : (
