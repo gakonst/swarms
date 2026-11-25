@@ -47,6 +47,11 @@ function preloads(): Plugin {
   }
 }
 
+function unhighlighted(): Plugin {
+  const stub = fileURLToPath(new URL('./src/worker/Languages.ts', import.meta.url))
+  return { applyToEnvironment: (environment) => environment.name === 'swarms', enforce: 'pre', name: 'swarms-unhighlighted', resolveId: (id) => (id === 'shiki/langs' ? stub : undefined) }
+}
+
 export default defineConfig(({ command }) => {
   const gateway = command === 'serve' ? process.env['SWARMS_GATEWAY'] : undefined
   const passed = ['GITHUB_API', 'SWARMS_GITHUB_TOKEN', 'SWARMS_GITHUB_WEBHOOK_SECRET', 'SWARMS_PROOFS_REPO', 'SWARMS_SPAWN', 'SWARMS_LEASE_MS', 'SWARMS_TRIAGE_MS'].flatMap((name) => (process.env[name] ? [[name, process.env[name]] as const] : []))
@@ -62,6 +67,7 @@ export default defineConfig(({ command }) => {
     plugins: [
       react(),
       preloads(),
+      unhighlighted(),
       cloudflare({
         ...(process.env['SWARMS_STATE'] ? { persistState: { path: process.env['SWARMS_STATE'] } } : {}),
         ...(command === 'serve'
