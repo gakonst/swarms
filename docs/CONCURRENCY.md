@@ -13,6 +13,7 @@ It holds the rules as they apply to a Cloudflare Worker with Durable Objects and
 5. **Liveness is lease expiry.** An object restart, a dropped stream or a 5xx is a transport event. Ownership is lost only when a renew or a fenced write is refused.
 6. **Every wait has a deadline,** and a missed deadline is a typed refusal (`Busy`, `Lost`, `Gone`), never a hang or a spin.
 7. **Every fold is exactly once by id.** A child's result (a turn's end, a run's result, a branch's settlement, a check's outcome, a transfer) carries an id, and folding it twice changes nothing the second time.
+8. **Every Worker and object RPC tolerates N-1 both ways.** A gradual deploy runs two Worker versions against the same objects, and an object keeps its old class until it restarts, so version skew is a concurrency hazard like any other. Every RPC is versioned, a new Worker works against the previous object and the previous Worker against the new one, and each has a test (see Version skew below).
 
 ### What a Durable Object gives and does not give
 
@@ -118,11 +119,22 @@ Hazard: **High** loses money, folds a result twice or wedges a swarm; **Medium**
 | Swarm alarm | `Swarm.alarm` `src/worker/Swarm.ts:698` | Re-armed by `getAlarm` then `setAlarm` pairs in nine places (`Swarm.wake`, `funded`, `heal`, `plant`, `Turns.pause`, `Riding.arm`, `Runner.arm`, `Feed`), each an await apart, so two of them can both read the old alarm and the later of two times wins. Every one only moves the alarm earlier or to now, and the step recomputes its next time, so the cost is an extra wake, not a lost one, except when `stepping` is held and the alarm returns without re-arming | Medium |
 | Lobby alarm | `Lobby.alarm` `src/worker/Lobby.ts:106` | Coalescing only | Low |
 
+### Version skew
+
+The rule (rule 8) and its record are in DECISIONS.md, "A Worker and its objects can be one version apart for minutes after a deploy (2026-11-25)", landed in 817a88a, after b0b7582 fixed the swarm view's 500:
+
+- Every Worker to object RPC tolerates N-1 in both directions.
+- A new object method the Worker calls goes through `older(call, fallback, why)` (`src/worker/Operations.ts:489`), which falls back to the method it replaces, and is listed in `test/rpc-older.json`.
+- Object methods are not removed or renamed for one release.
+- `test/skew.test.ts` enforces both: it runs the Worker against a stub of the previous object and checks every swarm read route answers 200, and that no object method the previous Worker calls was removed.
+
+Still open in the table below: an RPC whose arguments or answer change shape under the same name, and object storage shapes read across a rollback. Both need a version on the call or the record, not only on the method name.
+
 ### Worker and object version skew
 
 | Entry | Location | Failure | Hazard |
 |---|---|---|---|
-| New RPC on an old object | `Operations.viewed` `src/worker/Operations.ts:498`, `test/skew.test.ts`, `test/rpc-older.json` | During a deploy the new Worker called `viewed` on objects still running the old class and every swarm page answered 500. Since 817a88a every new object method the Worker calls falls back to the one it replaces, and `test/skew.test.ts` runs the Worker against the previous object's methods. What it does not cover: a method whose arguments or answer change shape under the same name, and an old Worker calling a new object | Medium |
+| New RPC on an old object | `Operations.viewed` `src/worker/Operations.ts:498`, `test/skew.test.ts`, `test/rpc-older.json` | During a deploy the new Worker called `viewed` on objects still running the old class and every swarm page answered 500. Since 817a88a every new object method the Worker calls falls back to the one it replaces (Version skew above). What it does not cover: a method whose arguments or answer change shape under the same name | Medium |
 | Shapes in object storage | kv `run`, `agent`, `lease`, `folded:`, board labels | An old object reads what a new one wrote after a rollback, and the board's log format follows the nanocode-ts pin | Medium |
 | D1 migrations | `migrations/`, AGENTS.md's deploy order | Correct only by the order AGENTS.md prescribes | Medium |
 
