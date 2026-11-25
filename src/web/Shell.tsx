@@ -132,9 +132,9 @@ function Servers(props: { current: string | undefined; items: readonly Summary[]
           )
         })}
       </ol>
-      <Link className="server server-add" label="Start a problem, $1 or more" title="Start a problem" to="/new">
+      <Link className="server server-add" label="Start a swarm, $1 or more" title="Start a swarm" to="/new">
         <span aria-hidden="true" className="server-pill"><i>+</i></span>
-        <span aria-hidden="true" className="server-text"><span className="server-name">Start a problem</span><span className="server-line">$1 or more</span></span>
+        <span aria-hidden="true" className="server-text"><span className="server-name">Start a swarm</span><span className="server-line">$1 or more</span></span>
       </Link>
       <div className="servers-end">
         <button aria-expanded={open} aria-label={open ? 'Hide problem details' : 'Show problem details'} className="servers-toggle" onClick={() => setRail(Rail.toggle(props.rail))} title={open ? 'Collapse' : 'Expand'} type="button">

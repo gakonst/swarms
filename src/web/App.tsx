@@ -60,7 +60,7 @@ if (typeof window !== 'undefined') {
     warmDetail(decodeURIComponent(id), tail)
   })
   const idle = (window as { requestIdleCallback?: (run: () => void) => void }).requestIdleCallback ?? ((run: () => void) => setTimeout(run, 1500))
-  idle(() => void warmSwarm())
+  idle(() => void Promise.all([warmSwarm(), import('./New.tsx').then((module) => preload('new', module.New))]))
 }
 
 const About = page('about', () => import('./About.tsx').then((module) => module.About))

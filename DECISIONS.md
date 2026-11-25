@@ -1297,3 +1297,14 @@ Georgios's screenshots from Brave on an iPhone at https://paradigm.xyz/swarms, p
 - After a release has fully rolled out, regenerate `methods` from its `Swarm` class and drop the fallbacks it made unnecessary, in the next release.
 - Checks: `pnpm check`, `pnpm test`, `pnpm build`. Not deployed.
 
+
+## First-time onboarding, checked as a stranger (2026-11-25)
+
+Recorded with Playwright (`recordVideo`) signed out on production (2abe416, read-only: every non-GET request aborted, and `POST /v1/auth/challenge` answered by the harness so the Tempo ID sheet could open without a write) and on `pnpm dev` with the mock gateway and the fixture world (`?fixture&scene=open`), at 1440×900 and as a 390×844 touch phone, timing each click to the frame where its result is on screen (Event Timing plus a requestAnimationFrame poll from the input's timestamp).
+
+- Start a swarm took 330 to 350 ms from the click to the /new page on both production and local, every time: New is a lazy chunk, the click suspends on it, and React holds a revealed Suspense boundary for its 300 ms throttle. The home page now loads New while it idles, next to the swarm page (`App.tsx`), so the click renders at once: 336 to 31 ms on a desktop and 349 to 48 ms on a phone (local, fixture world).
+- The first-run welcome sat at the bottom of #general when the room had few messages, under a blank band about 130 px tall on a phone and 40 px on a desktop (production, one message in the room): `.chat-list > :first-child` takes `margin-top:auto` so chat sticks to the bottom, and only the old `.welcome` was exempt, on phones. The welcome (`.hello`) now starts at the top on every width.
+- Desktop said what Swarms is twice, in two different sentences: the channel topic and the welcome's first line. While the welcome shows, the strip hides the topic; dismissing the welcome brings it back.
+- Buttons said Start a problem and the header, the page title and the essay said Start a swarm. Every button and the rail's + now say Start a swarm.
+- The rail's ⌘K hint wrapped onto three lines on a phone's open rail and means nothing without a keyboard: it is hidden on coarse pointers.
+- Tempo ID: in headless Chromium the sign-in sheet offers "Continue in a new window" (the embed asks for a popup) before the sign-in form, both on production and on localhost with a real challenge; the ride sheet's pay embed showed the form directly. Not checked on a real phone or with a passkey, which this host cannot do.
