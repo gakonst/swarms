@@ -409,8 +409,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   pulsed(row: Store.Row): Pulse {
+    return { hands: this.kv.get<Hand[]>('hands') ?? [], reason: this.reason(), swarm: Store.summary(row), why: this.why(), working: this.working() }
+  }
+
+  reason(): string | null {
     const paused = Phase.paused(this.run())
-    return { hands: this.kv.get<Hand[]>('hands') ?? [], reason: paused ? Phase.reason(paused) : null, swarm: Store.summary(row), why: this.why(), working: this.working() }
+    if (paused) return Phase.reason(paused)
+    if (!Turns.stuck(this)) return null
+    const failure = Follow.recalled(this)
+    return Phase.stuck(failure, Turns.sponsorless(failure?.message))
   }
 
   rostered(roster: Roster) {
@@ -511,14 +518,13 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const owner = this.kv.get<string>('owner')
     const turns = shape.pushed ? Feed.rows(this, Feed.pushedTurns) : this.turns()
     const shown = shape.pushed ? Feed.updates(turns).filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) : Feed.updates(turns)
-    const paused = Phase.paused(this.run())
     return {
       about: About.read(this),
       code: id && repo && owner ? { app: Gateway.app(id), clone: `${this.env.GATEWAY_URL}/p/${owner}/${Gateway.app(id)}/git/${repo}.git`, name: repo, owner } : null,
-      failure: this.kv.get<Failure>('failure') ?? null,
+      failure: Follow.recalled(this),
       feed,
       hands: this.kv.get<Hand[]>('hands') ?? [],
-      reason: paused ? Phase.reason(paused) : null,
+      reason: this.reason(),
       stamp,
       why: this.why(),
       steered: this.steered(),

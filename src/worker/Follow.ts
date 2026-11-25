@@ -291,6 +291,16 @@ export function failure(error: string, at: number): Failure {
   return { at, code, message: clip(redact(message), 600), route: said?.[1] ?? 'model', status: said?.[2] ? Number(said[2]) : null }
 }
 
+export function recalled(self: Swarm): Failure | null {
+  const kept = self.kv.get<Failure | null>('failure')
+  if (kept !== undefined) return kept
+  const rows = self.ctx.storage.sql.exec<{ at: number; detail: string }>("SELECT at, detail FROM feed WHERE kind = 'error' AND text LIKE 'A model call failed%' AND detail IS NOT NULL ORDER BY seq DESC LIMIT 20").toArray()
+  const found = rows.map((row) => ({ at: Number(row.at), error: (() => { try { return (JSON.parse(row.detail) as { error?: unknown }).error } catch { return undefined } })() })).find((row) => typeof row.error === 'string' && row.error !== 'the turn was cancelled')
+  const value = found ? failure(found.error as string, found.at) : null
+  self.kv.put('failure', value)
+  return value
+}
+
 export function refused(self: Swarm, type: string | undefined, payload: Record<string, unknown>, at = Date.now()) {
   const error = payload['error']
   if (type === 'model.call.failed' && typeof error === 'string' && error !== 'the turn was cancelled') self.kv.put('failure', failure(error, at))

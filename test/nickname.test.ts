@@ -166,6 +166,7 @@ test("only the swarm's admins and the operator set its nickname, and a rename ke
   assert.deepEqual(await Operations.named(w.env, { name: 'pequalsnp' }), { ok: true, value: { name: 'pequalsnp', nickname: null, swarm } })
   const read = await Operations.get(w.env, { swarm: other.value.id })
   assert.ok(read.ok && read.value.nickname === 'mine')
+  assert.deepEqual(read.ok && [read.value.failure, read.value.reason], [null, null])
   const listed = await Store.list(w.env)
   assert.ok(listed.every((row) => 'nickname' in row))
 

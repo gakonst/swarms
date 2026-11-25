@@ -135,16 +135,37 @@ test('a swarm whose last turns failed without spending is stuck until its agent 
   await w.ring()
   assert.deepEqual(await w.status(), { status: 'running', why: 'stuck' })
   assert.equal(w.swarm.why(), 'stuck')
+  assert.equal(w.swarm.view({ feed: 0 }).reason, 'Its last turns made no progress. It tries again by itself.')
+  w.swarm.kv.put('failure', { at: Date.now(), code: 'api_error', message: 'boom', route: 'Messages', status: 500 })
+  assert.equal(w.swarm.view({ feed: 0 }).reason, 'Its model calls keep failing: the gateway answered 500. It tries again by itself.')
+  w.swarm.kv.put('failure', { at: Date.now(), code: 'api_error', message: "Tempo Agents cannot pay the network fee to open your key's channel right now: its fee sponsor is out of funds.", route: 'Messages', status: 503 })
+  assert.match(w.swarm.view({ feed: 0 }).reason ?? '', /^Waiting on the gateway's fee sponsor/)
+  w.swarm.kv.delete('failure')
   w.swarm.kv.put('advanced', Date.now())
   w.pass(60_000)
   w.swarm.checked = 0
   await w.ring()
   assert.deepEqual(await w.status(), { status: 'running', why: null })
+  assert.equal(w.swarm.view({ feed: 0 }).reason, null)
   w.pass(22 * 60_000)
   w.swarm.checked = 0
   await w.ring()
   assert.deepEqual(await w.status(), { status: 'running', why: 'stuck' })
   assert.ok(!w.errors().some((text) => /no model call or tool call/.test(text)))
+})
+
+test("a swarm that has no kept failure yet reads its last failed model call back from its feed once", async (t) => {
+  const w = world(() => undefined)
+  t.after(w.restore)
+  await w.seed()
+  const error = 'Messages HTTP 503: {"error":{"message":"Tempo Agents cannot pay the network fee to open your key\'s channel right now: its fee sponsor is out of funds.","type":"api_error"},"type":"error"}'
+  w.swarm.log('error', 'A model call failed: its fee sponsor is out of funds.', JSON.stringify({ call_index: 1, error }), { at: 5_000 })
+  w.swarm.log('error', 'A model call failed.', JSON.stringify({ call_index: 2, error: 'the turn was cancelled' }), { at: 6_000 })
+  w.swarm.log('error', 'The run failed.', JSON.stringify({ status: 'failed' }), { at: 6_001 })
+  w.swarm.kv.delete('failure')
+  assert.deepEqual(w.swarm.view({ feed: 0 }).failure, { at: 5_000, code: 'api_error', message: "Tempo Agents cannot pay the network fee to open your key's channel right now: its fee sponsor is out of funds.", route: 'Messages', status: 503 })
+  w.swarm.kv.put('failure', null)
+  assert.equal(w.swarm.view({ feed: 0 }).failure, null)
 })
 
 test('a turn the gateway keeps refusing is tried again on the board backoff, and after eight tries the swarm starts a new agent', async (t) => {

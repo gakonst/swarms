@@ -1,4 +1,4 @@
-import type { Status, Why } from '../shared/Api.ts'
+import type { Failure, Status, Why } from '../shared/Api.ts'
 import * as Memo from '../shared/Memo.ts'
 
 export type Pause =
@@ -85,11 +85,19 @@ export function project(run: Run, n: number, stuck = false): { status: Status; w
   return { status: 'running', why: stuck ? 'stuck' : null }
 }
 
+const sponsorless = "Waiting on the gateway's fee sponsor: the gateway cannot pay the network fee for its AI calls right now, though the swarm has money. It tries again by itself."
+
 export function reason(pause: Pause) {
   if (pause.why === 'unfunded') return 'Nobody is riding it yet.'
-  if (refused(pause) && pause.why === 'money' && pause.sponsor) return "Waiting on the gateway's fee sponsor: the gateway cannot pay the network fee for its AI calls right now, though the swarm has money. It tries again by itself."
+  if (refused(pause) && pause.why === 'money' && pause.sponsor) return sponsorless
   if (refused(pause)) return 'Its last step could not be paid for, though it has money. It tries again by itself.'
   return 'Out of money. Ride it to keep it going.'
+}
+
+export function stuck(failure: Failure | null, sponsor: boolean) {
+  if (sponsor) return sponsorless
+  if (!failure) return 'Its last turns made no progress. It tries again by itself.'
+  return `Its model calls keep failing: the gateway answered ${failure.status ?? failure.code ?? 'with an error'}. It tries again by itself.`
 }
 
 export function same(a: Pause, b: Pause) {
