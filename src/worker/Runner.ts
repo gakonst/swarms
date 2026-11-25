@@ -6,6 +6,7 @@ import { type Thinking, call, clip, gist, named, placed, redact } from '../share
 import * as Flow from './Flow.ts'
 import * as Follow from './Follow.ts'
 import * as Gateway from './Gateway.ts'
+import * as Machine from './machines/Tree.ts'
 import * as Nodes from './Nodes.ts'
 import * as Persona from './Persona.ts'
 import * as Phase from './Phase.ts'
@@ -14,7 +15,7 @@ import * as Triage from './Triage.ts'
 import * as Verify from './Verify.ts'
 import * as Work from './Work.ts'
 
-export const timing = { doingMs: 2_000, idleMs: 60_000, leaseMs: 30 * 60_000, listMs: 2_000, pollMs: 2_000, spawnMs: 120_000, streamDownMs: 20_000, streamUpMs: 120_000, verifyMs: 60_000 }
+export const timing = { checkMs: 60 * 60_000, doingMs: 2_000, idleMs: 60_000, leaseMs: 30 * 60_000, listMs: 2_000, pollMs: 2_000, spawnMs: 120_000, streamDownMs: 20_000, streamUpMs: 120_000, verifyMs: 60_000 }
 
 export const rotateAfter = 200
 
@@ -28,6 +29,7 @@ export type Busy = { held: Thinking | undefined; nid: string; sent: number; task
 
 export type Runtime = {
   aborts: Map<string, AbortController>
+  claims: Set<string>
   doing: Map<string, Busy>
   first: boolean
   follow: { agent: string; stop: AbortController; up: boolean } | undefined
@@ -42,7 +44,7 @@ export type Runtime = {
 export type Dispatcher = { at: number; id: string; runs: number }
 
 export function runtime(self: Swarm): Runtime {
-  return (self.runtime ??= { aborts: new Map(), doing: new Map(), first: true, follow: undefined, heard: 0, kicks: new Set(), listing: undefined, pools: {}, waiters: new Set() })
+  return (self.runtime ??= { aborts: new Map(), claims: new Set(), doing: new Map(), first: true, follow: undefined, heard: 0, kicks: new Set(), listing: undefined, pools: {}, waiters: new Set() })
 }
 
 export function wake(self: Swarm) {
@@ -313,12 +315,21 @@ async function brief(self: Swarm, found: Nodes.State, nid: string, steers: strin
 }
 
 async function run(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promise<Board.Outcome> {
+  runtime(self).claims.add(lease.claim)
+  try {
+    return await running(self, task, lease)
+  } finally {
+    runtime(self).claims.delete(lease.claim)
+  }
+}
+
+async function running(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promise<Board.Outcome> {
   const swarm = Nodes.swarm(self)
   const nid = task.labels['node'] ?? ''
   const triaging = nid === Nodes.triage
   const k = Nodes.kOf(task.id)
   const role = 'n:' + nid + '#' + k
-  const folded = self.kv.get<string>('folded:' + task.id)
+  const folded = self.kv.get<string>(Machine.foldedKey(task.id))
   if (folded) return { done: folded }
   const found = await Nodes.state(self)
   const budget = found.ledger.runs.get(task.id) ?? 0n
@@ -477,7 +488,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
     if (after.ok) sub = after.value.find((one) => one.agent_id === spawned.sub) ?? sub
   }
   const used = (sub ? Flow.micro(sub.spent_usd) : Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')) + (await dispatched(self, swarm, spawned))
-  for (const steer of await lease.steers().catch(() => [])) if (steer.seq > relayed) await self.board.steer(Nodes.nodeId(nid), steer.body)
+  for (const steer of await lease.steers().catch(() => [])) if (steer.seq > relayed) await self.board.steer(Nodes.nodeId(nid), steer.body, { key: 'relay:' + task.id + ':' + steer.seq })
   const why = !sub ? 'The run is gone from the gateway.' : !ended ? 'The run stalled and was stopped.' : (sub.status.error ?? 'The run ' + state + '.')
   await Nodes.settleRun(self, task.id, used)
   if (sub) charged(self, task.id, spawned, Flow.micro(sub.spent_usd))
@@ -485,7 +496,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
     const actions = Triage.parse(sub?.result)
     const applied = await Triage.apply(self, actions, 'agent:n:triage', task.id, halt)
     const done = JSON.stringify({ actions: applied })
-    self.kv.put('folded:' + task.id, done)
+    Machine.settle(self.kv, task.id, done)
     await Nodes.consider(self)
     return { done }
   }
@@ -493,8 +504,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   if (state === 'failed' && /over_limit/.test(sub?.status.error ?? '')) self.kv.put('bounded:' + nid, Date.now())
   else self.kv.delete('bounded:' + nid)
   await Nodes.ran(self, task.id, outcome, (node, sha, theorem, refutes) => postVerify(self, node, sha, theorem, refutes))
-  self.kv.put('folded:' + task.id, JSON.stringify(outcome))
-  self.kv.delete(Nodes.foldKey(task.id))
+  Machine.settle(self.kv, task.id, JSON.stringify(outcome))
   await Nodes.consider(self)
   return { done: JSON.stringify(outcome) }
 }
@@ -516,32 +526,64 @@ function trusted(check: Tree.Check, sha: string, stmt: string | undefined) {
 }
 
 async function check(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promise<Board.Outcome> {
+  runtime(self).claims.add(lease.claim)
+  try {
+    return await checking(self, task, lease)
+  } finally {
+    runtime(self).claims.delete(lease.claim)
+  }
+}
+
+export function checkKey(vid: string) {
+  return 'check:' + vid
+}
+
+async function checking(self: Swarm, task: Work.Task, lease: Board.PoolLease): Promise<Board.Outcome> {
   const swarm = Nodes.swarm(self)
   const nid = task.labels['node'] ?? ''
   const sha = task.labels['sha'] ?? ''
   const refutes = task.labels['refutes'] === '1'
-  const key = 'verified:' + Nodes.verifyId(nid, sha) + (refutes ? ':neg' : '')
+  const vid = Nodes.verifyId(nid, sha) + (refutes ? ':neg' : '')
+  const key = 'verified:' + vid
   const node = await self.board.task(Nodes.nodeId(nid))
   if (!node || Work.terminal(node.phase)) return { failed: 'The node ended before its check.' }
-  let outcome = self.kv.get<Tree.Check | { failed: string }>(key)
-  if (!outcome) {
-    const statement = Nodes.parse(node.spec).statement
-    if (!statement) return { failed: 'The node has no Lean statement to check.' }
-    const theorem = String((json(task.spec) ?? {})['theorem'] ?? '')
-    let asked: Awaited<ReturnType<typeof Verify.request>> = { detail: 'not asked', ok: false }
-    for (let attempt = 1; attempt <= Nodes.retry.maxAttempts && !asked.ok; attempt++) {
-      asked = await Verify.request(self.env, { claim: refutes ? 'refutation' : 'proof', nid, sha, statement, swarm, theorem })
-      if (!asked.ok && attempt < Nodes.retry.maxAttempts) await wait(self, Work.delay(Nodes.retry, attempt), lease.signal)
-    }
-    if (!asked.ok) return { failed: 'The verifier did not take the check: ' + asked.detail }
-    while (!(outcome = self.kv.get<Tree.Check | { failed: string }>(key))) {
-      if (lease.signal.aborted) throw new Board.LeaseLost(task.id)
-      await wait(self, timing.verifyMs, lease.signal)
-    }
+  const statement = Nodes.parse(node.spec).statement
+  if (!statement && !self.kv.get(key)) return { failed: 'The node has no Lean statement to check.' }
+  const theorem = String((json(task.spec) ?? {})['theorem'] ?? '')
+  const waited = await Machine.waitCheck<Tree.Check | { failed: string }>(
+    {
+      kv: self.kv,
+      now: () => Date.now(),
+      outcome: () => self.kv.get<Tree.Check | { failed: string }>(key),
+      request: async () => {
+        let asked: Awaited<ReturnType<typeof Verify.request>> = { detail: 'not asked', ok: false }
+        for (let attempt = 1; attempt <= Nodes.retry.maxAttempts && !asked.ok; attempt++) {
+          asked = await Verify.request(self.env, { claim: refutes ? 'refutation' : 'proof', nid, sha, statement: statement ?? '', swarm, theorem })
+          if (!asked.ok && attempt < Nodes.retry.maxAttempts) await wait(self, Work.delay(Nodes.retry, attempt), lease.signal)
+        }
+        return asked.ok ? { ok: true } : asked
+      },
+      wait: async (ms) => {
+        if (lease.signal.aborted) throw new Board.LeaseLost(task.id)
+        await wait(self, Math.min(ms, timing.verifyMs), lease.signal)
+        if (lease.signal.aborted) throw new Board.LeaseLost(task.id)
+      },
+    },
+    checkKey(vid),
+    sha,
+    { pollMs: timing.verifyMs, waitMs: timing.checkMs },
+  )
+  if (waited.kind === 'refused') return { failed: 'The verifier did not take the check: ' + waited.detail }
+  if (waited.kind === 'expired') {
+    await self.board.steer(Nodes.nodeId(nid), 'The Lean check of ' + sha.slice(0, 7) + ' did not come back in time.', { key: 'expired:' + vid })
+    Nodes.emit(self, nid, 'progress', 'Lean check expired for ' + sha.slice(0, 7))
+    await Nodes.consider(self)
+    return { failed: 'The check did not come back in time.' }
   }
+  const outcome = waited.outcome
   if ('failed' in outcome || !trusted(outcome, sha, node.labels['stmt'])) {
     const log = 'failed' in outcome ? outcome.failed : 'The check did not match the commit or the frozen statement.'
-    await self.board.steer(Nodes.nodeId(nid), 'The Lean check of ' + sha.slice(0, 7) + ' failed:\n' + log.slice(-2000))
+    await self.board.steer(Nodes.nodeId(nid), 'The Lean check of ' + sha.slice(0, 7) + ' failed:\n' + log.slice(-2000), { key: 'failed:' + vid })
     Nodes.emit(self, nid, 'progress', 'Lean check failed for ' + sha.slice(0, 7))
     await Nodes.consider(self)
     return { failed: log.slice(-4096) }
@@ -552,12 +594,12 @@ async function check(self: Swarm, task: Work.Task, lease: Board.PoolLease): Prom
   return { done: JSON.stringify(outcome) }
 }
 
-
 export async function verified(self: Swarm, nid: string, sha: string, outcome: Tree.Check | { failed: string }, claim: 'proof' | 'refutation' = 'proof') {
   const vid = Nodes.verifyId(nid, sha) + (claim === 'refutation' ? ':neg' : '')
+  if (!Machine.came(self.kv, checkKey(vid), sha, !('failed' in outcome), Date.now()).ok) return
   self.kv.put('verified:' + vid, outcome)
   const task = await self.board.task(vid)
-  if (task?.claim && !runtime(self).aborts.size && !runtime(self).pools.verifies?.stats().running) await self.board.release(vid, task.claim, 'the check came back')
+  if (task?.claim && !runtime(self).claims.has(task.claim)) await self.board.release(vid, task.claim, 'the check came back')
   wake(self)
   ensure(self)
   await arm(self, Date.now())
@@ -756,7 +798,7 @@ export async function tick(self: Swarm): Promise<number | null> {
   if (rt.first) {
     rt.first = false
     for (const task of await self.board.held())
-      if ((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && task.claim && !rt.aborts.has(task.id)) await self.board.release(task.id, task.claim, 'its worker restarted')
+      if ((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && task.claim && !rt.claims.has(task.claim)) await self.board.release(task.id, task.claim, 'its worker restarted')
     await Nodes.reconcile(self, (run) => spentOf(self, run))
   }
   await late(self).catch((error: unknown) => console.error('Charging late spend failed', error))
