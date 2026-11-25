@@ -105,9 +105,9 @@ app.post('/oauth/revoke', async (c) => {
 
 app.get('/v1/config', async (c) => c.json(await Operations.config(c.env)))
 
-app.post(`${Sessions.path}/challenge`, async (c) => Problem.respond(await Sessions.challenge(c.env, c.req.raw)))
+app.post(`${Sessions.path}/challenge`, (c) => c.env.OBJECTS.fetch(c.req.raw))
 
-app.post(Sessions.path, async (c) => Problem.respond(await Sessions.verify(c.env, await body(c.req.raw))))
+app.post(Sessions.path, (c) => c.env.OBJECTS.fetch(c.req.raw))
 
 app.post(Device.path, async (c) => Problem.respond(await Device.start(c.env, c.req.url)))
 
@@ -115,7 +115,7 @@ app.post(`${Device.path}/token`, async (c) => Problem.respond(await Device.poll(
 
 app.post(`${Device.path}/approve`, async (c) => Problem.respond(await Device.approve(c.env, await body(c.req.raw), c.req.raw)))
 
-app.post(`${Sessions.path}/logout`, async (c) => Problem.respond(await Sessions.logout(c.env, c.req.raw)))
+app.post(`${Sessions.path}/logout`, (c) => c.env.OBJECTS.fetch(c.req.raw))
 
 app.post('/v1/feedback', async (c) => Problem.respond(await Feedback.file(c.env, await body(c.req.raw)), 201))
 

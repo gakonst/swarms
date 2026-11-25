@@ -51,7 +51,7 @@ function unhighlighted(): Plugin {
   const stub = fileURLToPath(new URL('./src/worker/Languages.ts', import.meta.url))
   const absent = fileURLToPath(new URL('./src/worker/Absent.ts', import.meta.url))
   const unused = (id: string, importer = '') =>
-    ['shiki/wasm', 'shiki/engine/oniguruma', 'shiki/engine/javascript', '@pierre/theming/themes'].includes(id) || id.startsWith('@shikijs/themes/') || (id === './fixtures.ts' && importer.includes('/src/web/'))
+    ['shiki/wasm', 'shiki/engine/oniguruma', 'shiki/engine/javascript', '@pierre/theming/themes'].includes(id) || id.startsWith('@shikijs/themes/') || (['./fixtures.ts', 'accounts', 'accounts/plugins', 'viem', 'viem/tempo', 'viem/tempo/chains'].includes(id) && importer.includes('/src/web/'))
   return {
     applyToEnvironment: (environment) => environment.name === 'swarms' || environment.name === 'swarms_site',
     enforce: 'pre',
