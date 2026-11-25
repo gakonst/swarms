@@ -30,6 +30,19 @@ const tools = [
   ['admin', 'swarm_archive', 'Archive a swarm, the operator only (confirm).'],
 ] as const
 
+const commands = [
+  ['swarms login · logout · whoami', 'Sign in with Tempo ID in the browser, sign out, and who you are.'],
+  ['swarms ls', 'Swarms, most recently active first.'],
+  ['swarms new <name>', 'Start a swarm at /<name>: it asks for the goal and how much to ride it with.'],
+  ['swarms status <swarm>', 'Its money, its work and its latest update.'],
+  ['swarms watch <swarm>', 'Follow it live; logs shows the newest transcript entries.'],
+  ['swarms tree <swarm>', "A tree swarm's nodes; ideas add suggests one, free."],
+  ['swarms fund <swarm> <usd>', 'Ride it with real money: it asks first, opens Tempo Wallet and waits for the transfer to count.'],
+  ['swarms hands ls · add · rm <swarm>', 'Lend it your machine, and take it back; machines lists every machine it uses.'],
+  ['swarms edit <swarm> title · slug · pfp', 'As its admin, rename it, move its address or change its picture; archive stops it.'],
+  ['swarms open <swarm>', 'Open it in the browser.'],
+] as const
+
 const routes = [
   ['GET', '/v1/swarms', 'Swarms, most recently active first.', '?status=<status>'],
   ['GET', '/v1/swarms/live', 'A WebSocket of the list: welcome when it opens, then { type: swarm, swarm } each time a listed swarm changes.', ''],
@@ -174,6 +187,9 @@ export function Docs(props: { config: Config | undefined }) {
             <a className="btn btn-medium" href="#rest">
               REST API
             </a>
+            <a className="btn btn-medium" href="#cli">
+              CLI
+            </a>
             <a className="btn btn-medium" href={Site.at('/openapi.json')} rel="noreferrer" target="_blank">
               openapi.json
             </a>
@@ -227,6 +243,26 @@ export function Docs(props: { config: Config | undefined }) {
           <li>Which dead ends hit the relativization barrier, and what did each try?</li>
           <li>Put $2 on the switching lemma with the note “try depth 3 first”.</li>
         </ul>
+      </Section>
+
+      <Section
+        id="cli"
+        intro={
+          <>
+            <p>The same API from a terminal: list and start swarms, ride them, follow them live and lend them your machine. Every command takes --json, prints errors that say what to do next, and starts in tens of milliseconds.</p>
+            <p className="fine">Signing in opens this site, where Tempo ID approves a one-time code; the token is kept in your OS keychain, or a file only you can read.</p>
+          </>
+        }
+        title="CLI"
+      >
+        <Code>{`npx swarms-cli@latest login\nnpx swarms-cli@latest ls`}</Code>
+        <p className="docs-text">
+          Or install it once with <code>npm i -g swarms-cli</code> and run <code>swarms</code>. It talks to {origin} unless <code>--host</code> or <code>SWARMS_HOST</code> says otherwise.
+        </p>
+        <h3 className="docs-head">Commands</h3>
+        <Table rows={commands} />
+        <h3 className="docs-head">Completions</h3>
+        <Code>{`swarms completion zsh > "\${fpath[1]}/_swarms"\nswarms completion bash >> ~/.bashrc\nswarms completion fish > ~/.config/fish/completions/swarms.fish`}</Code>
       </Section>
 
       <Section

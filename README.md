@@ -68,6 +68,15 @@ Cursor: add `{ "mcpServers": { "swarms": { "url": "https://swarms.new/mcp" } } }
 
 `swarm_fund`, `swarm_contribute` with a hash, `swarm_hand_remove`, `swarm_archive` and a nickname change refuse until they get the `confirm` phrase their refusal names, such as `fund 06cf5d7c8f92/3 $5`.
 
+## CLI
+
+```sh
+npx swarms-cli@latest login     # Tempo ID in the browser, token in the OS keychain
+npx swarms-cli@latest ls
+```
+
+`swarms` (in [cli/](cli)) drives the public `/v1` API: `login`, `logout`, `whoami`, `ls`, `new <name>`, `open`, `status`, `watch`, `logs`, `ideas add`, `tree`, `fund <swarm> <usd>` (alias `back`; real money, asks first unless `--yes`), `hands ls|add|rm`, `machines`, `edit title|slug|pfp`, `archive`, `byok` (alias `env`) and `completion bash|zsh|fish`. Every command takes `--json`, `--yes` and `--host` (or `SWARMS_HOST`, default https://swarms.new). Sign-in is a device code: `POST /v1/auth/device`, approved at `/cli/login` with Tempo ID, polled at `POST /v1/auth/device/token`. Build with `pnpm build`; `test/e2e/cli.test.ts` drives every command against a local worker on mock money.
+
 ## Board swarm example
 
 [examples/board-swarm](examples/board-swarm) runs a small swarm on a nanocode Board shared through one SQLite file: a lead posts a goal as tasks with dependencies, worker processes claim them with leases, one worker is killed mid-task and another takes over, and a steer changes a task while it runs. `cd examples/board-swarm && npm install && npm run example`; it needs no API keys.

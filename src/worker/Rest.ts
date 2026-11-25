@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { Contributed } from '../shared/Api.ts'
 import * as Site from '../shared/Site.ts'
+import * as Device from './Device.ts'
 import * as Feedback from './Feedback.ts'
 import * as Machines from './Machines.ts'
 import * as OAuth from './OAuth.ts'
@@ -107,6 +108,12 @@ app.get('/v1/config', async (c) => c.json(await Operations.config(c.env)))
 app.post(`${Sessions.path}/challenge`, async (c) => Problem.respond(await Sessions.challenge(c.env, c.req.raw)))
 
 app.post(Sessions.path, async (c) => Problem.respond(await Sessions.verify(c.env, await body(c.req.raw))))
+
+app.post(Device.path, async (c) => Problem.respond(await Device.start(c.env, c.req.url)))
+
+app.post(`${Device.path}/token`, async (c) => Problem.respond(await Device.poll(c.env, await body(c.req.raw))))
+
+app.post(`${Device.path}/approve`, async (c) => Problem.respond(await Device.approve(c.env, await body(c.req.raw), c.req.raw)))
 
 app.post(`${Sessions.path}/logout`, async (c) => Problem.respond(await Sessions.logout(c.env, c.req.raw)))
 

@@ -5,8 +5,8 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "check": "tsc -b",
+    "build": "vite build && tsc -p cli",
+    "check": "tsc -b && tsc -p cli --noEmit",
     "check:e2e": "tsc -p test/e2e/tsconfig.json",
     "db:migrate": "wrangler d1 migrations apply swarms --remote",
     "db:migrate:local": "wrangler d1 migrations apply swarms --local",

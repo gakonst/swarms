@@ -9,6 +9,10 @@ main { display:flex; flex-direction:column; }
 .lost-actions { display:grid; width:min(360px,100%); overflow:hidden; border:1px solid var(--rule); border-radius:12px; background:var(--surface); }
 .lost-row { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border:0; background:none; color:var(--fg); font:14px var(--mono); text-decoration:none; cursor:pointer; transition:background-color .15s; }
 .lost-row + .lost-row { border-top:1px solid var(--rule); }
+.cli-login { display:grid; }
+.cli-login label.lost-row { gap:12px; cursor:text; }
+.cli-login input { flex:1; min-width:0; border:0; background:none; color:var(--fg); font:16px var(--mono); text-align:right; text-transform:uppercase; outline:none; }
+.cli-login-note { margin:0; padding:12px 18px; border-top:1px solid var(--rule); color:var(--muted); font-size:13px; }
 .lost-row:hover { background:var(--bg); color:var(--fg); }
 .chip-count { min-width:1.2ch; font-size:10px; font-variant-numeric:tabular-nums; opacity:.6; }
 .mention { padding:0 3px; border-radius:4px; background:var(--wash); color:var(--soft); white-space:nowrap; }

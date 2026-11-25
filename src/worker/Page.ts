@@ -23,7 +23,7 @@ const firstChat = 30
 
 const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/faq', '/board', '/oauth/authorize'])
 
-const ridered = /^\/(u\/[^/]+|me|me\/ai)\/?$/
+const ridered = /^\/(u\/[^/]+|me|me\/ai|cli\/login)\/?$/
 
 const swarmed = /^\/s\/([^/]+)(\/chat|\/code|\/results|\/board|\/about|\/[ntc]\/[0-9a-z]+)?\/?$/
 
@@ -140,6 +140,7 @@ async function gather(env: Cloudflare.Env, url: URL, calling: Calling): Promise<
   if (path === '/faq') return { data, head: Share.share(site, Share.plain('about'), { description: Share.faq, path: '/faq', title: 'Questions · Swarms' }), status: 200, whole: true }
   if (!rendered(path)) return { data, head: lost, status: 404, whole: false }
   if (path === '/me') return { data, head: Share.share(site, Share.listing('home', []), { path, title: 'Your profile · Swarms' }), status: 200, whole: true }
+  if (path === '/cli/login') return { data, head: Share.share(site, Share.listing('home', []), { path, title: 'Sign in to the CLI · Swarms' }), status: 200, whole: true }
   if (path === '/me/ai') return { data, head: Share.share(site, Share.listing('home', []), { path, title: 'Your own AI · Swarms' }), status: 200, whole: true }
   const profiled = /^\/u\/([^/]+)$/.exec(path)?.[1]
   if (profiled) {

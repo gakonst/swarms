@@ -27,6 +27,8 @@ const New = page('new', () => import('./New.tsx').then((module) => module.New))
 
 const Docs = page('docs', () => import('./Docs.tsx').then((module) => module.Docs))
 
+const CliLogin = lazy(() => import('./Cli.tsx').then((module) => ({ default: module.CliLogin })))
+
 const Faq = page('faq', () => import('./Faq.tsx').then((module) => module.Faq))
 
 const Swarm = page('swarm', () => import('./Swarm.tsx').then((module) => module.Swarm))
@@ -307,7 +309,7 @@ export function App() {
     if (free) {
       const problem = problems.find((each) => each.id === named?.name)
       document.title = `${problem ? problem.title : `Start a swarm on ${Nickname.topic(named?.name ?? '')}`} · Swarms`
-    } else if (!swarm && !named && path !== '/board' && !rider && path !== '/me' && path !== '/me/ai' && path !== '/oauth/authorize') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/faq' ? 'Questions · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
+    } else if (!swarm && !named && path !== '/board' && !rider && path !== '/me' && path !== '/me/ai' && path !== '/oauth/authorize' && path !== '/cli/login') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/faq' ? 'Questions · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
   }, [path, swarm, free])
 
   useEffect(() => {
@@ -349,6 +351,8 @@ export function App() {
           <OwnAi config={config} />
         ) : path === '/oauth/authorize' ? (
           <Authorize config={config} />
+        ) : path === '/cli/login' ? (
+          <CliLogin config={config} />
         ) : path === '/faq' ? (
           <Faq />
         ) : swarm ? (

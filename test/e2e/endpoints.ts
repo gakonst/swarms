@@ -784,6 +784,50 @@ export async function mcp(root: string, world: World): Promise<Row[]> {
   return rows
 }
 
+const cliMain = new URL('../../cli/src/main.ts', import.meta.url).pathname
+
+/** The CLI's read-only commands against root, each a row: exit 0 and JSON on stdout, with the time a cold start takes. */
+export async function cli(root: string, world: World): Promise<Row[]> {
+  const { spawn } = await import('node:child_process')
+  const swarm = world.swarm
+  const commands: string[][] = [
+    ['--version'],
+    ['help'],
+    ['ls'],
+    ['__names'],
+    ['status', swarm],
+    ['open', swarm],
+    ['logs', swarm, '--limit', '5'],
+    ['machines', swarm],
+    ['hands', 'ls', swarm],
+    ['byok'],
+    ...(world.tree ? [['tree', world.tree, '--depth', '1']] : []),
+  ]
+  const rows: Row[] = []
+  for (const args of commands) {
+    const started = performance.now()
+    const done = await new Promise<{ code: number | null; stderr: string; stdout: string }>((resolve) => {
+      const ran = spawn(process.execPath, ['--experimental-strip-types', '--no-warnings', cliMain, ...args, ...(args[0] === '--version' ? [] : ['--json', '--host', root])], { env: { ...process.env, SWARMS_BROWSER: 'none', SWARMS_KEYCHAIN: '0', SWARMS_TOKEN: '' }, stdio: ['ignore', 'pipe', 'pipe'] })
+      let stdout = ''
+      let stderr = ''
+      ran.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()))
+      ran.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()))
+      ran.once('close', (code) => resolve({ code, stderr, stdout }))
+    })
+    const ms = performance.now() - started
+    let parsed = args[0] === '--version'
+    if (!parsed) {
+      try {
+        JSON.parse(done.stdout)
+        parsed = true
+      } catch {}
+    }
+    const ok = done.code === 0 && parsed
+    rows.push({ method: 'CLI', ms: Math.round(ms), note: ok ? done.stdout.replace(/\s+/g, ' ').slice(0, 70) : (done.stdout + done.stderr).replace(/\s+/g, ' ').slice(0, 120), ok, patient: true, route: `swarms ${args.map((arg) => (arg === swarm ? '<swarm>' : arg === world.tree ? '<tree>' : arg)).join(' ')}`, samples: [ms], server: undefined, signed: 'out', status: done.code ?? 'killed' })
+  }
+  return rows
+}
+
 /** Points every write at the swarm under the throwaway swarm made, so a live site's writes land only there. */
 export function retarget(list: Probe[], swarm: string, made: string | undefined): Probe[] {
   if (!made) return list
@@ -818,6 +862,7 @@ export async function run(options: { made?: string | undefined; operator?: strin
     const list = retarget([...probes(world), ...(signed ? signedIn(world) : [])], world.swarm, made)
     for (const probe of list) rows.push(await call(root, probe, token, spec, samples, world.socket, made))
     rows.push(...(await mcp(root, world)))
+    rows.push(...(await cli(root, world)))
     if (made && signed && !unwritable(root, `/v1/swarms/${made}`, made, env['SWARMS_SWEEP_WRITES'])) rows.push(...(await exercise(root, token!, made)))
   } finally {
     if (created?.id) rows.push(...(await archive(root, operator!, created.id)))

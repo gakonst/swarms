@@ -1,0 +1,33 @@
+{
+  "name": "swarms-cli",
+  "version": "0.1.0",
+  "description": "The Swarms command line: start, ride, watch and steer crowdfunded AI agents on swarms.new.",
+  "type": "module",
+  "bin": {
+    "swarms": "dist/main.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gakonst/swarms.git",
+    "directory": "cli"
+  },
+  "homepage": "https://swarms.new/docs",
+  "keywords": [
+    "swarms",
+    "ai",
+    "agents",
+    "tempo",
+    "cli"
+  ]
+}

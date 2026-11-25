@@ -31,6 +31,8 @@ async function load(config: Config) {
 
 let verifyUrl: string | undefined
 
+let minting = false
+
 let primer: { at: number; response: Promise<Response>; url: string } | undefined
 
 function challengeUrl(config: Config) {
@@ -61,7 +63,7 @@ async function primed(input: RequestInfo | URL, init?: RequestInit) {
 async function verified(input: RequestInfo | URL, init: RequestInit) {
   const before = state
   const address = signer(init.body)
-  const opened = !!address && !state.session && !state.address
+  const opened = !minting && !!address && !state.session && !state.address
   if (opened) {
     const same = seen?.address.toLowerCase() === address.toLowerCase()
     set({ account: same ? seen?.account : undefined, address, balance: same && seen?.balance !== undefined ? BigInt(seen.balance) : undefined, email: same ? seen?.email : undefined, pending: true })
@@ -256,6 +258,24 @@ export async function signIn(config: Config) {
   set({ account, address: signed.address, ...held, email: signed.user.email, pending: false, session })
   if (!account) void identify()
   return session
+}
+
+export async function mint(config: Config): Promise<Session> {
+  if (fixture) {
+    await asked()
+    return { address: visitor, token: 'fixture' }
+  }
+  const accounts = await wallet(config)
+  minting = true
+  try {
+    const signed = await accounts.dialog.signIn().catch(declined)
+    void accounts.signOut().catch(() => {})
+    const token = (signed.auth as { token?: unknown } | undefined)?.token
+    if (!signed.address || typeof token !== 'string') throw new Error('Tempo ID returned no sign-in.')
+    return { address: signed.address, token }
+  } finally {
+    minting = false
+  }
 }
 
 let identifying: { promise: Promise<Account | undefined>; token: string } | undefined
