@@ -38,7 +38,7 @@ export async function write(env: Cloudflare.Env, input: { at?: number; from: Buc
 }
 
 export async function written(env: Cloudflare.Env, swarm: string, id: string) {
-  return !!(await env.DB.prepare("select 1 from flows where id like ?1 || ':%' limit 1").bind(`${swarm}:${id}`).first())
+  return !!(await env.DB.prepare("select 1 from flows where id > ?1 || ':' and id < ?1 || ';' limit 1").bind(`${swarm}:${id}`).first())
 }
 
 export async function rows(env: Cloudflare.Env, swarm: string): Promise<Row[]> {
