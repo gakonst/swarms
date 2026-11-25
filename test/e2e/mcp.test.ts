@@ -285,10 +285,13 @@ test('every tool and resource, signed in with OAuth, on mocks', { timeout: 600_0
   assert.ok(Array.isArray((await read('swarm://' + t + '/tree'))['nodes']))
 
   asks(await call('swarm_archive', { swarm: a }, full), 'archive ' + a)
-  const refused = await call('swarm_archive', { confirm: 'archive ' + a, swarm: a }, full)
-  assert.equal(refused.value['code'], 'access_denied', 'only the operator archives')
-  const archived = ok(await call('swarm_archive', { confirm: 'archive ' + a, swarm: a }, op), 'archive')
+  const stranger = (await connect(await rider(dev, 'ben'), 'swarms:read swarms:admin')).access
+  const refused = await call('swarm_archive', { confirm: 'archive ' + a, swarm: a }, stranger)
+  assert.equal(refused.value['code'], 'access_denied', 'only its admins and the operator archive a swarm')
+  const archived = ok(await call('swarm_archive', { confirm: 'archive ' + a, swarm: a }, full), 'archive by its admin')
   assert.equal(typeof archived['archivedAt'], 'number')
+  const felled = ok(await call('swarm_archive', { confirm: 'archive ' + t, swarm: t }, op), 'archive by the operator')
+  assert.equal(typeof felled['archivedAt'], 'number')
 
   const named = ((await rpc('tools/list', {})).body.result?.['tools'] as { name: string }[]).map((each) => each.name)
   assert.deepEqual(named.filter((each) => !used.has(each)), [], 'every tool was driven')

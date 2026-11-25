@@ -515,7 +515,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
     'swarm_archive',
     {
       annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false, readOnlyHint: false },
-      description: "Archive a swarm (the operator only), as swarms archive does: its running work stops, open branches settle, it takes no rides and its pages stay read-only; money left stays in its gateway credit. It cannot be undone, so it refuses without confirm: it answers the exact phrase, archive <swarm>, to send back once the user agrees.",
+      description: "Archive a swarm (its admins or the operator), as swarms archive does: its running work stops, open branches settle, it takes no rides and its pages stay read-only; money left stays in its gateway credit. It cannot be undone, so it refuses without confirm: it answers the exact phrase, archive <swarm>, to send back once the user agrees.",
       inputSchema: { ...Operations.schema.swarm.shape, confirm: confirming },
     },
     async (input) => confirmed(input.confirm, `archive ${input.swarm}`) ?? reply(await Operations.archive(env, input, address, operated)),

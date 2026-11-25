@@ -27,7 +27,7 @@ const tools = [
   ['money', 'swarm_move', "Move your money that a node has not spent or set aside for a run to another node, or back to free."],
   ['admin', 'swarm_edit', 'Change a title, picture or nickname (a nickname needs confirm).'],
   ['admin', 'swarm_hand_remove', 'Remove a lent machine (confirm).'],
-  ['admin', 'swarm_archive', 'Archive a swarm, the operator only (confirm).'],
+  ['admin', 'swarm_archive', 'Archive a swarm, as its admin or the operator (confirm).'],
 ] as const
 
 const commands = [
