@@ -1,3 +1,6 @@
+import * as Http from 'node:http'
+import * as Https from 'node:https'
+
 export type Kind = 'json' | 'html' | 'sse' | 'socket' | 'bytes' | 'download' | 'mcp' | 'redirect'
 
 export type Probe = {
@@ -903,8 +906,101 @@ export function summary(report: { root: string; rows: Row[]; world: World }) {
   ].join('\n')
 }
 
+export type Phases = { connect: number; dns: number; ray: string; server: number | undefined; status: number; timing: string; tls: number; total: number; ttfb: number }
+
+/** One GET on a connection of its own (no keep-alive agent): its own DNS lookup, TCP connect and TLS handshake. Each phase is ms from the start, as curl's -w times are. */
+export function fresh(url: string, headers: Record<string, string> = {}): Promise<Phases> {
+  const client = url.startsWith('https:') ? Https : Http
+  return new Promise((resolve, reject) => {
+    const started = now()
+    const at = { connect: 0, dns: 0, tls: 0, ttfb: 0 }
+    const request = client.request(url, { agent: false, headers: { accept: '*/*', connection: 'close', ...headers }, method: 'GET' }, (response) => {
+      at.ttfb = now() - started
+      response.on('data', () => {})
+      response.on('error', reject)
+      response.on('end', () => {
+        const timing = String(response.headers['server-timing'] ?? '')
+        const total = /(?:^|,\s*)total;dur=([0-9.]+)/.exec(timing)
+        resolve({ ...at, ray: String(response.headers['cf-ray'] ?? ''), server: total ? Number(total[1]) : undefined, status: response.statusCode ?? 0, timing, total: now() - started })
+      })
+    })
+    request.on('socket', (socket) => {
+      socket.on('lookup', () => (at.dns = now() - started))
+      socket.on('connect', () => (at.connect = now() - started))
+      socket.on('secureConnect', () => (at.tls = now() - started))
+    })
+    request.setTimeout(30_000, () => request.destroy(new Error('timeout')))
+    request.on('error', reject)
+    request.end()
+  })
+}
+
+export type Cold = { first: boolean; mode: 'fresh' | 'idle'; phases: Phases; route: string }
+
+export function coldRoutes(swarm: string) {
+  return ['/', `/s/${swarm}`, '/v1/health', `/v1/swarms/${swarm}`, '/v1/swarms', '/api/config', '/x/card.svg']
+}
+
+/**
+ * Cold-connection timings on root. fresh: samples GETs of each route back to back, each on a new connection. idle: rounds
+ * rounds, each after idle seconds with no request, that GET every route once on new connections, starting each round at
+ * the next route so each route is the first request after the pause in turn (first).
+ */
+export async function cold(root: string, options: { idle?: number; pause?: (ms: number) => Promise<void>; rounds?: number; routes?: string[]; samples?: number } = {}) {
+  const env = process.env
+  const samples = options.samples ?? Number(env['SWARMS_COLD_SAMPLES'] ?? 10)
+  const rounds = options.rounds ?? Number(env['SWARMS_COLD_ROUNDS'] ?? 10)
+  const idle = options.idle ?? Number(env['SWARMS_COLD_IDLE'] ?? 60)
+  const pause = options.pause ?? ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)))
+  const routes = options.routes ?? coldRoutes((await discover(root)).swarm)
+  const runs: Cold[] = []
+  const take = async (mode: Cold['mode'], route: string, first: boolean) => {
+    const phases = await fresh(root + route).catch((error: unknown) => ({ connect: 0, dns: 0, ray: String(error), server: undefined, status: 0, timing: '', tls: 0, total: 0, ttfb: 0 }))
+    runs.push({ first, mode, phases, route })
+  }
+  for (let round = 0; round < rounds; round += 1) {
+    await pause(idle * 1000)
+    const order = routes.map((_, index) => routes[(index + round) % routes.length]!)
+    for (const [index, route] of order.entries()) await take('idle', route, index === 0)
+  }
+  for (const route of routes) for (let index = 0; index < samples; index += 1) await take('fresh', route, false)
+  return { idle, root, routes, runs }
+}
+
+const phases = ['dns', 'connect', 'tls', 'ttfb', 'server', 'total'] as const
+
+export function coldStats(runs: Cold[]) {
+  const pick = (key: (typeof phases)[number]) => runs.flatMap((run) => (key === 'server' ? (run.phases.server === undefined ? [] : [run.phases.server]) : [run.phases[key]]))
+  return Object.fromEntries(phases.map((key) => [key, { p50: Math.round(percentile(pick(key), 50)), p95: Math.round(percentile(pick(key), 95)) }])) as Record<(typeof phases)[number], { p50: number; p95: number }>
+}
+
+export function coldTable(report: { idle: number; root: string; routes: string[]; runs: Cold[] }) {
+  const lines = [`# ${report.root} cold (ms from the start, p50 / p95; idle = after ${report.idle} s with no request)`, '', '| route | mode | n | dns | connect | tls | ttfb | server | total |', '|---|---|---|---|---|---|---|---|---|']
+  const row = (route: string, mode: string, runs: Cold[]) => {
+    if (!runs.length) return
+    const counted = coldStats(runs)
+    lines.push(`| ${route} | ${mode} | ${runs.length} | ${phases.map((key) => `${counted[key].p50} / ${counted[key].p95}`).join(' | ')} |`)
+  }
+  for (const route of report.routes) {
+    row(route, 'fresh', report.runs.filter((run) => run.route === route && run.mode === 'fresh'))
+    row(route, 'idle', report.runs.filter((run) => run.route === route && run.mode === 'idle'))
+  }
+  row('any (first after idle)', 'idle', report.runs.filter((run) => run.first))
+  const failed = report.runs.filter((run) => !run.phases.status || run.phases.status >= 500)
+  if (failed.length) lines.push('', `${failed.length} failed: ${failed.map((run) => `${run.route} ${run.phases.status || run.phases.ray}`).join(', ')}`)
+  lines.push('', 'server-timing of each idle request:', ...report.runs.filter((run) => run.mode === 'idle').map((run) => `- ${run.first ? 'first ' : ''}${run.route} ${run.phases.status} ttfb ${Math.round(run.phases.ttfb)} ms, ray ${run.phases.ray || '-'}: ${run.phases.timing || '-'}`))
+  return lines.join('\n')
+}
+
 if (import.meta.main) {
-  const report = await run({ root: process.argv[2] })
-  console.log(summary(report))
-  if (stats(report.rows).failed) process.exitCode = 1
+  const given = process.argv.slice(2).filter((arg) => !arg.startsWith('--'))[0]
+  if (process.argv.includes('--cold') || process.env['SWARMS_COLD'] === '1') {
+    const report = await cold(base(given))
+    console.log(coldTable(report))
+    if (report.runs.some((run) => !run.phases.status || run.phases.status >= 500)) process.exitCode = 1
+  } else {
+    const report = await run({ root: given })
+    console.log(summary(report))
+    if (stats(report.rows).failed) process.exitCode = 1
+  }
 }
