@@ -488,7 +488,10 @@ async function viewed(env: Cloudflare.Env, id: string, shape: Shape): Promise<Vi
   const minute = Edge.minute()
   const held = await Edge.held<{ minute: string; view: View }>(env, key)
   const known = held?.minute === minute ? held.view : undefined
-  const view = (await stub(env, id).viewed(shape, known?.stamp.version ?? null)) as View | null
+  const view = (await Promise.resolve(stub(env, id).viewed(shape, known?.stamp.version ?? null)).catch((error: unknown) => {
+    console.error('A conditional swarm view failed, so the whole view was read', error)
+    return stub(env, id).view(shape)
+  })) as View | null
   if (!view) return known!
   if (view.stamp.quiet) Edge.hold(env, key, { minute, view }, 60)
   return view
