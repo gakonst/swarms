@@ -5,7 +5,7 @@ import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
 import { explain } from './Alert.tsx'
 import { signed, usd } from './format.ts'
-import { message, useConfig, usePoll, useWallet } from './hooks.ts'
+import { message, useConfig, usePoll, useSolo, useWallet } from './hooks.ts'
 import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { General } from './General.tsx'
@@ -109,6 +109,8 @@ function WalletButton(props: { config: Config | undefined }) {
     if (document.activeElement instanceof HTMLElement && menu.current?.contains(document.activeElement)) document.activeElement.blur()
   }
 
+  useSolo(open, close)
+
   const fund = () => {
     if (!props.config || funding) return
     setFunding(true)
@@ -125,7 +127,7 @@ function WalletButton(props: { config: Config | undefined }) {
   if (wallet.address)
     return (
       <div className="wallet-menu" data-open={open} onPointerEnter={() => props.config && Wallet.primeFunds(props.config)} ref={menu}>
-        <button aria-busy={wallet.pending || funding || undefined} aria-expanded={open} aria-haspopup="menu" className="btn btn-medium wallet" onClick={() => setOpen(!open)} title={error ?? (wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : wallet.email ? `${wallet.email} · ${wallet.address}` : 'Your Tempo ID')} type="button">
+        <button aria-busy={wallet.pending || funding || undefined} aria-expanded={open} aria-haspopup="menu" className="btn btn-medium wallet" onClick={() => (open ? close() : setOpen(true))} title={error ?? (wallet.account ? `@${wallet.account.handle} · ${wallet.address}` : wallet.email ? `${wallet.email} · ${wallet.address}` : 'Your Tempo ID')} type="button">
           <span>{signed(wallet.account, wallet.address, wallet.email)}</span>
           {wallet.balance !== undefined && <span className="wallet-balance">{usd(decimal(wallet.balance))}</span>}
         </button>
@@ -170,6 +172,29 @@ function WalletButton(props: { config: Config | undefined }) {
   )
 }
 
+function HeaderMenu(props: { children: ReactNode }) {
+  const menu = useRef<HTMLDetailsElement>(null)
+  const [open, setOpen] = useState(false)
+  const shut = () => {
+    if (menu.current) menu.current.open = false
+  }
+  useSolo(open, shut)
+  useEffect(() => {
+    if (!open) return
+    const outside = (event: PointerEvent) => {
+      if (!menu.current?.contains(event.target as Node)) shut()
+    }
+    addEventListener('pointerdown', outside)
+    return () => removeEventListener('pointerdown', outside)
+  }, [open])
+  return (
+    <details className="header-menu" onToggle={(event) => setOpen(event.currentTarget.open)} ref={menu}>
+      <summary className="game-nav">Menu</summary>
+      <nav>{props.children}</nav>
+    </details>
+  )
+}
+
 function Header(props: { config: Config | undefined; free: boolean; listing: boolean | undefined; onList: (open: boolean) => void; path: string; swarm: string | undefined }) {
   const links = (
     <>
@@ -187,13 +212,10 @@ function Header(props: { config: Config | undefined; free: boolean; listing: boo
         </button>
       )}
       <nav className="header-nav">{links}</nav>
-      <details className="header-menu" key={props.path}>
-        <summary className="game-nav">Menu</summary>
-        <nav>
-          {links}
-          <a className="game-nav" href={Site.essay}>Swarm riding, by Paradigm</a>
-        </nav>
-      </details>
+      <HeaderMenu key={props.path}>
+        {links}
+        <a className="game-nav" href={Site.essay}>Swarm riding, by Paradigm</a>
+      </HeaderMenu>
       <p className="brand">
         <a aria-label="Paradigm" className="brand-mark" href={Site.paradigm}>
           <svg aria-hidden="true" viewBox="0 0 25 29"><path d="m9.249 28.39-1.632-.986v-2.516l-2.21 1.258-1.632-.952v-2.516l-2.142 1.224L0 22.916V5.236l1.53-.85 2.244 1.292V3.094l1.598-.884 2.244 1.292V.918L9.249 0l15.334 8.806v1.87l-2.21 1.292 2.21 1.258v1.904l-2.176 1.258 2.176 1.258v1.904zm-.068-1.87 13.838-7.888-2.278-1.292-11.56 6.63zm-3.774-2.244 2.21-1.258v-2.55l-2.21 1.258zm-3.808-2.21 2.176-1.258V7.548L1.599 6.29zm3.808-2.176 2.21-1.292v-8.84L5.407 8.5zm0-13.26 2.21 1.258v-2.55L5.407 4.08zM9.18 22.1l9.962-5.712-2.244-1.292L9.18 19.55zm0-4.386 6.12-3.536-6.12-3.536zm0-8.942 7.752 4.488 2.244-1.292L9.18 6.256zm0-4.386 11.594 6.664 2.244-1.292L9.18 1.836zm9.35 9.792 2.244 1.292 2.244-1.292-2.278-1.292z" fill="currentColor" /></svg>
@@ -240,7 +262,7 @@ function Busy() {
 
 type Tab = 'chat' | 'board' | 'results' | 'code' | 'about'
 
-function Picked(props: { base: string; config: Config | undefined; id: string; nid: string | undefined; room: string | undefined; tail: string; view: Tab }) {
+function Picked(props: { base: string; config: Config | undefined; id: string; nid: string | undefined; tail: string; view: Tab }) {
   const [detail] = usePoll(() => Api.swarm(props.id, false), null, props.id)
   const data = detail.data
   const nickname = data?.nickname
@@ -253,8 +275,9 @@ function Picked(props: { base: string; config: Config | undefined; id: string; n
   }, [nickname])
   useEffect(() => {
     if (props.tail.startsWith('/n/')) navigate(`${props.base}/t/${props.tail.slice(3)}${location.search}`, { keep: true, replace: true })
+    else if (props.tail.startsWith('/c/')) navigate(`${props.base}${location.search}`, { keep: true, replace: true })
   }, [props.base, props.tail])
-  const page = data?.form === 'tree' && !data.archivedAt ? <TreePage channel={props.room} config={props.config} detail={data} id={props.id} nid={props.nid} view={props.view} /> : !data && !detail.error ? <Busy /> : props.nid && data ? <Lost title="This swarm has no tree."><Link className="lost-row" replace to={props.base}>Open it <span aria-hidden="true">→</span></Link></Lost> : <Swarm channel={props.room} config={props.config} id={props.id} view={props.view} />
+  const page = data?.form === 'tree' && !data.archivedAt ? <TreePage config={props.config} detail={data} id={props.id} nid={props.nid} view={props.view} /> : !data && !detail.error ? <Busy /> : props.nid && data ? <Lost title="This swarm has no tree."><Link className="lost-row" replace to={props.base}>Open it <span aria-hidden="true">→</span></Link></Lost> : <Swarm config={props.config} id={props.id} view={props.view} />
   return <Base value={props.base}>{page}</Base>
 }
 
@@ -268,7 +291,6 @@ export function App() {
   const swarm = matched?.[1] ? decodeURIComponent(matched[1]) : typeof found === 'object' && found ? found.swarm : undefined
   const tail = (matched ? matched[2] : named?.tail) ?? ''
   const node = /^\/[nt]\/([^/]+)$/.exec(tail)?.[1]
-  const room = /^\/c\/([^/]+)$/.exec(tail)?.[1]
   const view: Tab = node || tail === '/board' ? 'board' : tail === '/code' ? 'code' : tail === '/results' ? 'results' : tail === '/about' ? 'about' : 'chat'
   const free = !!named && found === null
   const rider = /^\/u\/([^/]+)\/?$/.exec(path)?.[1]
@@ -326,7 +348,7 @@ export function App() {
         ) : path === '/faq' ? (
           <Faq />
         ) : swarm ? (
-          <Picked base={named ? `/${named.name}` : `/s/${encodeURIComponent(swarm)}`} config={config} id={swarm} key={swarm} nid={node && decodeURIComponent(node)} room={room && decodeURIComponent(room)} tail={tail} view={view} />
+          <Picked base={named ? `/${named.name}` : `/s/${encodeURIComponent(swarm)}`} config={config} id={swarm} key={swarm} nid={node && decodeURIComponent(node)} tail={tail} view={view} />
         ) : named && found === undefined ? (
           <Busy />
         ) : free && !tail ? (
@@ -351,7 +373,7 @@ export function App() {
       <Cheered />
       <main>
         {shelled ? (
-          <Shell channel={swarm ?? (path === '/' ? 'general' : undefined)} general={view === 'chat'} listing={listing} onList={setListing} room={room && decodeURIComponent(room)} thread={node && decodeURIComponent(node)}>
+          <Shell channel={swarm ?? (path === '/' ? 'general' : undefined)} listing={listing} onList={setListing}>
             {content}
           </Shell>
         ) : (

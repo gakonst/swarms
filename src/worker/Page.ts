@@ -154,7 +154,7 @@ async function gather(env: Cloudflare.Env, url: URL, calling: Calling): Promise<
   const found = named && (await calling)
   if (named && !found) return found === null && !named.tail ? unclaimed(env, site, named.name) : { data, head: lost, status: found === null ? 404 : 200, whole: false }
   const [, raw = '', tail] = named ? [path, '', named.tail] : (swarmed.exec(path) ?? [])
-  const picked = /^\/[ntc]\/([0-9a-z]+)$/.exec(tail ?? '')?.[1]
+  const picked = /^\/[nt]\/([0-9a-z]+)$/.exec(tail ?? '')?.[1]
   const id = found ? found.swarm : decodeURIComponent(raw)
   if (named && found) data[`name:${named.name}`] = { name: named.name, nickname: found.current, swarm: id }
   const listing = within(Operations.list(env, {}), 1500).then((list) => {

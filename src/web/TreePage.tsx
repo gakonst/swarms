@@ -7,7 +7,7 @@ import * as Api from './api.ts'
 import { here, seeded } from './boot.ts'
 import * as Grove from './grove.ts'
 import { Branches } from './Branches.tsx'
-import { Composer, lines, TreeChannel } from './Channel.tsx'
+import { Composer } from './Channel.tsx'
 import { Compose } from './Compose.tsx'
 import { Code, useWarmCode } from './Repo.tsx'
 import { Divider } from './Divider.tsx'
@@ -59,11 +59,11 @@ function carried(to: string) {
   return kept.length ? `${to}?${query(kept)}` : to
 }
 
-export function TreePage(props: { channel?: string | undefined; config: Config | undefined; detail: Detail; id: string; nid: string | undefined; view: Tab }) {
+export function TreePage(props: { config: Config | undefined; detail: Detail; id: string; nid: string | undefined; view: Tab }) {
   const id = props.id
   const view = props.view
   useWarmCode()
-  const selected = props.nid ?? props.channel ?? 'root'
+  const selected = props.nid ?? 'root'
   const thread = props.nid !== undefined && props.nid !== 'root'
   const base = useBase(id)
   const path = useCallback((nid: string) => (nid === 'root' ? `${base}/board` : `${base}/t/${nid}`), [base])
@@ -75,10 +75,6 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const [grove, setGrove] = useState<Grove.Grove | undefined>(() => tree.data && Grove.grow(tree.data))
   const [node, review] = usePoll(() => Api.node(id, selected), null, `node:${id}:${selected}`)
   const [updates, reupdate] = usePoll(() => Api.nodeUpdates(id, selected), null, `updates:${id}:${selected}`)
-  const held = props.channel ?? (thread && grove ? Grove.trail(grove.nodes, selected).find((node) => node.parent === 'root')?.id : undefined)
-  const room = held ?? selected
-  const [roomNode, reroom] = usePoll(() => Api.node(id, room), null, `node:${id}:${room}`)
-  const [roomUpdates] = usePoll(() => Api.nodeUpdates(id, room), null, `updates:${id}:${room}`)
   const [burn, reburn] = usePoll(() => Api.burn(id), null, `burn:${id}`)
   const [proofs, reproof, setProofs] = usePoll(() => Api.proofs(id), null, `proofs:${id}`)
   const told = useRef(here().searchParams.has('open'))
@@ -280,14 +276,14 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
   const repo = proofs.data?.proofs[0]?.check.repo
   const count = root ? root.children.length : 0
   return (
-    <article className="grove" data-view={view} data-replying={replying !== undefined && !held && !thread ? '' : undefined} data-room={held ? '' : undefined} data-thread={thread || undefined} data-wire={wired}>
+    <article className="grove" data-view={view} data-replying={replying !== undefined && !thread ? '' : undefined} data-thread={thread || undefined} data-wire={wired}>
       <Strip backers={top} edit={<Edit swarm={swarm} />} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{head.proven.toLocaleString('en-US')}</b> proven</span>
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>
         <span className="strip-mood" data-mood={stood.mood} title={Status.line(stood.word)}><i />{Status.pill(stood.word)}</span>
       </Strip>
-      <div className="panel panel-chat" hidden={!!held}>
-        <Room config={props.config} items={items} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} onSwarm={root ? ask : undefined} onThread={setReplying} steer={false} swarm={swarm} thread={replying} visible={!held && !thread} />
+      <div className="panel panel-chat">
+        <Room config={props.config} items={items} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} onSwarm={root ? ask : undefined} onThread={setReplying} steer={false} swarm={swarm} thread={replying} visible={!thread} />
       </div>
       <Divider label="Resize the chat and the artifacts" name="swarm" />
       <section aria-label="Artifacts" className="pane">
@@ -364,31 +360,11 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
         </div>
       )}
       </section>
-      {held && nodes[held] && (
-        <div className="panel panel-chat">
-        <TreeChannel
-          config={props.config}
-          lines={lines(nodes[held], roomNode.data?.id === held ? roomNode.data : undefined, roomUpdates.data?.deltas)}
-          node={nodes[held]}
-          nodes={nodes}
-          now={now}
-          onPost={async (text) => {
-            await Api.suggest(id, { parent: held, text })
-            reroom()
-          }}
-          onRide={(anchor) => setRiding({ anchor, nid: held })}
-          path={path}
-          swarm={id}
-          swarmTitle={swarm.title}
-          thread={thread ? selected : undefined}
-        />
-        </div>
-      )}
       {thread && (
         <aside aria-label="Thread" className="thread" {...swiped}>
           <header className="thread-head">
             <button aria-label="Close the thread" className="thread-close" onClick={close} type="button"><span aria-hidden="true">{phone ? '‹' : '×'}</span></button>
-            <p><b>Thread</b><span><i aria-hidden="true">#</i><Inline text={held && nodes[held] ? nodes[held]!.title : swarm.title} /></span></p>
+            <p><b>Thread</b><span><i aria-hidden="true">#</i>general</span></p>
           </header>
           <div className="thread-body">
             <NodePanel
@@ -423,7 +399,7 @@ export function TreePage(props: { channel?: string | undefined; config: Config |
           )}
         </aside>
       )}
-      {replying !== undefined && !held && !thread && <ChatThread config={props.config} id={replying} items={items} key={replying} onClose={() => setReplying(undefined)} swarm={id} />}
+      {replying !== undefined && !thread && <ChatThread config={props.config} id={replying} items={items} key={replying} onClose={() => setReplying(undefined)} swarm={id} />}
       {asking && root && (
         <Overlay anchor={asking.anchor} className="compose-card" label="Add it to the board" onClose={() => setAsking(undefined)}>
           <Compose

@@ -173,8 +173,6 @@ button.crew-bud:hover, .crew-row[data-open] .crew-bud { background:var(--wash); 
 @media (min-width:1280px) {
   .strip-topic { display:-webkit-box; max-width:46em; white-space:normal; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
   .general-chat > .chat-list > .welcome:first-child { margin-top:0; }
-  .channel-list > .channel-intro:first-child { margin-top:0; }
-  .channel > .talk-foot { width:100%; max-width:710px; }
   .general-chat > .chat-foot { width:100%; max-width:790px; }
   .general-chat .welcome-hot { display:none; }
   .chat-list .msg-bubble { max-width:46em; }

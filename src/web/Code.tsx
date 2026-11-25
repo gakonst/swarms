@@ -22,6 +22,8 @@ const kept = new Map<string, Promise<{ size: number; text?: string }>>()
 
 const prose = /\.(md|markdown)$/i
 
+const readMs = 20_000
+
 let preload: Preload | undefined
 
 export function preloads(next: Preload) {
@@ -152,15 +154,22 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
       const read = head && path ? await source(swarm, path, head).catch(() => undefined) : undefined
       return { commits: log.commits, files: paths, readme: path && read?.text !== undefined ? { path, text: read.text } : null }
     }
-    Api.code(swarm, stirs > 0)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("The code can't be read right now. Try again in a minute.")), readMs)
+    })
+    const read = Api.code(swarm, stirs > 0)
       .catch(() => null)
       .then((snapshot) => (snapshot && snapshot.name === repo.name ? snapshot : direct()))
+    Promise.race([read, late])
+      .finally(() => clearTimeout(timer))
       .then(
         (value) => alive && setTree({ value }),
         (error: unknown) => alive && setTree((known) => (known.value ? known : { error: message(error) })),
       )
     return () => {
       alive = false
+      clearTimeout(timer)
     }
   }, [swarm, repo?.name, stirs])
 
@@ -191,9 +200,9 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
       </header>
 
       {tree.error && !value ? (
-        <p className="repo-quiet">{tree.error}</p>
+        <p className="repo-quiet">{tree.error} <button className="repo-again" onClick={() => { setTree({}); setStirs((count) => count + 1) }} type="button">Try again</button></p>
       ) : !value ? (
-        <div className="repo-files repo-ghost" aria-busy="true" />
+        <div className="repo-files repo-ghost" aria-busy="true"><p className="repo-quiet">Reading the code…</p></div>
       ) : !head ? (
         <p className="repo-empty">No commits yet. Each one shows up here as it lands.</p>
       ) : (

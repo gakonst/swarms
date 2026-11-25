@@ -1,5 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { Branches, Listing, Summary, TreeView } from '../shared/Api.ts'
+import type { Listing, Summary, TreeView } from '../shared/Api.ts'
 import * as Fuzzy from '../shared/Fuzzy.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Prose from '../shared/Prose.ts'
@@ -7,7 +7,7 @@ import * as Status from '../shared/Status.ts'
 import type * as Tree from '../shared/Tree.ts'
 import { cash } from './Branches.tsx'
 import * as Api from './api.ts'
-import { type Shape, shareBranches, shareTree, useShapes } from './channels.ts'
+import { type Shape, shareTree, useShapes } from './channels.ts'
 import * as Local from './local.ts'
 import { stood } from './Home.tsx'
 import { Badge } from './Picture.tsx'
@@ -18,7 +18,7 @@ import * as Wire from './wire.ts'
 
 export type Found =
   | { at: 'problem'; exact: boolean; key: string; marks: readonly number[]; score: number; swarm: Summary; title: string; to: string; under: string; underMarks: readonly number[] }
-  | { at: 'channel' | 'thread'; exact: boolean; key: string; live: boolean; marks: readonly number[]; money: string; score: number; status: Tree.Status; swarm: Summary; title: string; to: string; under: string; underMarks: readonly number[] }
+  | { at: 'thread'; exact: boolean; key: string; live: boolean; marks: readonly number[]; money: string; score: number; status: Tree.Status; swarm: Summary; title: string; to: string; under: string; underMarks: readonly number[] }
 
 const most = { problems: 8, rest: 6 }
 
@@ -72,15 +72,10 @@ export function find(query: string, listing: Listing | undefined, shapes: readon
     if (!swarm) continue
     const base = Nickname.path(swarm)
     const under = Prose.plain(swarm.title)
-    for (const channel of shape.channels) {
-      const title = Prose.plain(channel.title)
-      const hit = Fuzzy.match(ask, title)
-      if (hit) rest.push({ at: 'channel', exact: hit.exact, key: `${id}/c/${channel.id}`, live: channel.live, marks: hit.marks, money: channel.money, score: hit.score * 0.9, status: channel.status, swarm, title, to: `${base}/c/${channel.id}`, under, underMarks: [] })
-      for (const thread of channel.threads) {
-        const named = Prose.plain(thread.title)
-        const found = Fuzzy.match(ask, named)
-        if (found) rest.push({ at: 'thread', exact: found.exact, key: `${id}/t/${thread.id}`, live: thread.live, marks: found.marks, money: thread.money, score: found.score * 0.85, status: thread.status, swarm, title: named, to: `${base}/${shape.form === 'tree' ? 't' : 'c'}/${thread.id}`, under: `${under} › ${Prose.plain(channel.title)}`, underMarks: [] })
-      }
+    for (const thread of shape.threads) {
+      const named = Prose.plain(thread.title)
+      const found = Fuzzy.match(ask, named)
+      if (found) rest.push({ at: 'thread', exact: found.exact, key: `${id}/t/${thread.id}`, live: thread.live, marks: found.marks, money: thread.money, score: found.score * 0.85, status: thread.status, swarm, title: named, to: `${base}/t/${thread.id}`, under, underMarks: [] })
     }
   }
   const strict = problems.some((each) => each.exact) || rest.some((each) => each.exact)
@@ -96,15 +91,10 @@ function gather(swarms: readonly Summary[], known: readonly (readonly [string, S
     if (held.has(swarm.id) || gathered.has(swarm.id)) continue
     gathered.add(swarm.id)
     const id = swarm.id
-    if (swarm.form === 'tree') {
-      const key = `tree:${id}`
-      const kept = Local.fresh(key) ? Local.value<TreeView>(key) : undefined
-      void (kept ? Promise.resolve(kept) : Local.load(key, () => Api.tree(id, { depth: 2 }))).then((view) => shareTree(id, Object.fromEntries(view.nodes.map((node) => [node.id, node]))), () => gathered.delete(id))
-    } else {
-      const key = `branches:${id}`
-      const kept = Local.fresh(key) ? Local.value<Branches>(key) : undefined
-      void (kept ? Promise.resolve(kept) : Local.load(key, () => Api.branches(id))).then((read) => shareBranches(id, read.branches), () => gathered.delete(id))
-    }
+    if (swarm.form !== 'tree') continue
+    const key = `tree:${id}`
+    const kept = Local.fresh(key) ? Local.value<TreeView>(key) : undefined
+    void (kept ? Promise.resolve(kept) : Local.load(key, () => Api.tree(id, { depth: 2 }))).then((view) => shareTree(id, Object.fromEntries(view.nodes.map((node) => [node.id, node]))), () => gathered.delete(id))
   }
 }
 
@@ -141,7 +131,7 @@ function Row(props: { active: boolean; found: Found; id: string; listing: Listin
     <li aria-selected={props.active} className="find-row" data-active={props.active || undefined} id={props.id} onClickCapture={props.onPick} onPointerMove={props.onPoint} role="option">
       <Link className="find-link" data={{ 'data-at': found.at }} to={found.to}>
         <span aria-hidden="true" className="find-icon">
-          {found.at === 'problem' ? <Badge head={head} live={word === 'Working'} swarm={found.swarm} /> : found.at === 'channel' ? <i>#</i> : <Mark status={found.status} />}
+          {found.at === 'problem' ? <Badge head={head} live={word === 'Working'} swarm={found.swarm} /> : <Mark status={found.status} />}
         </span>
         <span className="find-text">
           <Lit className="find-title" marks={found.marks} text={found.title} />
@@ -275,12 +265,12 @@ function Sheet() {
             aria-autocomplete="list"
             aria-controls={id}
             aria-expanded="true"
-            aria-label="Search problems, channels and threads"
+            aria-label="Search problems and threads"
             autoComplete="off"
             enterKeyHint="go"
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => cursor.keys(event, () => show(false))}
-            placeholder="Search problems, channels and threads"
+            placeholder="Search problems and threads"
             ref={input}
             role="combobox"
             spellCheck={false}

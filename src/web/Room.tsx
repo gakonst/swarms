@@ -7,7 +7,6 @@ import * as Mention from '../shared/Mention.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Api from './api.ts'
 import { seeded } from './boot.ts'
-import { ChannelMenu } from './ChannelMenu.tsx'
 import { code } from './pay.ts'
 import { ago, day, minute, usd } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
@@ -194,6 +193,7 @@ export const Room = memo(function Room(props: {
   const [me, setMe] = useState<Me | null>(null)
   const [loaded, setLoaded] = useState(!!seed)
   const [failed, setFailed] = useState<string>()
+  const [misses, setMisses] = useState(0)
   const [earlier, setEarlier] = useState(() => (seed?.messages.length ?? 0) >= 100)
   const [online, setOnline] = useState<readonly string[]>([])
   const [watching, setWatching] = useState(0)
@@ -230,14 +230,22 @@ export const Room = memo(function Room(props: {
         setMe(room.me)
         setLoaded(true)
         setFailed(undefined)
+        setMisses(0)
         fetched.current = Date.now()
         if (token && !room.me) Wallet.signOut()
       } catch (error) {
         setFailed(reason(error))
+        setMisses((count) => count + 1)
       }
     },
     [id, token],
   )
+
+  useEffect(() => {
+    if (!misses || !token) return
+    const timer = setTimeout(() => void load(last.current), Math.min(30_000, 2000 * 2 ** (misses - 1)))
+    return () => clearTimeout(timer)
+  }, [misses, load, token])
 
   useEffect(() => {
     last.current = messages.at(-1)?.id ?? 0
@@ -522,7 +530,12 @@ export const Room = memo(function Room(props: {
   const picked = picking ? messages.find((item) => item.id === picking.id) : undefined
 
   let foot: ReactNode
-  if (door === 'checking') foot = <div aria-busy="true" className="chat-bar chat-bar-wait" />
+  if (door === 'checking')
+    foot = (
+      <div aria-busy="true" className="chat-bar chat-bar-wait">
+        <textarea aria-label="Message #general" disabled placeholder={failed ? "Can't reach the chat. Trying again…" : 'Message #general'} rows={1} />
+      </div>
+    )
   else if (door === 'signed-out')
     foot = (
       <button className="chat-gate" disabled={!props.config || signing} onClick={() => void signIn()} type="button">
@@ -604,7 +617,7 @@ export const Room = memo(function Room(props: {
   return (
     <section aria-label="Chat" className="chat">
       <header className="chat-here">
-        <ChannelMenu id={props.swarm.id} title="general" />
+        <p className="chat-channel"><i aria-hidden="true">#</i>general</p>
         {here.length > 0 && <span className="chat-faces">{here.map((member) => <Avatar address={member.address} handle={member.handle} key={member.address} size="small" />)}</span>}
         {watching > 0 && <span className="chat-live"><i />{watching} here</span>}
       </header>

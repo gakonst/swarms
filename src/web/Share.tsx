@@ -7,7 +7,7 @@ import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { usd } from './format.ts'
 import { Inline } from './Markdown.tsx'
-import { remember, remembered, usePoll } from './hooks.ts'
+import { remember, remembered, usePoll, useSolo } from './hooks.ts'
 import * as Pay from './pay.ts'
 import { navigate } from './router.tsx'
 
@@ -150,6 +150,7 @@ export function ShareSwarm(props: { id: string }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const menu = useRef<HTMLDivElement>(null)
+  useSolo(open, () => setOpen(false))
   useEffect(() => {
     if (!open) return
     const close = (event: PointerEvent) => {

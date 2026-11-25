@@ -2,20 +2,17 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Config, Detail, Me, Member, Room as RoomState, Said, Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
-import * as Crew from '../shared/Crew.ts'
 import * as Status from '../shared/Status.ts'
 import * as Api from './api.ts'
 import { useSurface, useWishes, Viewer } from './Artifacts.tsx'
 import { here, seeded } from './boot.ts'
 import { Box } from './Box.tsx'
-import { BranchChannel, tagged } from './Channel.tsx'
-import { shareBranches } from './channels.ts'
 import * as Prose from '../shared/Prose.ts'
 import { line, pill } from './Card.tsx'
 import { Code, useWarmCode } from './Repo.tsx'
 import { asked } from './Contribute.tsx'
 import { Divider } from './Divider.tsx'
-import { useNow, usePoll, useWallet } from './hooks.ts'
+import { usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Machines } from './Machines.tsx'
 import { Overlay } from './Overlay.tsx'
@@ -38,7 +35,7 @@ const detailMs = 10_000
 
 const shelfMs = 60_000
 
-export function Swarm(props: { channel?: string | undefined; config: Config | undefined; id: string; view: Tab }) {
+export function Swarm(props: { config: Config | undefined; id: string; view: Tab }) {
   const id = props.id
   const view = props.view
   const base = useBase(id)
@@ -53,15 +50,12 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
     }
     if (Wire.stirred(signal, 'branches')) rebranch()
     if (Wire.stirred(signal, 'feed')) setStir((count) => count + 1)
-    if (signal.type === 'said' && props.channel) rechat()
   })
   const [detail, reload, setDetail] = usePoll(() => Api.swarm(id, false), wired === 'down' ? detailMs : null, id)
   const [shelf, reshelve, setShelf] = usePoll(() => Api.artifacts(id), wired === 'down' ? shelfMs : null, `artifacts:${id}`)
   const [news, renews] = usePoll(() => Api.updates(id), null, `updates:${id}`)
   const [progress, reprogress] = usePoll(() => Api.progress(id), null, `progress:${id}`)
   const [tree, rebranch] = usePoll(() => Api.branches(id), wired === 'down' && detail.data?.status === 'running' ? 30_000 : null, `branches:${id}`)
-  const [chat, rechat] = usePoll(() => Api.room(id), null, `room:${id}`)
-  const now = useNow(30_000)
   const wishes = useWishes(shelf.data?.artifacts)
   const surface = useSurface(shelf.data?.artifacts, id)
   const opened = useQuery('r')
@@ -80,10 +74,6 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
     if (location.hash === '#room') navigate(base, { replace: true })
     else if (location.hash) history.replaceState(history.state, '', location.pathname + location.search)
   }, [base])
-
-  useEffect(() => {
-    if (tree.data) shareBranches(id, tree.data.branches)
-  }, [tree.data, id])
 
   const answered = detail.data?.answer?.at
   const [heardAnswer, setHeardAnswer] = useState(answered)
@@ -140,40 +130,18 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
   const show = (next: Tab) => {
     if (next !== view) navigate(at(base, next), { keep: true, replace: true })
   }
-  const branch = props.channel ? tree.data?.branches.find((each) => String(each.id) === props.channel) : undefined
-  const roomed = !!props.channel && (!tree.data || !!branch)
   const [replying, setReplying] = useState<number>()
 
 
   return (
-    <article className="swarm-shell" data-view={view} data-replying={replying !== undefined && !roomed ? '' : undefined} data-room={roomed ? '' : undefined}>
+    <article className="swarm-shell" data-view={view} data-replying={replying !== undefined ? '' : undefined}>
       <Strip backers={backers(swarm.contributions, names)} edit={<Edit swarm={swarm} />} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span><b>{dollars(swarm.remaining)}</b> left</span>
         <span className="strip-mood" data-mood={stood.mood} title={line(stood.word)}><i />{pill(stood.word)}</span>
         {swarm.ai && <span className="strip-ai">on @{swarm.ai.handle}'s own AI</span>}
       </Strip>
-      {branch && (
-        <div className="panel panel-chat">
-        <BranchChannel
-          base={base}
-          branch={branch}
-          branches={tree.data?.branches ?? []}
-          config={props.config}
-          names={names}
-          now={now}
-          onPost={async (text) => {
-            await Api.say(id, { text: tagged(Crew.title(branch)) + text })
-            rechat()
-          }}
-          onRide={archived ? undefined : (anchor) => steer('', anchor)}
-          said={chat.data?.messages ?? []}
-          swarm={id}
-          swarmTitle={swarm.title}
-        />
-        </div>
-      )}
-      <div className="panel panel-chat" hidden={roomed}>
+      <div className="panel panel-chat">
         <Room
           config={props.config}
           onArtifact={(slug) => navigate(`${base}/results?r=${encodeURIComponent(slug)}`)}
@@ -183,7 +151,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
           onThread={setReplying}
           swarm={swarm}
           thread={replying}
-          visible={!roomed}
+          visible
         />
       </div>
       <Divider label="Resize the chat and the artifacts" name="swarm" />
@@ -206,7 +174,7 @@ export function Swarm(props: { channel?: string | undefined; config: Config | un
         </div>
       )}
       </section>
-      {replying !== undefined && !roomed && <ChatThread config={props.config} id={replying} key={replying} onClose={() => setReplying(undefined)} swarm={id} />}
+      {replying !== undefined && <ChatThread config={props.config} id={replying} key={replying} onClose={() => setReplying(undefined)} swarm={id} />}
       {riding && !archived && (
         <Overlay anchor={riding.anchor} className="ride ride-box" label="Ride it" onClose={() => setRiding(undefined)}>
           <Box

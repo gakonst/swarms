@@ -39,6 +39,23 @@ export function useConfig() {
   return config
 }
 
+const solo = new EventTarget()
+
+export function useSolo(open: boolean, close: () => void) {
+  const shut = useRef(close)
+  shut.current = close
+  const [self] = useState(() => ({}))
+  useEffect(() => {
+    if (!open) return
+    solo.dispatchEvent(new CustomEvent('open', { detail: self }))
+    const other = (event: Event) => {
+      if ((event as CustomEvent).detail !== self) shut.current()
+    }
+    solo.addEventListener('open', other)
+    return () => solo.removeEventListener('open', other)
+  }, [open, self])
+}
+
 export function remembered<T>(key: string) {
   return Local.value<T>(key)
 }

@@ -5,7 +5,6 @@ import * as Rail from '../shared/Rail.ts'
 import * as Site from '../shared/Site.ts'
 import { boot } from './boot.ts'
 import { cash } from './Branches.tsx'
-import { Here } from './ChannelMenu.tsx'
 import { Switcher } from './Switcher.tsx'
 import * as Status from '../shared/Status.ts'
 import { board, live, stood } from './Home.tsx'
@@ -104,9 +103,9 @@ function Servers(props: { current: string | undefined; items: readonly Summary[]
         <span aria-hidden="true" className="server-pill"><i>#</i></span>
         <span aria-hidden="true" className="server-text"><span className="server-name">general</span><span className="server-line">Everyone on Swarms</span></span>
       </Link>
-      <Opener className="server server-search" label="Search problems, channels and threads">
+      <Opener className="server server-search" label="Search problems and threads">
         <span aria-hidden="true" className="server-pill"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg></span>
-        <span aria-hidden="true" className="server-text"><span className="server-name">Search</span><span className="server-line">Problems, channels and threads</span></span>
+        <span aria-hidden="true" className="server-text"><span className="server-name">Search</span><span className="server-line">Problems and threads</span></span>
         <kbd aria-hidden="true" className="server-side server-key">⌘K</kbd>
       </Opener>
       <span aria-hidden="true" className="servers-rule" />
@@ -193,7 +192,7 @@ export function useSwipe(handlers: { edge?: (() => void) | undefined; left?: (()
   }
 }
 
-export function Shell(props: { channel: string | undefined; children: ReactNode; general: boolean; listing: boolean; onList: (open: boolean) => void; room: string | undefined; thread: string | undefined }) {
+export function Shell(props: { channel: string | undefined; children: ReactNode; listing: boolean; onList: (open: boolean) => void }) {
   const swiped = useSwipe(props.listing ? { left: () => props.onList(false) } : { edge: () => props.onList(true) })
   const onList = props.onList
   useEffect(() => {
@@ -215,7 +214,7 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
         <Servers current={props.channel} items={items} listing={list.data} rail={rail} unread={unread} />
       </div>
       <div className="hub-main" inert={props.listing || undefined}>
-        <Here value={{ general: props.general, room: props.room, thread: props.thread }}>{props.children}</Here>
+        {props.children}
       </div>
       <Switcher current={props.channel} items={items} listing={list.data} unread={unread} />
       <Palette />
