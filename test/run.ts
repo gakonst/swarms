@@ -29,7 +29,7 @@ export const rider = ('0x' + 'a'.repeat(40)) as `0x${string}`
 
 export type Route = (request: Request, url: URL) => Response | Promise<Response> | undefined
 
-function storage() {
+export function storage() {
   const db = new DatabaseSync(':memory:')
   const kv = new Map<string, unknown>()
   let alarm: number | null = null

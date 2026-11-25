@@ -14,6 +14,7 @@
     "endpoints": "node --experimental-strip-types test/e2e/endpoints.ts",
     "e2e": "node --test --experimental-strip-types --test-concurrency=1 test/e2e/*.test.ts",
     "gen:types": "wrangler types worker-configuration.d.ts",
+    "load": "node --experimental-strip-types test/load/main.ts",
     "mock:gateway": "node --experimental-strip-types test/mock/gateway.ts",
     "mock:github": "node --experimental-strip-types test/mock/github.ts",
     "test": "node --test --experimental-strip-types test/*.test.ts"
