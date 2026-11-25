@@ -150,6 +150,8 @@ button.crew-bud:hover, .crew-row[data-open] .crew-bud { background:var(--wash); 
   .strip { gap:4px; padding:10px var(--margin) 8px; }
   .strip-head { flex-wrap:wrap; gap:2px 12px; }
   .strip-title { flex:1 1 0; gap:6px; font-size:19px; }
+  .strip-head > .strip-title:has(+ .strip-edit) { flex:1 1 0; }
+  .strip-head > .strip-edit { margin-right:0; }
   .strip-ride { height:34px; padding:0 16px; }
   .strip-stats { order:3; flex:1 1 100%; gap:0 14px; overflow:hidden; font-size:11px; }
   .strip-stats b { margin-right:4px; font-size:17px; }
