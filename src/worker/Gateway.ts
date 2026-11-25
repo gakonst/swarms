@@ -149,23 +149,33 @@ let pricing: { at: number; value: Map<string, Setup.Price> } | undefined
 
 export async function prices(env: Cloudflare.Env) {
   if (pricing && Date.now() - pricing.at < 600_000) return pricing.value
-  const value = await Clock.within(
-    call(env, '/v1/models')
-      .then((response) => (response.ok ? (response.json() as Promise<{ data?: { capabilities?: { tools?: boolean }; id: string; kind?: string; pricing?: { cached?: number; input?: number; output?: number } }[] }>) : undefined))
-      .then((listed) => {
-        const found = new Map<string, Setup.Price>()
-        for (const model of listed?.data ?? []) {
-          const price = model.pricing
-          if (model.kind !== 'generate' || model.capabilities?.tools === false || price?.input === undefined || price.output === undefined) continue
-          if (Setup.direct(model.id)) continue
-          found.set(model.id, { cached: price.cached ?? price.input, id: model.id, input: price.input, output: price.output })
-        }
-        return found.size ? found : undefined
-      }),
-    3000,
-  )
-  if (value) pricing = { at: Date.now(), value }
-  return value ?? pricing?.value
+  const listed = await Edge.cached(
+    env,
+    `prices/${encodeURIComponent(env.GATEWAY_URL)}`,
+    600,
+    async () => {
+      const found = await Clock.within(models(env), 3000)
+      if (!found?.length) throw new Error('The gateway listed no model prices')
+      return found
+    },
+    86_400,
+  ).catch(() => undefined)
+  if (listed?.length) pricing = { at: Date.now(), value: new Map(listed.map((price) => [price.id, price])) }
+  return pricing?.value
+}
+
+async function models(env: Cloudflare.Env) {
+  const response = await call(env, '/v1/models')
+  if (!response.ok) return undefined
+  const listed = (await response.json()) as { data?: { capabilities?: { tools?: boolean }; id: string; kind?: string; pricing?: { cached?: number; input?: number; output?: number } }[] }
+  const found: Setup.Price[] = []
+  for (const model of listed.data ?? []) {
+    const price = model.pricing
+    if (model.kind !== 'generate' || model.capabilities?.tools === false || price?.input === undefined || price.output === undefined) continue
+    if (Setup.direct(model.id)) continue
+    found.push({ cached: price.cached ?? price.input, id: model.id, input: price.input, output: price.output })
+  }
+  return found
 }
 
 export function credit(env: Cloudflare.Env, swarm: string) {
@@ -256,16 +266,18 @@ function credentials(rider: string) {
   return '/v1/credentials/' + encodeURIComponent(subject(rider))
 }
 
-const credentialing = new Map<string, { at: number; value: boolean }>()
-
-export async function credentialed(env: Cloudflare.Env) {
-  const known = credentialing.get(env.GATEWAY_URL)
-  if (known && Date.now() - known.at < 300_000) return known.value
-  const answered = await send<unknown>(env, credentials('0x0000000000000000000000000000000000000000'), { open: true })
-  if (!answered.ok && answered.status >= 500) return known?.value ?? false
-  const value = answered.ok || answered.status !== 404 || !/^No route/.test(answered.detail)
-  credentialing.set(env.GATEWAY_URL, { at: Date.now(), value })
-  return value
+export function credentialed(env: Cloudflare.Env) {
+  return Edge.cached(
+    env,
+    `credentialed/${encodeURIComponent(env.GATEWAY_URL)}`,
+    300,
+    async () => {
+      const answered = await send<unknown>(env, credentials('0x0000000000000000000000000000000000000000'), { open: true })
+      if (!answered.ok && answered.status >= 500) throw new Error(answered.detail)
+      return answered.ok || answered.status !== 404 || !/^No route/.test(answered.detail)
+    },
+    86_400,
+  ).catch(() => false)
 }
 
 export function ai(env: Cloudflare.Env, rider: string) {
