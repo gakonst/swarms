@@ -3,6 +3,7 @@ import type { Config, Hall, Said } from '../shared/Api.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Api from './api.ts'
+import * as Outbox from './outbox.ts'
 import { seeded } from './boot.ts'
 import { cash, Faces } from './Branches.tsx'
 import { day, minute } from './format.ts'
@@ -12,7 +13,7 @@ import { Inline, Markdown } from './Markdown.tsx'
 import { code } from './pay.ts'
 import { Divider } from './Divider.tsx'
 import { useHello, Welcome } from './Hello.tsx'
-import { Avatar, tint } from './Room.tsx'
+import { Avatar, tint, Unsent } from './Room.tsx'
 import { Link } from './router.tsx'
 import { channels } from './Shell.tsx'
 import { Username } from './Username.tsx'
@@ -22,6 +23,21 @@ import * as Wire from './wire.ts'
 const topic = 'Swarms are AI agents that research and build in the open, paid for by the people who ride them. Every problem is a swarm with its own channels and threads: ride one from $1, or start your own.'
 
 const pollMs = 20_000
+
+const named = new Map<string, string>()
+
+Outbox.define('general', (draft) =>
+  Api.shout(draft.text.trim()).then(
+    (posted) => {
+      if (posted.message.author) named.set(posted.message.author.toLowerCase(), posted.name)
+      return posted.message
+    },
+    (error: unknown) => {
+      if (code(error) === 'username_required') void Wallet.identify()
+      throw error
+    },
+  ),
+)
 
 type Room = { messages: readonly Said[]; names: Readonly<Record<string, string>> }
 
@@ -53,7 +69,6 @@ export function General(props: { config: Config | undefined }) {
   const [failed, setFailed] = useState(false)
   const [wired, setWired] = useState(false)
   const [text, setText] = useState('')
-  const [sending, setSending] = useState(false)
   const [signing, setSigning] = useState(false)
   const [problem, setProblem] = useState<string>()
   const scroller = useRef<HTMLDivElement>(null)
@@ -81,6 +96,7 @@ export function General(props: { config: Config | undefined }) {
     return Api.hall((event) => {
       if (event.type === 'open' || event.type === 'closed') setWired(event.type === 'open')
       if (event.type === 'welcome') void load(last.current)
+      if (event.type === 'open') Outbox.resume()
       if (event.type === 'said') {
         const author = event.message.author
         setRoom((current) => ({ messages: merge(current.messages, [event.message]), names: author ? { ...current.names, [author]: event.name } : current.names }))
@@ -117,31 +133,37 @@ export function General(props: { config: Config | undefined }) {
   const left = items.reduce((sum, swarm) => sum + Math.max(0, Number(swarm.remaining)), 0)
   const proven = items.reduce((sum, swarm) => sum + (heads[swarm.id]?.proven ?? 0), 0)
   const riders = list.data?.riders ?? items.reduce((sum, swarm) => sum + swarm.contributors, 0)
-  const name = (address: string) => room.names[address] ?? Mention.short(address)
+  const name = (address: string) => room.names[address] ?? named.get(address.toLowerCase()) ?? Mention.short(address)
 
-  const post = async () => {
+  const drafts = Outbox.useDrafts('general')
+  const outbox = Outbox.shown('general', room.messages, drafts)
+  const landed = outbox.landed.join()
+  useEffect(() => {
+    for (const client of outbox.landed) Outbox.forget(client)
+  }, [landed])
+  const shown = outbox.shown
+  const tail = shown.at(-1)
+  const bottom = tail ? Outbox.key(tail) : undefined
+  useLayoutEffect(() => {
+    const element = scroller.current
+    if (element && stick.current) element.scrollTop = element.scrollHeight
+  }, [bottom])
+
+  const post = () => {
     const body = text.trim()
-    if (!body || sending) return
-    setSending(true)
+    const author = wallet.session?.address
+    if (!body || !author) return
     setProblem(undefined)
     stick.current = true
-    try {
-      const posted = await Api.shout(body)
-      const author = posted.message.author
-      setRoom((current) => ({ messages: merge(current.messages, [posted.message]), names: author ? { ...current.names, [author]: posted.name } : current.names }))
-      setText('')
-    } catch (error) {
-      if (code(error) === 'username_required') void Wallet.identify()
-      setProblem(reason(error))
-    } finally {
-      setSending(false)
-    }
+    setText('')
+    if (wallet.account?.name) named.set(author.toLowerCase(), wallet.account.name)
+    Outbox.send('general', { after: last.current, author, text: body })
   }
 
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !matchMedia('(pointer: coarse)').matches) {
       event.preventDefault()
-      void post()
+      post()
     }
   }
 
@@ -167,7 +189,7 @@ export function General(props: { config: Config | undefined }) {
   ) : (
     <div className="chat-bar">
       <textarea aria-label="Message #general" enterKeyHint="send" maxLength={Mention.maxText} onChange={(event) => setText(event.target.value)} onKeyDown={keys} placeholder="Message #general" ref={area} rows={1} value={text} />
-      <button aria-label="Send" className="chat-send" disabled={!text.trim() || sending} onClick={() => void post()} type="button">↑</button>
+      <button aria-label="Send" className="chat-send" disabled={!text.trim()} onClick={post} type="button">↑</button>
     </div>
   )
 
@@ -222,20 +244,21 @@ export function General(props: { config: Config | undefined }) {
             )}
           </div>}
           {!loaded && <p className="chat-empty">{failed ? "Can't reach Swarms. Trying again." : 'Loading…'}</p>}
-          {room.messages.map((item, index) => {
+          {shown.map((item, index) => {
             const author = item.author ?? ''
             const handle = name(author)
-            const first = !joined(room.messages[index - 1], item, now)
+            const first = !joined(shown[index - 1], item, now)
             const today = day(item.at, now)
-            const dated = index === 0 || day(room.messages[index - 1]!.at, now) !== today
+            const dated = index === 0 || day(shown[index - 1]!.at, now) !== today
             return (
-              <div className="general-row" key={item.id}>
+              <div className="general-row" data-sending={item.sending} key={Outbox.key(item)}>
                 {dated && <p className="chat-day"><span>{today}</span></p>}
                 <div className="msg" data-first={first || dated}>
                   {first || dated ? <Avatar address={author} handle={handle} /> : <span className="avatar-gap" />}
                   <div className="msg-col">
                     {(first || dated) && <p className="msg-who"><b style={{ color: tint(author) }}>{handle}</b><time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time></p>}
                     <div className="msg-bubble"><Markdown compact text={item.text} /></div>
+                    {item.sending === 'failed' && item.client && <Unsent client={item.client} error={item.error} />}
                   </div>
                 </div>
               </div>

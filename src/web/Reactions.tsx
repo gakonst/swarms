@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Reaction } from '../shared/Api.ts'
 import * as Emoji from '../shared/Reaction.ts'
 import * as Api from './api.ts'
+import * as Outbox from './outbox.ts'
 import { Overlay } from './Overlay.tsx'
 
 const recentKey = 'swarms.emoji'
@@ -23,18 +24,21 @@ function remember(emoji: string) {
   } catch {}
 }
 
-export function flip(list: readonly Reaction[] | undefined, emoji: string, me: string, on: boolean): Reaction[] {
-  const mine = me.toLowerCase() as `0x${string}`
-  const out = (list ?? []).map((each) => ({ emoji: each.emoji, who: each.who.filter((address) => each.emoji !== emoji || address.toLowerCase() !== mine) }))
-  const found = out.find((each) => each.emoji === emoji)
-  if (on && found) found.who.push(mine)
-  else if (on) out.push({ emoji, who: [mine] })
-  return out.filter((each) => each.who.length)
-}
+export { flip, held } from './outbox.ts'
 
-export function send(swarm: string, message: number, emoji: string, on: boolean) {
+export function send(swarm: string, message: number, emoji: string, on: boolean, me = '') {
   if (on) remember(emoji)
-  return Api.react(swarm, message, { emoji, on }).then((done) => done.reactions)
+  const land = Outbox.fly(swarm, message, emoji, me, on)
+  return Api.react(swarm, message, { emoji, on }).then(
+    (done) => {
+      land()
+      return Outbox.held(swarm, message, done.reactions)
+    },
+    (error: unknown) => {
+      land()
+      throw error
+    },
+  )
 }
 
 export function Picker(props: { anchor: HTMLElement | null; onClose: () => void; onPick: (emoji: string) => void }) {

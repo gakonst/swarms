@@ -381,3 +381,8 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
   .msg-acts button { width:32px; height:32px; }
 }
 @media (prefers-reduced-motion:reduce) { .chat-thread { animation:none; } }
+.msg .msg-bubble, .general-row .msg-bubble { transition:opacity .2s; }
+:is(.msg, .general-row)[data-sending] .msg-bubble { opacity:.55; }
+:is(.msg, .general-row)[data-sending='failed'] .msg-bubble { opacity:1; color:var(--soft); }
+.msg-unsent { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin:4px 0 0; font:13px var(--mono); color:var(--red); }
+.msg-unsent button { min-height:24px; padding:0 2px; border:0; background:none; color:var(--fg); font:inherit; text-decoration:underline; cursor:pointer; }

@@ -101,11 +101,12 @@ export function Composer(props: { config: Config | undefined; disabled?: string 
     if (!body || sending) return
     setSending(true)
     setProblem(undefined)
+    setText('')
     try {
       await props.onPost(body)
-      setText('')
       setSent(true)
     } catch (error) {
+      setText((current) => current || body)
       setProblem(message(error))
     } finally {
       setSending(false)

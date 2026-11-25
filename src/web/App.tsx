@@ -34,6 +34,7 @@ const TreePage = page('tree', () => import('./TreePage.tsx').then((module) => mo
 
 function warmDetail(swarm: string, tail = '') {
   Local.warm(swarm, () => Api.swarm(swarm, false))
+  Local.warm(`room:${swarm}`, () => Api.room(swarm))
   const nid = /^\/[ntc]\/([^/?#]+)/.exec(tail)?.[1]
   if (!nid || Local.value<{ form?: string }>(swarm)?.form !== 'tree') return
   const node = decodeURIComponent(nid)

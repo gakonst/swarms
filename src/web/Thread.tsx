@@ -2,12 +2,14 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { Config, Reaction, Replied, Said } from '../shared/Api.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Api from './api.ts'
+import * as Local from './local.ts'
+import * as Outbox from './outbox.ts'
 import { Composer } from './Channel.tsx'
 import { day, minute } from './format.ts'
 import { message as reason, useNow, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
-import { Acts, Chips, flip, Picker, send } from './Reactions.tsx'
-import { Avatar, type Items, Item, marked, tint } from './Room.tsx'
+import { Acts, Chips, flip, held, Picker, send } from './Reactions.tsx'
+import { Avatar, type Items, Item, marked, tint, Unsent } from './Room.tsx'
 import * as Wire from './wire.ts'
 
 type Loaded = { at: 'loading' } | { at: 'failed'; error: string } | { at: 'ready'; thread: Replied }
@@ -23,12 +25,18 @@ function stamped(at: number, now: number) {
   return day(at, now) === day(now, now) ? minute(at) : `${day(at, now)} ${minute(at)}`
 }
 
+function stored(swarm: string, id: number): Loaded {
+  const thread = Local.value<Replied>(`replies:${swarm}:${id}`)
+  return thread ? { at: 'ready', thread } : { at: 'loading' }
+}
+
 export function ChatThread(props: { config: Config | undefined; id: number; items?: Items | undefined; onClose: () => void; swarm: string }) {
   const id = props.id
   const swarm = props.swarm
   const wallet = useWallet()
   const now = useNow(60_000)
-  const [state, setState] = useState<Loaded>({ at: 'loading' })
+  const place = `thread:${swarm}:${id}`
+  const [state, setState] = useState<Loaded>(() => stored(swarm, id))
   const [picking, setPicking] = useState<{ anchor: HTMLElement; id: number }>()
   const [problem, setProblem] = useState<string>()
   const scroller = useRef<HTMLDivElement>(null)
@@ -38,7 +46,7 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
   const load = useCallback(
     async (after: number) => {
       try {
-        const got = await Api.replies(swarm, id, after)
+        const got = after ? await Api.replies(swarm, id, after) : await Local.load(`replies:${swarm}:${id}`, () => Api.replies(swarm, id, 0))
         setState((current) => (current.at === 'ready' && after ? { at: 'ready', thread: { ...got, replies: merge(current.thread.replies, got.replies) } } : { at: 'ready', thread: got }))
       } catch (error) {
         if (!after) setState({ at: 'failed', error: reason(error) })
@@ -48,15 +56,20 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
   )
 
   useEffect(() => {
-    setState({ at: 'loading' })
+    const kept = stored(swarm, id)
+    setState(kept)
     stick.current = true
-    void load(0)
+    void load(kept.at === 'ready' ? kept.thread.replies.at(-1)?.id ?? 0 : 0)
   }, [load])
 
   const update = (change: (thread: Replied) => Replied) => setState((current) => (current.at === 'ready' ? { at: 'ready', thread: change(current.thread) } : current))
 
+  useEffect(() => {
+    if (state.at === 'ready') Local.change<Replied>(`replies:${swarm}:${id}`, (current) => (current === state.thread ? current : state.thread))
+  }, [state])
+
   const reacted = (message: number, reactions: Reaction[]) =>
-    update((thread) => (thread.parent.id === message ? { ...thread, parent: { ...thread.parent, reactions } } : { ...thread, replies: thread.replies.map((item) => (item.id === message ? { ...item, reactions } : item)) }))
+    update((thread) => (thread.parent.id === message ? { ...thread, parent: { ...thread.parent, reactions: held(swarm, message, reactions) } } : { ...thread, replies: thread.replies.map((item) => (item.id === message ? { ...item, reactions: held(swarm, message, reactions) } : item)) }))
 
   Wire.useWire(swarm, 'room', (signal) => {
     if (signal.type === 'said' && signal.message.parent === id) update((thread) => ({ ...thread, next: Math.max(thread.next, signal.message.id), replies: merge(thread.replies, [signal.message]) }))
@@ -66,13 +79,19 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
   })
 
   const thread = state.at === 'ready' ? state.thread : undefined
-  const count = thread?.replies.length ?? 0
+  const drafts = Outbox.useDrafts(place)
+  const outbox = Outbox.shown(place, thread?.replies ?? [], drafts)
+  const landed = outbox.landed.join()
+  useEffect(() => {
+    for (const client of outbox.landed) Outbox.forget(client)
+  }, [landed])
+  const count = outbox.shown.length
   last.current = thread?.replies.at(-1)?.id ?? 0
 
   useLayoutEffect(() => {
     const element = scroller.current
     if (element && stick.current) element.scrollTop = element.scrollHeight
-  }, [count, state.at])
+  }, [count, state.at, outbox.shown.at(-1)?.client])
 
   const me = wallet.session?.address
   const member = !!thread?.me?.member
@@ -90,7 +109,7 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
     const before = message.reactions ?? []
     reacted(message.id, flip(before, emoji, me, on))
     setProblem(undefined)
-    send(swarm, message.id, emoji, on).then(
+    send(swarm, message.id, emoji, on, me).then(
       (reactions) => reacted(message.id, reactions),
       (error: unknown) => {
         reacted(message.id, before)
@@ -99,11 +118,11 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
     )
   }
 
-  const line = (item: Said, lead: boolean) => {
+  const line = (item: Outbox.Shown, lead: boolean) => {
     const author = item.author
-    const react = member ? (anchor: HTMLElement) => setPicking({ anchor, id: item.id }) : undefined
+    const react = member && !item.sending ? (anchor: HTMLElement) => setPicking({ anchor, id: item.id }) : undefined
     return (
-      <li className="msg" data-first="true" data-lead={lead || undefined} key={item.id} tabIndex={-1}>
+      <li className="msg" data-first="true" data-lead={lead || undefined} data-sending={item.sending} key={lead ? 'lead' : Outbox.key(item)} tabIndex={-1}>
         {author ? <Avatar address={author} handle={handleOf(author)} /> : <span aria-hidden="true" className="avatar avatar-ai">✦</span>}
         <div className="msg-col">
           <p className="msg-who">
@@ -112,6 +131,7 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
           </p>
           <div className="msg-bubble">{author ? <Markdown compact marks text={marked(item.text, handles, mine)} /> : <Inline text={item.text} />}</div>
           {lead && item.node && props.items && <Item items={props.items} node={item.node} />}
+          {item.sending === 'failed' && item.client && <Unsent client={item.client} error={item.error} />}
           <Chips me={me} name={named} onAdd={react} onToggle={member ? (emoji, on) => toggle(item, emoji, on) : undefined} reactions={item.reactions} />
         </div>
         <Acts onReact={react} />
@@ -136,12 +156,13 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
         ref={scroller}
       >
         {state.at === 'loading' && <p className="chat-empty">Loading…</p>}
+        {!thread && outbox.shown.length > 0 && <ol aria-label="Messages" className="talk chat-thread-list">{outbox.shown.map((item) => line(item, false))}</ol>}
         {state.at === 'failed' && <p className="chat-empty">Couldn't load the thread. {state.error}</p>}
         {thread && (
           <ol aria-label="Messages" className="talk chat-thread-list">
             {line(thread.parent, true)}
             <li aria-hidden="true" className="chat-thread-rule"><span>{count ? `${count} ${count === 1 ? 'reply' : 'replies'}` : 'No replies yet'}</span></li>
-            {thread.replies.map((item) => line(item, false))}
+            {outbox.shown.map((item) => line(item, false))}
           </ol>
         )}
       </div>
@@ -151,9 +172,9 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
         disabled={thread?.me && !member ? 'Ride this swarm to reply.' : undefined}
         label="Reply in thread"
         onPost={async (text) => {
-          const posted = await Api.say(swarm, { parent: id, text })
+          if (!me) return
           stick.current = true
-          update((current) => ({ ...current, replies: merge(current.replies, [posted.message]) }))
+          Outbox.send(place, { after: Math.max(id, last.current), author: me, parent: id, text })
         }}
         placeholder="Reply…"
       />

@@ -7,11 +7,13 @@ import * as Mention from '../shared/Mention.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Api from './api.ts'
 import { seeded } from './boot.ts'
+import * as Local from './local.ts'
+import * as Outbox from './outbox.ts'
 import { code } from './pay.ts'
 import { ago, day, minute, usd } from './format.ts'
 import { message as reason, useNow, useVisible, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
-import { Acts, Chips, flip, Picker, send } from './Reactions.tsx'
+import { Acts, Chips, flip, held, Picker, send } from './Reactions.tsx'
 import { Link } from './router.tsx'
 import { gate as gated, steerer, useRoster } from './Steering.tsx'
 import { Mark, word } from './Tree.tsx'
@@ -24,6 +26,35 @@ const roomMs = { closed: 15_000, open: 60_000 }
 const seatSteer = '1'
 
 const kept = new Map<string, { members: readonly Member[]; messages: readonly Said[] }>()
+
+function say(draft: Outbox.Draft) {
+  const swarm = draft.place.split(':')[1] ?? ''
+  return Api.say(swarm, { text: draft.text.trim(), ...(draft.parent !== undefined ? { parent: draft.parent } : {}), ...(draft.steer ? { steer: draft.steer.amount } : {}) }).then(
+    (posted) => posted.message,
+    (error: unknown) => {
+      if (code(error) === 'username_required') void Wallet.identify()
+      throw error
+    },
+  )
+}
+
+Outbox.define('room', say)
+
+Outbox.define('thread', say)
+
+export function steered(amount: string, note: string): Said['steer'] {
+  return { amount, backers: 1, live: true, note, noteId: '', share: 0, weight: '0' }
+}
+
+export function Unsent(props: { client: string; error: string | undefined }) {
+  return (
+    <p className="msg-unsent" role="alert">
+      <span>Not sent{props.error ? `: ${props.error}` : '.'}</span>
+      <button onClick={() => Outbox.retry(props.client)} type="button">Retry</button>
+      <button onClick={() => Outbox.forget(props.client)} type="button">Discard</button>
+    </p>
+  )
+}
 
 export function tint(address: string) {
   let value = 0
@@ -71,12 +102,12 @@ function merge(list: readonly Said[], more: readonly Said[]) {
 
 type Row =
   | { at: number; key: string; kind: 'day'; label: string }
-  | { at: number; count: number; item: Said; key: string; kind: 'ai'; artifact: Said['artifact']; text: string }
+  | { at: number; count: number; item: Outbox.Shown; key: string; kind: 'ai'; artifact: Said['artifact']; text: string }
   | { at: number; count: number; key: string; kind: 'idle'; text: string }
   | { at: number; key: string; kind: 'backed'; note: string | undefined; text: string }
-  | { at: number; first: boolean; item: Said; key: string; kind: 'said'; last: boolean }
+  | { at: number; first: boolean; item: Outbox.Shown; key: string; kind: 'said'; last: boolean }
 
-function rows(messages: readonly Said[], now: number): Row[] {
+function rows(messages: readonly Outbox.Shown[], now: number): Row[] {
   const shown = messages.filter((item) => item.author || item.artifact || item.text.startsWith('Update: ') || backing(item.text))
   const out: Row[] = []
   let label = ''
@@ -87,7 +118,7 @@ function rows(messages: readonly Said[], now: number): Row[] {
       out.push({ at: item.at, key: `d${item.id}`, kind: 'day', label })
     }
     if (item.artifact || !item.author) {
-      if (item.artifact) out.push({ artifact: item.artifact, at: item.at, count: 1, item, key: `m${item.id}`, kind: 'ai', text: item.text.replace(/^New artifact: /, '') })
+      if (item.artifact) out.push({ artifact: item.artifact, at: item.at, count: 1, item, key: Outbox.key(item), kind: 'ai', text: item.text.replace(/^New artifact: /, '') })
       else if (item.text.startsWith('Update: ')) {
         const text = item.text.slice(8)
         const before = out.at(-1)
@@ -100,7 +131,7 @@ function rows(messages: readonly Said[], now: number): Row[] {
     const previous = shown[index - 1]
     const next = shown[index + 1]
     const joined = (a: Said | undefined, b: Said | undefined) => !!a && !!b && a.author === b.author && b.at - a.at < 5 * 60_000 && day(a.at, now) === day(b.at, now) && !a.steer && !b.steer
-    out.push({ at: item.at, first: !joined(previous, item), item, key: `m${item.id}`, kind: 'said', last: !joined(item, next) })
+    out.push({ at: item.at, first: !joined(previous, item), item, key: Outbox.key(item), kind: 'said', last: !joined(item, next) })
   })
   return out
 }
@@ -151,10 +182,10 @@ export function Item(props: { items: Items; node: string }) {
   )
 }
 
-export function ThreadLink(props: { lit: boolean; name: (address: string) => string; now: number; onOpen: () => void; replies: Replies }) {
+export function ThreadLink(props: { lit: boolean; name: (address: string) => string; now: number; onOpen: () => void; onWarm?: () => void; replies: Replies }) {
   const replies = props.replies
   return (
-    <button aria-pressed={props.lit} className="msg-thread" onClick={props.onOpen} type="button">
+    <button aria-pressed={props.lit} className="msg-thread" onClick={props.onOpen} onFocus={props.onWarm} onPointerEnter={props.onWarm} onTouchStart={props.onWarm} type="button">
       <span className="msg-thread-faces">
         {replies.who.map((address, index) =>
           address === null ? (
@@ -187,7 +218,7 @@ export const Room = memo(function Room(props: {
   const id = props.swarm.id
   const wallet = useWallet()
   const token = wallet.session?.token
-  const [seed] = useState(() => kept.get(id) ?? seeded<RoomState>(`room:${id}`))
+  const [seed] = useState(() => kept.get(id) ?? Local.value<RoomState>(`room:${id}`) ?? seeded<RoomState>(`room:${id}`))
   const [messages, setMessages] = useState<readonly Said[]>(() => seed?.messages ?? [])
   const [members, setMembers] = useState<readonly Member[]>(() => seed?.members ?? [])
   const [me, setMe] = useState<Me | null>(null)
@@ -205,7 +236,6 @@ export const Room = memo(function Room(props: {
   const [caret, setCaret] = useState(0)
   const [pick, setPick] = useState(0)
   const [closed, setClosed] = useState(false)
-  const [sending, setSending] = useState(false)
   const [signing, setSigning] = useState(false)
   const [problem, setProblem] = useState<{ short?: boolean; text: string }>()
   const [fresh, setFresh] = useState(0)
@@ -218,7 +248,7 @@ export const Room = memo(function Room(props: {
   const typed = useRef(0)
   const fetched = useRef(0)
 
-  const setReactions = (message: number, reactions: Reaction[]) => setMessages((previous) => (previous.some((item) => item.id === message) ? previous.map((item) => (item.id === message ? { ...item, reactions } : item)) : previous))
+  const setReactions = (message: number, reactions: Reaction[]) => setMessages((previous) => (previous.some((item) => item.id === message) ? previous.map((item) => (item.id === message ? { ...item, reactions: held(id, message, reactions) } : item)) : previous))
 
   const load = useCallback(
     async (after: number) => {
@@ -250,11 +280,13 @@ export const Room = memo(function Room(props: {
   useEffect(() => {
     last.current = messages.at(-1)?.id ?? 0
     kept.set(id, { members, messages })
+    Local.change<RoomState>(`room:${id}`, (room) => (room && room.messages === messages && room.members === members ? room : { me: null, next: 0, ...room, members: [...members], messages: [...messages] }))
   }, [id, members, messages])
 
   const [connected, setConnected] = useState(() => Wire.connected(id))
   const wired = Wire.useWire(id, 'room', (signal) => {
     if (signal.type === 'open' || signal.type === 'closed') setConnected(signal.type === 'open')
+    if (signal.type === 'open') Outbox.resume()
     if (signal.type === 'said' && signal.message.parent === undefined) setMessages((previous) => merge(previous, [signal.message]))
     if (signal.type === 'reacted') setReactions(signal.id, signal.reactions)
     if (signal.type === 'replies') setMessages((previous) => (previous.some((item) => item.id === signal.id) ? previous.map((item) => (item.id === signal.id ? { ...item, replies: signal.replies } : item)) : previous))
@@ -301,7 +333,14 @@ export const Room = memo(function Room(props: {
     onMessages?.(messages, me, members, online, watching)
   }, [messages, me, members, online, watching, onMessages])
 
-  const newest = messages.at(-1)?.id
+  const drafts = Outbox.useDrafts(`room:${id}`)
+  const outbox = Outbox.shown(`room:${id}`, messages, drafts)
+  const landed = outbox.landed.join()
+  useEffect(() => {
+    for (const client of outbox.landed) Outbox.forget(client)
+  }, [landed])
+  const tail = outbox.shown.at(-1)
+  const newest = tail ? Outbox.key(tail) : undefined
 
   useLayoutEffect(() => {
     const element = list.current
@@ -382,48 +421,30 @@ export const Room = memo(function Room(props: {
     focus(at)
   }
 
-  const post = async (body: string) => {
-    setSending(true)
+  const post = (body: string, steer?: Said['steer']) => {
+    if (!mine) return
     setProblem(undefined)
-    try {
-      const posted = await Api.say(id, { text: body })
-      setMe(posted.me)
-      setMessages((previous) => merge(previous, [posted.message]))
-      stick.current = true
-      setFresh(0)
-      setText('')
-      setCaret(0)
-    } catch (error) {
-      if (code(error) === 'username_required') void Wallet.identify()
-      setProblem({ short: code(error) === 'insufficient_balance', text: reason(error) })
-    } finally {
-      setSending(false)
-    }
+    stick.current = true
+    setFresh(0)
+    setText('')
+    setCaret(0)
+    setAi(false)
+    Outbox.send(`room:${id}`, { after: last.current, author: mine.address, steer: steer ?? undefined, text: body })
   }
 
-  const tell = async (note: string, left: string | null) => {
+  const tell = (note: string, left: string | null) => {
     const amount = left !== null && units(left) >= Mention.smallestSteer && units(left) < units(seatSteer) ? left : seatSteer
-    setSending(true)
-    setProblem(undefined)
-    try {
-      const posted = await Api.say(id, { steer: amount, text: `@swarm ${note}` })
-      setMe(posted.me)
-      setMessages((previous) => merge(previous, [posted.message]))
-      stick.current = true
-      setFresh(0)
-      setText('')
-      setCaret(0)
-      setAi(false)
-    } catch (error) {
-      setProblem({ text: reason(error) })
-    } finally {
-      setSending(false)
-    }
+    post(`@swarm ${note}`, steered(amount, note))
   }
+
+  const told = drafts.filter((draft) => draft.steer && draft.state === 'sent').length
+  useEffect(() => {
+    if (told) void load(last.current)
+  }, [told])
 
   const submit = () => {
     const body = text.trim()
-    if (!body || sending || !mine) return
+    if (!body || !mine) return
     if (steering && asks) {
       if (idea.length < 3) return setProblem({ text: 'Say what the swarm should do.' })
       setProblem(undefined)
@@ -437,14 +458,14 @@ export const Room = memo(function Room(props: {
       if (!helm) return setProblem({ text: 'Only the riders who steer this swarm tell the AI what to do.' })
       if (idea.length < 3) return setProblem({ text: 'Say what the AI should try.' })
       if (idea.length > maxNote) return setProblem({ text: `Keep it under ${maxNote} characters.` })
-      if (typeof door === 'object' && door.at === 'open' && door.from === 'team') return void tell(idea, door.left)
+      if (typeof door === 'object' && door.at === 'open' && door.from === 'team') return tell(idea, door.left)
       setProblem(undefined)
       setText('')
       setCaret(0)
       setAi(false)
       return props.onBack(idea)
     }
-    void post(body)
+    post(body)
   }
 
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -501,18 +522,18 @@ export const Room = memo(function Room(props: {
     })
   }
 
-  const listed = rows(messages, now)
+  const listed = rows(outbox.shown, now)
   const named = (address: string) => {
     const handle = handleOf(address)
     return handle.startsWith('0x') ? Mention.short(address) : `@${handle}`
   }
-  const react = mine ? (item: Said) => (anchor: HTMLElement) => setPicking({ anchor, id: item.id }) : undefined
-  const reply = props.onThread ? (item: Said) => () => props.onThread?.(item.id) : undefined
+  const react = mine ? (item: Outbox.Shown) => (item.sending ? undefined : (anchor: HTMLElement) => setPicking({ anchor, id: item.id })) : undefined
+  const reply = props.onThread ? (item: Outbox.Shown) => (item.sending ? undefined : () => props.onThread?.(item.id)) : undefined
   const toggle = (item: Said, emoji: string, on: boolean) => {
     if (!mine) return
     const before = item.reactions ?? []
     setReactions(item.id, flip(before, emoji, mine.address, on))
-    send(id, item.id, emoji, on).then(
+    send(id, item.id, emoji, on, mine.address).then(
       (reactions) => setReactions(item.id, reactions),
       (error: unknown) => {
         setReactions(item.id, before)
@@ -520,11 +541,12 @@ export const Room = memo(function Room(props: {
       },
     )
   }
-  const under = (item: Said) => (
+  const under = (item: Outbox.Shown) => (
     <>
+      {item.sending === 'failed' && item.client && <Unsent client={item.client} error={item.error} />}
       {item.node && props.items && <Item items={props.items} node={item.node} />}
       <Chips me={mine?.address} name={named} onAdd={react?.(item)} onToggle={mine ? (emoji, on) => toggle(item, emoji, on) : undefined} reactions={item.reactions} />
-      {item.replies && props.onThread && <ThreadLink lit={props.thread === item.id} name={named} now={now} onOpen={() => props.onThread?.(item.id)} replies={item.replies} />}
+      {item.replies && props.onThread && <ThreadLink lit={props.thread === item.id} name={named} now={now} onOpen={() => props.onThread?.(item.id)} onWarm={() => Local.warm(`replies:${id}:${item.id}`, () => Api.replies(id, item.id))} replies={item.replies} />}
     </>
   )
   const picked = picking ? messages.find((item) => item.id === picking.id) : undefined
@@ -608,7 +630,7 @@ export const Room = memo(function Room(props: {
           rows={1}
           value={text}
         />
-        <button aria-label={steering ? (asks ? 'Add it to the board' : 'Steer it') : 'Send'} className="chat-send" data-ai={steering} disabled={!text.trim() || sending} onClick={submit} ref={sender} type="button">
+        <button aria-label={steering ? (asks ? 'Add it to the board' : 'Steer it') : 'Send'} className="chat-send" data-ai={steering} disabled={!text.trim()} onClick={submit} ref={sender} type="button">
           {steering ? (asks ? 'Add it' : 'Steer it') : '↑'}
         </button>
       </div>
@@ -681,9 +703,9 @@ export const Room = memo(function Room(props: {
           const item = row.item
           const author = item.author ?? ''
           const handle = handleOf(author)
-          const self = author === me?.address
+          const self = !!author && author.toLowerCase() === (me?.address ?? mine?.address ?? '').toLowerCase()
           return (
-            <div className="msg" data-first={row.first} data-last={row.last} data-lit={props.thread === item.id || undefined} data-me={self} data-mentioned={!!me && item.mentions.includes(me.address)} key={row.key} tabIndex={-1}>
+            <div className="msg" data-first={row.first} data-last={row.last} data-lit={props.thread === item.id || undefined} data-me={self} data-mentioned={!!me && item.mentions.includes(me.address)} data-sending={item.sending} key={row.key} tabIndex={-1}>
               {row.first ? <Avatar address={author} handle={handle} /> : <span className="avatar-gap" />}
               <div className="msg-col">
                 {row.first && <p className="msg-who"><b style={{ color: tint(author) }}>{handle.startsWith('0x') ? Mention.short(author) : handle}</b><time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time></p>}
