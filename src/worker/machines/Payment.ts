@@ -169,6 +169,18 @@ export function audit(rows: readonly { amount: bigint; contributor: string; kind
   return { held, negative, pledged, spent }
 }
 
+export function raised(rows: readonly { amount: bigint; kind: string; run: string | null }[]) {
+  let pledged = 0n
+  let spent = 0n
+  let reserved = 0n
+  for (const row of rows) {
+    if (row.kind === 'pledge') pledged += row.amount
+    if (row.kind === 'spend') spent -= row.amount
+    if (row.run !== null) reserved += row.amount
+  }
+  return spent <= pledged && spent + reserved <= pledged
+}
+
 export function balanced(found: Audit) {
   return found.negative.length === 0 && found.held === found.pledged - found.spent
 }

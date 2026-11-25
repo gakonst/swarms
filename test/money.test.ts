@@ -182,3 +182,9 @@ test('a backing that paid past its limit counts at what it paid on every refresh
   await Money.refresh(ended.self, row, { credit: true, hands: false })
   assert.equal(ended.writes.filter((write) => write.sql.startsWith('update contributions set amount')).length, 0)
 })
+
+test('what a swarm may dispatch is the smaller of what the gateway can pay and what riders raised less what was spent', () => {
+  assert.equal(Money.room(5_000_000n, { balance: 10_000_000, spent: 8_000_000 }), 2_000_000n)
+  assert.equal(Money.room(5_000_000n, { balance: 10_000_000, spent: 2_000_000 }), 5_000_000n)
+  assert.equal(Money.room(80_341n, { balance: 46_372_107, spent: 47_291_766 }), -919_659n)
+})

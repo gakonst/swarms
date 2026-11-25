@@ -65,7 +65,7 @@ function scheduler(rand: () => number, crashRate: number) {
   return { gate, rate, run }
 }
 
-type Act = { amount: bigint; contributor: string; from: string | null; id: string; key: string; kind: 'move' | 'pledge' | 'spend'; to: string | null }
+type Act = { amount: bigint; contributor: string; from: string | null; fromRun?: string; id: string; key: string; kind: 'commit' | 'move' | 'pledge' | 'spend'; to: string | null; toRun?: string }
 
 type Write = (env: Cloudflare.Env, input: Parameters<typeof Flow.write>[1], gate: () => Promise<void>) => Promise<boolean>
 
@@ -96,9 +96,17 @@ async function simulate(seed: number, options: { crash?: number; write?: Write }
     const to = pick(nodes.filter((node) => node !== from))
     acts.push({ amount: BigInt(1 + Math.floor(rand() * 6)) * 1_000_000n, contributor: pick(riders), from, id: '', key: 'k' + seed + 'x' + n, kind: 'move', to })
   }
-  for (let n = 0; n < 2; n++) acts.push({ amount: 500_000n, contributor: pick(riders), from: pick(nodes), id: 'spend:' + seed + n, key: 'spend' + n, kind: 'spend', to: null })
+  for (let n = 0; n < 2; n++) acts.push({ amount: BigInt(1 + Math.floor(rand() * 12)) * 1_000_000n, contributor: pick(riders), from: pick(nodes), id: 'spend:' + seed + n, key: 'spend' + n, kind: 'spend', to: null })
+  for (let n = 0; n < 4; n++) {
+    const node = pick(nodes)
+    const run = node + ':r' + n
+    const contributor = pick(riders)
+    acts.push({ amount: BigInt(1 + Math.floor(rand() * 8)) * 1_000_000n, contributor, from: node, id: 'commit:' + seed + n, key: 'commit' + n, kind: 'commit', to: node, toRun: run })
+    acts.push({ amount: BigInt(1 + Math.floor(rand() * 20)) * 500_000n, contributor, from: node, fromRun: run, id: 'used:' + seed + n, key: 'used' + n, kind: 'spend', to: null })
+  }
   const answers = new Map<string, string[]>()
   const ledgerOk: boolean[] = []
+  const withinRaised: boolean[] = []
 
   const used = new Map<string, Set<string>>()
   const attempt = async (act: Act) => {
@@ -111,9 +119,10 @@ async function simulate(seed: number, options: { crash?: number; write?: Write }
       {
         write: async () => {
           await gate()
-          const wrote = await write(d1.env, { from: act.from === null ? null : { node: act.from, run: null }, id, kind: act.kind, parts: [[act.contributor, act.amount]], swarm: 's1', to: act.to === null ? null : { node: act.to, run: null } }, gate)
-          const audit = Payment.audit(await Flow.rows(d1.env, 's1'))
-          ledgerOk.push(Payment.balanced(audit))
+          const wrote = await write(d1.env, { from: act.from === null ? null : { node: act.from, run: act.fromRun ?? null }, id, kind: act.kind, parts: [[act.contributor, act.amount]], swarm: 's1', to: act.to === null ? null : { node: act.to, run: act.toRun ?? null } }, gate)
+          const rows = await Flow.rows(d1.env, 's1')
+          ledgerOk.push(Payment.balanced(Payment.audit(rows)))
+          withinRaised.push(Payment.raised(rows))
           await gate()
           return wrote
         },
@@ -153,6 +162,7 @@ async function simulate(seed: number, options: { crash?: number; write?: Write }
   const flows = d1.sqlite.prepare("select id from flows where swarm = 's1'").all().map((row) => String(row['id']))
   const faults: string[] = []
   if (ledgerOk.includes(false) || !Payment.balanced(audit)) faults.push('ledger')
+  if (withinRaised.includes(false) || !Payment.raised(rows)) faults.push('overspent')
   for (const act of acts) {
     const said = answers.get(act.key) ?? []
     const effects = kv.get<number>('fx:' + act.key) ?? 0
@@ -245,6 +255,16 @@ test('mutant: a move keyed per attempt instead of by the rider\'s key moves mone
 
 test('mutant: effects run by every attempt that finds its write instead of the one that closes it run twice, and the simulation catches it', async () => {
   assert.match(await red(off('closed')), /effects \S+ 2/)
+})
+
+test('mutant: a reservation or spend that lands without checking what its bucket holds spends more than riders sent, and the simulation catches it', async () => {
+  assert.match(
+    await red(() => {
+      Flow.guards.covered = false
+      return () => void (Flow.guards.covered = true)
+    }),
+    /overspent/,
+  )
 })
 
 test('mutant: a ledger write that reads the balance and then writes, instead of one balance-checked insert, overdraws, and the simulation catches it', async () => {
@@ -377,4 +397,15 @@ test('a ledger write with one contributor twice is checked against their whole a
   assert.equal(await Flow.write(env, { from: null, id: 'h', kind: 'pledge', parts: [[ana, 3n]], swarm: 's1', to: { node: 'root', run: null } }), true)
   assert.equal(await Flow.write(env, { from: { node: 'root', run: null }, id: 'm', kind: 'move', parts: [[ana, 2n], [ana.toUpperCase().replace('0X', '0x'), 2n]], swarm: 's1', to: { node: 'n1', run: null } }), false)
   assert.equal(Payment.balanced(Payment.audit(await Flow.rows(env, 's1'))), true)
+})
+
+test('a backing is never lowered below what the swarm has spent', async () => {
+  const d1 = world()
+  const ana = riders[0] as string
+  await Store.give(d1.env, { amount: '10000000', channel: '0xkey', contributor: ana, id: 'backing:0xkey', note: null, note_id: null, swarm: 's1', token: 'mach' })
+  d1.sqlite.exec("update swarms set sponsor_spent = 8000000 where id = 's1'")
+  assert.equal(await Store.lower(d1.env, 's1', 'backing:0xkey', '7000000', '10000000'), null)
+  assert.equal((await Store.gift(d1.env, 'backing:0xkey'))?.amount, '10000000')
+  assert.notEqual(await Store.lower(d1.env, 's1', 'backing:0xkey', '8000000', '10000000'), null)
+  assert.equal((await Store.gift(d1.env, 'backing:0xkey'))?.amount, '8000000')
 })

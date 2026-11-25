@@ -80,7 +80,7 @@ test('a swarm paused for money reads its credit once its calls are over, and goe
     }
     return { requests, run: () => run, settle: () => Turns.settle(self as never, row, run as Phase.Paused) }
   }
-  const row = { balance: 10_000_000, id: 'abc123abc123', machines: 0, pool_left: Number(left('0.03')), pool_spent: 0, setup: null, sponsor_left: 0, spent: 0 } as never
+  const row = { balance: 10_000_000, id: 'abc123abc123', machines: 0, pool_left: Number(left('0.03')), pool_spent: 0, setup: null, sponsor_left: 0, sponsor_spent: 0, spent: 0 } as never
   const pause = { left: '30000', wake: null, why: 'money' } as const
 
   const early = swarm('0.03', pause, now - 5_000)

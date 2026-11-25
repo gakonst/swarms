@@ -10,6 +10,8 @@ export type Row = { amount: bigint; contributor: string; first: number; kind: Ki
 
 export const free = ''
 
+export const guards = { covered: true }
+
 export async function write(env: Cloudflare.Env, input: { at?: number; from: Bucket | null; id: string; kind: Kind; parts: readonly Part[]; swarm: string; to: Bucket | null }) {
   const merged = new Map<string, bigint>()
   for (const [contributor, amount] of input.parts) if (amount > 0n) merged.set(contributor.toLowerCase(), (merged.get(contributor.toLowerCase()) ?? 0n) + amount)
@@ -29,10 +31,10 @@ export async function write(env: Cloudflare.Env, input: { at?: number; from: Buc
     insert into flows (id, swarm, node, run, contributor, amount, kind, peer, created_at)
     select ?2 || ':' || ?3 || ':' || p.contributor || ':' || l.leg, ?2, l.node, l.run, p.contributor, l.sign * p.amount, ?4, l.peer, ?9
     from parts p, legs l
-    where ?5 is null or (select n from covered) = (select count(*) from parts)
+    where ?5 is null or ?10 = 0 or (select n from covered) = (select count(*) from parts)
     on conflict (id) do nothing`,
   )
-    .bind(JSON.stringify(parts), input.swarm, input.id, input.kind, input.from?.node ?? null, input.from?.run ?? null, input.to?.node ?? null, input.to?.run ?? null, input.at ?? Date.now())
+    .bind(JSON.stringify(parts), input.swarm, input.id, input.kind, input.from?.node ?? null, input.from?.run ?? null, input.to?.node ?? null, input.to?.run ?? null, input.at ?? Date.now(), guards.covered ? 1 : 0)
     .run()
   return result.meta.changes > 0
 }

@@ -96,6 +96,7 @@ Hazard: **High** loses money, folds a result twice or wedges a swarm; **Medium**
 | Fund a branch | `Operations.fund` `src/worker/Operations.ts:1277-1351` | Inserts the steer, calls the object, and on failure deletes it (`Store.unsteer`, `:1345`): a Worker that dies in between leaves money behind a branch the gateway never budgeted. **Fixed for keyed requests:** a fund with `key` inserts its steer once by id (`on conflict do nothing`), and its retry finds it (`Store.placed`) and sets the gateway budget again (an absolute value), so a death in between heals on the page's retry; the room line is said only by the request that placed it. Without a key it is as before | Medium (keyed fixed) |
 | Contribution | `Operations.contribute` `src/worker/Operations.ts:1709` | `Store.give` keyed by the transaction hash, then the object call; the tree path calls `treePledge` every time (`:1736`), which is idempotent through `Flow.write`'s id; a Worker that dies after `give` and before `contributed` loses the room announcement, not money. **Fixed:** `Swarm.contributed` logs and announces once per hash (`Payment.once`, kv `told:<kind>:<hash>`, in the same synchronous step), and a retry of a counted hash calls the new `counted` (falls back to `funded`), so a lost announcement is made by the page's next retry and never twice; `Riding.pledge` runs its effects once per hash the same way (`Payment.settle`) | Low (fixed) |
 | Backing lowered to what it can pay | `Money.settle`, `Store.lower` `src/worker/Store.ts:413` | Two refreshes (the alarm and a request) each read the backing and the gateway, then wrote the amount blind: an older read landing after a newer one raised it back. **Fixed:** `lower` is a compare-and-set on the amount it read (`and amount = ?4`), and its steer take-back runs only when the update did (`changes() > 0`) | Medium (fixed) |
+| Backing lowered under what the swarm spent | `Money.settle`, `Store.lower` | A backing that paid past its limit was lowered to `spent + left` on one refresh and raised back on the next, so raised fell under spent (Fermat, 6f4541d2f211, $-0.919659 left at 8ab64b3). **Fixed:** 5edf802 counts a backing at least at what it paid, and `lower` lands only if the swarm's contributions still add up to at least `pool_spent + sponsor_spent + spent_before`, in the same statement | High (fixed) |
 | One rider twice in a ledger write | `Flow.write` `src/worker/Flow.ts:13` | Each part was checked alone against the bucket, so a write naming one contributor twice could overdraw. **Fixed:** parts are merged by contributor first | Low (fixed) |
 | Hands rows | `Hands.free` `src/worker/Hands.ts:138` | D1 first, then the board: a failure leaves the claim, retried on the next issue: intended  **Fenced:** each write compares the row's state: `seen_at` moves only on a row not returned, a failed mint deletes only a row never seen or returned, and a removal deletes only a returned row, so a stale listing cannot revive a returned hand | Low (fixed) |
 
@@ -121,6 +122,16 @@ Hazard: **High** loses money, folds a result twice or wedges a swarm; **Medium**
 |---|---|---|
 | Swarm alarm | `Swarm.alarm` `src/worker/Swarm.ts:698` | Re-armed by `getAlarm` then `setAlarm` pairs in nine places (`Swarm.wake`, `funded`, `heal`, `plant`, `Turns.pause`, `Riding.arm`, `Runner.arm`, `Feed`), each an await apart, so two of them can both read the old alarm and the later of two times wins. Every one only moves the alarm earlier or to now, and the step recomputes its next time, so the cost is an extra wake, not a lost one, except when `stepping` is held and the alarm returns without re-arming. **Fixed for that case:** `stepping` is gone, so the agent swarm's alarm always re-arms from its step | Low (fixed for the agent form) |
 | Lobby alarm | `Lobby.alarm` `src/worker/Lobby.ts:106` | Coalescing only | Low |
+
+### Spent never exceeds raised
+
+The gateway pays a swarm's calls from its approvals and credit itself; there is no payer callback in Swarms to reserve in. What Swarms dispatches or counts keeps spent ≤ raised:
+
+- A turn is dispatched only when the step's reserve fits under the smaller of what the gateway can pay and raised less spent (`Money.room`).
+- A contribution is never lowered under what the swarm spent (`Store.lower`, one statement).
+- A tree run reserves its money (`commit`) before its subagent is spawned, its budgets come from that reservation, and settling returns the rest; reservations and spends are rows in one balance-checked insert, so concurrent runs see each other's.
+
+`test/payment.test.ts` checks spent ≤ raised and spent + reserved ≤ raised after every write (mutant: `Flow.guards.covered` off), and the load simulation checks it per swarm at every gateway spend, spawn and budget (`overspent`).
 
 ### Version skew
 

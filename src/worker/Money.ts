@@ -103,7 +103,7 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
     Number(row.pool_spent) === pool.pool_spent &&
     Number(row.sponsor_left) === pool.sponsor_left &&
     Number(row.sponsor_spent) === pool.sponsor_spent
-  if (same && !settled) return { known, left, listed, row }
+  if (same && !settled) return { known, left: room(left, row), listed, row }
 
   if (!same) await Store.update(self.env, row.id, pool)
   const paid = Number(row.spent) - Number(row.pool_spent) - Number(row.sponsor_spent) + pool.pool_spent + pool.sponsor_spent
@@ -111,7 +111,12 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   self.remember(updated)
   self.beacon(updated)
   if (settled) self.changed('detail', 'members')
-  return { known, left, listed, row: updated }
+  return { known, left: room(left, updated), listed, row: updated }
+}
+
+export function room(left: bigint, row: Pick<Store.Row, 'balance' | 'spent'>) {
+  const remaining = BigInt(row.balance) - BigInt(row.spent)
+  return left < remaining ? left : remaining
 }
 
 export async function recover(self: Swarm, row: Store.Row, deposited: string) {

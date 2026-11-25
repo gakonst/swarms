@@ -27,7 +27,7 @@ export type Options = { activeMs: number; children: number; deadlineMs: number; 
 
 export const defaults: Options = { activeMs: 45 * 60_000, children: 6, deadlineMs: 15 * 60_000, faults: faultNames, offset: 0, pledges: 6, seed: '1', swarms: 4, tailMs: 4 * 60 * 60_000 }
 
-export type Invariant = 'duplicate fold' | 'lost result' | 'ledger drift' | 'negative balance' | 'missed deadline' | 'stuck without wake' | 'unfinished at end' | 'lost pledge' | 'leaked subagent' | 'unexpected error'
+export type Invariant = 'duplicate fold' | 'lost result' | 'ledger drift' | 'negative balance' | 'missed deadline' | 'stuck without wake' | 'unfinished at end' | 'lost pledge' | 'leaked subagent' | 'overspent' | 'unexpected error'
 
 export type Violation = { detail: string; invariant: Invariant; swarm: number }
 
@@ -218,6 +218,7 @@ type SimSwarm = {
   index: number
   keyed: Map<string, Sub>
   moves: number
+  overspent: string | null
   pledges: Pledge[]
   random: { drive: Rng; faults: Rng; gateway: Rng }
   redeliveries: number
@@ -610,6 +611,24 @@ function output(sim: Sim, sw: SimSwarm, sub: Sub) {
   return { children, commit: null, outcome, summary: sub.summary, theorem: null, why: null }
 }
 
+function raised(sim: Sim, sw: SimSwarm, at: string) {
+  if (sw.overspent) return
+  const row = sim.db.sqlite
+    .prepare("select coalesce(sum(case when kind = 'pledge' then amount else 0 end), 0) as pledged, coalesce(sum(case when kind = 'spend' then -amount else 0 end), 0) as spent from flows where swarm = ?")
+    .get(sw.id) as { pledged: number; spent: number }
+  const pledged = BigInt(row.pledged)
+  let charged = 0n
+  let allowed = 0n
+  for (const sub of sw.subs) {
+    charged += sub.spent
+    allowed += sub.state === 'running' && sub.budget > sub.spent ? sub.budget : sub.spent
+  }
+  const when = 'at +' + Math.round((sim.clock.now - start) / 1000) + 's (' + at + ')'
+  if (BigInt(row.spent) > pledged) sw.overspent = 'the ledger spent ' + decimal(BigInt(row.spent)) + ' of ' + decimal(pledged) + ' raised ' + when
+  else if (charged > pledged) sw.overspent = 'the gateway charged ' + decimal(charged) + ' of ' + decimal(pledged) + ' raised ' + when
+  else if (allowed > pledged) sw.overspent = 'the gateway was allowed ' + decimal(allowed) + ' of ' + decimal(pledged) + ' raised ' + when
+}
+
 function life(sim: Sim, sw: SimSwarm, sub: Sub) {
   const step = () => {
     if (sub.state !== 'running') return
@@ -623,6 +642,7 @@ function life(sim: Sim, sw: SimSwarm, sub: Sub) {
     const room = sub.budget - sub.spent
     const spend = BigInt(sw.random.gateway.int(1_000, 400_000))
     sub.spent += spend < room ? spend : room > 0n ? room : 0n
+    raised(sim, sw, sub.summary + ' spent')
     if (sub.spent >= sub.budget) {
       sub.blocked ??= sim.clock.now
       if (sim.clock.now - sub.blocked > 10 * 60_000) {
@@ -681,6 +701,7 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation, request: Reques
     }
     sw.subs.push(sub)
     if (key) sw.keyed.set(key, sub)
+    raised(sim, sw, sub.summary + ' spawned')
     changed(sim, sw, sub)
     life(sim, sw, sub)
     return Response.json({ agent: rawSub(sub), created: true }, { status: 201 })
@@ -697,6 +718,7 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation, request: Reques
     if (one[2] === 'budget') {
       sub.budget = micro(body['budget_usd'])
       if (sub.budget > sub.spent) sub.blocked = null
+      raised(sim, sw, sub.summary + ' budgeted')
       changed(sim, sw, sub)
       return Response.json({ agent: rawSub(sub) })
     }
@@ -871,6 +893,7 @@ async function check(sim: Sim, sw: SimSwarm, violations: Violation[]) {
   const listed = open.map((task) => task.id + ' ' + task.phase).join(', ')
   if (open.length && alarm === null) add('stuck without wake', `${listed} open with no alarm set`)
   else if (open.length) add('unfinished at end', `${listed} still open ${Math.round(sim.options.tailMs / 60_000)} minutes after the last fault`)
+  if (sw.overspent) add('overspent', sw.overspent)
   for (const pledge of sw.pledges) if (pledge.acked === null) add('lost pledge', `${pledge.hash.slice(0, 10)} for ${decimal(pledge.amount)} was never acknowledged`)
   const rows = await Flow.rows(sim.db.env, sw.id)
   const totals = Flow.totals(rows)
@@ -911,6 +934,7 @@ export async function simulate(input: Partial<Options> = {}): Promise<Report> {
         index,
         keyed: new Map(),
         moves: 0,
+        overspent: null,
         pledges: [],
         random: { drive: rng(options.seed, index, 'drive'), faults: rng(options.seed, index, 'faults'), gateway: rng(options.seed, index, 'gateway') },
         redeliveries: 0,
