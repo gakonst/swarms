@@ -819,13 +819,15 @@ export async function cli(root: string, world: World): Promise<Row[]> {
     })
     const ms = performance.now() - started
     let parsed = args[0] === '--version'
+    let refused = false
     if (!parsed) {
       try {
-        JSON.parse(done.stdout)
+        const read = JSON.parse(done.stdout) as { error?: { code?: unknown } }
         parsed = true
+        refused = args[0] === 'byok' && done.code === 1 && read.error?.code === 'unauthorized'
       } catch {}
     }
-    const ok = done.code === 0 && parsed
+    const ok = (done.code === 0 && parsed) || refused
     rows.push({ method: 'CLI', ms: Math.round(ms), note: ok ? done.stdout.replace(/\s+/g, ' ').slice(0, 70) : (done.stdout + done.stderr).replace(/\s+/g, ' ').slice(0, 120), ok, patient: true, route: `swarms ${args.map((arg) => (arg === swarm ? '<swarm>' : arg === world.tree ? '<tree>' : arg)).join(' ')}`, samples: [ms], server: undefined, signed: 'out', status: done.code ?? 'killed' })
   }
   return rows
