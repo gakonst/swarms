@@ -49,7 +49,15 @@ function preloads(): Plugin {
 
 function unhighlighted(): Plugin {
   const stub = fileURLToPath(new URL('./src/worker/Languages.ts', import.meta.url))
-  return { applyToEnvironment: (environment) => environment.name === 'swarms', enforce: 'pre', name: 'swarms-unhighlighted', resolveId: (id) => (id === 'shiki/langs' ? stub : undefined) }
+  const absent = fileURLToPath(new URL('./src/worker/Absent.ts', import.meta.url))
+  const unused = (id: string, importer = '') =>
+    ['shiki/wasm', 'shiki/engine/oniguruma', 'shiki/engine/javascript', '@pierre/theming/themes'].includes(id) || id.startsWith('@shikijs/themes/') || (id === './fixtures.ts' && importer.includes('/src/web/'))
+  return {
+    applyToEnvironment: (environment) => environment.name === 'swarms',
+    enforce: 'pre',
+    name: 'swarms-unhighlighted',
+    resolveId: (id, importer) => (id === 'shiki/langs' ? stub : unused(id, importer) ? absent : undefined),
+  }
 }
 
 export default defineConfig(({ command }) => {
