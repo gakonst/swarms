@@ -1,6 +1,7 @@
 import { Handler } from 'nanocode-ts/feedback/server'
 import { z } from 'zod'
 import * as Site from '../shared/Site.ts'
+import * as Gateway from './Gateway.ts'
 import * as Problem from './Problem.ts'
 import * as Store from './Store.ts'
 
@@ -12,13 +13,19 @@ export function feedback(env: Cloudflare.Env) {
   handler ??= Handler.feedback({
     accept: (context) => [new URL(context.request.url).origin, new URL(Site.url(env, context.request.url)).origin].includes(context.request.headers.get('origin') ?? ''),
     app: 'swarms-site',
-    fetch: (request) => ('GATEWAY' in env && env.GATEWAY ? env.GATEWAY.fetch(request) : fetch(request)),
+    fetch: (request) => send(env, request),
     gateway: env.GATEWAY_URL,
     key: env.SWARMS_GATEWAY_KEY,
     path,
     repo: 'swarms',
   })
   return handler
+}
+
+async function send(env: Cloudflare.Env, request: Request) {
+  const wallet = new URL(request.url).pathname === '/api/keys/me' ? await Gateway.wallet(env) : undefined
+  if (wallet) return Response.json({ wallet })
+  return 'GATEWAY' in env && env.GATEWAY ? env.GATEWAY.fetch(request) : fetch(request)
 }
 
 export const schema = z.object({
