@@ -27,12 +27,13 @@ async function seed() {
     assert.equal((await ana.call('POST', `/v1/swarms/${id}/contributions`, { hash: paid.hash })).status, 201)
   }
   assert.equal((await ana.call('POST', `/v1/swarms/${made.body.id}/chat`, { text: 'hello from the route sweep' })).status, 201)
-  return { root: dev.url, token: ana.token }
+  return { operator: String(dev.env['SWARMS_GATEWAY_KEY']), root: dev.url, token: ana.token, writes: true }
 }
 
 test('every route answers as documented', { timeout: 900_000 }, async () => {
   const given = local ? await seed() : { root: Endpoints.base(), token: process.env['SWARMS_TOKEN'] }
   const report = await Endpoints.run(given)
+  if (local) assert.ok(report.world.made && report.rows.some((row) => row.route === '/v1/swarms/:made/archive' && row.ok), 'the local sweep makes, writes to and archives a throwaway swarm')
   console.log(Endpoints.summary(report))
   assert.deepEqual(report.rows.filter((row) => !row.ok).map((row) => `${row.method} ${row.route} (${row.signed}) answered ${row.status}: ${row.note}`), [])
 })

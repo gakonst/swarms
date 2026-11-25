@@ -23,6 +23,8 @@ export type World = {
   command?: number
   job?: number
   machine?: string
+  /** The address SWARMS_TOKEN signs in as. */
+  me?: string
   /** A throwaway swarm this sweep created itself: with SWARMS_SWEEP_WRITES=1, the only swarm a live site takes writes on. */
   made?: string
   message?: number
@@ -64,6 +66,15 @@ export const skippedWrite = 'skipped (write)'
  * Why a write to path must not be sent to root, or undefined when it may be. A local base takes every write. A live site
  * takes none, unless SWARMS_SWEEP_WRITES=1 and the write targets a throwaway swarm this sweep created itself (made).
  */
+/**
+ * Whether this sweep makes a throwaway swarm of its own on root, writes to it and archives it: SWARMS_SWEEP_WRITES=1,
+ * a signed-in token to make it with, the operator's gateway key to archive it with, and a local base or, for a live
+ * site, SWARMS_SWEEP_LIVE_WRITES=1 as well.
+ */
+export function throwaway(root: string, token: string | undefined, operator: string | undefined, env: Record<string, string | undefined> = process.env) {
+  return env['SWARMS_SWEEP_WRITES'] === '1' && !!token && !!operator && (local(root) || env['SWARMS_SWEEP_LIVE_WRITES'] === '1')
+}
+
 export function unwritable(root: string, path: string, made: string | undefined, writes = process.env['SWARMS_SWEEP_WRITES']) {
   if (local(root)) return undefined
   if (writes === '1' && made && /^[0-9a-z]+$/.test(made) && new RegExp(`^/(v1|api)/swarms/${made}(/|\\?|$)`).test(path)) return undefined
@@ -89,6 +100,70 @@ function served(response: Response) {
   const timing = response.headers.get('server-timing') ?? ''
   const total = /(?:^|,\s*)total;dur=([0-9.]+)/.exec(timing)
   return total ? Number(total[1]) : undefined
+}
+
+type Sent = { body: Record<string, unknown> | undefined; ms: number; server: number | undefined; status: number }
+
+async function send(root: string, method: string, path: string, bearer: string, body?: unknown): Promise<Sent> {
+  const started = now()
+  const headers: Record<string, string> = { accept: 'application/json', authorization: `Bearer ${bearer}` }
+  if (body !== undefined) headers['content-type'] = 'application/json'
+  const response = await fetch(root + path, { body: body === undefined ? null : JSON.stringify(body), headers, method })
+  const parsed = (await response.json().catch(() => undefined)) as Record<string, unknown> | undefined
+  return { body: parsed, ms: now() - started, server: served(response), status: response.status }
+}
+
+function written(route: string, method: string, sent: Sent, ok: boolean, note: string): Row {
+  return { method, ms: Math.round(sent.ms), note, ok, route, samples: [sent.ms], server: sent.server, signed: 'in', status: sent.status }
+}
+
+function said(sent: Sent) {
+  return String(sent.body?.['detail'] ?? '').slice(0, 70)
+}
+
+/** Makes the throwaway swarm, signed in. A failure is a row and no swarm. */
+export async function make(root: string, token: string): Promise<{ id?: string; row: Row }> {
+  const sent = await send(root, 'POST', '/v1/swarms', token, { goal: 'A throwaway swarm the route sweep makes, writes to and archives.', template: 'cheap', title: 'Route sweep (throwaway)' })
+  const id = typeof sent.body?.['id'] === 'string' ? sent.body['id'] : undefined
+  return { ...(id ? { id } : {}), row: written('/v1/swarms (throwaway)', 'POST', sent, sent.status === 201 && !!id, id ? `made ${id}` : said(sent)) }
+}
+
+/** Real writes on the throwaway swarm made: a message, a reply in its thread, a reaction, a rename, and a hand issued then removed. */
+export async function exercise(root: string, token: string, made: string): Promise<Row[]> {
+  const rows: Row[] = []
+  const v = `/v1/swarms/${made}`
+  const posted = await send(root, 'POST', `${v}/chat`, token, { text: 'hello from the route sweep' })
+  const message = Number(posted.body?.['id'] ?? (posted.body?.['message'] as { id?: unknown } | undefined)?.id)
+  rows.push(written('/v1/swarms/:made/chat', 'POST', posted, posted.status === 201 && message > 0, message > 0 ? `message ${message}` : said(posted)))
+  if (message > 0) {
+    const replied = await send(root, 'POST', `${v}/chat`, token, { parent: message, text: 'a reply from the route sweep' })
+    rows.push(written('/v1/swarms/:made/chat (reply)', 'POST', replied, replied.status === 201, said(replied)))
+    const reacted = await send(root, 'POST', `${v}/chat/${message}/reactions`, token, { emoji: '👍' })
+    rows.push(written('/v1/swarms/:made/chat/:message/reactions', 'POST', reacted, reacted.status === 200, said(reacted)))
+    const thread = await send(root, 'GET', `${v}/chat/${message}`, token)
+    const replies = (thread.body?.['replies'] ?? thread.body?.['messages']) as unknown[] | undefined
+    rows.push(written('/v1/swarms/:made/chat/:message (after writes)', 'GET', thread, thread.status === 200 && (replies?.length ?? 0) > 0, `${replies?.length ?? 0} in the thread`))
+  }
+  const renamed = await send(root, 'PATCH', v, token, { title: 'Route sweep (renamed)' })
+  rows.push(written('/v1/swarms/:made', 'PATCH', renamed, renamed.status === 200 && renamed.body?.['title'] === 'Route sweep (renamed)', said(renamed)))
+  const handed = await send(root, 'POST', `${v}/hands`, token, { label: 'sweep' })
+  const hand = typeof handed.body?.['name'] === 'string' ? handed.body['name'] : undefined
+  rows.push(written('/v1/swarms/:made/hands', 'POST', handed, handed.status === 201 && !!hand, hand ?? said(handed)))
+  if (hand) {
+    const removed = await send(root, 'DELETE', `${v}/hands/${hand}`, token)
+    rows.push(written('/v1/swarms/:made/hands/:hand', 'DELETE', removed, removed.status === 200, said(removed)))
+  }
+  return rows
+}
+
+/** Archives the throwaway swarm with the operator's key, then checks it took no more writes. */
+export async function archive(root: string, operator: string, made: string): Promise<Row[]> {
+  const archived = await send(root, 'POST', `/v1/swarms/${made}/archive`, operator, {})
+  const after = await send(root, 'PATCH', `/v1/swarms/${made}`, operator, { title: 'Route sweep (after archive)' })
+  return [
+    written('/v1/swarms/:made/archive', 'POST', archived, archived.status === 200, said(archived)),
+    written('/v1/swarms/:made (archived)', 'PATCH', after, after.status === 410, said(after)),
+  ]
 }
 
 function resolve(spec: Spec, schema: Schema): Schema {
@@ -584,6 +659,12 @@ export function signedIn(world: World): Probe[] {
       : []),
     { kind: 'json', method: 'GET', path: `/v1/swarms/${s}/chat`, route: '/v1/swarms/:id/chat', schema: 'GET /v1/swarms/{id}/chat', signed: 'in', status: read },
     { kind: 'html', method: 'GET', path: '/me/ai', signed: 'in', status: read },
+    ...(world.me
+      ? [
+          { kind: 'json' as const, method: 'GET', path: `/v1/riders/${world.me}`, route: '/v1/riders/:me', signed: 'in' as const, status: read },
+          { kind: 'html' as const, method: 'GET', path: `/u/${world.me}`, route: '/u/:me', signed: 'in' as const, status: read },
+        ]
+      : []),
     ...(world.message
       ? [
           { kind: 'json' as const, method: 'GET', path: `/v1/swarms/${s}/chat/${world.message}`, route: '/v1/swarms/:id/chat/:message', signed: 'in' as const, status: read },
@@ -683,17 +764,44 @@ export async function mcp(root: string, world: World): Promise<Row[]> {
   return rows
 }
 
-export async function run(options: { made?: string | undefined; root?: string | undefined; samples?: number; token?: string | undefined } = {}) {
+/** Points every write at the swarm under the throwaway swarm made, so a live site's writes land only there. */
+export function retarget(list: Probe[], swarm: string, made: string | undefined): Probe[] {
+  if (!made) return list
+  const from = new RegExp(`^/(v1|api)/swarms/${swarm}(?=/|\\?|$)`)
+  return list.map((probe) => (mutating.has(probe.method.toUpperCase()) && from.test(probe.path) ? { ...probe, path: probe.path.replace(from, (_, prefix: string) => `/${prefix}/swarms/${made}`) } : probe))
+}
+
+/** Who the token signs in as: a row for GET /v1/me, and the address when it is a live session. */
+export async function whoami(root: string, token: string): Promise<{ address?: string; row: Row }> {
+  const sent = await send(root, 'GET', '/v1/me', token)
+  const address = typeof sent.body?.['address'] === 'string' ? sent.body['address'] : undefined
+  return { ...(address ? { address } : {}), row: written('/v1/me (SWARMS_TOKEN)', 'GET', sent, sent.status === 200 && !!address, address ? `signed in as ${address}` : `not a live session: ${said(sent)}`) }
+}
+
+export async function run(options: { made?: string | undefined; operator?: string | undefined; root?: string | undefined; samples?: number; token?: string | undefined; writes?: boolean } = {}) {
   const root = base(options.root)
   const samples = options.samples ?? Number(process.env['SWARMS_SAMPLES'] ?? 3)
   const token = options.token ?? process.env['SWARMS_TOKEN']
+  const operator = options.operator ?? process.env['SWARMS_OPERATOR_KEY']
+  const env = options.writes === undefined ? process.env : { ...process.env, SWARMS_SWEEP_WRITES: options.writes ? '1' : '0' }
   const spec = await json<Spec>(root, '/openapi.json')
   const found = await discover(root)
-  const world: World = options.made ? { ...found, made: options.made, swarm: options.made } : found
-  const list = [...probes(world), ...(token ? signedIn(world) : [])]
   const rows: Row[] = []
-  for (const probe of list) rows.push(await call(root, probe, token, spec, samples, world.socket, world.made))
-  rows.push(...(await mcp(root, world)))
+  const me = token ? await whoami(root, token) : undefined
+  if (me) rows.push(me.row)
+  const signed = !!me?.address
+  const created = !options.made && signed && throwaway(root, token, operator, env) ? await make(root, token!) : undefined
+  if (created) rows.push(created.row)
+  const made = options.made ?? created?.id
+  const world: World = { ...found, ...(made ? { made } : {}), ...(me?.address ? { me: me.address } : {}) }
+  try {
+    const list = retarget([...probes(world), ...(signed ? signedIn(world) : [])], world.swarm, made)
+    for (const probe of list) rows.push(await call(root, probe, token, spec, samples, world.socket, made))
+    rows.push(...(await mcp(root, world)))
+    if (made && signed && !unwritable(root, `/v1/swarms/${made}`, made, env['SWARMS_SWEEP_WRITES'])) rows.push(...(await exercise(root, token!, made)))
+  } finally {
+    if (created?.id) rows.push(...(await archive(root, operator!, created.id)))
+  }
   return { root, rows, spec: !!spec, world }
 }
 
