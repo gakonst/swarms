@@ -64,6 +64,12 @@ test('a money pause the server calls out of money needs money even with money le
   assert.equal(Status.word(sponsored), 'Stuck')
   assert.match(Status.told(sponsored), /^Waiting on Tempo, not on money/)
   assert.doesNotMatch(Status.told(sponsored), /fee sponsor|gateway/)
+  assert.equal(Status.badge(sponsored), 'Waiting on Tempo')
+  assert.equal(Status.badge(megakernel), 'Needs money')
+  assert.equal(Status.badge({ ...megakernel, reason: undefined }), 'Retrying')
+  const live = { balance: '56.710051', failure: { status: 503 }, reason: Status.reasons.sponsor, remaining: '27.973444', status: 'paused', why: 'money' } as const
+  assert.deepEqual([Status.badge(live), Status.told(live)], ['Waiting on Tempo', Status.reasons.sponsor], 'the P = NP detail: pill, Board line and ride box all say the sponsor reason')
+  assert.equal(Status.told({ ...live, reason: "Waiting on the gateway's fee sponsor: the gateway cannot pay the network fee for its AI calls right now, though the swarm has money. It tries again by itself." }).startsWith('Waiting on the gateway'), true, 'a reason from a Worker one version behind is still shown as sent')
   assert.equal(Status.told({ ...megakernel, reason: Status.failing(503), status: 'running', why: 'stuck' }), 'Its AI calls keep failing (error 503). It tries again by itself.')
   assert.equal(Status.told({ ...megakernel, reason: null, status: 'running', why: 'stuck' }), Status.line('Stuck'))
   assert.equal(Status.told({ ...megakernel, reason: 'stale', status: 'running', why: null }), Status.line('Working'))

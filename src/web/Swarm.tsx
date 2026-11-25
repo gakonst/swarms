@@ -8,7 +8,6 @@ import { useSurface, useWishes, Viewer } from './Artifacts.tsx'
 import { here, seeded } from './boot.ts'
 import { Box } from './Box.tsx'
 import * as Prose from '../shared/Prose.ts'
-import { pill } from './Card.tsx'
 import { Code, useWarmCode } from './Repo.tsx'
 import { asked } from './Contribute.tsx'
 import { Divider } from './Divider.tsx'
@@ -138,7 +137,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
       <Strip backers={backers(swarm.contributions, names)} edit={<Edit swarm={swarm} />} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span className="strip-left"><b>{dollars(swarm.remaining)}</b> left</span>
-        <span className="strip-mood" data-mood={stood.mood} title={Status.told(swarm)}><i />{pill(stood.word)}</span>
+        <span className="strip-mood" data-mood={stood.mood} title={Status.told(swarm)}><i />{Status.badge(swarm)}</span>
         {swarm.ai && <span className="strip-ai">on @{swarm.ai.handle}'s own AI</span>}
       </Strip>
       <div className="panel panel-chat">

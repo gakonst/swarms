@@ -165,7 +165,7 @@ export function state(word: Status.Word) {
   return word === 'Working' ? 'live' : word === 'Stuck' ? 'stalled' : 'idle'
 }
 
-export function Traces(props: { branches: readonly Branch[] | undefined; id: string; running: boolean; stir: number; visible: boolean; word: Status.Word }) {
+export function Traces(props: { branches: readonly Branch[] | undefined; id: string; label?: string; running: boolean; stir: number; visible: boolean; word: Status.Word }) {
   const [who, setWho] = useState<string>()
   const kept = useRef(new Map<string, Kept>()).current
   const shown = useVisible()
@@ -177,7 +177,7 @@ export function Traces(props: { branches: readonly Branch[] | undefined; id: str
     <section aria-labelledby="traces-title" className="traces">
       <header className="traces-head">
         <h2 id="traces-title">Traces</h2>
-        <span className="traces-state" data-mood={state(props.word)}>{Status.pill(props.word)}</span>
+        <span className="traces-state" data-mood={state(props.word)}>{props.label ?? Status.pill(props.word)}</span>
         {crew.length > 0 && (
           <nav aria-label="Agent" className="traces-who">
             {chip(undefined, 'All')}

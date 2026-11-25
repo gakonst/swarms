@@ -90,6 +90,11 @@ export function told(swarm: Stood) {
   return (word === 'Needs money' || word === 'Stuck') && swarm.reason ? swarm.reason : line(word)
 }
 
+export function badge(swarm: Stood) {
+  const word = standing(swarm).word
+  return word === 'Stuck' && swarm.reason === reasons.sponsor ? 'Waiting on Tempo' : pill(word)
+}
+
 export function word(swarm: Stood): Word {
   return standing(swarm).word
 }

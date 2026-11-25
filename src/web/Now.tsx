@@ -52,9 +52,9 @@ export function Now(props: {
       {settled && props.branches && <Board branches={props.branches} />}
       {settled && props.branches && <section className="now-traces">
         <button aria-expanded={traced} className="now-traces-toggle" onClick={() => setTraced(!traced)} type="button">
-          <i aria-hidden="true" />{traced ? 'Hide traces' : 'Traces'}<span data-mood={state(stood.word)}>{Status.pill(stood.word)}</span>
+          <i aria-hidden="true" />{traced ? 'Hide traces' : 'Traces'}<span data-mood={state(stood.word)}>{Status.badge(swarm)}</span>
         </button>
-        {traced && <Traces branches={props.branches} id={swarm.id} running={running} stir={props.stir} visible={props.visible} word={stood.word} />}
+        {traced && <Traces branches={props.branches} id={swarm.id} running={running} stir={props.stir} label={Status.badge(swarm)} visible={props.visible} word={stood.word} />}
       </section>}
     </div>
   )
