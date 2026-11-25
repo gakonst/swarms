@@ -37,6 +37,7 @@ export type Summary = {
   steering: Steering
   title: string
   updatedAt: number
+  waiting?: Waiting | null
   why: Why | null
 }
 
@@ -197,6 +198,8 @@ export type Credit = { owner: `0x${string}`; recipient: `0x${string}` }
 export type Brief = Omit<Update, 'text'> & { excerpt: string }
 
 export type Failure = { at: number; code: string | null; message: string; route: string; status: number | null }
+
+export type Waiting = 'tempo'
 
 export type Why = 'unfunded' | 'money' | 'costly' | 'rest' | 'idle' | 'stuck'
 

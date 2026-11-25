@@ -1,4 +1,4 @@
-import type { Summary } from './Api.ts'
+import type { Failure, Summary, Waiting } from './Api.ts'
 
 export type Word = 'Working' | 'Stuck' | 'Starting' | 'Needs money' | 'Not started' | 'Stopped'
 
@@ -12,6 +12,8 @@ export type Stood = Pick<Summary, 'balance' | 'remaining' | 'status'> & {
   setup?: Summary['setup'] | undefined
   why?: Summary['why'] | undefined
   reason?: string | null | undefined
+  failure?: Partial<Failure> | null | undefined
+  waiting?: Waiting | null | undefined
 }
 
 export const reasons = {
@@ -21,6 +23,20 @@ export const reasons = {
   stalled: 'Its last turns made no progress. It tries again by itself.',
   unfunded: 'Nobody is riding it yet.',
 } as const
+
+const before = {
+  sponsor: "Waiting on the gateway's fee sponsor: the gateway cannot pay the network fee for its AI calls right now, though the swarm has money. It tries again by itself.",
+} as const
+
+export function sponsorless(message: string | null | undefined) {
+  return !!message && message.includes('cannot pay the network fee') && message.includes('fee sponsor is out of funds')
+}
+
+export function waiting(swarm: Stood): Waiting | null {
+  if (swarm.why !== 'money' && swarm.why !== 'stuck') return null
+  if (swarm.waiting) return swarm.waiting
+  return sponsorless(swarm.failure?.message) || swarm.reason === reasons.sponsor || swarm.reason === before.sponsor ? 'tempo' : null
+}
 
 export function failing(answer: number | string | null) {
   return answer === null ? 'Its AI calls keep failing. It tries again by itself.' : `Its AI calls keep failing (error ${answer}). It tries again by itself.`
@@ -57,6 +73,10 @@ export function tag(word: Word) {
   return tags[word]
 }
 
+export function tagged(swarm: Stood, word = standing(swarm).word) {
+  return word === 'Stuck' && waiting(swarm) ? 'waiting on Tempo' : tag(word)
+}
+
 export function pill(word: Word) {
   return pills[word]
 }
@@ -87,12 +107,12 @@ export function standing(swarm: Stood): Standing {
 
 export function told(swarm: Stood) {
   const word = standing(swarm).word
+  if (word === 'Stuck' && waiting(swarm)) return reasons.sponsor
   return (word === 'Needs money' || word === 'Stuck') && swarm.reason ? swarm.reason : line(word)
 }
 
-export function badge(swarm: Stood) {
-  const word = standing(swarm).word
-  return word === 'Stuck' && swarm.reason === reasons.sponsor ? 'Waiting on Tempo' : pill(word)
+export function badge(swarm: Stood, word = standing(swarm).word) {
+  return word === 'Stuck' && waiting(swarm) ? 'Waiting on Tempo' : pill(word)
 }
 
 export function word(swarm: Stood): Word {

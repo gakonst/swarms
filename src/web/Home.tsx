@@ -98,7 +98,7 @@ function told(swarm: Summary, head: Tree.Headline | undefined, said: Doing | und
 function Activity(props: { doing: Doing | undefined; head: Tree.Headline | undefined; now: number; swarm: Summary }) {
   const swarm = props.swarm
   const word = stood(swarm, props.head).word
-  if (word !== 'Working') return <span className="lot-line" data-word={word}>{props.head?.proven && word !== 'Stopped' ? `${props.head.proven} proven` : Status.pill(word)}</span>
+  if (word !== 'Working') return <span className="lot-line" data-word={word}>{props.head?.proven && word !== 'Stopped' ? `${props.head.proven} proven` : Status.badge(swarm, word)}</span>
   const said = told(swarm, props.head, props.doing)
   return (
     <span className="lot-line" data-live="true">

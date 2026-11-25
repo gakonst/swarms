@@ -105,3 +105,13 @@ test('old storage becomes one run', () => {
   assert.deepEqual(Phase.migrated(keys({ paused: 'Resting', why: 'idle' }), 3, 9).state, 'waiting')
   assert.deepEqual(Phase.migrated(keys({ refundAt: 1 }), 3, 9).state, 'waiting')
 })
+
+test('the wait on Tempo is projected from the pause and the kept failure, never from words', () => {
+  assert.equal(Phase.waiting({ at: 0, pause: { ...money, sponsor: true }, state: 'paused' }, false, false), 'tempo')
+  assert.equal(Phase.waiting({ from: { ...money, sponsor: true }, since: null, state: 'waiting', until: 0 }, false, false), 'tempo')
+  assert.equal(Phase.waiting({ at: 0, pause: money, state: 'paused' }, true, true), null)
+  assert.equal(Phase.waiting({ at: 0, pause: { why: 'unfunded' }, state: 'paused' }, false, false), null)
+  assert.equal(Phase.waiting({ since: 5, state: 'waiting', until: 0 }, true, true), 'tempo')
+  assert.equal(Phase.waiting({ since: 5, state: 'waiting', until: 0 }, true, false), null)
+  assert.equal(Phase.waiting({ since: 5, state: 'waiting', until: 0 }, false, true), null)
+})

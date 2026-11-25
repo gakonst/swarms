@@ -6,6 +6,7 @@ import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Setup from '../shared/Setup.ts'
 import * as Site from '../shared/Site.ts'
+import { sponsorless } from '../shared/Status.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Persona from './Persona.ts'
@@ -44,9 +45,7 @@ export function roomed(origin: string, swarm: string) {
   return `Your room, where backers talk and answer your Wishlist, is ${origin.replace(/\/+$/, '')}/v1/swarms/${swarm}/chat (public, free to read).`
 }
 
-export function sponsorless(message: string | null | undefined) {
-  return !!message && message.includes('cannot pay the network fee') && message.includes('fee sponsor is out of funds')
-}
+export { sponsorless }
 
 export function broke(message: string | null) {
   return !!message && (message.includes("This app's credit has $") || message.includes(' was not paid: ') || message.includes('cannot pay the network fee'))

@@ -89,7 +89,7 @@ export function Switcher(props: { current: string | undefined; items: readonly S
         </li>
         {shown.map((swarm) => {
           const standing = stood(swarm, heads[swarm.id])
-          const tag = Status.tag(standing.word)
+          const tag = Status.tagged(swarm, standing.word)
           const working = standing.word === 'Working'
           return (
             <li key={swarm.id}>

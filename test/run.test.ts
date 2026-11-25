@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { id, rider, world } from './run.ts'
 import * as Phase from '../src/worker/Phase.ts'
+import * as Store from '../src/worker/Store.ts'
 
 const error = () => Response.json({ error: 'upstream hiccup' }, { status: 503 })
 
@@ -671,5 +672,8 @@ test("a turn the gateway's empty fee sponsor could not pay waits on the sponsor,
   assert.match(paused.state === 'paused' ? Phase.reason(paused.pause) : '', /^Waiting on Tempo, not on money/)
   assert.ok(paused.state === 'paused' && paused.pause.why === 'money' && paused.pause.wake !== null && paused.pause.wake <= Date.now() + 15 * 60_000)
   assert.equal(w.swarm.agent()?.id, agent)
+  const row = (await Store.find(w.env, id))!
+  assert.deepEqual([row.why, row.waiting], ['money', 'tempo'])
+  assert.equal(Store.summary(row).waiting, 'tempo', 'the list, rail and lobby read the wait from D1')
 })
 

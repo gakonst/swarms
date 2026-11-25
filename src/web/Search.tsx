@@ -127,7 +127,7 @@ function Row(props: { active: boolean; found: Found; id: string; listing: Listin
   const found = props.found
   const head = props.listing?.heads?.[found.swarm.id]
   const word = found.at === 'problem' ? stood(found.swarm, head).word : undefined
-  const tag = word ? Status.tag(word) : undefined
+  const tag = word ? Status.tagged(found.swarm, word) : undefined
   return (
     <li aria-selected={props.active} className="find-row" data-active={props.active || undefined} id={props.id} onClickCapture={props.onPick} onPointerMove={props.onPoint} role="option">
       <Link className="find-link" data={{ 'data-at': found.at }} to={found.to}>

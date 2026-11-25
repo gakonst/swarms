@@ -40,6 +40,7 @@ export type Row = {
   team: `0x${string}` | null
   title: string
   updated_at: number
+  waiting?: Summary['waiting']
   why: Summary['why']
 }
 
@@ -58,7 +59,7 @@ export type Gift = {
 }
 
 export type Fields = Partial<
-  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'setup' | 'sponsor_left' | 'sponsor_spent' | 'status' | 'steering' | 'why'>
+  Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'setup' | 'sponsor_left' | 'sponsor_spent' | 'status' | 'steering' | 'waiting' | 'why'>
 >
 
 export const reserve = 50_000n
@@ -136,6 +137,7 @@ export function summary(row: Row): Summary {
     steering: row.steering ?? 'open',
     title: row.title,
     updatedAt: row.updated_at,
+    waiting: ((row.status === 'paused' || row.status === 'funding') && row.why === 'money') || (row.status === 'running' && row.why === 'stuck') ? (row.waiting ?? null) : null,
     why: row.status === 'paused' || row.status === 'funding' ? (row.why ?? null) : row.why === 'stuck' ? 'stuck' : null,
   }
 }

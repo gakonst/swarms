@@ -348,12 +348,15 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async project(row: Store.Row, fields: Store.Fields = {}) {
     const run = this.run()
-    const projected = Phase.project(run, run.state === 'starting' || run.state === 'working' ? run.n : this.turned(), Turns.stuck(this))
-    const changed = projected.status !== row.status || projected.why !== (row.why ?? null)
+    const stuck = Turns.stuck(this)
+    const projected = Phase.project(run, run.state === 'starting' || run.state === 'working' ? run.n : this.turned(), stuck)
+    const waiting = Phase.waiting(run, stuck, stuck && Turns.sponsorless(Follow.recalled(this)?.message))
+    const changed = projected.status !== row.status || projected.why !== (row.why ?? null) || waiting !== (row.waiting ?? null)
     if (changed || Object.keys(fields).length) {
-      await Store.update(this.env, row.id, { ...(changed ? projected : {}), ...fields })
+      await Store.update(this.env, row.id, { ...(changed ? { ...projected, waiting } : {}), ...fields })
       row.status = projected.status
       row.why = projected.why
+      row.waiting = waiting
     }
     return changed
   }

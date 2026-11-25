@@ -367,6 +367,7 @@ const schemas = {
     status: ref('Status'),
     title: string,
     updatedAt: time,
+    waiting: nullable({ description: "Who the swarm is waiting on when it is not money: tempo while Tempo cannot pay the network fee for its AI calls (it has money and tries again by itself). null otherwise.", enum: ['tempo'], type: 'string' }),
   }),
   Room: object({
     me: nullable({ ...ref('Me'), description: 'The signed-in caller, when the request carries a session token.' }),

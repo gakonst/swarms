@@ -1,4 +1,4 @@
-import type { Failure, Status, Why } from '../shared/Api.ts'
+import type { Failure, Status, Waiting, Why } from '../shared/Api.ts'
 import * as Memo from '../shared/Memo.ts'
 import { failing, reasons } from '../shared/Status.ts'
 
@@ -84,6 +84,12 @@ export function project(run: Run, n: number, stuck = false): { status: Status; w
   if (pause) return { status: n ? 'paused' : 'funding', why: pause.why }
   if (run.state === 'new' || (run.state === 'waiting' && n === 0)) return { status: 'funding', why: null }
   return { status: 'running', why: stuck ? 'stuck' : null }
+}
+
+export function waiting(run: Run, stuck: boolean, sponsor: boolean): Waiting | null {
+  const pause = paused(run)
+  if (pause) return pause.why === 'money' && pause.sponsor ? 'tempo' : null
+  return stuck && sponsor ? 'tempo' : null
 }
 
 export function reason(pause: Pause) {

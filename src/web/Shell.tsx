@@ -113,7 +113,7 @@ function Servers(props: { current: string | undefined; items: readonly Summary[]
         {props.items.map((swarm) => {
           const word = stood(swarm, heads[swarm.id]).word
           const working = word === 'Working'
-          const tag = Status.tag(word)
+          const tag = Status.tagged(swarm, word)
           return (
             <li key={swarm.id}>
               <Link
