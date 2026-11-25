@@ -63,6 +63,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(yaml@2.9.1))
+      nanocode-ts-old:
+        specifier: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz
+        version: nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7)
       typescript:
         specifier: 6.0.2
         version: 6.0.2
@@ -1466,6 +1469,34 @@ packages:
 
   nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-3274348/nanocode-ts-3274348.tgz:
     resolution: {integrity: sha512-/YUchrlQXkA5lr0+ItGZNyAzvnA5nnV/BZCN5dLiI4rXwqECy8MsYNkDuVCOQCeVP8pXbzLd1mHMlQ0Z9qGbyw==, tarball: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-3274348/nanocode-ts-3274348.tgz}
+    version: 0.1.0
+    peerDependencies:
+      '@pierre/highlights': ^0.2.0
+      '@vercel/oidc': ^3.2.0
+      '@vercel/sandbox': ^3.9.0
+      durable-harness: 0.0.1-beta.6
+      postgres: ^4.1.1
+      react: ^19.0.0
+    peerDependenciesMeta:
+      '@pierre/highlights':
+        optional: true
+      '@vercel/oidc':
+        optional: true
+      '@vercel/sandbox':
+        optional: true
+      durable-harness:
+        optional: true
+      postgres:
+        optional: true
+      react:
+        optional: true
+    bundledDependencies:
+      - '@cloudflare/containers'
+      - nanocode-egress
+      - undici
+
+  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz:
+    resolution: {integrity: sha512-9jxWKtgLyNUgUv8kWoGxHeHUbnNhTgRsHVjC3nlqvbH0gZAkOYjQnpYkVvV/VWZQ+TPeZjlvINROO8w2yVR0bQ==, tarball: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz}
     version: 0.1.0
     peerDependencies:
       '@pierre/highlights': ^0.2.0
@@ -3286,6 +3317,45 @@ snapshots:
   ms@2.1.3: {}
 
   nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-3274348/nanocode-ts-3274348.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7):
+    dependencies:
+      accounts: 1.0.0-alpha.20261117214203-d38fbea(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7)
+      hast-util-to-jsx-runtime: 2.3.6(supports-color@10.2.2)
+      mdast-util-gfm: 3.1.0(supports-color@10.2.2)
+      micromark-extension-gfm: 3.0.0
+      mppx: 0.20.1(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(typescript@6.0.2)(viem@2.57.19)
+      ox: 0.14.65(typescript@6.0.2)(zod@4.6.7)
+      rehype-harden: 1.1.8
+      rehype-sanitize: 6.0.0
+      remark-parse: 11.0.0(supports-color@10.2.2)
+      remark-rehype: 11.1.2
+      unified: 11.0.5
+      viem: 2.57.19(mppx@0.20.1)(typescript@6.0.2)(zod@4.6.7)
+    optionalDependencies:
+      '@pierre/highlights': 0.5.2
+      react: 19.3.1
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - '@stripe/agent-identity'
+      - '@wagmi/core'
+      - '@x402/core'
+      - '@x402/express'
+      - '@x402/hono'
+      - '@x402/mcp'
+      - '@x402/next'
+      - bufferutil
+      - elysia
+      - expo-secure-store
+      - expo-web-browser
+      - express
+      - hono
+      - next
+      - react-native-get-random-values
+      - supports-color
+      - typescript
+      - utf-8-validate
+      - zod
+
+  nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7):
     dependencies:
       accounts: 1.0.0-alpha.20261117214203-d38fbea(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.57.19)(zod@4.6.7)
       hast-util-to-jsx-runtime: 2.3.6(supports-color@10.2.2)

@@ -9,7 +9,8 @@ test('the runtime, lockfile and hand install command use one immutable SDK relea
   assert.equal(manifest.dependencies['nanocode-ts'], Connect.release)
   assert.match(Connect.release, /\/build-([a-f0-9]{7})\/nanocode-ts-\1\.tgz$/)
   assert.equal(Connect.install, `npm install ${Connect.release}`)
-  const releases = lock.match(/https:\/\/github\.com\/nanocodexyz\/nanocode-ts\/releases\/download\/[^\s(),}:]+/g) ?? []
+  const old = manifest.devDependencies['nanocode-ts-old']
+  const releases = (lock.match(/https:\/\/github\.com\/nanocodexyz\/nanocode-ts\/releases\/download\/[^\s(),}:]+/g) ?? []).filter((release) => release !== old)
   assert.ok(releases.length >= 5)
   assert.deepEqual([...new Set(releases)], [Connect.release])
 })
