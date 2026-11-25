@@ -165,7 +165,7 @@ test('a ride names its node by the memo tag; a wrong tag counts to the root; a p
   assert.equal(mine.value.committed, '2.000000')
 })
 
-test('suggestions are rate-limited, moves keep money with its rider, and the operator alone archives', async (t) => {
+test('suggestions are rate-limited, moves keep money with its rider, and only an admin or the operator archives', async (t) => {
   const { deposits, w } = setup()
   t.after(async () => {
     await Runner.stop(w.swarm)
@@ -188,7 +188,7 @@ test('suggestions are rate-limited, moves keep money with its rider, and the ope
   const mine = await Operations.standing(w.env, { swarm: id }, ana)
   assert.ok(mine.ok && mine.value.free === '0.200000')
 
-  const refused = await Operations.archive(w.env, { swarm: id }, ana)
+  const refused = await Operations.archive(w.env, { swarm: id }, bo)
   assert.deepEqual([refused.ok, !refused.ok && refused.status], [false, 403])
   const archived = await Operations.archive(w.env, { swarm: id }, owner)
   assert.ok(archived.ok && archived.value.archivedAt !== null)

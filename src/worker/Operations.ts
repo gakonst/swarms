@@ -2166,14 +2166,10 @@ export async function named(env: Cloudflare.Env, input: Input<'named'>): Promise
 export async function archive(env: Cloudflare.Env, input: Input<'swarm'>, address?: Address, operated = false): Promise<Problem.Result<Summary>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
-  if (!operated) {
-    if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo ID as the operator, or send the operator's gateway key as the bearer token.")
-    const operator = await Gateway.wallet(env)
-    if (!operator) return Problem.fail(502, 'unavailable', 'The gateway did not answer, so the operator cannot be checked right now.')
-    if (address.toLowerCase() !== operator.toLowerCase()) return Problem.fail(403, 'access_denied', 'Only the operator archives a swarm.')
-  }
   const row = await Store.find(env, parsed.value.swarm)
   if (!row) return missing()
+  const allowed = await owned(env, row, address, operated, "Only the swarm's admins and the operator archive it.")
+  if (!allowed.ok) return allowed
   const at = row.archived_at ?? Date.now()
   await stub(env, row.id).archive(row.id, at)
   await Store.archive(env, row.id, at)

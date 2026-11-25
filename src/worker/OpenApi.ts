@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import * as Reaction from '../shared/Reaction.ts'
 import * as Setup from '../shared/Setup.ts'
+import * as Device from './Device.ts'
 import * as Feedback from './Feedback.ts'
 import * as Machines from './Machines.ts'
 import * as Operations from './Operations.ts'
@@ -844,7 +845,7 @@ export function document(origin: string) {
         },
       },
       '/v1/swarms/{id}/archive': {
-        post: { description: "The operator only (signed in as the operator's wallet, or with the operator's gateway key as the bearer token): archive a swarm. Its running work stops, open branches settle, it takes no rides (410) and its pages stay read-only. Money left stays in its gateway credit.", operationId: 'archive', parameters: [swarm], responses: { ...ok(ref('Summary'), 'The archived swarm.'), ...failures(401, 403, 404, 502) }, summary: 'Archive a swarm' },
+        post: { description: "The swarm's admins (whoever started it signed in, and the admins they added) or the operator (signed in as the operator's wallet, or with the operator's gateway key as the bearer token): archive a swarm. Its running work stops, open branches settle, it takes no rides (410) and its pages stay read-only. Money left stays in its gateway credit.", operationId: 'archive', parameters: [swarm], responses: { ...ok(ref('Summary'), 'The archived swarm.'), ...failures(401, 403, 404, 502) }, summary: 'Archive a swarm' },
       },
       '/v1/swarms/{id}/ledger': {
         get: { description: "A tree swarm's books: everything riders put in, what runs spent, what the buckets hold, live spend of runs in flight, the gateway credit and the drift between them (ok within one metered call).", operationId: 'ledger', parameters: [swarm], responses: { ...ok(object({ drift: dollars, gateway: nullable(object({ deposited: string, left: string, spent: string })), held: dollars, live: dollars, ok: { type: 'boolean' }, pledged: dollars, spent: dollars, swarm: string }), 'The books.'), ...failures(404) }, summary: 'Ledger' },
@@ -1140,6 +1141,32 @@ export function document(origin: string) {
           },
           responses: { ...ok(object({ token: string }), 'The session token.'), ...failures(400, 401, 502) },
           summary: 'Sign in',
+        },
+      },
+      '/v1/auth/device': {
+        post: {
+          description: `Device sign-in for the swarms CLI and other programs without a browser of their own: answers a device_code to keep and a user_code to show. The person opens verification_uri_complete, signs in with Tempo ID there and approves the code; the program polls POST /v1/auth/device/token every interval seconds until it answers the session token. Codes last ${Device.lifeSeconds} seconds and are used once.`,
+          operationId: 'deviceStart',
+          responses: { ...ok(object({ device_code: string, expires_in: integer, interval: integer, user_code: string, verification_uri: string, verification_uri_complete: string }), 'The codes and where to approve them.') },
+          summary: 'Start device sign-in',
+        },
+      },
+      '/v1/auth/device/token': {
+        post: {
+          description: 'Polls a device sign-in: status pending until the code is approved, then, once, approved with the session token for Authorization: Bearer and its address. 410 once the code expired or its token was already taken.',
+          operationId: 'devicePoll',
+          requestBody: { content: { 'application/json': { schema: object({ device_code: string }) } }, required: true },
+          responses: { ...ok(object({ address, status: { enum: ['pending', 'approved'], type: 'string' }, token: string }), 'Pending, or the session once approved.'), ...failures(400, 410) },
+          summary: 'Poll device sign-in',
+        },
+      },
+      '/v1/auth/device/approve': {
+        post: {
+          description: 'Approves a device sign-in from the page at verification_uri: send the session token that signing in on that page answered as the bearer token, and the user_code. The program that started the sign-in receives that session.',
+          operationId: 'deviceApprove',
+          requestBody: { content: { 'application/json': { schema: object({ code: string }) } }, required: true },
+          responses: { ...ok(object({ address, approved: { type: 'boolean' } }), 'Approved.'), ...failures(400, 401, 410) },
+          summary: 'Approve device sign-in',
         },
       },
       '/v1/swarms/{id}/hands': {
