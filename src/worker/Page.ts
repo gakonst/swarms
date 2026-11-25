@@ -21,7 +21,7 @@ globalThis.__swarmsServer = { boot: () => store.getStore() }
 
 const firstChat = 30
 
-const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/faq', '/board'])
+const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/faq', '/board', '/oauth/authorize'])
 
 const ridered = /^\/(u\/[^/]+|me|me\/ai)\/?$/
 

@@ -5,17 +5,29 @@ import * as Site from '../shared/Site.ts'
 
 
 const tools = [
-  ['swarms_list', 'Swarms with their status and money. Filter by status.'],
-  ['swarm_get', 'One swarm: its goal, money and where it stands.'],
-  ['swarm_tree', "A swarm's tree: the headline (proven, on the frontier, in flight, dead ends, spent) and its nodes, from any node and to any depth, filtered by status."],
-  ['swarm_node', 'One node: its words and Lean statement, status and why, who proposed it, its riders, what it spent run by run, its updates and, once proven, the checked record.'],
-  ['swarm_proofs', 'Every proof Lean checked, newest first, each with its node, commit, theorem and checker run.'],
-  ['swarm_propose', 'Propose a node under a parent: a title, its words and, for a lemma, a Lean statement. Answers the transfer that makes it a node, $1 or more.'],
-  ['swarm_suggest', 'Suggest a node without money. Triage may adopt it, credited to you.'],
-  ['swarm_contribute', 'Prepares a ride on a node (the address, the memo, call data and a link that sends it), or counts a sent one by its hash.'],
-  ['swarm_steer', 'Put your free money on a node with a note its next run reads first.'],
-  ['swarm_move', "Move your money that a node has not spent or set aside for a run to another node, or back to free."],
-  ['swarms_search', 'Full-text search over titles, goals, nodes and updates.'],
+  ['read', 'swarms_list', 'Swarms with their status and money. Filter by status.'],
+  ['read', 'swarm_get', 'One swarm: its goal, money and where it stands.'],
+  ['read', 'swarm_status', 'A swarm at a glance: status, money, whether it works and its latest update.'],
+  ['read', 'swarm_watch', 'Wait, up to a deadline, for the next update, and answer the feed since a cursor.'],
+  ['read', 'swarm_logs', 'The newest feed entries: messages, tool calls, commands, money, errors.'],
+  ['read', 'swarm_tree', "A swarm's tree: the headline (proven, on the frontier, in flight, dead ends, spent) and its nodes, from any node and to any depth, filtered by status."],
+  ['read', 'swarm_node', 'One node: its words and Lean statement, status and why, who proposed it, its riders, what it spent run by run, its updates and, once proven, the checked record.'],
+  ['read', 'swarm_proofs', 'Every proof Lean checked, newest first, each with its node, commit, theorem and checker run.'],
+  ['read', 'swarm_machines', 'Every machine a swarm used, with its commands, logs and jobs (swarm_machine_*).'],
+  ['read', 'swarm_hands', 'The machines riders lent a swarm.'],
+  ['read', 'swarms_search', 'Full-text search over titles, goals, nodes and updates.'],
+  ['write', 'swarm_create', 'Start a swarm: a title, a goal and a template, or a tree.'],
+  ['write', 'swarm_propose', 'Propose a node under a parent: a title, its words and, for a lemma, a Lean statement. Answers the transfer that makes it a node, $1 or more.'],
+  ['write', 'swarm_suggest', 'Suggest a node without money. Triage may adopt it, credited to you.'],
+  ['write', 'swarm_hand', 'Lend your machine to a swarm: answers the command to run on it.'],
+  ['write', 'swarm_byok', 'Your own AI keys and Claude plan, and which swarms run on them.'],
+  ['money', 'swarm_contribute', 'Prepares a ride on a node (the address, the memo, call data and a link that sends it), or counts a sent one by its hash (confirm).'],
+  ['money', 'swarm_fund', 'Put your backing behind a branch (confirm).'],
+  ['money', 'swarm_steer', 'Put your free money on a node with a note its next run reads first.'],
+  ['money', 'swarm_move', "Move your money that a node has not spent or set aside for a run to another node, or back to free."],
+  ['admin', 'swarm_edit', 'Change a title, picture or nickname (a nickname needs confirm).'],
+  ['admin', 'swarm_hand_remove', 'Remove a lent machine (confirm).'],
+  ['admin', 'swarm_archive', 'Archive a swarm, the operator only (confirm).'],
 ] as const
 
 const routes = [
@@ -177,18 +189,26 @@ export function Docs(props: { config: Config | undefined }) {
         intro={
           <>
             <p>Add the server to your agent and ask it about any swarm: what is proven and which commit Lean checked, what is in flight, which approaches are dead ends and why, where the money went. Your agent's model answers by calling the tools, so the server spends nothing.</p>
-            <p className="fine">Streamable HTTP, stateless, no auth: {origin}/mcp</p>
+            <p className="fine">Streamable HTTP at {origin}/mcp. Reading needs no account. Writing signs in once with OAuth: your client opens a Swarms page, you sign in with Tempo ID and choose what it may do.</p>
           </>
         }
         title="MCP"
       >
         <h3 className="docs-head">Claude Code</h3>
         <Code>{`claude mcp add --transport http swarms ${origin}/mcp`}</Code>
+        <p className="docs-text">Then run <code>/mcp</code> in Claude Code and choose Authenticate to sign in.</p>
         <h3 className="docs-head">Codex</h3>
+        <Code>{`codex mcp add swarms --url ${origin}/mcp\ncodex mcp login swarms`}</Code>
+        <h3 className="docs-head">Cursor</h3>
         <p className="docs-text">
-          Add to <code>~/.codex/config.toml</code>:
+          Add to <code>~/.cursor/mcp.json</code>, then sign in from Cursor's MCP settings:
         </p>
-        <Code label="toml">{`[mcp_servers.swarms]\nurl = "${origin}/mcp"`}</Code>
+        <Code label="json">{`{\n  "mcpServers": {\n    "swarms": { "url": "${origin}/mcp" }\n  }\n}`}</Code>
+        <h3 className="docs-head">Local, with the CLI</h3>
+        <p className="docs-text">
+          <code>swarms mcp</code> serves the same tools over stdio as the account the CLI signed in with:
+        </p>
+        <Code>{`claude mcp add swarms -- swarms mcp`}</Code>
         <h3 className="docs-head">Any MCP client</h3>
         <p className="docs-text">Point it at the URL with the streamable HTTP transport. Most clients take a JSON entry like this:</p>
         <Code label="json">{`{\n  "mcpServers": {\n    "swarms": { "type": "http", "url": "${origin}/mcp" }\n  }\n}`}</Code>
@@ -197,6 +217,9 @@ export function Docs(props: { config: Config | undefined }) {
         <h3 className="docs-head">Tools</h3>
         <Table rows={tools} />
         <p className="docs-text">A ride through <code>swarm_contribute</code> is a transfer from your own wallet: the tool prepares it, you send it, and the tool counts it.</p>
+        <p className="docs-text">
+          Each tool names its scope: <code>swarms:read</code> (anyone), <code>swarms:write</code>, <code>swarms:money</code> or <code>swarms:admin</code>. A call past what you allowed answers 401 or 403 with the scope it needs, and your client asks you to sign in again. Tools that move money or cannot be undone refuse until they get a <code>confirm</code> phrase, such as <code>fund 06cf5d7c8f92/3 $5</code>; the refusal names the exact phrase, so your agent asks you first.
+        </p>
         <h3 className="docs-head">Ask</h3>
         <ul className="docs-asks">
           <li>Which lemmas under the lower bounds program are proven, and which commits did Lean check?</li>

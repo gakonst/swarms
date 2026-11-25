@@ -76,7 +76,7 @@ async function sweep(root: string, options: { live?: string; made?: string; oper
   }
 }
 
-const reads = new Set(['initialize', 'tools/list'])
+const reads = new Set(['initialize', 'tools/list', 'resources/list', 'resources/templates/list', 'resources/read'])
 const readOnly = new Set(tools.filter((tool) => tool.annotations.readOnlyHint).map((tool) => tool.name))
 
 /** Every request that would write: a mutating method, except MCP's reads (initialize, tools/list and read-only tools). */

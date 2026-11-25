@@ -701,7 +701,7 @@ async function rpc(root: string, session: string | undefined, id: number, method
   try {
     body = JSON.parse(data) as typeof body
   } catch {}
-  return { body, ms, server: served(response), session: response.headers.get('mcp-session-id') ?? session, status: response.status, text }
+  return { body, challenge: response.headers.get('www-authenticate'), ms, server: served(response), session: response.headers.get('mcp-session-id') ?? session, status: response.status, text }
 }
 
 function argued(tool: Tool, world: World) {
@@ -757,9 +757,29 @@ export async function mcp(root: string, world: World): Promise<Row[]> {
     const called = await rpc(root, opened.session, id, 'tools/call', { arguments: reading ? args : {}, name: tool.name })
     const result = called.body.result as { content?: { text?: string }[]; isError?: boolean } | undefined
     const text = result?.content?.[0]?.text ?? called.body.error?.message ?? ''
-    const ok = reading ? called.status === 200 && !!result && !result.isError : called.status === 200 && (result?.isError === true || !!called.body.error)
-    row(`/mcp ${tool.name}${reading ? '' : ' (invalid input)'}`, called, ok, text.replace(/\s+/g, ' ').slice(0, 70))
-    if (tool.name === 'swarm_wait') rows[rows.length - 1]!.patient = true
+    const asked = (called.status === 401 || called.status === 403) && !!called.challenge?.includes('resource_metadata=')
+    const ok = reading ? called.status === 200 && !!result && !result.isError : asked || (called.status === 200 && (result?.isError === true || !!called.body.error))
+    row(`/mcp ${tool.name}${reading ? '' : asked ? ' (asks for OAuth)' : ' (invalid input)'}`, called, ok, text.replace(/\s+/g, ' ').slice(0, 70))
+    if (tool.name === 'swarm_wait' || tool.name === 'swarm_watch') rows[rows.length - 1]!.patient = true
+  }
+  const templates = await rpc(root, opened.session, ++id, 'resources/templates/list', {})
+  const listed = ((templates.body.result?.['resourceTemplates'] ?? []) as { uriTemplate?: string }[]).map((each) => each.uriTemplate).sort()
+  row('/mcp resources/templates/list', templates, templates.status === 200 && listed.join(' ') === 'swarm://{swarm}/status swarm://{swarm}/tree', listed.join(' ') || templates.text.slice(0, 60))
+  const resources = await rpc(root, opened.session, ++id, 'resources/list', {})
+  const count = ((resources.body.result?.['resources'] ?? []) as unknown[]).length
+  row('/mcp resources/list', resources, resources.status === 200 && Array.isArray(resources.body.result?.['resources']), `${count} resources`)
+  for (const [uri, form] of [[`swarm://${world.swarm}/status`, 'status'], ...(world.tree ? [[`swarm://${world.tree}/tree`, 'tree']] : [])] as const) {
+    const answered = await rpc(root, opened.session, ++id, 'resources/read', { uri })
+    const contents = (answered.body.result?.['contents'] ?? []) as { text?: string }[]
+    row(`/mcp resources/read swarm://:id/${form}`, answered, answered.status === 200 && !!contents[0]?.text, answered.body.error?.message ?? `${contents[0]?.text?.length ?? 0} bytes`)
+  }
+  for (const path of ['/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-authorization-server']) {
+    const started = now()
+    const response = await fetch(root + path).catch(() => undefined)
+    const body = (await response?.json().catch(() => undefined)) as Record<string, unknown> | undefined
+    const ms = now() - started
+    const ok = response?.status === 200 && (path.includes('protected') ? body?.['resource'] === `${root}/mcp` : body?.['issuer'] === root)
+    rows.push({ method: 'GET', ms: Math.round(ms), note: ok ? 'OAuth metadata names this site' : JSON.stringify(body ?? null).slice(0, 70), ok, route: path, samples: [ms], server: response ? served(response) : undefined, signed: 'out', status: response?.status ?? 'error' })
   }
   return rows
 }

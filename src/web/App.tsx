@@ -18,6 +18,7 @@ import { Cheered, ShareSwarm } from './Share.tsx'
 import { Shell } from './Shell.tsx'
 import { Me, mine, Profile } from './Profile.tsx'
 import { OwnAi } from './OwnAi.tsx'
+import { Authorize } from './Authorize.tsx'
 import { page, preload } from './pages.ts'
 import { problems } from './research.ts'
 import * as Wallet from './wallet.ts'
@@ -306,7 +307,7 @@ export function App() {
     if (free) {
       const problem = problems.find((each) => each.id === named?.name)
       document.title = `${problem ? problem.title : `Start a swarm on ${Nickname.topic(named?.name ?? '')}`} · Swarms`
-    } else if (!swarm && !named && path !== '/board' && !rider && path !== '/me' && path !== '/me/ai') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/faq' ? 'Questions · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
+    } else if (!swarm && !named && path !== '/board' && !rider && path !== '/me' && path !== '/me/ai' && path !== '/oauth/authorize') document.title = path === '/new' ? 'Start a swarm · Swarms' : path === '/ideas' ? 'All swarms · Swarms' : path === '/about' ? 'Swarm riders · Swarms' : path === '/docs' ? 'API and MCP · Swarms' : path === '/faq' ? 'Questions · Swarms' : path === '/' ? 'Swarms · Make a breakthrough. Ride a swarm.' : 'Not found · Swarms'
   }, [path, swarm, free])
 
   useEffect(() => {
@@ -346,6 +347,8 @@ export function App() {
           <Me config={config} />
         ) : path === '/me/ai' ? (
           <OwnAi config={config} />
+        ) : path === '/oauth/authorize' ? (
+          <Authorize config={config} />
         ) : path === '/faq' ? (
           <Faq />
         ) : swarm ? (

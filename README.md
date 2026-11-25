@@ -48,6 +48,26 @@ Reads are free and public. The tree's routes:
 
 MCP tools over the same operations: `swarm_tree`, `swarm_node`, `swarm_proofs`, `swarm_propose`, `swarm_suggest`, `swarm_contribute`, `swarm_steer`, `swarm_move`.
 
+## MCP
+
+The MCP server at `/mcp` (streamable HTTP) has a tool for every CLI command and two resources per swarm, `swarm://<id>/status` and `swarm://<id>/tree`. Reading needs no account. Writing signs in with OAuth 2.1: the server publishes `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`, clients register themselves, and the consent page signs in with Tempo ID.
+
+```sh
+claude mcp add --transport http swarms https://swarms.new/mcp   # then /mcp → Authenticate
+codex mcp add swarms --url https://swarms.new/mcp && codex mcp login swarms
+```
+
+Cursor: add `{ "mcpServers": { "swarms": { "url": "https://swarms.new/mcp" } } }` to `~/.cursor/mcp.json`. Locally, `swarms mcp` (`cli/src/mcp.ts`) serves the same tools over stdio with the CLI's token: `claude mcp add swarms -- swarms mcp`.
+
+| Scope | Tools |
+|---|---|
+| `swarms:read` (anyone) | `swarms_list`, `swarm_get`, `swarm_status`, `swarm_watch`, `swarm_wait`, `swarm_logs`, `swarm_feed`, `swarm_updates`, `swarm_answer`, `swarm_tree`, `swarm_node`, `swarm_proofs`, `swarm_machines`, `swarm_machine_commands`, `swarm_machine_command`, `swarm_machine_logs`, `swarm_machine_job`, `swarm_machines_export`, `swarm_hands`, `swarm_backers`, `swarm_branches`, `swarm_progress`, `swarm_artifacts`, `swarm_chat`, `swarms_search`, `problems_list`, `swarm_feedback`, `swarm_contribute` without a hash |
+| `swarms:write` | `swarm_create`, `swarm_suggest`, `swarm_propose`, `swarm_hand`, `swarm_byok` |
+| `swarms:money` | `swarm_contribute` with a hash, `swarm_fund`, `swarm_steer`, `swarm_move` |
+| `swarms:admin` | `swarm_edit`, `swarm_nickname`, `swarm_hand_remove`, `swarm_archive` |
+
+`swarm_fund`, `swarm_contribute` with a hash, `swarm_hand_remove`, `swarm_archive` and a nickname change refuse until they get the `confirm` phrase their refusal names, such as `fund 06cf5d7c8f92/3 $5`.
+
 ## Board swarm example
 
 [examples/board-swarm](examples/board-swarm) runs a small swarm on a nanocode Board shared through one SQLite file: a lead posts a goal as tasks with dependencies, worker processes claim them with leases, one worker is killed mid-task and another takes over, and a steer changes a task while it runs. `cd examples/board-swarm && npm install && npm run example`; it needs no API keys.

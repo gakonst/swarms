@@ -4,6 +4,7 @@ import type { Contributed } from '../shared/Api.ts'
 import * as Site from '../shared/Site.ts'
 import * as Feedback from './Feedback.ts'
 import * as Machines from './Machines.ts'
+import * as OAuth from './OAuth.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
@@ -32,7 +33,9 @@ export function contributed(result: Problem.Result<{ contributed: Contributed; c
 
 app.use('/v1/*', cors({ exposeHeaders: [Replica.header] }))
 app.use('/openapi.json', cors())
-app.use('/mcp', cors({ exposeHeaders: ['mcp-protocol-version', 'mcp-session-id'] }))
+app.use('/mcp', cors({ exposeHeaders: ['mcp-protocol-version', 'mcp-session-id', 'www-authenticate'] }))
+app.use('/oauth/*', cors())
+app.use('/.well-known/*', cors())
 
 function context<T>(c: { executionCtx: T }): T | undefined {
   try {
@@ -81,6 +84,23 @@ app.use('/v1/*', async (c, next) => {
 app.get('/openapi.json', async (c) => c.json((await import('./OpenApi.ts')).document(Site.url(c.env, c.req.url))))
 
 app.all('/mcp', async (c) => (await import('./Mcp.ts')).handle(c.req.raw, c.env))
+
+for (const path of ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*']) app.get(path, (c) => c.json(OAuth.protectedResource(Site.url(c.env, c.req.url))))
+
+for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/*', '/.well-known/openid-configuration', '/.well-known/openid-configuration/*']) app.get(path, (c) => c.json(OAuth.server(Site.url(c.env, c.req.url))))
+
+app.post('/oauth/register', async (c) => OAuth.respond(await OAuth.register(c.env, await body(c.req.raw)), 201))
+
+app.get('/oauth/request', async (c) => OAuth.respond(await OAuth.request(c.env, c.req.query(), Site.url(c.env, c.req.url))))
+
+app.post('/oauth/approve', async (c) => OAuth.respond(await OAuth.approve(c.env, await body(c.req.raw), c.req.header('authorization')?.replace(/^Bearer\s+/i, ''), Site.url(c.env, c.req.url))))
+
+app.post('/oauth/token', async (c) => OAuth.respond(await OAuth.token(c.env, await OAuth.form(c.req.raw))))
+
+app.post('/oauth/revoke', async (c) => {
+  await OAuth.revoke(c.env, await OAuth.form(c.req.raw))
+  return new Response(null, { headers: { 'cache-control': 'no-store' }, status: 200 })
+})
 
 app.get('/v1/config', async (c) => c.json(await Operations.config(c.env)))
 
