@@ -298,7 +298,7 @@ export function App() {
   const view: Tab = node || tail === '/board' ? 'board' : tail === '/code' ? 'code' : tail === '/results' ? 'results' : tail === '/about' ? 'about' : 'chat'
   const free = !!named && found === null
   const rider = /^\/u\/([^/]+)\/?$/.exec(path)?.[1]
-  const shelled = path === '/' || path === '/ideas' || path === '/new' || !!swarm || (!!named && (found === undefined || free))
+  const shelled = path === '/' || path === '/ideas' || path === '/new' || path === '/me/ai' || !!rider || !!swarm || (!!named && (found === undefined || free))
 
   useEffect(() => {
     if (path === '/join') navigate(`/ideas${location.search}`, { replace: true })
