@@ -30,4 +30,4 @@ Crowdfunded AI agents that research and build in the open, on the Tempo gateway'
 - Take a write scope no other agent holds, rebase on origin/main before every push, rerun the checks, and never force-push or rewrite someone else's commit. On a conflict, keep theirs and redo yours on top.
 - Nothing lives only on a machine: end every session with `git status` clean and nothing ahead of origin/main.
 - The commit message is the record: `type(scope): summary`, then why, with the commands and measurements behind it. This repository is public: no internal links, people's private details or security findings in commits.
-- No decision logs, status, plan or results documents. Docs describe what exists now; delete one when it stops being true. History is in git.
+- No decision logs, status, plan or results documents. Docs describe what exists now; delete one when it stops being true. History is in git (the old decision log is DECISIONS.md at da26e9a).

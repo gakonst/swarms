@@ -136,7 +136,7 @@ The gateway pays a swarm's calls from its approvals and credit itself; there is 
 
 ### Version skew
 
-The rule (rule 8) and its record are in DECISIONS.md, "A Worker and its objects can be one version apart for minutes after a deploy (2026-11-25)", landed in 817a88a, after b0b7582 fixed the swarm view's 500:
+The rule (rule 8) and its record are in DECISIONS.md at da26e9a (git show da26e9a:DECISIONS.md), "A Worker and its objects can be one version apart for minutes after a deploy (2026-11-25)", landed in 817a88a, after b0b7582 fixed the swarm view's 500:
 
 - Every Worker to object RPC tolerates N-1 in both directions.
 - A new object method the Worker calls goes through `older(call, fallback, why)` (`src/worker/Operations.ts:489`), which falls back to the method it replaces, and is listed in `test/rpc-older.json`.

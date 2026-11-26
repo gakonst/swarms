@@ -304,4 +304,6 @@ for (const rule of rules) {
     if (under.length) console.log('  below the allowance: run pnpm tidy --update and commit tidy/' + rule.name + '.txt\n' + under.join('\n'))
   } else console.log('ok   tidy/' + rule.name + ' ' + hits.length + ' allowed in ' + found.size + ' files (' + ms + 'ms)')
 }
+const allowedTotal = rules.reduce((total, rule) => total + sum(allowances(rule.name)), 0)
+console.log((red ? red + ' of ' : '') + rules.length + ' rules ' + (red ? 'red' : 'hold') + ', ' + allowedTotal + ' allowances left')
 process.exitCode = red ? 1 : 0

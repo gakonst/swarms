@@ -92,4 +92,4 @@ pnpm db:migrate:local
 pnpm dev
 ```
 
-`.dev.vars` needs `SWARMS_GATEWAY_KEY`, an operator API key for the gateway. Add `?fixture` to any page for a scripted world that needs no gateway and makes no payments; `/board` shows every state of it. [AGENTS.md](AGENTS.md) holds the principles, and [DECISIONS.md](DECISIONS.md) the log of what each change established and why.
+`.dev.vars` needs `SWARMS_GATEWAY_KEY`, an operator API key for the gateway. Add `?fixture` to any page for a scripted world that needs no gateway and makes no payments; `/board` shows every state of it. [AGENTS.md](AGENTS.md) holds the rules; why each change was made is in its commit message.
