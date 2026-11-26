@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+usage="scripts/land: rebase your commits on origin/main, run the full scripts/check (last line GREEN swarms) and pnpm test (fail 0) on that exact HEAD, then git push origin HEAD:main. A rejected push rebases and reruns everything, at most Land.attempts times (src/shared/Limits.ts). Never force-pushes."
+root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+cd "$root"
+case " $* " in *" -h "* | *" --help "*) echo "$usage"; exit 0 ;; esac
+[ $# = 0 ] || { echo "$usage" >&2; exit 2; }
+die() { echo "land: $*" >&2; exit 1; }
+[ -z "$(git status --porcelain)" ] || die "commit or remove local changes first"
+attempts=$(node --experimental-strip-types --no-warnings --input-type=module -e "const { Land } = await import('./src/shared/Limits.ts'); console.log(Land.attempts)")
+[[ "$attempts" =~ ^[1-9][0-9]*$ ]] || die "Land.attempts in src/shared/Limits.ts must be a positive integer, got $attempts"
+mkdir -p output/land
+for ((attempt = 1; attempt <= attempts; attempt++)); do
+  echo "land: attempt $attempt of $attempts"
+  git fetch -q origin main
+  git rebase -q origin/main || { git rebase --abort; die "rebase on origin/main conflicts: keep theirs, redo yours on top, then rerun"; }
+  base=$(git rev-parse origin/main)
+  head=$(git rev-parse HEAD)
+  [ "$base" != "$head" ] || die "nothing on top of origin/main"
+  check=output/land/$head.check.log
+  echo "land: full scripts/check on $head"
+  bash scripts/check 2>&1 | tee "$check" || true
+  last=$(tail -n 1 "$check")
+  [[ "$last" =~ ^GREEN\ swarms ]] || die "scripts/check did not end GREEN swarms on $head (last line: $last; $check)"
+  tests=output/land/$head.test.log
+  echo "land: pnpm test on $head"
+  pnpm test 2>&1 | tee "$tests" || die "pnpm test failed on $head ($tests)"
+  grep -Eq '^(# |ℹ )fail 0$' "$tests" || die "pnpm test did not report fail 0 on $head ($tests)"
+  [ "$(git rev-parse HEAD)" = "$head" ] || die "HEAD moved during the checks"
+  [ -z "$(git status --porcelain)" ] || die "the checks left local changes"
+  if git push origin "$head:refs/heads/main"; then
+    echo "land: pushed checked $head to main"
+    exit 0
+  fi
+  git fetch -q origin main
+  [ "$(git rev-parse origin/main)" != "$base" ] || die "push of $head refused and main did not move; see above"
+  echo "land: main moved; rebasing and rerunning the full check"
+done
+die "main kept moving: gave up after $attempts attempts"

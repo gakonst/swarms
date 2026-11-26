@@ -27,7 +27,8 @@ Crowdfunded AI agents that research and build in the open on the Tempo gateway's
 
 ## Git
 
-- Main only: commit your own changes and push each to main once `scripts/check` is GREEN. Rebase on origin/main before every push; never force-push. On a conflict keep theirs and redo yours on top.
+- Main only: commit your own changes and push them with `scripts/land`: it rebases on origin/main, requires the full `scripts/check` GREEN and `pnpm test` fail 0 on that exact HEAD, then runs `git push origin HEAD:main`, rebasing and rerunning everything when the push is rejected (`Land.attempts` in `src/shared/Limits.ts`). Never force-push. On a conflict keep theirs and redo yours on top.
+- Land only with `scripts/land`; never push on a partial check.
 - End every session with `git status` clean and nothing ahead of origin/main.
 - Commit messages are the record: `type(scope): summary`, then why, with commands and measurements. The repository is public: no internal links, private details or security findings.
 - No plan, status or decision documents; history is in git.

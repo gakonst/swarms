@@ -88,6 +88,8 @@ export const Hands = {
   freshMs: 3_600_000,
 } as const
 
+export const Land = { attempts: 3 } as const
+
 export const Lobby = {
   socketsMost: 10_000,
   quietMs: 30_000,
