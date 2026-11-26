@@ -174,8 +174,6 @@ test/e2e/swarm.ts 1 pre-existing hand formatting
 test/e2e/takeover.test.ts 1 pre-existing hand formatting
 test/e2e/tree.test.ts 1 pre-existing hand formatting
 test/e2e/worker.ts 1 pre-existing hand formatting
-test/endpoints-entry.test.ts 1 pre-existing hand formatting
-test/general.test.ts 1 pre-existing hand formatting
 test/host.ts 1 pre-existing hand formatting
 test/load/hook.ts 1 pre-existing hand formatting
 test/load/sim.ts 1 pre-existing hand formatting
@@ -183,7 +181,6 @@ test/mock/chain.ts 1 pre-existing hand formatting
 test/mock/gateway.ts 1 pre-existing hand formatting
 test/mock/github.ts 1 pre-existing hand formatting
 test/mock/model.ts 1 pre-existing hand formatting
-test/page-server.test.ts 1 pre-existing hand formatting
 test/pay.test.ts 1 pre-existing hand formatting
 test/run.ts 1 pre-existing hand formatting
 test/wire.test.ts 1 pre-existing hand formatting

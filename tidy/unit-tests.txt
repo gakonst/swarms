@@ -12,9 +12,6 @@ test/e2e/nickname.test.ts 1 pre-existing unit test; port what it checks to a tes
 test/e2e/streams.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/e2e/takeover.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/e2e/tree.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/endpoints-entry.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/general.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/page-server.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/pay.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/wire.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/workerd-board.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
