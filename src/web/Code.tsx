@@ -10,6 +10,7 @@ import { ago } from './format.ts'
 import { message, useMedia, useNow } from './hooks.ts'
 import { Markdown } from './Markdown.tsx'
 import * as Wire from './wire.ts'
+import { Capped } from './capped.ts'
 
 type Commit = Snapshot['commits'][number]
 
@@ -19,7 +20,7 @@ type Preload = (options: FileTreeOptions & { id: string }) => FileTreeSsrPayload
 
 const theme = { theme: 'pierre-light' } as const
 
-const kept = new Map<string, Promise<{ size: number; text?: string }>>()
+const kept = new Capped<string, Promise<{ size: number; text?: string }>>(Limits.WebCache.filesMost)
 
 const prose = /\.(md|markdown)$/i
 

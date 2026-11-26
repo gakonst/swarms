@@ -1,9 +1,10 @@
 import { type KeyboardEvent, type PointerEvent, useLayoutEffect, useRef } from 'react'
 import * as Limits from '../shared/Limits.ts'
+import { Capped } from './capped.ts'
 
 type Drag = { at: 'idle' } | { at: 'dragging'; from: number; size: number }
 
-const kept = new Map<string, number>()
+const kept = new Capped<string, number>(Limits.WebCache.dividersMost)
 
 const narrowest = Limits.WebDivider.narrowest
 

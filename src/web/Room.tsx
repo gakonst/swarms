@@ -21,11 +21,12 @@ import { Mark, word } from './Tree.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 import * as Wire from './wire.ts'
+import { Capped } from './capped.ts'
 
 
 const seatSteer = '1'
 
-const kept = new Map<string, { members: readonly Member[]; messages: readonly Said[] }>()
+const kept = new Capped<string, { members: readonly Member[]; messages: readonly Said[] }>(Limits.WebCache.roomsMost)
 
 const draftKey = (id: string) => `swarms_draft:${id}`
 

@@ -242,7 +242,10 @@ async function count(owed: Owed): Promise<Counted> {
 
 async function counting(owed: Owed) {
   const counted = await count(owed)
-  if (counted.at !== 'later') keep(without(owed))
+  if (counted.at !== 'later') {
+    keep(without(owed))
+    tried.delete(owed.hash)
+  }
   move(home(owed), counted.at === 'counted' ? { type: 'counted' } : counted.at === 'refused' ? { error: counted.reason, type: 'refused' } : { type: 'later' })
   return counted
 }

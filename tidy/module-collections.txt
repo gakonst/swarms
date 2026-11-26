@@ -1,19 +1,14 @@
 # No empty Map, Set or array at module scope: it grows per request for the life of the isolate.
-# path count why; 64 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
-src/web/api.ts 2 pre-existing; bound it in Limits or move it into the request or Durable Object
+# path count why; 57 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 src/web/channels.ts 3 pre-existing; bound it in Limits or move it into the request or Durable Object
-src/web/Code.tsx 1 pre-existing; bound it in Limits or move it into the request or Durable Object
-src/web/Divider.tsx 1 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/fixtures.ts 12 pre-existing; bound it in Limits or move it into the request or Durable Object
-src/web/General.tsx 1 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/Hello.tsx 1 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/local.ts 11 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/Markdown.tsx 1 pre-existing; bound it in Limits or move it into the request or Durable Object
-src/web/names.ts 2 pre-existing; bound it in Limits or move it into the request or Durable Object
+src/web/names.ts 1 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/outbox.ts 6 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/pages.ts 1 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/pay.ts 6 pre-existing; bound it in Limits or move it into the request or Durable Object
-src/web/Room.tsx 1 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/router.tsx 1 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/Search.tsx 2 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/Share.tsx 2 pre-existing; bound it in Limits or move it into the request or Durable Object

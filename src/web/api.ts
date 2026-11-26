@@ -9,6 +9,7 @@ import * as Connect from '../shared/Connect.ts'
 import * as Limits from '../shared/Limits.ts'
 import { boot, seeded } from './boot.ts'
 import { visitor } from './stage.ts'
+import { Capped } from './capped.ts'
 
 export const fixture = typeof location !== 'undefined' && new URLSearchParams(location.search).has('fixture')
 
@@ -55,7 +56,7 @@ async function signed<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-const reading = new Map<string, { at: number; read: Promise<unknown> }>()
+const reading = new Capped<string, { at: number; read: Promise<unknown> }>(Limits.WebCache.readsMost)
 
 const together = Limits.WebApi.together
 
@@ -99,7 +100,7 @@ export function swarm(id: string, feed = true) {
   return fixture ? staged((fixtures) => fixtures.swarm(id)) : request<Detail>(feed ? path(id) : `${path(id)}?feed=0`)
 }
 
-const snapshots = new Map<string, { at: number; read: Promise<Snapshot | null>; value?: Snapshot | null }>()
+const snapshots = new Capped<string, { at: number; read: Promise<Snapshot | null>; value?: Snapshot | null }>(Limits.WebCache.snapshotsMost)
 
 export function code(id: string, fresh = false) {
   const known = snapshots.get(id)

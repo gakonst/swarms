@@ -1424,6 +1424,15 @@ export const WebWire = {
   listMs: 60_000,
 } as const
 
+export const WebCache = {
+  dividersMost: 64,
+  filesMost: 256,
+  namesMost: 1024,
+  readsMost: 256,
+  roomsMost: 64,
+  snapshotsMost: 64,
+} as const
+
 export const FixtureBranches = {
   attention4: 7,
   attention4Speedup: 1.3697,

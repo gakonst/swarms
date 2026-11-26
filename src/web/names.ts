@@ -2,8 +2,10 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Named } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { boot, server } from './boot.ts'
+import * as Limits from '../shared/Limits.ts'
+import { Capped } from './capped.ts'
 
-const names = new Map<string, Named | null>()
+const names = new Capped<string, Named | null>(Limits.WebCache.namesMost)
 
 const listeners = new Set<() => void>()
 

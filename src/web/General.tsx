@@ -20,11 +20,12 @@ import { channels } from './Shell.tsx'
 import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 import * as Wire from './wire.ts'
+import { Capped } from './capped.ts'
 
 const topic = 'Swarms are AI agents that research and build in the open, paid for by the people who ride them. Every problem is a swarm with its own channels and threads: ride one from $1, or start your own.'
 
 
-const named = new Map<string, string>()
+const named = new Capped<string, string>(Limits.WebCache.namesMost)
 
 Outbox.define('general', (draft) =>
   Api.shout(draft.text.trim()).then(
