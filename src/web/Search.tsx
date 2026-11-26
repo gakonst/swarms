@@ -252,7 +252,12 @@ export function Palette() {
 
 function Sheet() {
   const [query, setQuery] = useState('')
-  const { found, listing } = useFound(query, true)
+  const path = usePath()
+  const { found: all, listing } = useFound(query, true)
+  const found = useMemo(() => {
+    const elsewhere = all.filter((each) => each.to !== path)
+    return query.trim() || !elsewhere.length ? all : elsewhere
+  }, [all, path, query])
   const cursor = useCursor(found, query)
   const id = useId()
   const input = useRef<HTMLInputElement>(null)
