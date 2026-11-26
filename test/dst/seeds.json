@@ -40,5 +40,12 @@
     "invariant": "ledger drift",
     "found": "2026-11-26 by pnpm dst --hunt: spend of runs still working at the end counted as drift (harness, not Swarms)",
     "fix": "test(dst): a run still working at the end is in flight, not leaked"
+  },
+  {
+    "job": "swarm_net",
+    "seed": "ha0a7d12e959b",
+    "invariant": "leaked subagent",
+    "found": "2026-11-26 by pnpm dst --hunt: a run still working when the simulation ends (harness, not Swarms)",
+    "fix": "test(dst): a run still working at the end is in flight, not leaked"
   }
 ]
