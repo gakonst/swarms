@@ -155,7 +155,6 @@ src/worker/machines/Sub.ts 1 pre-existing hand formatting
 src/worker/machines/Tree.ts 1 pre-existing hand formatting
 src/worker/site.ts 1 pre-existing hand formatting
 test/board.ts 1 pre-existing hand formatting
-test/cli.test.ts 1 pre-existing hand formatting
 test/dispatch.ts 1 pre-existing hand formatting
 test/e2e/chrome.ts 1 pre-existing hand formatting
 test/e2e/cli.test.ts 1 pre-existing hand formatting
@@ -181,7 +180,5 @@ test/mock/chain.ts 1 pre-existing hand formatting
 test/mock/gateway.ts 1 pre-existing hand formatting
 test/mock/github.ts 1 pre-existing hand formatting
 test/mock/model.ts 1 pre-existing hand formatting
-test/pay.test.ts 1 pre-existing hand formatting
 test/run.ts 1 pre-existing hand formatting
-test/wire.test.ts 1 pre-existing hand formatting
 test/workerd-board.test.ts 1 pre-existing hand formatting

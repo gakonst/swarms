@@ -147,6 +147,13 @@ export async function load<T>(path: string): Promise<T> {
   return (await import(url + '?mh=' + active.name)) as T
 }
 
+export async function reload<T>(path: string, fresh: string): Promise<T> {
+  const url = new URL(path, root).href
+  if (!active.mutant) return (await import(url + '?fresh=' + fresh)) as T
+  hook()
+  return (await import(url + '?mh=' + active.name + '&fresh=' + fresh)) as T
+}
+
 export function applied() {
   if (active.mutant && !active.applied) throw new Error('Mutant ' + active.name + ' was not loaded')
 }

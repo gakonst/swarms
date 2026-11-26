@@ -46,6 +46,7 @@ typecheck() {
   "$bin/tsc" -p cli --noEmit --pretty false || ok=1
   "$bin/tsc" -p test/e2e/tsconfig.json --pretty false || ok=1
   [ ! -f test/dst/tsconfig.json ] || "$bin/tsc" -p test/dst/tsconfig.json --noEmit --pretty false || ok=1
+  [ ! -f test/dst/tsconfig.web.json ] || "$bin/tsc" -p test/dst/tsconfig.web.json --noEmit --pretty false || ok=1
   [ "$ok" = 1 ] && echo "$(cat "$logs/typecheck.log" | grep -c 'error TS') type errors" || echo "worker, web, cli, e2e$([ -f test/dst/tsconfig.json ] && echo ', dst')"
   return $ok
 }

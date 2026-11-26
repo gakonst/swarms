@@ -3,7 +3,10 @@
   "compilerOptions": {
     "lib": ["es2023"],
     "types": ["../../worker-configuration.d.ts", "node", "vite/client"],
-    "paths": { "#ssr": ["../../src/worker/Ssr.d.ts"] }
+    "paths": {
+      "#ssr": ["../../src/worker/Ssr.d.ts"]
+    }
   },
-  "include": [".", "../load", "../../src/worker/Bindings.d.ts", "../../src/shared/Boot.ts"]
+  "include": [".", "../load", "../../src/worker/Bindings.d.ts", "../../src/shared/Boot.ts"],
+  "exclude": ["mu-cli.ts", "mu-pay.ts", "mu-wire.ts"]
 }
