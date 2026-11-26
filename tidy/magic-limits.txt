@@ -1,5 +1,5 @@
 # No numeric literal outside src/shared/Limits.ts but 0, 1, 2 and the unit conversions 24, 60, 1000, 1024 and 3600.
-# path count why; 1530 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 1444 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 cli/src/auth.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/account.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/ai.ts 2 pre-existing; move it into src/shared/Limits.ts
@@ -60,7 +60,6 @@ src/web/wallet.ts 7 pre-existing; move it into src/shared/Limits.ts
 src/web/wire.ts 1 pre-existing; move it into src/shared/Limits.ts
 src/worker/Artifacts.ts 17 pre-existing; move it into src/shared/Limits.ts
 src/worker/Branching.ts 6 pre-existing; move it into src/shared/Limits.ts
-src/worker/Cards.ts 86 pre-existing; move it into src/shared/Limits.ts
 src/worker/Edge.ts 10 pre-existing; move it into src/shared/Limits.ts
 src/worker/Film.ts 15 pre-existing; move it into src/shared/Limits.ts
 src/worker/Follow.ts 13 pre-existing; move it into src/shared/Limits.ts

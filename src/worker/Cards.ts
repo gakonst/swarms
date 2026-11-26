@@ -7,6 +7,7 @@ import type * as Tree from '../shared/Tree.ts'
 import * as Status from '../shared/Status.ts'
 import * as Glyphs from './Glyphs.ts'
 import type { Face } from './Glyphs.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Fonts = { mono: Face; serif: Face }
 
@@ -52,17 +53,17 @@ function say(face: Face, x: number, y: number, content: string, size: number, fi
 }
 
 function hash(text: string, seed: number) {
-  let value = 2166136261 ^ seed
-  for (let index = 0; index < text.length; index++) value = Math.imul(value ^ text.charCodeAt(index), 16777619)
-  return ((value >>> 0) % 100000) / 100000
+  let value = Limits.Share.fnvOffset ^ seed
+  for (let index = 0; index < text.length; index++) value = Math.imul(value ^ text.charCodeAt(index), Limits.Share.fnvPrime)
+  return ((value >>> 0) % Limits.WorkerCards.hashBuckets) / Limits.WorkerCards.hashBuckets
 }
 
 function frame(width: number, height: number) {
-  const k = Math.min(width / 1200, height / 630)
-  const kx = width / 1200
-  const hub = { r: 158 * k, x: 895 * kx, y: height / 2 }
-  const left = 152 * kx
-  return { hub, k, left, room: hub.x - hub.r - 64 * k - left }
+  const k = Math.min(width / Limits.Share.card.width, height / Limits.Share.card.height)
+  const kx = width / Limits.Share.card.width
+  const hub = { r: Limits.WorkerCards.frame.hub * k, x: Limits.WorkerCards.frame.hubX * kx, y: height / 2 }
+  const left = Limits.WorkerCards.frame.left * kx
+  return { hub, k, left, room: hub.x - hub.r - Limits.WorkerCards.frame.gutter * k - left }
 }
 
 
@@ -70,11 +71,11 @@ type Point = { r: number; x: number; y: number }
 
 function path(hub: Hub, turns: number, inner: number, bend: number, start: number) {
   const sweep = turns * Math.PI * 2
-  const step = 0.004
+  const step = Limits.WorkerCards.path.step
   const points: (Point & { at: number })[] = []
   let at = 0
   let last: Point | undefined
-  for (let phi = 0; phi <= sweep + 1e-9; phi += step) {
+  for (let phi = 0; phi <= sweep + Limits.WorkerCards.path.epsilon; phi += step) {
     const r = hub.r - (hub.r - inner) * (phi / sweep) ** bend
     const angle = start - phi
     const point = { r, x: hub.x + r * Math.cos(angle), y: hub.y + r * Math.sin(angle) }
@@ -100,28 +101,28 @@ function along(points: readonly (Point & { at: number })[], at: number): Point {
 export function layout(twigs: readonly Twig[], hub: Hub, k: number, seed = ''): { size: number; x: number; y: number }[] {
   const count = twigs.length
   if (!count) return []
-  if (count === 1) return [{ size: 9 * k, x: hub.x, y: hub.y }]
+  if (count === 1) return [{ size: Limits.WorkerCards.dot * k, x: hub.x, y: hub.y }]
   const kids: number[][] = twigs.map(() => [])
   twigs.forEach((twig, index) => {
     if (twig.up >= 0 && twig.up < index) kids[twig.up]?.push(index)
   })
   const leaves = twigs.map((_, index) => index).filter((index) => !kids[index]?.length)
-  const start = -0.1 - hash(seed, 1) * 0.35
-  const gap = 10.5 * k
-  hub = { ...hub, r: hub.r * Math.min(1.28, Math.max(1, (leaves.length / 90) ** 0.14)) }
-  const one = path(hub, 0.92, hub.r * 0.56, 2.2, start)
+  const start = -Limits.WorkerCards.spiral.start - hash(seed, 1) * Limits.WorkerCards.spiral.startSpread
+  const gap = Limits.WorkerCards.spiral.gap * k
+  hub = { ...hub, r: hub.r * Math.min(Limits.WorkerCards.spiral.growMost, Math.max(1, (leaves.length / Limits.WorkerCards.spiral.growLeaves) ** Limits.WorkerCards.spiral.growPower)) }
+  const one = path(hub, Limits.WorkerCards.spiral.oneTurns, hub.r * Limits.WorkerCards.spiral.oneInner, Limits.WorkerCards.spiral.oneBend, start)
   const oneLong = one.at(-1)?.at ?? 0
   let points = one
-  let spacing = Math.min(oneLong / leaves.length, 40 * k)
-  let size = 9 * k
-  if (leaves.length * 9.2 * k > oneLong) {
-    const floor = hub.r * 0.3
-    for (let turns = 1.25; ; turns += 0.25) {
-      points = path(hub, turns, floor, 1.3, start)
+  let spacing = Math.min(oneLong / leaves.length, Limits.WorkerCards.spiral.spacingMost * k)
+  let size = Limits.WorkerCards.dot * k
+  if (leaves.length * Limits.WorkerCards.spiral.crowded * k > oneLong) {
+    const floor = hub.r * Limits.WorkerCards.spiral.floor
+    for (let turns = Limits.WorkerCards.spiral.turnsFrom; ; turns += Limits.WorkerCards.spiral.turnsStep) {
+      points = path(hub, turns, floor, Limits.WorkerCards.spiral.bend, start)
       const long = points.at(-1)?.at ?? 0
-      if (long >= leaves.length * gap || (hub.r - floor) / turns <= 10 * k) {
+      if (long >= leaves.length * gap || (hub.r - floor) / turns <= Limits.WorkerCards.spiral.ringLeast * k) {
         spacing = long / leaves.length
-        size = Math.max(5 * k, Math.min(9 * k, spacing - 1.5 * k))
+        size = Math.max(Limits.WorkerCards.spiral.dotLeast * k, Math.min(Limits.WorkerCards.dot * k, spacing - Limits.WorkerCards.spiral.dotMargin * k))
         break
       }
     }
@@ -158,13 +159,13 @@ export function layout(twigs: readonly Twig[], hub: Hub, k: number, seed = ''): 
     const first = leaves.find((leaf) => leaf > index) ?? index
     const cx = own.x / Math.max(1, own.n) - hub.x
     const cy = own.y / Math.max(1, own.n) - hub.y
-    let angle = Math.hypot(cx, cy) > hub.r * 0.12 ? Math.atan2(cy, cx) : Math.atan2((at[first]?.y ?? hub.y) - hub.y, (at[first]?.x ?? hub.x) - hub.x)
-    const rim = Math.min(inner * 1.6, Math.hypot((at[first]?.x ?? hub.x) - hub.x, (at[first]?.y ?? hub.y) - hub.y))
-    const reach = rim * 0.8 * ((depth[index] ?? 0) + 0.3) / (deepest + 0.3)
+    let angle = Math.hypot(cx, cy) > hub.r * Limits.WorkerCards.forks.center ? Math.atan2(cy, cx) : Math.atan2((at[first]?.y ?? hub.y) - hub.y, (at[first]?.x ?? hub.x) - hub.x)
+    const rim = Math.min(inner * Limits.WorkerCards.forks.rim, Math.hypot((at[first]?.x ?? hub.x) - hub.x, (at[first]?.y ?? hub.y) - hub.y))
+    const reach = rim * Limits.WorkerCards.forks.reach * ((depth[index] ?? 0) + Limits.WorkerCards.forks.depthBase) / (deepest + Limits.WorkerCards.forks.depthBase)
     let x = hub.x + reach * Math.cos(angle)
     let y = hub.y + reach * Math.sin(angle)
-    for (let tries = 0; tries < 24 && placed.some((spot) => Math.hypot(spot.x - x, spot.y - y) < 12 * k); tries++) {
-      angle += (13 * k) / Math.max(reach, 13 * k)
+    for (let tries = 0; tries < 24 && placed.some((spot) => Math.hypot(spot.x - x, spot.y - y) < Limits.WorkerCards.forks.clear * k); tries++) {
+      angle += (Limits.WorkerCards.forks.nudge * k) / Math.max(reach, Limits.WorkerCards.forks.nudge * k)
       x = hub.x + reach * Math.cos(angle)
       y = hub.y + reach * Math.sin(angle)
     }
@@ -185,14 +186,14 @@ export function draw(twigs: readonly Twig[], hub: Hub, k: number, seed = '', rin
 export function flock(seed: string) {
   const twigs: Twig[] = [{ cell: 'flight', up: -1 }]
   let up = 0
-  const programs = 6 + Math.floor(hash(seed, 2) * 3)
+  const programs = Limits.WorkerCards.flock.programs + Math.floor(hash(seed, 2) * Limits.WorkerCards.flock.programsSpread)
   for (let program = 0; program < programs; program++) {
-    const leaves = 7 + Math.floor(hash(seed, 10 + program) * 4)
+    const leaves = Limits.WorkerCards.flock.leaves + Math.floor(hash(seed, Limits.WorkerCards.flock.programSeed + program) * Limits.WorkerCards.flock.leavesSpread)
     for (let leaf = 0; leaf < leaves; leaf++) twigs.push({ cell: 'flight', up })
     twigs.push({ cell: 'flight', up })
     up = twigs.length - 1
   }
-  for (let leaf = 0; leaf < 6; leaf++) twigs.push({ cell: 'flight', up })
+  for (let leaf = 0; leaf < Limits.WorkerCards.flock.tail; leaf++) twigs.push({ cell: 'flight', up })
   return twigs
 }
 
@@ -211,39 +212,39 @@ function pack(face: Face, text: string, size: number, room: number) {
   return lines.length <= 2 ? lines.flatMap((line) => Glyphs.wrap(face, line, size, room, 1)) : Glyphs.wrap(face, text, size, room, 2)
 }
 
-function column(fonts: Fonts, width: number, height: number, kicker: string, title: string, rows: readonly Row[], biggest = 52) {
+function column(fonts: Fonts, width: number, height: number, kicker: string, title: string, rows: readonly Row[], biggest: number = Limits.WorkerCards.column.biggest) {
   const { k, left, room } = frame(width, height)
-  const sizes = [biggest, 46, 40, 34].filter((size) => size <= biggest).map((size) => size * k)
-  let size = sizes[0] ?? 52 * k
+  const sizes = [biggest, ...Limits.WorkerCards.column.sizes].filter((size) => size <= biggest).map((size) => size * k)
+  let size = sizes[0] ?? Limits.WorkerCards.column.biggest * k
   let lines = [title]
   for (const next of sizes) {
     size = next
-    const most = next === sizes.at(-1) ? 3 : next >= 46 * k ? 2 : 3
-    lines = Glyphs.wrap(fonts.serif, title, size, room, most, -0.01 * size)
-    const all = Glyphs.wrap(fonts.serif, title, size, room, 9, -0.01 * size)
-    const orphan = all.length > 1 && Glyphs.width(fonts.serif, all.at(-1) ?? '', size) < room * 0.3
+    const most = next === sizes.at(-1) ? Limits.WorkerCards.column.lines : next >= Limits.WorkerCards.column.tight * k ? 2 : Limits.WorkerCards.column.lines
+    lines = Glyphs.wrap(fonts.serif, title, size, room, most, -Limits.WorkerCards.column.tracking * size)
+    const all = Glyphs.wrap(fonts.serif, title, size, room, Limits.WorkerCards.column.wrapMost, -Limits.WorkerCards.column.tracking * size)
+    const orphan = all.length > 1 && Glyphs.width(fonts.serif, all.at(-1) ?? '', size) < room * Limits.WorkerCards.column.orphan
     if (all.length <= most && !orphan) break
   }
-  const mono = 17 * k
-  const lead = 29 * k
+  const mono = Limits.WorkerCards.column.mono * k
+  const lead = Limits.WorkerCards.column.lead * k
   const marked = rows.some((row) => row.cell)
-  const indent = marked ? 22 * k : 0
+  const indent = marked ? Limits.WorkerCards.column.indent * k : 0
   const shown = rows.flatMap((row) => pack(fonts.mono, row.text, mono, room - indent).map((text, index) => ({ ...row, cell: index ? undefined : row.cell, text })))
-  const kickHigh = kicker ? 12 * k + 26 * k : 0
-  const titleHigh = size * 0.72 + (lines.length - 1) * size * 1.12 + size * 0.2
-  const rowsHigh = shown.length ? 34 * k + 12 * k + (shown.length - 1) * lead : 0
+  const kickHigh = kicker ? Limits.WorkerCards.column.kickTop * k + Limits.WorkerCards.column.kickGap * k : 0
+  const titleHigh = size * Limits.WorkerCards.column.ascent + (lines.length - 1) * size * Limits.WorkerCards.column.leading + size * Limits.WorkerCards.column.descent
+  const rowsHigh = shown.length ? Limits.WorkerCards.column.rowsGap * k + Limits.WorkerCards.column.rowsTop * k + (shown.length - 1) * lead : 0
   let y = height / 2 - (kickHigh + titleHigh + rowsHigh) / 2
   const parts: string[] = []
   if (kicker) {
-    parts.push(say(fonts.mono, left, y + 12 * k, Glyphs.wrap(fonts.mono, kicker, 15 * k, room, 1)[0] ?? '', 15 * k, faint))
+    parts.push(say(fonts.mono, left, y + Limits.WorkerCards.column.kickTop * k, Glyphs.wrap(fonts.mono, kicker, Limits.WorkerCards.column.kicker * k, room, 1)[0] ?? '', Limits.WorkerCards.column.kicker * k, faint))
     y += kickHigh
   }
-  lines.forEach((line, index) => parts.push(say(fonts.serif, left - 2 * k, y + size * 0.72 + index * size * 1.12, line, size, ink, -0.01 * size)))
-  y += titleHigh + 34 * k + 12 * k
+  lines.forEach((line, index) => parts.push(say(fonts.serif, left - 2 * k, y + size * Limits.WorkerCards.column.ascent + index * size * Limits.WorkerCards.column.leading, line, size, ink, -Limits.WorkerCards.column.tracking * size)))
+  y += titleHigh + Limits.WorkerCards.column.rowsGap * k + Limits.WorkerCards.column.rowsTop * k
   const marks: Mark[] = []
   shown.forEach((row, index) => {
     const base = y + index * lead
-    if (row.cell) marks.push({ color: shades[row.cell], ring: false, size: 9 * k, sway: 0, x: left + 4.5 * k, y: base - 5.5 * k })
+    if (row.cell) marks.push({ color: shades[row.cell], ring: false, size: Limits.WorkerCards.dot * k, sway: 0, x: left + Limits.WorkerCards.column.markX * k, y: base - Limits.WorkerCards.column.markY * k })
     parts.push(say(fonts.mono, left + indent, base, row.text, mono, row.fill ?? soft))
   })
   return { marks, parts: parts.join('') }
@@ -271,14 +272,14 @@ export function swarm(fonts: Fonts, item: Swarm, width: number, height: number):
   const money = item.balance > 0 ? `${Answer.cash(item.balance)} ridden · ${riders(item.backers)}` : 'No riders yet'
   const left = item.balance > 0 ? `${Answer.cash(Math.max(0, item.left))} left` : ''
   return card(fonts, width, height, { kicker: 'Swarms', rows: [{ text: Status.pill(item.word) }, ...(money === Status.pill(item.word) ? [] : [{ text: money }]), ...(left ? [{ fill: quiet, text: left }] : [])], title: item.title }, (hub, k) =>
-    draw(flock(item.id), hub, k, item.id, -1, item.mood === 'live' ? 1 : 0.4),
+    draw(flock(item.id), hub, k, item.id, -1, item.mood === 'live' ? 1 : Limits.WorkerCards.restingSway),
   )
 }
 
 export function home(fonts: Fonts, field: Field, width: number, height: number): Scene {
   const count = field.open + field.ideas.length
   const facts = [field.working ? `${field.working} working now` : '', plural(count, 'idea'), field.balance > 0 ? `${Answer.cash(field.balance)} to spend` : ''].filter(Boolean).join(' · ')
-  return card(fonts, width, height, { biggest: 46, kicker: '', rows: [{ text: 'Make a breakthrough. Ride a swarm.' }, { fill: quiet, text: facts }], title: 'Swarms' }, (hub, k) => draw(flock('home'), hub, k, 'home', -1, 1))
+  return card(fonts, width, height, { biggest: Limits.WorkerCards.homeBiggest, kicker: '', rows: [{ text: 'Make a breakthrough. Ride a swarm.' }, { fill: quiet, text: facts }], title: 'Swarms' }, (hub, k) => draw(flock('home'), hub, k, 'home', -1, 1))
 }
 
 export function ideas(fonts: Fonts, field: Field, width: number, height: number): Scene {
@@ -385,7 +386,7 @@ export function grove(swarm: string, view: View): Grove {
 
 function alone(node: Tree.Node, counts: Record<Tree.Status, number>): Twig[] {
   const out: Twig[] = [{ cell: cell(node.status), up: -1 }]
-  for (const status of ['proven', 'in flight', 'dead end', 'funded', 'proposed'] as const) for (let index = 0; index < Math.min(counts[status], 400); index++) out.push({ cell: cell(status), up: 0 })
+  for (const status of ['proven', 'in flight', 'dead end', 'funded', 'proposed'] as const) for (let index = 0; index < Math.min(counts[status], Limits.WorkerCards.alonePerStatus); index++) out.push({ cell: cell(status), up: 0 })
   return out
 }
 
@@ -395,7 +396,7 @@ export function leaf(title: string, node: Tree.Node & { review?: boolean }, view
   const known = view ? order(view.nodes).findIndex((other) => other.id === node.id) : -1
   return {
     at: known >= 0 ? known : 0,
-    checked: node.status === 'proven' && node.proof ? node.proof.commit.slice(0, 7) : null,
+    checked: node.status === 'proven' && node.proof ? node.proof.commit.slice(0, Limits.SharedTree.shortSha) : null,
     counts,
     form: node.form,
     id: node.id,
@@ -451,5 +452,5 @@ export function node(fonts: Fonts, item: Leaf, width: number, height: number): S
     ...(under ? [{ text: `Under it: ${under}` }] : []),
     { text: spent(item.spent) },
   ]
-  return card(fonts, width, height, { biggest: 48, kicker: item.swarm, rows, title: item.title }, (hub, k) => draw(item.twigs, hub, k, item.swarm, item.at))
+  return card(fonts, width, height, { biggest: Limits.WorkerCards.leafBiggest, kicker: item.swarm, rows, title: item.title }, (hub, k) => draw(item.twigs, hub, k, item.swarm, item.at))
 }
