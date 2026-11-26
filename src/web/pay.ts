@@ -141,6 +141,8 @@ function keep(all: readonly Owed[]) {
     }
   } catch {}
   saved = { all, raw: stored }
+  const owed = new Set(all.map((each) => each.hash))
+  for (const hash of [...tried.keys()]) if (!owed.has(hash)) tried.delete(hash)
 }
 
 function without(owed: Owed) {
