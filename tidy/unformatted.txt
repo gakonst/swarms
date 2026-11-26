@@ -229,7 +229,6 @@ test/trail.test.ts 1 pre-existing hand formatting
 test/triage.test.ts 1 pre-existing hand formatting
 test/turns.test.ts 1 pre-existing hand formatting
 test/unhand.test.ts 1 pre-existing hand formatting
-test/verify.test.ts 1 pre-existing hand formatting
 test/watch.test.ts 1 pre-existing hand formatting
 test/wire.test.ts 1 pre-existing hand formatting
 test/workerd-board.test.ts 1 pre-existing hand formatting
