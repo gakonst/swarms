@@ -29,6 +29,8 @@ async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {
   if (!listed.length) return false
   const known = new Map((await Store.backings(self.env, row.id)).map((gift) => [gift.id, gift]))
   let changed = false
+  const raising: [Gateway.Backing, Store.Gift, bigint][] = []
+  const lowering: [Gateway.Backing, Store.Gift, bigint][] = []
   for (const each of listed) {
     const id = Credit.backing(each.key)
     const gift = known.get(id)
@@ -49,19 +51,22 @@ async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {
     const worth = each.ended ? spent : reach
     const counted = held > worth ? worth : held < spent ? spent : held
     if (held === counted) continue
-    const taken = await Store.lower(self.env, row.id, id, String(counted), gift.amount)
+    if (counted < held) lowering.push([each, gift, counted])
+    else raising.push([each, gift, counted])
+  }
+  for (const [each, gift, counted] of [...raising, ...lowering]) {
+    const taken = await Store.lower(self.env, row.id, gift.id, String(counted), gift.amount)
     if (!taken) continue
-    if (counted < held) {
-      self.log(
-        'funds',
-        each.ended
-          ? `${Words.short(each.backer)}'s backing ended after paying $${Words.trim(Memo.decimal(counted))}; the rest never left their wallet`
-          : `${Words.short(each.backer)}'s approval of $${Words.trim(each.limit)} can pay $${Words.trim(Memo.decimal(counted))} in all; the rest is out of the swarm's reach and stays theirs`,
-        each.key,
-      )
-      await lowered(self, row.id, taken).catch((error: unknown) => console.error('Lowering branch budgets failed', error))
-    }
     changed = true
+    if (counted > BigInt(gift.amount)) continue
+    self.log(
+      'funds',
+      each.ended
+        ? `${Words.short(each.backer)}'s backing ended after paying $${Words.trim(Memo.decimal(counted))}; the rest never left their wallet`
+        : `${Words.short(each.backer)}'s approval of $${Words.trim(each.limit)} can pay $${Words.trim(Memo.decimal(counted))} in all; the rest is out of the swarm's reach and stays theirs`,
+      each.key,
+    )
+    await lowered(self, row.id, taken).catch((error: unknown) => console.error('Lowering branch budgets failed', error))
   }
   return changed
 }

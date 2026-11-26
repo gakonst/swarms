@@ -415,8 +415,8 @@ export async function lower(env: Cloudflare.Env, swarm: string, id: string, amou
   const [set, taken] = await env.DB.batch<{ agent: string | null; branch: number | null }>([
     env.DB.prepare(
       `update contributions set amount = ?1 where id = ?2 and swarm = ?3${Payment.guards.fenced ? ' and amount = ?4' : ' and ?4 is not null'}
-        and (select coalesce(sum(cast(c.amount as integer)), 0) from contributions c where c.swarm = ?3) - cast(?4 as integer) + cast(?1 as integer)
-          >= coalesce((select s.pool_spent + s.sponsor_spent + s.spent_before from swarms s where s.id = ?3), 0)`,
+        and (cast(?1 as integer) > cast(amount as integer) or (select coalesce(sum(cast(c.amount as integer)), 0) from contributions c where c.swarm = ?3) - cast(?4 as integer) + cast(?1 as integer)
+          >= coalesce((select s.pool_spent + s.sponsor_spent + s.spent_before from swarms s where s.id = ?3), 0))`,
     ).bind(amount, id.toLowerCase(), swarm, was),
     env.DB.prepare(
       `with over as (

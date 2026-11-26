@@ -1282,15 +1282,14 @@ async function gatewayMoney(seed: string): Promise<Outcome> {
     const room = Money.room(lhs, { balance, spent: used })
     if (room !== (lhs < BigInt(balance - used) ? lhs : BigInt(balance - used)))
       fail('room', lhs + ' with ' + balance + ' raised and ' + used + ' spent gave ' + room)
-    const mover = random.pick(keys)
     if (steps && steps < G.rounds - 1)
       for (const each of keys) {
-        if (each === mover && !each.ended && random.chance(G.spend)) {
+        if (!each.ended && random.chance(G.spend)) {
           const next = each.spent + BigInt(random.int(1, G.units)) * (G.unit / 2n)
           const most = each.limit + BigInt(G.over) * G.unit
           each.spent = next < most ? next : most
         }
-        if (each === mover && each !== keys[0] && random.chance(G.end)) {
+        if (each !== keys[0] && random.chance(G.end)) {
           each.ended = true
           each.stale = random.chance(0.5)
         }
