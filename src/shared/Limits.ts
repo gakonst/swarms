@@ -43,6 +43,9 @@ export const Clock = {
 export const Device = {
   lifeSeconds: 600,
   interval: 2,
+  codeMost: 32,
+  userLetters: 8,
+  deviceBytes: 32,
 } as const
 
 export const Edge = {
@@ -108,6 +111,14 @@ export const OAuth = {
   refreshMs: 30 * 86_400_000,
   codeMs: 10 * 60_000,
   clientMs: 365 * 86_400_000,
+  clientNameMost: 100,
+  redirectMost: 2000,
+  redirectsMost: 10,
+  clientBytes: 16,
+  secretBytes: 32,
+  challengeLeast: 43,
+  challengeMost: 128,
+  addressDigits: 40,
 } as const
 
 export const Operations = {
@@ -196,6 +207,14 @@ export const Search = {
 export const Sessions = {
   days: 30,
   heldMs: 30_000,
+  heldMost: 500,
+  tokenMost: 128,
+} as const
+
+export const Signin = {
+  addressDigits: 40,
+  idMost: 128,
+  messageMost: 4096,
 } as const
 
 export const Share = {
