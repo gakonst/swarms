@@ -1,13 +1,15 @@
 import type { Address } from 'viem'
 import { z } from 'zod'
+import { assert, never } from '../shared/Assert.ts'
+import * as Machine from './machines/Grant.ts'
 import * as Operations from './Operations.ts'
 import * as Replica from './Replica.ts'
 import * as Sessions from './Sessions.ts'
 import * as Limits from '../shared/Limits.ts'
 
-export const scopes = ['swarms:read', 'swarms:write', 'swarms:money', 'swarms:admin'] as const
+export const scopes = Machine.scopes
 
-export type Scope = (typeof scopes)[number]
+export type Scope = Machine.Scope
 
 export const meanings: Record<Scope, string> = {
   'swarms:admin': 'Rename and archive swarms you run, and remove hands from them.',
@@ -28,11 +30,9 @@ const clientMs = Limits.OAuth.clientMs
 
 export type Caller = { address?: Address | undefined; bearer: 'invalid' | 'none' | 'oauth' | 'operator' | 'session'; operated: boolean; scopes: ReadonlySet<Scope> }
 
-type Client = { client_id: string; client_id_issued_at: number; client_name: string; redirect_uris: string[] }
+type Client = Machine.Client
 
-type Grant = { address: Address; client_id: string; scopes: Scope[] }
-
-type Code = Grant & { challenge: string; redirect_uri: string; resource: string | null }
+type Grant = Machine.Grant
 
 type Failure = { error: string; error_description: string }
 
@@ -102,22 +102,38 @@ function db(env: Cloudflare.Env) {
   return Replica.primary(env).DB
 }
 
-async function put(env: Cloudflare.Env, key: string, value: unknown, ms: number) {
-  await db(env).prepare('insert or replace into sessions (key, value, expires_at) values (?, ?, ?)').bind(key, JSON.stringify(value), Date.now() + ms).run()
+async function put(env: Cloudflare.Env, key: string, record: Machine.Record, ms: number) {
+  assert(Machine.kind(key) === record.kind, 'an OAuth record is kept under its own prefix', record.kind)
+  const now = Date.now()
+  const until = now + ms
+  assert(until > now, 'an OAuth record expires after it is written', { ms })
+  await db(env).prepare('insert or replace into sessions (key, value, expires_at) values (?, ?, ?)').bind(key, JSON.stringify(Machine.store(record)), until).run()
 }
 
 type Row = { expires_at: number | null; value: string }
 
-function live<value>(row: Row | null) {
-  return row && (row.expires_at === null || row.expires_at > Date.now()) ? (JSON.parse(row.value) as value) : undefined
+function live(key: string, row: Row | null): Machine.Record | undefined {
+  if (!row || (row.expires_at !== null && row.expires_at <= Date.now())) return undefined
+  let value: unknown
+  try {
+    value = JSON.parse(row.value)
+  } catch {
+    console.error('Unreadable OAuth record, treated as absent', { kind: Machine.kind(key) })
+    return undefined
+  }
+  return Machine.parse(key, value)
 }
 
-async function read<value>(env: Cloudflare.Env, key: string) {
-  return live<value>(await db(env).prepare('select value, expires_at from sessions where key = ?').bind(key).first<Row>())
+async function read(env: Cloudflare.Env, key: string) {
+  return live(key, await db(env).prepare('select value, expires_at from sessions where key = ?').bind(key).first<Row>())
 }
 
-async function take<value>(env: Cloudflare.Env, key: string) {
-  return live<value>(await db(env).prepare('delete from sessions where key = ? returning value, expires_at').bind(key).first<Row>())
+async function take(env: Cloudflare.Env, key: string) {
+  return live(key, await db(env).prepare('delete from sessions where key = ? returning value, expires_at').bind(key).first<Row>())
+}
+
+function granted(record: Machine.Record | undefined, kind: 'access' | 'refresh') {
+  return record?.kind === kind ? record.grant : undefined
 }
 
 const loopback = /^(localhost|127\.0\.0\.1|\[::1\])$/
@@ -150,6 +166,8 @@ function matches(registered: string[], given: string) {
   })
 }
 
+const challengeShape = new RegExp(`^[A-Za-z0-9_-]{${Limits.OAuth.challengeLeast},${Limits.OAuth.challengeMost}}$`)
+
 export function parse(scope: unknown): Scope[] {
   if (typeof scope !== 'string' || !scope.trim()) return [...fallback]
   const asked = new Set(scope.trim().split(/\s+/))
@@ -160,8 +178,8 @@ export function parse(scope: unknown): Scope[] {
 
 const registration = z
   .object({
-    client_name: z.string().trim().max(100).optional(),
-    redirect_uris: z.array(z.string().max(2000)).min(1).max(10),
+    client_name: z.string().trim().max(Limits.OAuth.clientNameMost).optional(),
+    redirect_uris: z.array(z.string().max(Limits.OAuth.redirectMost)).min(1).max(Limits.OAuth.redirectsMost),
   })
   .loose()
 
@@ -170,8 +188,8 @@ export async function register(env: Cloudflare.Env, input: Record<string, unknow
   if (!parsed.success) return fail(400, 'invalid_client_metadata', parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '))
   const refused = parsed.data.redirect_uris.find((uri) => !redirectable(uri))
   if (refused) return fail(400, 'invalid_redirect_uri', `${refused} is not a redirect URI Swarms sends codes to: use https, a loopback http address or an app's own scheme, without a fragment.`)
-  const client: Client = { client_id: `swc_${random(16)}`, client_id_issued_at: Math.floor(Date.now() / 1000), client_name: parsed.data.client_name || 'An MCP client', redirect_uris: parsed.data.redirect_uris }
-  await put(env, `oauth:client:${client.client_id}`, client, clientMs)
+  const client: Client = { client_id: `swc_${random(Limits.OAuth.clientBytes)}`, client_id_issued_at: Math.floor(Date.now() / 1000), client_name: parsed.data.client_name || 'An MCP client', redirect_uris: parsed.data.redirect_uris }
+  await put(env, Machine.prefixes.client + client.client_id, { client, kind: 'client' }, clientMs)
   return { ok: true, value: { ...client, grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], scope: scopes.join(' '), token_endpoint_auth_method: 'none' } }
 }
 
@@ -180,13 +198,14 @@ export type Asked = { client_id: string; client_name: string; code_challenge: st
 export async function request(env: Cloudflare.Env, params: Record<string, unknown>, site: string): Promise<Outcome<Asked>> {
   const text = (key: string) => (typeof params[key] === 'string' ? (params[key] as string) : undefined)
   const id = text('client_id')
-  const client = id && id.startsWith('swc_') ? await read<Client>(env, `oauth:client:${id}`) : undefined
+  const found = id && id.startsWith('swc_') ? await read(env, Machine.prefixes.client + id) : undefined
+  const client = found && found.kind === 'client' ? found.client : undefined
   if (!client) return fail(400, 'invalid_client', 'This app is not registered with Swarms. Add the server to it again so it registers.')
   const redirect = text('redirect_uri') ?? (client.redirect_uris.length === 1 ? client.redirect_uris[0] : undefined)
   if (!redirect || !matches(client.redirect_uris, redirect)) return fail(400, 'invalid_request', 'The redirect URI is not one this app registered.')
   if (text('response_type') !== 'code') return fail(400, 'unsupported_response_type', 'Swarms answers response_type=code only.')
   const challenged = text('code_challenge')
-  if (!challenged || !/^[A-Za-z0-9_-]{43,128}$/.test(challenged) || text('code_challenge_method') !== 'S256') return fail(400, 'invalid_request', 'Send a PKCE code_challenge with code_challenge_method=S256.')
+  if (!challenged || !challengeShape.test(challenged) || text('code_challenge_method') !== 'S256') return fail(400, 'invalid_request', 'Send a PKCE code_challenge with code_challenge_method=S256.')
   const asked = text('resource') ?? null
   const target = asked?.replace(/\/+$/, '')
   if (target !== undefined && target !== resource(site) && target !== site) return fail(400, 'invalid_target', `Swarms grants tokens for ${resource(site)} only.`)
@@ -220,20 +239,45 @@ export async function approve(env: Cloudflare.Env, input: Record<string, unknown
   if (input['allow'] !== true) return { ok: true, value: { redirect: back(asked.value.redirect_uri, { error: 'access_denied', error_description: 'You did not allow it.', iss: site, state: asked.value.state }) } }
   const offered = new Set(asked.value.scopes.map((each) => each.scope))
   const chosen = typeof input['granted'] === 'string' ? parse(input['granted']).filter((scope) => offered.has(scope)) : [...offered]
-  const code = `swk_${random(32)}`
-  const kept: Code = { address, challenge: asked.value.code_challenge, client_id: asked.value.client_id, redirect_uri: asked.value.redirect_uri, resource: asked.value.resource, scopes: chosen.includes('swarms:read') ? chosen : ['swarms:read', ...chosen] }
-  await put(env, `oauth:code:${await digest(code)}`, kept, codeMs)
+  const code = `swk_${random(Limits.OAuth.secretBytes)}`
+  const kept: Machine.Code = { address, challenge: asked.value.code_challenge, client_id: asked.value.client_id, redirect_uri: asked.value.redirect_uri, resource: asked.value.resource, scopes: chosen.includes('swarms:read') ? chosen : ['swarms:read', ...chosen] }
+  await put(env, Machine.prefixes.code + (await digest(code)), { code: kept, kind: 'code' }, codeMs)
   return { ok: true, value: { redirect: back(asked.value.redirect_uri, { code, iss: site, state: asked.value.state }) } }
 }
 
 export type Tokens = { access_token: string; expires_in: number; refresh_token: string; scope: string; token_type: 'Bearer' }
 
 async function issue(env: Cloudflare.Env, grant: Grant): Promise<Tokens> {
-  const access = `swa_${random(32)}`
-  const refresh = `swr_${random(32)}`
+  const access = `swa_${random(Limits.OAuth.secretBytes)}`
+  const refresh = `swr_${random(Limits.OAuth.secretBytes)}`
+  assert(access !== refresh, 'an access token and its refresh token differ', grant.client_id)
   const kept: Grant = { address: grant.address, client_id: grant.client_id, scopes: grant.scopes }
-  await Promise.all([put(env, `oauth:access:${await digest(access)}`, kept, accessSeconds * 1000), put(env, `oauth:refresh:${await digest(refresh)}`, kept, refreshMs)])
+  await Promise.all([put(env, Machine.prefixes.access + (await digest(access)), { grant: kept, kind: 'access' }, accessSeconds * 1000), put(env, Machine.prefixes.refresh + (await digest(refresh)), { grant: kept, kind: 'refresh' }, refreshMs)])
   return { access_token: access, expires_in: accessSeconds, refresh_token: refresh, scope: grant.scopes.join(' '), token_type: 'Bearer' }
+}
+
+function refused(refusal: Machine.Refusal): Outcome<never> {
+  switch (refusal) {
+    case 'code_spent':
+      return fail(400, 'invalid_grant', 'This code expired or was already used.')
+    case 'code_client':
+      return fail(400, 'invalid_grant', 'This code was issued to another app.')
+    case 'code_redirect':
+      return fail(400, 'invalid_grant', 'The redirect URI differs from the one the code was issued for.')
+    case 'code_verifier':
+      return fail(400, 'invalid_grant', 'The code_verifier does not match the code_challenge.')
+    case 'refresh_spent':
+      return fail(400, 'invalid_grant', 'This refresh token expired, was revoked or was already used.')
+    case 'refresh_client':
+      return fail(400, 'invalid_grant', 'This refresh token was issued to another app.')
+    default:
+      return never(refusal, 'OAuth refusal')
+  }
+}
+
+async function exchanged(env: Cloudflare.Env, step: Machine.Step): Promise<Outcome<Tokens>> {
+  if (!step.ok) return refused(step.refusal)
+  return { ok: true, value: await issue(env, step.grant) }
 }
 
 export async function token(env: Cloudflare.Env, input: Record<string, unknown>): Promise<Outcome<Tokens>> {
@@ -244,21 +288,16 @@ export async function token(env: Cloudflare.Env, input: Record<string, unknown>)
     const code = text('code')
     const verifier = text('code_verifier')
     if (!code || !verifier) return fail(400, 'invalid_request', 'Send code and code_verifier.')
-    const kept = await take<Code>(env, `oauth:code:${await digest(code)}`)
-    if (!kept) return fail(400, 'invalid_grant', 'This code expired or was already used.')
-    if (client && client !== kept.client_id) return fail(400, 'invalid_grant', 'This code was issued to another app.')
-    if (text('redirect_uri') && text('redirect_uri') !== kept.redirect_uri) return fail(400, 'invalid_grant', 'The redirect URI differs from the one the code was issued for.')
-    if ((await digest(verifier)) !== kept.challenge) return fail(400, 'invalid_grant', 'The code_verifier does not match the code_challenge.')
-    return { ok: true, value: await issue(env, kept) }
+    const found = await take(env, Machine.prefixes.code + (await digest(code)))
+    const state: Machine.State = found?.kind === 'code' ? { at: 'issued', code: found.code } : { at: 'spent' }
+    return exchanged(env, Machine.step(state, { client, redirect: text('redirect_uri'), type: 'exchange', verified: await digest(verifier) }))
   }
   if (grant === 'refresh_token') {
     const refresh = text('refresh_token')
     if (!refresh) return fail(400, 'invalid_request', 'Send refresh_token.')
-    const kept = await take<Grant>(env, `oauth:refresh:${await digest(refresh)}`)
-    if (!kept) return fail(400, 'invalid_grant', 'This refresh token expired, was revoked or was already used.')
-    if (client && client !== kept.client_id) return fail(400, 'invalid_grant', 'This refresh token was issued to another app.')
-    const narrowed = text('scope') ? parse(text('scope')).filter((scope) => kept.scopes.includes(scope)) : kept.scopes
-    return { ok: true, value: await issue(env, { ...kept, scopes: narrowed }) }
+    const kept = granted(await take(env, Machine.prefixes.refresh + (await digest(refresh))), 'refresh')
+    const state: Machine.State = kept ? { at: 'rotating', grant: kept } : { at: 'spent' }
+    return exchanged(env, Machine.step(state, { client, narrowed: text('scope') ? parse(text('scope')) : undefined, type: 'refresh' }))
   }
   return fail(400, 'unsupported_grant_type', 'Swarms answers authorization_code and refresh_token grants.')
 }
@@ -267,7 +306,7 @@ export async function revoke(env: Cloudflare.Env, input: Record<string, unknown>
   const given = typeof input['token'] === 'string' ? input['token'] : undefined
   if (!given) return
   const hashed = await digest(given)
-  await db(env).batch([db(env).prepare('delete from sessions where key = ?').bind(`oauth:access:${hashed}`), db(env).prepare('delete from sessions where key = ?').bind(`oauth:refresh:${hashed}`)])
+  await db(env).batch([db(env).prepare('delete from sessions where key = ?').bind(Machine.prefixes.access + hashed), db(env).prepare('delete from sessions where key = ?').bind(Machine.prefixes.refresh + hashed)])
 }
 
 const anonymous: Caller = { bearer: 'none', operated: false, scopes: new Set<Scope>(['swarms:read']) }
@@ -276,7 +315,7 @@ export async function caller(env: Cloudflare.Env, request: Request): Promise<Cal
   const given = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') ?? '')?.[1]
   if (!given) return anonymous
   if (given.startsWith('swa_')) {
-    const grant = await read<Grant>(env, `oauth:access:${await digest(given)}`)
+    const grant = granted(await read(env, Machine.prefixes.access + (await digest(given))), 'access')
     return grant ? { address: grant.address, bearer: 'oauth', operated: false, scopes: new Set(grant.scopes) } : { ...anonymous, bearer: 'invalid' }
   }
   const [address, operated] = await Promise.all([Sessions.holder(env, given).catch(() => undefined), Operations.keyed(env, given)])
