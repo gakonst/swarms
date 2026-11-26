@@ -49,6 +49,18 @@ export function roomed(origin: string, swarm: string) {
 
 export { sponsorless }
 
+function aiRefused(message: string | null) {
+  return !!message && (/\b(Messages|Responses|Chat Completions|Chat) HTTP 40[13]\b/.test(message) || / attached any more\b/.test(message))
+}
+
+async function unhost(self: Swarm, row: Store.Row, detail: string | null) {
+  const handle = row.ai_name ? '@' + row.ai_name : row.ai ? Mention.short(row.ai) : 'The rider'
+  await Store.host(self.env, row.id, null)
+  self.hosted(row.id)
+  self.log('error', `${handle}'s own AI refused the agent, so the swarm runs on its riders' money again. Attach a working key or plan under Use your own AI and turn it back on.`, detail === null ? null : redact(detail))
+  return { ...row, ai: null, ai_name: null }
+}
+
 export function broke(message: string | null) {
   return !!message && (message.includes("This app's credit has $") || message.includes(' was not paid: ') || message.includes('cannot pay the network fee'))
 }
@@ -317,8 +329,7 @@ export async function advance(self: Swarm, found: Store.Row) {
   const credentials = money.row.ai ? Gateway.subject(money.row.ai) : undefined
   const sent = await Gateway.prompt(self.env, row.id, agent.id, { ...(credentials ? { credentials } : {}), id: claim, prompt, steer: false })
   if (!sent.ok && credentials && sent.status === 400) {
-    await Store.host(self.env, row.id, null)
-    self.hosted(row.id)
+    await unhost(self, money.row, sent.detail)
     return Date.now()
   }
   if (!sent.ok && sent.status !== 409) {
@@ -527,6 +538,7 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
 
   const closing = Run.ending(store, n)
   const { attempts, balance, due, left, needs, refused, short, sponsor } = facts()
+  if (status !== 'completed' && fresh.ai && aiRefused(message)) fresh = await unhost(self, fresh, message)
   if (refused) {
     await pause(self, fresh, { balance, left, needs, wake: short ? null : Date.now() + wakeIn(attempts ?? 1, sponsor), why: 'money', ...(sponsor ? { sponsor: true } : {}) }, Run.rev(closing))
     return null
