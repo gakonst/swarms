@@ -380,7 +380,7 @@ test('money put in while a turn is failing for lack of it is used: the swarm tri
   await fail()
   const paused = w.swarm.run()
   const wake = Date.now() + 20 * 60_000
-  assert.deepEqual(paused.state === 'paused' && paused.pause, { balance: '5500000', left: '5500000', needs: '50000', wake, why: 'money' })
+  assert.deepEqual(paused.state === 'paused' && paused.pause, { balance: '5500000', left: '5500000', needs: '50000', remaining: '5500000', wake, why: 'money' })
   w.pass(15_000)
   await w.ring()
   assert.deepEqual([w.swarm.run().state, w.alarm()], ['paused', wake])

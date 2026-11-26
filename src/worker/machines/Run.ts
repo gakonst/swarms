@@ -1,4 +1,3 @@
-
 import * as Assert from '../../shared/Assert.ts'
 import * as Phase from '../Phase.ts'
 
@@ -20,6 +19,7 @@ export type Facts = {
   needs: string
   pushed: string
   refused: boolean
+  remaining?: string | undefined
   short: boolean
   spent: string
   sponsor: boolean
@@ -130,4 +130,3 @@ export function close(store: Store, n: number, to: Phase.Run): Stored {
 export function kv(storage: { delete(key: string): unknown; get<T>(key: string): T | undefined; put(key: string, value: unknown): void }): Store {
   return { get: () => storage.get<Stored>('run'), put: (run) => storage.put('run', run) }
 }
-

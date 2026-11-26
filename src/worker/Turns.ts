@@ -40,7 +40,9 @@ function brief(row: Store.Row, notes: Note[], repo: string, room: string) {
 }
 
 function next(notes: Note[], repo: string, room: string) {
-  return ['Keep going. Never stop to wait for backers: pick the next most useful step toward the goal.', repo, room, ...notes.map(weighed)].filter(Boolean).join('\n\n')
+  return ['Keep going. Never stop to wait for backers: pick the next most useful step toward the goal.', repo, room, ...notes.map(weighed)]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 export function roomed(origin: string, swarm: string) {
@@ -57,7 +59,11 @@ async function unhost(self: Swarm, row: Store.Row, detail: string | null) {
   const handle = row.ai_name ? '@' + row.ai_name : row.ai ? Mention.short(row.ai) : 'The rider'
   await Store.host(self.env, row.id, null)
   await self.hosted(row.id)
-  self.log('error', `${handle}'s own AI can no longer run the agent, so the swarm runs on its riders' money again. Attach a working key or plan under Use your own AI and turn it back on.`, detail === null ? null : redact(detail))
+  self.log(
+    'error',
+    `${handle}'s own AI can no longer run the agent, so the swarm runs on its riders' money again. Attach a working key or plan under Use your own AI and turn it back on.`,
+    detail === null ? null : redact(detail),
+  )
   return { ...row, ai: null, ai_name: null }
 }
 
@@ -105,7 +111,10 @@ const heldMs = Limits.Turns.heldMs
 
 export function holding(env: Cloudflare.Env, swarm: string) {
   const list = (env as unknown as { SWARMS_HELD?: string }).SWARMS_HELD ?? ''
-  return list.split(',').map((id) => id.trim()).includes(swarm)
+  return list
+    .split(',')
+    .map((id) => id.trim())
+    .includes(swarm)
 }
 
 export async function step(self: Swarm) {
@@ -189,7 +198,11 @@ function exhausted(self: Swarm, attempts: number, detail: string) {
   const agent = self.agent()
   if (!agent) return
   self.kv.delete('agent')
-  self.log('error', `The agent's turn failed ${attempts} tries in a row, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.`, `${agent.id}: ${detail}`)
+  self.log(
+    'error',
+    `The agent's turn failed ${attempts} tries in a row, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.`,
+    `${agent.id}: ${detail}`,
+  )
 }
 
 export async function lease(self: Swarm, run: Turning) {
@@ -215,7 +228,9 @@ export function stuck(self: Swarm) {
     if (progress(self, run).stalled) return true
     if ((self.kv.get<number>('advanced') ?? 0) >= run.started) return false
   }
-  const ended = self.ctx.storage.sql.exec<{ spent: string; status: string }>('SELECT status, spent FROM turns WHERE ended_at IS NOT NULL ORDER BY n DESC LIMIT ?', failsToStick).toArray()
+  const ended = self.ctx.storage.sql
+    .exec<{ spent: string; status: string }>('SELECT status, spent FROM turns WHERE ended_at IS NOT NULL ORDER BY n DESC LIMIT ?', failsToStick)
+    .toArray()
   return ended.length === failsToStick && ended.every((turn) => turn.status !== 'completed' && BigInt(turn.spent) === 0n)
 }
 
@@ -282,7 +297,11 @@ export async function remodel(self: Swarm, row: Store.Row): Promise<Store.Row | 
   self.remember(moved)
   self.kv.delete('agent')
   self.kv.delete('instructions')
-  self.log('status', `Moved the swarm off Boundless: it runs on ${Setup.name(priced.model)} now, which the gateway charges for by what each call uses. It starts a new agent, which keeps the repository, the results and the notes.`, `${setup.model} -> ${priced.model}`)
+  self.log(
+    'status',
+    `Moved the swarm off Boundless: it runs on ${Setup.name(priced.model)} now, which the gateway charges for by what each call uses. It starts a new agent, which keeps the repository, the results and the notes.`,
+    `${setup.model} -> ${priced.model}`,
+  )
   self.changed('detail')
   return moved
 }
@@ -306,8 +325,28 @@ export async function advance(self: Swarm, found: Store.Row) {
   const worked = self.turned()
   const money = await Money.refresh(self, row, { credit: true, hands: Follow.handsDue(self, Date.now()) })
   if (run.state !== 'starting' && money.left < Store.reserveOf(money.row)) {
-    if (!money.known) return stumble(self, money.row, run, 'The gateway did not say how much money the swarm has.', 'Reading its credit and backings failed, so the last figures were not taken as the answer.')
-    await pause(self, money.row, worked || money.row.contributors ? { balance: String(money.row.balance), left: String(money.left), needs: String(Store.reserveOf(money.row)), wake: null, why: 'money' } : { why: 'unfunded' })
+    if (!money.known)
+      return stumble(
+        self,
+        money.row,
+        run,
+        'The gateway did not say how much money the swarm has.',
+        'Reading its credit and backings failed, so the last figures were not taken as the answer.',
+      )
+    await pause(
+      self,
+      money.row,
+      worked || money.row.contributors
+        ? {
+            balance: String(money.row.balance),
+            left: String(money.left),
+            needs: String(Store.reserveOf(money.row)),
+            remaining: String(BigInt(money.row.balance) - BigInt(money.row.spent)),
+            wake: null,
+            why: 'money',
+          }
+        : { why: 'unfunded' },
+    )
     return null
   }
   const taken = await take(self, run)
@@ -323,7 +362,8 @@ export async function advance(self: Swarm, found: Store.Row) {
   const since = Phase.since(run)
   const notes = await self.notes(money.row)
   const seen = self.kv.get<string>('seen')
-  const base = repo.state !== 'ready' ? null : seen && !Follow.cued(self, 'git', self.kv.get<number>('seenAt') ?? 0) ? seen : await Repo.head(self, row.id, repo.name)
+  const base =
+    repo.state !== 'ready' ? null : seen && !Follow.cued(self, 'git', self.kv.get<number>('seenAt') ?? 0) ? seen : await Repo.head(self, row.id, repo.name)
   if (base) Repo.saw(self, base)
   else self.kv.delete('seen')
   const told = self.told()
@@ -339,7 +379,16 @@ export async function advance(self: Swarm, found: Store.Row) {
   const start: Extract<Phase.Run, { state: 'starting' }> =
     run.state === 'starting' && run.id === claim
       ? run
-      : { ...(Phase.again(run) ? { again: true } : {}), balance: String(money.row.balance), id: claim, n, prompt: again?.prompt ?? text, since, state: 'starting', told: again?.told ?? included.map((note) => [note.id, String(Memo.units(note.weight))]) }
+      : {
+          ...(Phase.again(run) ? { again: true } : {}),
+          balance: String(money.row.balance),
+          id: claim,
+          n,
+          prompt: again?.prompt ?? text,
+          since,
+          state: 'starting',
+          told: again?.told ?? included.map((note) => [note.id, String(Memo.units(note.weight))]),
+        }
   const prompt = start.prompt ?? text
   await self.move(money.row, start)
   const credentials = money.row.ai ? Gateway.subject(money.row.ai) : undefined
@@ -372,9 +421,25 @@ export async function advance(self: Swarm, found: Store.Row) {
     base,
   )
   await heed(self, start.told)
-  for (const note of notes.filter((found) => told.get(found.id) === null)) self.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
+  for (const note of notes.filter((found) => told.get(found.id) === null))
+    self.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
   self.touch()
-  await self.move(money.row, { ...(start.again ? { again: true } : {}), balance: start.balance, from: self.last(), n, since: start.since ?? now, started: now, state: 'working', task, turn, claim }, { rounds: n })
+  await self.move(
+    money.row,
+    {
+      ...(start.again ? { again: true } : {}),
+      balance: start.balance,
+      from: self.last(),
+      n,
+      since: start.since ?? now,
+      started: now,
+      state: 'working',
+      task,
+      turn,
+      claim,
+    },
+    { rounds: n },
+  )
   Relay.begin(self)
   self.log('status', start.since === null ? `${worked ? 'Back at work' : 'Started working'}.` : 'Told the agent to keep going.', prompt)
   if (start.since === null && !start.again) Chat.announce(self, `${worked ? 'Back at work' : 'Started working'}.`)
@@ -391,7 +456,10 @@ async function fail(self: Swarm, row: Store.Row, task: string, claim: string, er
 
 function failed(self: Swarm, error: string, detail: string) {
   const last = self.ctx.storage.sql
-    .exec<{ at: number | null }>("SELECT MAX(at) AS at FROM (SELECT at, kind, text FROM feed ORDER BY seq DESC LIMIT 200) WHERE kind = 'error' AND text = ?", error)
+    .exec<{ at: number | null }>(
+      "SELECT MAX(at) AS at FROM (SELECT at, kind, text FROM feed ORDER BY seq DESC LIMIT 200) WHERE kind = 'error' AND text = ?",
+      error,
+    )
     .one().at
   if (last === null || Date.now() - Number(last) >= Clock.quietMs) self.log('error', error, detail)
 }
@@ -429,8 +497,12 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
   Persona.keep(self.kv, instructions)
   const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, instructed: true, url: credited }
   self.kv.put('agent', agent)
-  self.log('status', "Created the swarm's agent on the gateway. Every model call, machine and tool it uses is paid from the money the swarm's riders sent, which the gateway holds as its credit.", created.value.id)
-  await Branching.release(self, row.id, created.value.id).catch((error: unknown) => console.error('Releasing the old agent\'s branches failed', error))
+  self.log(
+    'status',
+    "Created the swarm's agent on the gateway. Every model call, machine and tool it uses is paid from the money the swarm's riders sent, which the gateway holds as its credit.",
+    created.value.id,
+  )
+  await Branching.release(self, row.id, created.value.id).catch((error: unknown) => console.error("Releasing the old agent's branches failed", error))
   return agent
 }
 
@@ -445,7 +517,11 @@ export async function instructed(self: Swarm, row: Store.Row, agent: Lead): Prom
   Persona.keep(self.kv, instructions)
   const given = { ...agent, instructed: true }
   self.kv.put('agent', given)
-  if (patched.ok) self.log('status', "Gave the agent this swarm's own instructions, appended to its system prompt and fixed for the swarm's life, in place of the shared swarm persona.")
+  if (patched.ok)
+    self.log(
+      'status',
+      "Gave the agent this swarm's own instructions, appended to its system prompt and fixed for the swarm's life, in place of the shared swarm persona.",
+    )
   return given
 }
 
@@ -488,9 +564,13 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
     const money = await Money.refresh(self, fresh, { credit: true, hands: Follow.handsDue(self, Date.now()) })
     fresh = money.row
     const found = self.ctx.storage.sql.exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n).toArray()[0]
-    if (Math.max(self.branched, self.born) > (self.kv.get<number>('settledAt') ?? 0)) await Branching.settled(self, money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
+    if (Math.max(self.branched, self.born) > (self.kv.get<number>('settledAt') ?? 0))
+      await Branching.settled(self, money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
     const repo = await Repo.located(self, money.row)
-    const [commits, charge] = await Promise.all([repo.state === 'ready' && Follow.cued(self, 'git', run.started) ? Repo.pushed(self, row.id, repo.name, found?.base ?? null) : [], charged(self, row, run)])
+    const [commits, charge] = await Promise.all([
+      repo.state === 'ready' && Follow.cued(self, 'git', run.started) ? Repo.pushed(self, row.id, repo.name, found?.base ?? null) : [],
+      charged(self, row, run),
+    ])
     const spent = charge ?? BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
     const grew = run.balance !== undefined && BigInt(money.row.balance) > BigInt(run.balance)
     const short = money.known && money.left < Store.reserveOf(money.row)
@@ -499,9 +579,28 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
     const lines = commits.map((commit) => `${commit.sha.slice(0, 7)} ${commit.message.split('\n')[0]}`)
     Run.once(store, n, 'turned', () => {
       if (commits[0]) Repo.saw(self, commits[0].sha)
-      self.ctx.storage.sql.exec('UPDATE turns SET ended_at = ?, status = ?, message = ?, spent = ?, commits = ? WHERE n = ?', Date.now(), status, message === null ? null : redact(message), String(spent > 0n ? spent : 0n), JSON.stringify(commits.map((commit) => commit.sha)), n)
+      self.ctx.storage.sql.exec(
+        'UPDATE turns SET ended_at = ?, status = ?, message = ?, spent = ?, commits = ? WHERE n = ?',
+        Date.now(),
+        status,
+        message === null ? null : redact(message),
+        String(spent > 0n ? spent : 0n),
+        JSON.stringify(commits.map((commit) => commit.sha)),
+        n,
+      )
       self.touch()
-      return { balance: String(money.row.balance), commits: lines, left: String(money.left), needs: String(Store.reserveOf(money.row)), pushed, refused, short, spent: String(spent > 0n ? spent : 0n), sponsor: !short && (sponsorless(message) || sponsorless(unpaidBy?.error)) }
+      return {
+        balance: String(money.row.balance),
+        commits: lines,
+        left: String(money.left),
+        needs: String(Store.reserveOf(money.row)),
+        pushed,
+        refused,
+        remaining: String(BigInt(money.row.balance) - BigInt(money.row.spent)),
+        short,
+        spent: String(spent > 0n ? spent : 0n),
+        sponsor: !short && (sponsorless(message) || sponsorless(unpaidBy?.error)),
+      }
     })
   }
   const facts = () => Run.ending(store, n).ending.facts as Run.Facts
@@ -513,7 +612,10 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
     self.kv.delete('heard')
   })
   await Run.step(store, n, 'attempted', async () => {
-    const attempt = task && run.claim ? await attempted(self, task, run.claim, status === 'completed' ? { done: message ?? '' } : { failed: message ?? status }, !facts().refused) : { attempts: 1, due: undefined, finished: true }
+    const attempt =
+      task && run.claim
+        ? await attempted(self, task, run.claim, status === 'completed' ? { done: message ?? '' } : { failed: message ?? status }, !facts().refused)
+        : { attempts: 1, due: undefined, finished: true }
     return { attempts: attempt.attempts, due: attempt.due, finished: attempt.finished }
   })
   await Run.step(store, n, 'reported', async () => {
@@ -523,7 +625,9 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
     const { commits, pushed, spent } = facts()
     self.log(
       status === 'completed' ? 'status' : 'error',
-      status === 'completed' ? `Posted an update after spending ${Words.dollars(BigInt(spent))}${pushed}.` : `The agent stopped with an error after spending ${Words.dollars(BigInt(spent))}${pushed}.`,
+      status === 'completed'
+        ? `Posted an update after spending ${Words.dollars(BigInt(spent))}${pushed}.`
+        : `The agent stopped with an error after spending ${Words.dollars(BigInt(spent))}${pushed}.`,
       status === 'completed' ? (commits.length ? commits.join('\n') : null) : message,
     )
   })
@@ -546,10 +650,23 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
   })
 
   const closing = Run.ending(store, n)
-  const { attempts, balance, due, left, needs, refused, short, sponsor } = facts()
+  const { attempts, balance, due, left, needs, refused, remaining, short, sponsor } = facts()
   if (status !== 'completed' && fresh.ai && aiRefused(message)) fresh = await unhost(self, fresh, message)
   if (refused) {
-    await pause(self, fresh, { balance, left, needs, wake: short ? null : Date.now() + wakeIn(attempts ?? 1, sponsor), why: 'money', ...(sponsor ? { sponsor: true } : {}) }, Run.rev(closing))
+    await pause(
+      self,
+      fresh,
+      {
+        balance,
+        left,
+        needs,
+        remaining,
+        wake: short ? null : Date.now() + wakeIn(attempts ?? 1, sponsor),
+        why: 'money',
+        ...(sponsor ? { sponsor: true } : {}),
+      },
+      Run.rev(closing),
+    )
     return null
   }
   const renewed = status !== 'completed' && resets(self) >= resetsToRenew && renew(self, message)
@@ -557,7 +674,6 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
   await self.move(fresh, { since: run.since, state: 'waiting', until }, {}, Run.rev(Run.ending(store, n)))
   return until
 }
-
 
 async function projected(self: Swarm, swarm: string, answer: ReturnType<typeof Answer.parse> | undefined, ended: Search.Turn | undefined) {
   if (answer?.text) await Store.update(self.env, swarm, { answer: JSON.stringify(answer) })
@@ -591,7 +707,9 @@ export function reset(message: string | null) {
 export function resets(self: Swarm) {
   const since = self.kv.get<number>('renewedAt') ?? 0
   let count = 0
-  for (const row of self.ctx.storage.sql.exec<{ message: string | null; status: string }>('SELECT status, message FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, resetsToRenew).toArray()) {
+  for (const row of self.ctx.storage.sql
+    .exec<{ message: string | null; status: string }>('SELECT status, message FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, resetsToRenew)
+    .toArray()) {
     if (row.status === 'completed' || !reset(row.message)) break
     count += 1
   }
@@ -603,14 +721,28 @@ function renew(self: Swarm, message: string | null) {
   if (!agent) return false
   self.kv.delete('agent')
   self.kv.put('renewedAt', Date.now())
-  self.log('error', `The agent's session was reset and could not recover ${resetsToRenew} turns in a row, so the swarm starts a new agent with its goal, notes and updates; the repository stays, the old conversation does not.`, `${agent.id}: ${message === null ? '' : redact(message)}`)
+  self.log(
+    'error',
+    `The agent's session was reset and could not recover ${resetsToRenew} turns in a row, so the swarm starts a new agent with its goal, notes and updates; the repository stays, the old conversation does not.`,
+    `${agent.id}: ${message === null ? '' : redact(message)}`,
+  )
   return true
 }
 
-
 export async function expose(self: Swarm, row: Store.Row, kinds: ReadonlySet<'bucket' | 'git' | 'kv'> = new Set(['bucket', 'git', 'kv'])) {
   const hidden: ['bucket' | 'git' | 'kv', string][] = []
-  for (const [kind, page] of [['kv', (cursor: string | null) => Gateway.values(self.env, row.id, cursor).then((found) => found.ok ? { cursor: found.value.cursor, items: found.value.entries } : undefined)], ['bucket', (cursor: string | null) => Gateway.objects(self.env, row.id, cursor).then((found) => found.ok ? { cursor: found.value.cursor, items: found.value.objects } : undefined)]] as const) {
+  for (const [kind, page] of [
+    [
+      'kv',
+      (cursor: string | null) =>
+        Gateway.values(self.env, row.id, cursor).then((found) => (found.ok ? { cursor: found.value.cursor, items: found.value.entries } : undefined)),
+    ],
+    [
+      'bucket',
+      (cursor: string | null) =>
+        Gateway.objects(self.env, row.id, cursor).then((found) => (found.ok ? { cursor: found.value.cursor, items: found.value.objects } : undefined)),
+    ],
+  ] as const) {
     if (!kinds.has(kind)) continue
     let cursor: string | null = null
     for (let pages = 0; pages < 20; pages++) {
@@ -627,11 +759,21 @@ export async function expose(self: Swarm, row: Store.Row, kinds: ReadonlySet<'bu
   for (const [kind, name] of hidden) if ((await Gateway.reveal(self.env, row.id, kind, name)).ok) shown++
   self.kv.put('published', Date.now())
   console.log(JSON.stringify({ expose: row.id, hidden: hidden.length, shown }))
-  if (shown) self.log('status', `Made ${shown} private item${shown === 1 ? '' : 's'} the agent stored public, so everything the swarm produces can be read by anyone.`, hidden.map(([kind, name]) => `${kind} ${name}`).join('\n'))
+  if (shown)
+    self.log(
+      'status',
+      `Made ${shown} private item${shown === 1 ? '' : 's'} the agent stored public, so everything the swarm produces can be read by anyone.`,
+      hidden.map(([kind, name]) => `${kind} ${name}`).join('\n'),
+    )
 }
 
 export async function sweep(self: Swarm, row: Store.Row, why = ', which was still running when the swarm stopped') {
-  const started = self.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'machine' AND text LIKE 'Starting machine%'", self.kv.get<number>('sweptSeq') ?? 0).one().n
+  const started = self.ctx.storage.sql
+    .exec<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM feed WHERE seq > ? AND kind = 'machine' AND text LIKE 'Starting machine%'",
+      self.kv.get<number>('sweptSeq') ?? 0,
+    )
+    .one().n
   if (!started && !(self.kv.get<Hand[]>('hands') ?? []).length) return
   const listed = await Gateway.sandboxes(self.env, row.id)
   if (!listed.ok) return
@@ -667,7 +809,9 @@ export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
   const paused = self.run()
   if (paused.state !== 'paused' || paused.at !== run.at) return null
   if (!money.known) return Date.now() + Clock.minuteMs
-  if (Phase.resumes(run.pause, { balance: BigInt(money.row.balance), due: Phase.due(run, Date.now()), left: money.left, reserve: Store.reserveOf(money.row) })) {
+  if (
+    Phase.resumes(run.pause, { balance: BigInt(money.row.balance), due: Phase.due(run, Date.now()), left: money.left, reserve: Store.reserveOf(money.row) })
+  ) {
     self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
     return null
   }

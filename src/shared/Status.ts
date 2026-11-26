@@ -1,4 +1,6 @@
+import { cash } from './Answer.ts'
 import type { Failure, Summary, Waiting } from './Api.ts'
+import { decimal } from './Memo.ts'
 
 export type Word = 'Working' | 'Stuck' | 'Starting' | 'Needs money' | 'Not started' | 'Stopped'
 
@@ -25,8 +27,28 @@ export const reasons = {
 } as const
 
 const before = {
-  sponsor: "Waiting on the gateway's fee sponsor: the gateway cannot pay the network fee for its AI calls right now, though the swarm has money. It tries again by itself.",
+  sponsor:
+    "Waiting on the gateway's fee sponsor: the gateway cannot pay the network fee for its AI calls right now, though the swarm has money. It tries again by itself.",
 } as const
+
+export type Short = { left: string; needs?: string | undefined; remaining?: string | undefined }
+
+function usd(atomics: bigint) {
+  return cash(Number(decimal(atomics)))
+}
+
+export function short(money: Short) {
+  const left = BigInt(money.left)
+  const has = money.remaining === undefined ? left : BigInt(money.remaining)
+  if (money.needs === undefined || has <= 0n) return reasons.broke
+  const needs = usd(BigInt(money.needs))
+  if (has < BigInt(money.needs)) return `Needs more money: it has ${usd(has)} left, and its next step can cost up to ${needs}. Ride it to keep it going.`
+  return `Capped by approvals: it still has ${usd(has)}, but its riders' approvals at the gateway let it spend only ${usd(left > 0n ? left : 0n)} now, and its next step can cost up to ${needs}. A rider raising their approval or a new ride wakes it.`
+}
+
+export function starved(reason: string | null | undefined) {
+  return !!reason && (reason === reasons.broke || /^(Needs more money|Capped by approvals): /.test(reason))
+}
 
 export function sponsorless(message: string | null | undefined) {
   return !!message && message.includes('cannot pay the network fee') && message.includes('fee sponsor is out of funds')
@@ -52,7 +74,7 @@ const pills: Record<Word, string> = {
 }
 
 const lines: Record<Word, string> = {
-  'Needs money': 'Out of money: ride it to keep it going.',
+  'Needs money': 'Needs more money for its next step: ride it to keep it going.',
   'Not started': 'Ride it to get it started.',
   Starting: 'Getting back to work.',
   Stopped: 'Archived: nothing here runs or takes rides.',
@@ -99,7 +121,8 @@ export function standing(swarm: Stood): Standing {
   if (swarm.archivedAt) return { action: null, mood: 'new', word: 'Stopped' }
   if ((swarm.inFlight ?? 0) > 0) return { action: null, mood: 'live', word: 'Working' }
   if (swarm.status === 'funding' && Number(swarm.balance) <= 0) return { action: 'Ride it to start it', mood: 'new', word: 'Not started' }
-  if (!fueled(swarm) || swarm.why === 'unfunded' || (swarm.status === 'paused' && swarm.why === 'money' && swarm.reason === reasons.broke)) return { action: 'Ride it to keep it going', mood: 'money', word: 'Needs money' }
+  if (!fueled(swarm) || swarm.why === 'unfunded' || (swarm.status === 'paused' && swarm.why === 'money' && starved(swarm.reason)))
+    return { action: 'Ride it to keep it going', mood: 'money', word: 'Needs money' }
   if (swarm.why === 'money' || (swarm.status === 'running' && swarm.why === 'stuck')) return { action: null, mood: 'stuck', word: 'Stuck' }
   if (swarm.status === 'running') return { action: null, mood: 'live', word: 'Working' }
   return { action: null, mood: 'live', word: 'Starting' }
@@ -123,7 +146,8 @@ export function live(swarm: Stood) {
   return word(swarm) === 'Working'
 }
 
-const tests = /operator test|fund flow check|model guard check|headless check|channel check|audit fixes check|second audit check|template check|settle check|start exactly two subagents|stop stays stopped|steer and stop check|branch budget check|channel open check|setup check|\bL3 reliability\b|\be2e test\b|^asdasd$/i
+const tests =
+  /operator test|fund flow check|model guard check|headless check|channel check|audit fixes check|second audit check|template check|settle check|start exactly two subagents|stop stays stopped|steer and stop check|branch budget check|channel open check|setup check|\bL3 reliability\b|\be2e test\b|^asdasd$/i
 
 export function test(swarm: Pick<Summary, 'title'>) {
   return tests.test(swarm.title)

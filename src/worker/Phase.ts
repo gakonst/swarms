@@ -2,12 +2,20 @@ import { z } from 'zod'
 import type { Failure, Lifecycle, Waiting, Why } from '../shared/Api.ts'
 import * as Assert from '../shared/Assert.ts'
 import * as Memo from '../shared/Memo.ts'
-import { failing, reasons } from '../shared/Status.ts'
+import { failing, reasons, short } from '../shared/Status.ts'
 import * as Limits from '../shared/Limits.ts'
 
 export type Pause =
   | { why: 'unfunded' }
-  | { balance?: string | undefined; left: string; needs?: string | undefined; sponsor?: true | undefined; wake: number | null; why: 'money' }
+  | {
+      balance?: string | undefined
+      left: string
+      needs?: string | undefined
+      remaining?: string | undefined
+      sponsor?: true | undefined
+      wake: number | null
+      why: 'money'
+    }
   | { wanted: string; why: 'costly' }
   | { failures: number; why: 'rest' }
   | { why: 'idle' }
@@ -19,8 +27,29 @@ export type Sent = { id: string; prompt: string; told: Told[] }
 export type Run =
   | { state: 'new' }
   | { from?: Pause | undefined; sent?: Sent | undefined; since: number | null; state: 'waiting'; until: number }
-  | { again?: boolean | undefined; balance?: string | undefined; id: string; n: number; prompt?: string | undefined; since: number | null; state: 'starting'; told: Told[] }
-  | { again?: boolean | undefined; balance?: string | undefined; claim?: string | undefined; from: number; n: number; since: number; started: number; state: 'working'; task?: string | undefined; turn: string; wanted?: string | undefined }
+  | {
+      again?: boolean | undefined
+      balance?: string | undefined
+      id: string
+      n: number
+      prompt?: string | undefined
+      since: number | null
+      state: 'starting'
+      told: Told[]
+    }
+  | {
+      again?: boolean | undefined
+      balance?: string | undefined
+      claim?: string | undefined
+      from: number
+      n: number
+      since: number
+      started: number
+      state: 'working'
+      task?: string | undefined
+      turn: string
+      wanted?: string | undefined
+    }
   | { at: number; pause: Pause; settled?: number | undefined; state: 'paused' }
 
 export type Paused = Extract<Run, { state: 'paused' }>
@@ -49,7 +78,17 @@ const told = z.tuple([z.string(), z.string()])
 
 const pause = z.discriminatedUnion('why', [
   z.object({ why: z.literal('unfunded') }).loose(),
-  z.object({ balance: z.string().optional(), left: z.string(), needs: z.string().optional(), sponsor: z.literal(true).optional(), wake: z.number().nullable().default(null), why: z.literal('money') }).loose(),
+  z
+    .object({
+      balance: z.string().optional(),
+      left: z.string(),
+      needs: z.string().optional(),
+      remaining: z.string().optional(),
+      sponsor: z.literal(true).optional(),
+      wake: z.number().nullable().default(null),
+      why: z.literal('money'),
+    })
+    .loose(),
   z.object({ wanted: z.string(), why: z.literal('costly') }).loose(),
   z.object({ failures: z.number(), why: z.literal('rest') }).loose(),
   z.object({ why: z.literal('idle') }).loose(),
@@ -60,8 +99,33 @@ const sentSchema = z.object({ id: z.string(), prompt: z.string(), told: z.array(
 export const schema = z.discriminatedUnion('state', [
   z.object({ state: z.literal('new') }).loose(),
   z.object({ from: pause.optional(), sent: sentSchema.optional(), since: z.number().nullable(), state: z.literal('waiting'), until: z.number() }).loose(),
-  z.object({ again: z.boolean().optional(), balance: z.string().optional(), id: z.string(), n: z.number(), prompt: z.string().optional(), since: z.number().nullable(), state: z.literal('starting'), told: z.array(told) }).loose(),
-  z.object({ again: z.boolean().optional(), balance: z.string().optional(), claim: z.string().optional(), from: z.number(), n: z.number(), since: z.number(), started: z.number(), state: z.literal('working'), task: z.string().optional(), turn: z.string(), wanted: z.string().optional() }).loose(),
+  z
+    .object({
+      again: z.boolean().optional(),
+      balance: z.string().optional(),
+      id: z.string(),
+      n: z.number(),
+      prompt: z.string().optional(),
+      since: z.number().nullable(),
+      state: z.literal('starting'),
+      told: z.array(told),
+    })
+    .loose(),
+  z
+    .object({
+      again: z.boolean().optional(),
+      balance: z.string().optional(),
+      claim: z.string().optional(),
+      from: z.number(),
+      n: z.number(),
+      since: z.number(),
+      started: z.number(),
+      state: z.literal('working'),
+      task: z.string().optional(),
+      turn: z.string(),
+      wanted: z.string().optional(),
+    })
+    .loose(),
   z.object({ at: z.number(), pause, settled: z.number().optional(), state: z.literal('paused') }).loose(),
 ])
 
@@ -126,8 +190,11 @@ export function reason(pause: Pause) {
   if (pause.why === 'unfunded') return reasons.unfunded
   if (refused(pause) && pause.why === 'money' && pause.sponsor) return reasons.sponsor
   if (refused(pause)) return reasons.refused
-  return reasons.broke
+  if (pause.why !== 'money' || !guards.exact) return reasons.broke
+  return short(pause)
 }
+
+export const guards = { exact: true }
 
 export function stuck(failure: Failure | null, sponsor: boolean) {
   if (sponsor) return reasons.sponsor

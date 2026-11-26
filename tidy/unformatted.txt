@@ -11,7 +11,6 @@ cli/src/commands/watch.ts 1 pre-existing hand formatting
 cli/src/context.ts 1 pre-existing hand formatting
 cli/src/mcp.ts 1 pre-existing hand formatting
 cli/src/run.ts 1 pre-existing hand formatting
-src/shared/Answer.ts 1 pre-existing hand formatting
 src/shared/Api.ts 1 pre-existing hand formatting
 src/shared/Boot.ts 1 pre-existing hand formatting
 src/shared/Brief.ts 1 pre-existing hand formatting
@@ -23,7 +22,6 @@ src/shared/Progress.ts 1 pre-existing hand formatting
 src/shared/Prose.ts 1 pre-existing hand formatting
 src/shared/Setup.ts 1 pre-existing hand formatting
 src/shared/Site.ts 1 pre-existing hand formatting
-src/shared/Status.ts 1 pre-existing hand formatting
 src/shared/Surface.ts 1 pre-existing hand formatting
 src/shared/Trace.ts 1 pre-existing hand formatting
 src/shared/Trail.ts 1 pre-existing hand formatting
@@ -124,7 +122,6 @@ src/worker/Operations.ts 1 pre-existing hand formatting
 src/worker/Page.ts 1 pre-existing hand formatting
 src/worker/Paint.ts 1 pre-existing hand formatting
 src/worker/Persona.ts 1 pre-existing hand formatting
-src/worker/Phase.ts 1 pre-existing hand formatting
 src/worker/Posters.ts 1 pre-existing hand formatting
 src/worker/Problem.ts 1 pre-existing hand formatting
 src/worker/Replica.ts 1 pre-existing hand formatting
@@ -143,7 +140,6 @@ src/worker/Team.ts 1 pre-existing hand formatting
 src/worker/Telegram.ts 1 pre-existing hand formatting
 src/worker/Timing.ts 1 pre-existing hand formatting
 src/worker/Triage.ts 1 pre-existing hand formatting
-src/worker/Turns.ts 1 pre-existing hand formatting
 src/worker/Verify.ts 1 pre-existing hand formatting
 src/worker/Watch.ts 1 pre-existing hand formatting
 src/worker/Words.ts 1 pre-existing hand formatting
@@ -156,7 +152,6 @@ src/worker/machines/Hand.ts 1 pre-existing hand formatting
 src/worker/machines/Lease.ts 1 pre-existing hand formatting
 src/worker/machines/Payment.ts 1 pre-existing hand formatting
 src/worker/machines/Ride.ts 1 pre-existing hand formatting
-src/worker/machines/Run.ts 1 pre-existing hand formatting
 src/worker/machines/Sub.ts 1 pre-existing hand formatting
 src/worker/machines/Tree.ts 1 pre-existing hand formatting
 src/worker/site.ts 1 pre-existing hand formatting

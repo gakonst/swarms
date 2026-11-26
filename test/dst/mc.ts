@@ -113,6 +113,34 @@ const sentences = {
 
 const whys = ['unfunded', 'money', 'costly', 'rest', 'idle'] as const
 
+function dollarsSpec(atomics: bigint) {
+  const cents = Number(atomics) / 10_000
+  return cents >= 10 ? '$' + (Math.round(cents) / 100).toFixed(2) : '$' + String(Number((cents / 100).toPrecision(2)))
+}
+
+function shortSpec(pause: Extract<Phase.Pause, { why: 'money' }>) {
+  const has = BigInt(pause.remaining ?? pause.left)
+  if (pause.needs === undefined || has <= 0n) return sentences.broke
+  if (has < BigInt(pause.needs))
+    return (
+      'Needs more money: it has ' +
+      dollarsSpec(has) +
+      ' left, and its next step can cost up to ' +
+      dollarsSpec(BigInt(pause.needs)) +
+      '. Ride it to keep it going.'
+    )
+  const left = BigInt(pause.left) > 0n ? BigInt(pause.left) : 0n
+  return (
+    'Capped by approvals: it still has ' +
+    dollarsSpec(has) +
+    ", but its riders' approvals at the gateway let it spend only " +
+    dollarsSpec(left) +
+    ' now, and its next step can cost up to ' +
+    dollarsSpec(BigInt(pause.needs)) +
+    '. A rider raising their approval or a new ride wakes it.'
+  )
+}
+
 function refusedSpec(pause: Phase.Pause) {
   return pause.why === 'money' && pause.needs !== undefined && BigInt(pause.left) >= BigInt(pause.needs)
 }
@@ -147,6 +175,7 @@ async function phase(seed: string): Promise<Outcome> {
       why,
       ...(random.chance(0.5) ? { needs: amount() } : {}),
       ...(random.chance(0.5) ? { balance: amount() } : {}),
+      ...(random.chance(0.6) ? { remaining: amount() } : {}),
       ...(random.chance(0.3) ? { sponsor: true as const } : {}),
     }
   }
@@ -205,7 +234,9 @@ async function phase(seed: string): Promise<Outcome> {
           ? one.why === 'money' && one.sponsor
             ? reasons.sponsor
             : sentences.refused
-          : sentences.broke
+          : one.why === 'money'
+            ? shortSpec(one)
+            : sentences.broke
     if (Phase.reason(one) !== sentence) fail('reason', canon(one) + ' said ' + JSON.stringify(Phase.reason(one)))
     const money = {
       balance: BigInt(amount()),
@@ -1012,5 +1043,6 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
   { flip: flag(Run.guards, 'once'), invariant: 'turn once', name: 'lifecycle.once', scenario: 'lifecycle', seeds: ['1', '2', '3'] },
   { flip: flag(Cursor.guards, 'seq'), invariant: 'seq once', name: 'lifecycle.seq', scenario: 'lifecycle', seeds: ['1', '2', '3'] },
   { flip: reworded, invariant: 'reason', name: 'phase.reason', scenario: 'phase', seeds: ['1', '2', '3'] },
+  { flip: flag(Phase.guards, 'exact'), invariant: 'reason', name: 'phase.short', scenario: 'phase', seeds: ['1', '2', '3'] },
   { flip: flag(Work.guards, 'deadline'), invariant: 'deadline', name: 'work.serial.deadline', scenario: 'work', seeds: ['1', '2', '3'] },
 ]

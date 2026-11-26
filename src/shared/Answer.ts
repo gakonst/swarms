@@ -26,7 +26,10 @@ export function unround(text: string) {
   const [first = '', ...rest] = lines
   const stripped = first.replace(numbered, '$1')
   const head = stripped === first ? lines : [/^[\s#*_]*$/.test(stripped) ? '' : stripped, ...rest]
-  return rounds.reduce((body, [pattern, replace]) => body.replace(pattern, (found: string, ...groups: string[]) => matchCase(found, replace.replace('$1', groups[0] ?? ''))), head.join('\n').replace(/^\n+/, '').trimEnd())
+  return rounds.reduce(
+    (body, [pattern, replace]) => body.replace(pattern, (found: string, ...groups: string[]) => matchCase(found, replace.replace('$1', groups[0] ?? ''))),
+    head.join('\n').replace(/^\n+/, '').trimEnd(),
+  )
 }
 
 function matchCase(found: string, next: string) {
@@ -49,16 +52,18 @@ const costly = (needed: string) => `Paused: its next step needs about ${needed} 
 
 export function settled(text: string) {
   const said = spoken(text)
-  return said === null || /^(Out of money|Paused:|Stopped after|Resting|Not started|Open again)/.test(said)
+  return said === null || /^(Out of money|Needs more money:|Capped by approvals:|Paused:|Stopped after|Resting|Not started|Open again)/.test(said)
 }
 
 export function spoken(text: string): string | null {
   const said = text.trim()
-  if (/^Round \d+ (started|completed|failed|cancelled)\b/i.test(said) || /room for \d+ explorers?/i.test(said) || /^Told the agent to keep going\b/.test(said)) return null
+  if (/^Round \d+ (started|completed|failed|cancelled)\b/i.test(said) || /room for \d+ explorers?/i.test(said) || /^Told the agent to keep going\b/.test(said))
+    return null
   if (/code repository|\$1\.(19|04)\b|repository first/i.test(said) && /^Waiting/i.test(said)) return null
   const held = /^(?:Waiting for money: the agent's next model call holds|Out of money for its next step: it needs about) \$([\d.]+)/.exec(said)
   if (held) return costly(cash(Number(held[1])))
-  const short = /^(?:Waiting for money: (?:the next request needed more than the )?|Out of money: )\$([\d.]+)(?: left, less than its next step needs\.|\b)/.exec(said)
+  const short =
+    /^(?:Waiting for money: (?:the next request needed more than the )?|Out of money: )\$([\d.]+)(?: left, less than its next step needs\.|\b)/.exec(said)
   if (short && !/one step can cost/.test(said)) return broke(cash(Number(short[1])))
   if (/^Waiting for money\b/.test(said) || /^Out of money\. Adding money wakes it\.$/.test(said)) return 'Out of money. Fund it to keep going.'
   const stopped = /^Stopped after \d+ errors in a row\. New money or a note restarts it\./.exec(said)
@@ -70,7 +75,9 @@ export function spoken(text: string): string | null {
   if (resting) return `Resting: the agent found nothing more worth doing. ${amounts(resting[1] ?? '')} is kept for later; a note or new money wakes it.`
   const back = /^(Back at work|Started working) with \$[\d.]+ to spend\./.exec(said)
   if (back) return `${back[1]}.`
-  return amounts(unround(said)).replace(/\bBack it to\b/, 'Ride it to').replace(/^Nobody has backed it yet\./, 'Nobody is riding it yet.')
+  return amounts(unround(said))
+    .replace(/\bBack it to\b/, 'Ride it to')
+    .replace(/^Nobody has backed it yet\./, 'Nobody is riding it yet.')
 }
 
 export function local(text: string, at: number, format: (at: number) => string) {
@@ -98,7 +105,39 @@ function telling(line: string) {
   return line.length > 20 && !/^[-: ]+$/.test(line)
 }
 
-const signs: Record<string, string> = { alpha: 'α', approx: '≈', beta: 'β', cdot: '·', delta: 'δ', epsilon: 'ε', equiv: '≡', ge: '≥', geq: '≥', gamma: 'γ', in: '∈', infty: '∞', lambda: 'λ', le: '≤', leq: '≤', ldots: '…', cdots: '⋯', mu: 'μ', ne: '≠', neq: '≠', pi: 'π', pm: '±', rightarrow: '→', sigma: 'σ', sum: 'Σ', theta: 'θ', times: '×', to: '→', mid: '|', log: 'log', ln: 'ln' }
+const signs: Record<string, string> = {
+  alpha: 'α',
+  approx: '≈',
+  beta: 'β',
+  cdot: '·',
+  delta: 'δ',
+  epsilon: 'ε',
+  equiv: '≡',
+  ge: '≥',
+  geq: '≥',
+  gamma: 'γ',
+  in: '∈',
+  infty: '∞',
+  lambda: 'λ',
+  le: '≤',
+  leq: '≤',
+  ldots: '…',
+  cdots: '⋯',
+  mu: 'μ',
+  ne: '≠',
+  neq: '≠',
+  pi: 'π',
+  pm: '±',
+  rightarrow: '→',
+  sigma: 'σ',
+  sum: 'Σ',
+  theta: 'θ',
+  times: '×',
+  to: '→',
+  mid: '|',
+  log: 'log',
+  ln: 'ln',
+}
 
 export function symbols(text: string) {
   return text
@@ -136,7 +175,10 @@ export function gist(text: string) {
 }
 
 function bare(text: string) {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
 }
 
 export function opening(text: string, title = '') {

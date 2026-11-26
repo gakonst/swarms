@@ -51,7 +51,7 @@ test('every word has one pill, one line and a rail tag only when riders need to 
   assert.equal(Status.tag('Needs money'), 'needs money')
   assert.equal(Status.tag('Starting'), null)
   assert.deepEqual([Status.pill('Stopped'), Status.tag('Stopped')], ['Archived', 'archived'])
-  assert.match(Status.line('Needs money'), /Out of money/)
+  assert.match(Status.line('Needs money'), /Needs more money/)
   assert.doesNotMatch(Status.line('Stuck'), /model call|tool call|session|minutes/)
 })
 
