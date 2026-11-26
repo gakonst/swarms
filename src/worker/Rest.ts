@@ -12,6 +12,7 @@ import * as Replica from './Replica.ts'
 import * as Sessions from './Sessions.ts'
 import * as Lobby from './Lobby.ts'
 import * as Watch from './Watch.ts'
+import * as Timing from './Timing.ts'
 
 export const app = new Hono<{ Bindings: Cloudflare.Env }>()
 
@@ -105,9 +106,9 @@ app.post('/oauth/revoke', async (c) => {
 
 app.get('/v1/config', async (c) => c.json(await Operations.config(c.env)))
 
-app.post(`${Sessions.path}/challenge`, (c) => c.env.OBJECTS.fetch(c.req.raw))
+app.post(`${Sessions.path}/challenge`, (c) => c.env.OBJECTS.fetch(Timing.traced(c.req.raw)))
 
-app.post(Sessions.path, (c) => c.env.OBJECTS.fetch(c.req.raw))
+app.post(Sessions.path, (c) => c.env.OBJECTS.fetch(Timing.traced(c.req.raw)))
 
 app.post(Device.path, async (c) => Problem.respond(await Device.start(c.env, c.req.url)))
 
@@ -118,7 +119,7 @@ app.post(`${Device.path}/approve`, async (c) => Problem.respond(await Device.app
 app.post(`${Sessions.path}/logout`, (c) => {
   const token = Sessions.bearer(c.req.raw)
   if (token) Sessions.forget(token)
-  return c.env.OBJECTS.fetch(c.req.raw)
+  return c.env.OBJECTS.fetch(Timing.traced(c.req.raw))
 })
 
 app.post('/v1/feedback', async (c) => Problem.respond(await Feedback.file(c.env, await body(c.req.raw)), 201))

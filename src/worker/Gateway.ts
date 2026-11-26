@@ -72,7 +72,7 @@ type Raw = {
 type Init = { app?: string; body?: unknown; key?: string; method?: string; open?: boolean }
 
 export function call(env: Cloudflare.Env, path: string, init: RequestInit = {}) {
-  const request = new Request(env.GATEWAY_URL + path, init)
+  const request = Timing.traced(new Request(env.GATEWAY_URL + path, init))
   return 'GATEWAY' in env && env.GATEWAY ? env.GATEWAY.fetch(request) : fetch(request)
 }
 

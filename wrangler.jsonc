@@ -7,7 +7,7 @@
   "preview_urls": true,
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "observability": { "enabled": true },
+  "observability": { "enabled": true, "traces": { "enabled": true, "head_sampling_rate": 0.05 } },
   "vars": {
     "GATEWAY_URL": "https://gateway.tempo-dev.workers.dev",
     "GITHUB_API": "https://api.github.com",

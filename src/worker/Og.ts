@@ -6,6 +6,7 @@ import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
 import * as Store from './Store.ts'
 import * as XFrames from './XFrames.ts'
+import * as Timing from './Timing.ts'
 
 export type Name = 'card.png' | 'poster.png' | 'video.mp4'
 
@@ -136,5 +137,5 @@ export async function warm(env: Cloudflare.Env, url: URL) {
   if (!found) return
   const version = encodeURIComponent(Share.version(found))
   const names = Share.moving(found) ? (['card.png', 'poster.png', 'video.mp4'] as const) : (['card.png', 'poster.png'] as const)
-  await Promise.all(names.map(async (name) => (await env.OBJECTS.fetch(new Request(url.origin + '/og/' + key + '/' + name + '?v=' + version))).body?.cancel()))
+  await Promise.all(names.map(async (name) => (await env.OBJECTS.fetch(Timing.traced(new Request(url.origin + '/og/' + key + '/' + name + '?v=' + version)))).body?.cancel()))
 }

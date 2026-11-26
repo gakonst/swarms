@@ -355,6 +355,17 @@ export const Work = {
   serialWaitMs: 30_000,
 } as const
 
+export const Telemetry = {
+  failedStatus: 500,
+  flagsRadix: 16,
+  idTries: 4,
+  okStatus: 200,
+  slowMs: 500,
+  spanBytes: 8,
+  spans: 64,
+  traceBytes: 16,
+} as const
+
 export const Held = {
   absent: { entries: 1024, ms: Store.absentMs },
   draws: { entries: 64, ms: 60_000 },

@@ -41,6 +41,7 @@ import * as Runner from './Runner.ts'
 import type * as Triage from './Triage.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Limits from '../shared/Limits.ts'
+import * as Timing from './Timing.ts'
 
 export type Contributed = {
   amount: string
@@ -204,6 +205,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
     super(ctx, env)
+    this.env = { ...env, DB: Timing.database(env.DB) }
     const sql = ctx.storage.sql
     const tables = new Set(sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'").toArray().map((row) => row.name))
     if (tables.has('rounds') && !tables.has('turns')) sql.exec('ALTER TABLE rounds RENAME TO turns')
@@ -680,6 +682,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
           limit,
         ]
     return this.ctx.storage.sql.exec<Record<string, SqlStorageValue>>(query, ...values).toArray().map(Feed.entry)
+  }
+
+  traced(parent: string, name: string, args: unknown[]) {
+    return Timing.serve(this, parent, name, args, 'swarms')
   }
 
   override async fetch(request: Request) {

@@ -13,7 +13,7 @@
     "not_found_handling": "none",
     "run_worker_first": ["/", "/ideas", "/join", "/new", "/about", "/docs", "/faq", "/s/*", "/a/*", "/api/*", "/v1/*", "/x", "/x/*", "/og/*", "/oembed", "/tg", "/tg/*", "/telegram", "/mcp", "/openapi.json", "/feedback", "/feedback/*", "/me", "/u/*"]
   },
-  "observability": { "enabled": true },
+  "observability": { "enabled": true, "traces": { "enabled": true, "head_sampling_rate": 0.05 } },
   "vars": {
     "GATEWAY_URL": "https://gateway.tempo-dev.workers.dev",
     "GITHUB_API": "https://api.github.com",

@@ -23,14 +23,16 @@ app.use('*', (c, next) =>
   Timing.run(async () => {
     c.env = { ...c.env, DB: Timing.database(c.env.DB) }
     await next()
+    Timing.report('swarms-site', c.req.method + ' ' + Timing.label(new URL(c.req.url).pathname), c.res.status)
     const timing = Timing.header()
-    if (!timing || c.res.headers.has('server-timing')) return
+    if (!timing) return
+    const inner = c.res.headers.get('server-timing')
     const headers = new Headers(c.res.headers)
-    headers.set('server-timing', timing)
+    headers.set('server-timing', inner ? timing + ', ' + inner.split(',').map((part) => 'objects.' + part.trim()).join(', ') : timing)
     const response = new Response(c.res.body, { headers, status: c.res.status, statusText: c.res.statusText, ...(c.res.webSocket ? { webSocket: c.res.webSocket } : {}) })
     c.res = undefined
     c.res = response
-  }),
+  }, c.req.header('traceparent')),
 )
 
 app.use('*', async (c, next) => {
@@ -76,7 +78,7 @@ app.get('/x', (c) => Edge.page(c.req.raw, '', Og.frame(c.env, undefined)))
 
 app.get('/x/card.svg', (c) => XFrames.card(c.req.query('title') ?? 'Fund a swarm'))
 
-app.get('/og/*', (c) => c.env.OBJECTS.fetch(c.req.raw))
+app.get('/og/*', (c) => c.env.OBJECTS.fetch(Timing.traced(c.req.raw)))
 
 app.get('/oembed', async (c) => {
   const embedded = await Og.embed(c.env, c.req.query('url') ?? '', Site.url(c.env, c.req.url), new URL(c.req.url).origin, c.req.query('maxwidth'), c.req.query('maxheight'))
