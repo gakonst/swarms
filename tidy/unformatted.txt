@@ -156,7 +156,6 @@ src/worker/machines/Tree.ts 1 pre-existing hand formatting
 src/worker/site.ts 1 pre-existing hand formatting
 test/answer.test.ts 1 pre-existing hand formatting
 test/api-tree.test.ts 1 pre-existing hand formatting
-test/artifact.test.ts 1 pre-existing hand formatting
 test/board.ts 1 pre-existing hand formatting
 test/brief.test.ts 1 pre-existing hand formatting
 test/channel.test.ts 1 pre-existing hand formatting
@@ -208,7 +207,6 @@ test/page-server.test.ts 1 pre-existing hand formatting
 test/pay.test.ts 1 pre-existing hand formatting
 test/progress.test.ts 1 pre-existing hand formatting
 test/relay.test.ts 1 pre-existing hand formatting
-test/repo.test.ts 1 pre-existing hand formatting
 test/riders.test.ts 1 pre-existing hand formatting
 test/run.test.ts 1 pre-existing hand formatting
 test/run.ts 1 pre-existing hand formatting
@@ -220,8 +218,6 @@ test/sweep.test.ts 1 pre-existing hand formatting
 test/team.test.ts 1 pre-existing hand formatting
 test/telegram.test.ts 1 pre-existing hand formatting
 test/threads.test.ts 1 pre-existing hand formatting
-test/trace.test.ts 1 pre-existing hand formatting
-test/trail.test.ts 1 pre-existing hand formatting
 test/triage.test.ts 1 pre-existing hand formatting
 test/turns.test.ts 1 pre-existing hand formatting
 test/unhand.test.ts 1 pre-existing hand formatting
