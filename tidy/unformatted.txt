@@ -170,7 +170,6 @@ test/chatter.test.ts 1 pre-existing hand formatting
 test/cli.test.ts 1 pre-existing hand formatting
 test/cold.test.ts 1 pre-existing hand formatting
 test/crew.test.ts 1 pre-existing hand formatting
-test/d1.ts 1 pre-existing hand formatting
 test/dispatch.ts 1 pre-existing hand formatting
 test/e2e/chrome.ts 1 pre-existing hand formatting
 test/e2e/cli.test.ts 1 pre-existing hand formatting
@@ -193,13 +192,11 @@ test/edge.test.ts 1 pre-existing hand formatting
 test/edit.test.ts 1 pre-existing hand formatting
 test/endpoints-entry.test.ts 1 pre-existing hand formatting
 test/fleet.test.ts 1 pre-existing hand formatting
-test/fold.test.ts 1 pre-existing hand formatting
 test/follow.test.ts 1 pre-existing hand formatting
 test/funding.test.ts 1 pre-existing hand formatting
 test/fuzzy.test.ts 1 pre-existing hand formatting
 test/general.test.ts 1 pre-existing hand formatting
 test/grove.test.ts 1 pre-existing hand formatting
-test/hand-machine.test.ts 1 pre-existing hand formatting
 test/hands.test.ts 1 pre-existing hand formatting
 test/host.ts 1 pre-existing hand formatting
 test/hosts.test.ts 1 pre-existing hand formatting
@@ -233,7 +230,6 @@ test/run.test.ts 1 pre-existing hand formatting
 test/run.ts 1 pre-existing hand formatting
 test/runner.test.ts 1 pre-existing hand formatting
 test/runs.test.ts 1 pre-existing hand formatting
-test/seen.test.ts 1 pre-existing hand formatting
 test/setup.test.ts 1 pre-existing hand formatting
 test/site.test.ts 1 pre-existing hand formatting
 test/sockets.test.ts 1 pre-existing hand formatting
@@ -246,7 +242,6 @@ test/telegram.test.ts 1 pre-existing hand formatting
 test/threads.test.ts 1 pre-existing hand formatting
 test/trace.test.ts 1 pre-existing hand formatting
 test/trail.test.ts 1 pre-existing hand formatting
-test/tree-machine.test.ts 1 pre-existing hand formatting
 test/tree.test.ts 1 pre-existing hand formatting
 test/triage.test.ts 1 pre-existing hand formatting
 test/turns.test.ts 1 pre-existing hand formatting

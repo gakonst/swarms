@@ -7,7 +7,10 @@ export type Logged = { query: string; values: Value[] }
 
 export function open() {
   const sqlite = new DatabaseSync(':memory:')
-  for (const file of readdirSync('migrations').filter((name) => name.endsWith('.sql')).sort()) sqlite.exec(readFileSync(`migrations/${file}`, 'utf8'))
+  for (const file of readdirSync('migrations')
+    .filter((name) => name.endsWith('.sql'))
+    .sort())
+    sqlite.exec(readFileSync(`migrations/${file}`, 'utf8'))
   const log: Logged[] = []
 
   const execute = (query: string, values: Value[]) => {
@@ -25,6 +28,11 @@ export function open() {
       first: async (column?: string) => {
         const row = (execute(query, values).results[0] ?? null) as Record<string, unknown> | null
         return column === undefined ? row : (row?.[column] ?? null)
+      },
+      raw: async (options?: { columnNames?: boolean }) => {
+        const rows = execute(query, values).results as Record<string, unknown>[]
+        const lines = rows.map((row) => Object.values(row))
+        return options?.columnNames ? [Object.keys(rows[0] ?? {}), ...lines] : lines
       },
       run: async () => execute(query, values),
       values,
