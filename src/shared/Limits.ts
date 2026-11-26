@@ -160,6 +160,11 @@ export const Repo = {
 
 export const Riding = {
   hourMs: 3_600_000,
+  burnHours: 24 * 90,
+  steersShown: 50,
+  suggestionsShown: 50,
+  summaryChars: 200,
+  tolerance: 50_000n,
 } as const
 
 export const Runner = {

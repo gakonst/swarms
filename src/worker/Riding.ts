@@ -16,6 +16,8 @@ import * as Triage from './Triage.ts'
 import * as Verify from './Verify.ts'
 import * as Work from './Work.ts'
 import * as Limits from '../shared/Limits.ts'
+import { assert } from '../shared/Assert.ts'
+import * as Ride from './machines/Ride.ts'
 
 export type Plant = {
   dispatcher: string
@@ -28,14 +30,23 @@ export type Plant = {
   swarm: string
 }
 
-export type Proposal = { by: string; form: Tree.Form; parent: string; said?: { mentions: Address[]; text: string } | null; statement: string | null; title: string; words: string }
+export type Proposal = Ride.Proposal
 
-export type Fault = { detail: string; status: 400 | 403 | 404 | 409 | 410 }
+export type Fault = Ride.Fault
 
 export type Answer<T> = { ok: true; value: T } | ({ ok: false } & Fault)
 
 function fail(status: Fault['status'], detail: string): { ok: false } & Fault {
   return { detail, ok: false, status }
+}
+
+function refuse(fault: Fault): { ok: false } & Fault {
+  return fail(fault.status, fault.detail)
+}
+
+function phase(task: { phase: Parameters<typeof Work.terminal>[0] } | null | undefined): Ride.Task {
+  if (!task) return 'missing'
+  return Work.terminal(task.phase) ? 'closed' : 'open'
 }
 
 export async function plant(self: Swarm, input: Plant) {
@@ -91,7 +102,7 @@ export async function node(self: Swarm, nid: string): Promise<Answer<NodeView>> 
     const live = Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')
     const committed = found.rows.filter((row) => row.run === task.id && row.kind === 'commit').reduce((sum, row) => sum + row.amount, 0n)
     const outcome = typeof done['outcome'] === 'string' ? (done['outcome'] as NodeRun['outcome']) : null
-    const summary = typeof done['summary'] === 'string' ? done['summary'] : task.outcome && 'failed' in task.outcome ? clip(task.outcome.failed, 200) : task.reason ? clip(task.reason, 200) : ''
+    const summary = typeof done['summary'] === 'string' ? done['summary'] : task.outcome && 'failed' in task.outcome ? clip(task.outcome.failed, Limits.Riding.summaryChars) : task.reason ? clip(task.reason, Limits.Riding.summaryChars) : ''
     return {
       budget: Flow.usd(committed),
       commit: typeof done['commit'] === 'string' ? done['commit'] : null,
@@ -105,15 +116,15 @@ export async function node(self: Swarm, nid: string): Promise<Answer<NodeView>> 
     }
   })
   const steers: NodeSteer[] = self.ctx.storage.sql
-    .exec<{ at: number; text: string }>("SELECT at, text FROM tree_deltas WHERE node = ? AND event = 'steered' ORDER BY seq DESC LIMIT 50", nid)
+    .exec<{ at: number; text: string }>("SELECT at, text FROM tree_deltas WHERE node = ? AND event = 'steered' ORDER BY seq DESC LIMIT ?", nid, Limits.Riding.steersShown)
     .toArray()
     .map((row) => {
       const money = String(row.text).match(/^\[\$([\d.]+) behind this, from @([^\]]+)\] ([\s\S]*)$/)
       const handle = money?.[2] ?? 'rider'
       return { amount: Memo.decimal(Memo.units(money?.[1] ?? '0')), at: Number(row.at), note: money?.[3] ?? String(row.text), who: { address: null, agent: null, handle } }
     })
-  const { results } = await self.env.DB.prepare('select id, author, text, created_at from ideas where swarm = ? and parent = ? and node is null order by created_at desc limit 50')
-    .bind(Nodes.swarm(self), nid)
+  const { results } = await self.env.DB.prepare('select id, author, text, created_at from ideas where swarm = ? and parent = ? and node is null order by created_at desc limit ?')
+    .bind(Nodes.swarm(self), nid, Limits.Riding.suggestionsShown)
     .all<{ author: string; created_at: number; id: string; text: string }>()
   const authors = await Store.handles(self.env, results.map((idea) => idea.author as Address))
   const suggestions: Suggestion[] = results.map((idea) => ({ at: idea.created_at, id: idea.id, text: redact(idea.text), who: Nodes.who(idea.author, authors) }))
@@ -145,7 +156,8 @@ export async function burn(self: Swarm): Promise<Tree.Burn> {
   if (!Number.isFinite(first)) return []
   const now = Date.now()
   const start = Math.floor(first / hourMs) * hourMs
-  const hours = Math.min(24 * 90, Math.floor((now - start) / hourMs) + 1)
+  const hours = Math.min(Limits.Riding.burnHours, Math.floor((now - start) / hourMs) + 1)
+  assert(hours <= Limits.Riding.burnHours, 'the burn series is bounded', hours)
   const from = Math.floor(now / hourMs) * hourMs - (hours - 1) * hourMs
   const series: Tree.Burn = []
   let proven = 0
@@ -182,28 +194,35 @@ export async function proofs(self: Swarm): Promise<ProofsView> {
 
 export async function propose(self: Swarm, nid: string, proposal: Proposal): Promise<Answer<string>> {
   const found = await Nodes.state(self)
-  const parent = found.nodes.get(proposal.parent)
-  if (!parent || Work.terminal(parent.phase)) return fail(409, 'The parent node is not open.')
-  if (proposal.parent === Nodes.triage) return fail(400, 'Nodes go under the tree, not under triage.')
-  self.kv.put('proposal:' + nid, proposal)
+  const refused = Ride.proposable(phase(found.nodes.get(proposal.parent)), proposal.parent, Nodes.triage)
+  if (refused) return refuse(refused)
+  self.kv.put('proposal:' + nid, Ride.stored(proposal))
   return { ok: true, value: nid }
 }
 
 export async function pledge(self: Swarm, input: { amount: bigint; contributor: string; hash: string; nid: string | null }): Promise<{ nid: string }> {
   const contributor = input.contributor.toLowerCase()
   const found = await Nodes.state(self)
-  let target = input.nid ?? Nodes.root
-  const proposal = input.nid ? self.kv.get<Proposal>('proposal:' + input.nid) : undefined
-  if (input.nid && !found.nodes.has(input.nid) && proposal) {
-    const parent = found.nodes.get(proposal.parent)
-    if (input.amount >= Nodes.units(self).ideaMin && parent && !Work.terminal(parent.phase)) {
-      await Nodes.post(self, { by: proposal.by, form: proposal.form, needs: [], nid: input.nid, parent: proposal.parent, statement: proposal.statement, title: proposal.title, words: proposal.words })
-      self.kv.delete('proposal:' + input.nid)
-      if (proposal.said) Chat.speak(self, proposal.by as Address, redact(proposal.said.text), proposal.said.mentions, null, null, { node: input.nid })
-    } else target = Flow.free
-  } else if (!found.nodes.has(target)) target = Nodes.root
-  const task = target === Flow.free ? undefined : found.nodes.get(target) ?? (await self.board.task(Nodes.nodeId(target))) ?? undefined
-  if (target !== Flow.free && (!task || Work.terminal(task.phase) || target === Nodes.triage)) target = Flow.free
+  const proposal = input.nid ? Ride.read(self.kv.get<unknown>('proposal:' + input.nid), 'proposal:' + input.nid) : null
+  const route = Ride.route({
+    amount: input.amount,
+    ideaMin: Nodes.units(self).ideaMin,
+    known: input.nid !== null && found.nodes.has(input.nid),
+    parent: phase(proposal ? found.nodes.get(proposal.parent) : null),
+    proposal,
+    requested: input.nid,
+    root: Nodes.root,
+  })
+  if (route.at === 'adopt') {
+    const adopted = route.proposal
+    await Nodes.post(self, { by: adopted.by, form: adopted.form, needs: [], nid: route.nid, parent: adopted.parent, statement: adopted.statement, title: adopted.title, words: adopted.words })
+    self.kv.delete('proposal:' + route.nid)
+    if (adopted.said) Chat.speak(self, adopted.by as Address, redact(adopted.said.text), adopted.said.mentions, null, null, { node: route.nid })
+  }
+  const task = route.at === 'free' ? undefined : found.nodes.get(route.nid) ?? (await self.board.task(Nodes.nodeId(route.nid))) ?? undefined
+  const landed = Ride.land(route, phase(task), Nodes.triage)
+  const target = landed.at === 'free' ? Flow.free : landed.nid
+  assert(target !== Nodes.triage, 'a pledge never lands on triage', target)
   const id = input.hash.toLowerCase()
   const swarm = Nodes.swarm(self)
   const handle = (await Store.account(self.env, contributor as Address)).handle
@@ -238,15 +257,17 @@ function trim(amount: bigint) {
 export async function steer(self: Swarm, input: { amount: bigint; contributor: string; key?: string | null; nid: string; note: string }): Promise<Answer<Tree.Node>> {
   const contributor = input.contributor.toLowerCase()
   const found = await Nodes.state(self)
-  const task = found.nodes.get(input.nid)
-  if (!task || Work.terminal(task.phase) || input.nid === Nodes.triage) return fail(409, 'This node is not open.')
+  const closed = Ride.steerable(phase(found.nodes.get(input.nid)), input.nid === Nodes.triage)
+  if (closed) return refuse(closed)
   if (input.amount > 0n) {
     const moved = await shift(self, { amount: input.amount, contributor, from: Flow.free, id: Payment.id('steer', input.nid, contributor, input.key), to: input.nid }, () => undefined)
     if (moved.at !== 'paid') return fail(409, 'You have less free money in this swarm than that. Ride the node instead.')
   }
   const after = await Nodes.state(self)
   const behind = after.ledger.funders.get(input.nid)?.get(contributor)?.amount ?? 0n
-  if (behind <= 0n) return fail(403, 'Only a rider with money on this node can steer it.')
+  const unbacked = Ride.backed(behind)
+  if (unbacked) return refuse(unbacked)
+  assert(behind > 0n, 'a steering rider has money on the node', behind)
   const handle = (await Store.account(self.env, contributor as Address)).handle
   const text = '[$' + trim(behind) + ' behind this, from @' + handle + '] ' + input.note
   const run = (after.runs.get(input.nid) ?? []).find((one) => !Work.terminal(one.phase) && one.phase === 'claimed')
@@ -260,6 +281,7 @@ export async function steer(self: Swarm, input: { amount: bigint; contributor: s
 }
 
 async function shift(self: Swarm, input: { amount: bigint; contributor: string; from: string; id: string; to: string }, effects: () => void) {
+  assert(input.from !== input.to, 'money moves between two different places', input)
   const swarm = Nodes.swarm(self)
   return Payment.settle(
     self.kv,
@@ -275,13 +297,9 @@ async function shift(self: Swarm, input: { amount: bigint; contributor: string; 
 export async function move(self: Swarm, input: { amount: bigint; contributor: string; from: string; key?: string | null; to: string }): Promise<Answer<Tree.Node | null>> {
   const contributor = input.contributor.toLowerCase()
   const found = await Nodes.state(self)
-  for (const nid of [input.from, input.to]) {
-    if (nid === Flow.free) continue
-    const task = found.nodes.get(nid)
-    if (!task || nid === Nodes.triage) return fail(404, 'No node has this id.')
-    if (nid === input.to && Work.terminal(task.phase)) return fail(409, 'Money moves only onto an open node.')
-  }
-  if (input.from === input.to) return fail(400, 'Move money between two different places.')
+  const spot = (nid: string): Ride.Spot => (nid === Flow.free ? { at: 'free' } : { at: 'node', nid, task: phase(found.nodes.get(nid)), triage: nid === Nodes.triage })
+  const unmovable = Ride.movable(spot(input.from), spot(input.to))
+  if (unmovable) return refuse(unmovable)
   const handle = (await Store.account(self.env, contributor as Address)).handle
   const moved = await shift(self, { amount: input.amount, contributor, from: input.from, id: Payment.id('move', input.from + '>' + input.to, contributor, input.key), to: input.to }, () => {
     Nodes.changed(self)
@@ -296,15 +314,11 @@ export async function move(self: Swarm, input: { amount: bigint; contributor: st
 
 export async function end(self: Swarm, input: { admin: boolean; contributor: string | null; nid: string; why: string }): Promise<Answer<Tree.Node>> {
   const found = await Nodes.state(self)
-  const task = found.nodes.get(input.nid)
-  if (!task || input.nid === Nodes.root || input.nid === Nodes.triage) return fail(404, 'No node you can end has this id.')
-  if (Work.terminal(task.phase)) return fail(409, 'This node has ended already.')
-  if (!input.admin) {
-    const behind = found.ledger.funders.get(input.nid) ?? new Map<string, { amount: bigint; since: number }>()
-    const total = Flow.sum([...behind.values()].map((held) => held.amount))
-    const mine = input.contributor ? (behind.get(input.contributor.toLowerCase())?.amount ?? 0n) : 0n
-    if (total === 0n || mine * 2n <= total) return fail(403, 'Only whoever holds more than half of what is behind a node, or an admin, can end it.')
-  }
+  const behind = found.ledger.funders.get(input.nid) ?? new Map<string, { amount: bigint; since: number }>()
+  const total = Flow.sum([...behind.values()].map((held) => held.amount))
+  const mine = input.contributor ? (behind.get(input.contributor.toLowerCase())?.amount ?? 0n) : 0n
+  const unendable = Ride.endable({ admin: input.admin, fixed: input.nid === Nodes.root || input.nid === Nodes.triage, mine, task: phase(found.nodes.get(input.nid)), total })
+  if (unendable) return refuse(unendable)
   await Nodes.end(self, input.nid, { at: Date.now(), check: null, into: null, kind: 'withdrawn', why: input.why }, Runner.halt)
   await Runner.tick(self).then((next) => (next === null ? undefined : arm(self, next)))
   const view = await Nodes.view(self)
@@ -341,7 +355,7 @@ export async function standing(self: Swarm, contributor: string): Promise<Standi
   return { buckets, committed: Flow.usd(committed > 0n ? committed : 0n), free: Flow.usd(free > 0n ? free : 0n), refundable: Flow.usd(refundable), spent: Flow.usd(spent), swarm: Nodes.swarm(self) }
 }
 
-export const tolerance = 50_000n
+export const tolerance = Limits.Riding.tolerance
 
 export async function health(self: Swarm): Promise<Ledgered> {
   const swarm = Nodes.swarm(self)
@@ -360,7 +374,7 @@ export async function health(self: Swarm): Promise<Ledgered> {
 export async function review(self: Swarm, nid: string, by: string): Promise<Answer<boolean>> {
   const found = await Nodes.state(self)
   if (!found.nodes.has(nid)) return fail(404, 'No node has this id.')
-  self.kv.put('reviewed:' + nid, { at: Date.now(), by })
+  self.kv.put('reviewed:' + nid, Ride.reviewed(Date.now(), by))
   Nodes.changed(self)
   return { ok: true, value: true }
 }
