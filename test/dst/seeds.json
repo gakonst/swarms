@@ -187,5 +187,12 @@
     "invariant": "late once",
     "found": "2026-11-26 by pnpm dst --seeds: same as h3ceaa37d9bf8",
     "fix": "test(dst): late once counts a run's late charge wherever it was drawn from"
+  },
+  {
+    "job": "phase",
+    "seed": "h5209b22f8515",
+    "invariant": "older pause",
+    "found": "2026-11-26 by pnpm dst --hunt: the scenario formatted 595 atomics as $0.00059 through two float divisions while Status shows the exact $0.000595 as $0.0006 (harness rounding, not a Swarms bug)",
+    "fix": "test(dst): format scenario dollars from one exact division"
   }
 ]

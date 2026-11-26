@@ -118,7 +118,7 @@ const whys = ['unfunded', 'money', 'costly', 'rest', 'idle'] as const
 
 function dollarsSpec(atomics: bigint) {
   const cents = Number(atomics) / 10_000
-  return cents >= 10 ? '$' + (Math.round(cents) / 100).toFixed(2) : '$' + String(Number((cents / 100).toPrecision(2)))
+  return cents >= 10 ? '$' + (Math.round(cents) / 100).toFixed(2) : '$' + String(Number((Number(atomics) / 1_000_000).toPrecision(2)))
 }
 
 function shortSpec(pause: Extract<Phase.Pause, { why: 'money' }>) {
