@@ -155,10 +155,14 @@ function rows(messages: readonly Outbox.Shown[], now: number): Row[] {
     }
     const previous = shown[index - 1]
     const next = shown[index + 1]
-    const joined = (a: Said | undefined, b: Said | undefined) => !!a && !!b && a.author === b.author && b.at - a.at < 5 * 60_000 && day(a.at, now) === day(b.at, now) && !a.steer && !b.steer
+    const joined = (a: Said | undefined, b: Said | undefined) => !!a && !!b && a.author === b.author && b.at - a.at < 5 * 60_000 && day(a.at, now) === day(b.at, now) && !directed(a) && !directed(b)
     out.push({ at: item.at, first: !joined(previous, item), item, key: Outbox.key(item), kind: 'said', last: !joined(item, next) })
   })
   return out
+}
+
+export function directed(item: Said) {
+  return !!item.node || !!item.steer || Mention.steers(item.text)
 }
 
 function Words(props: { handles: ReadonlySet<string>; me: ReadonlySet<string>; text: string }) {
@@ -754,11 +758,12 @@ export const Room = memo(function Room(props: {
           const author = item.author ?? ''
           const handle = handleOf(author)
           const self = !!author && author.toLowerCase() === (me?.address ?? mine?.address ?? '').toLowerCase()
+          const aimed = directed(item)
           return (
-            <div className="msg" data-first={row.first} data-last={row.last} data-lit={props.thread === item.id || undefined} data-me={self} data-mentioned={!!me && item.mentions.includes(me.address)} data-sending={item.sending} key={row.key} tabIndex={-1}>
+            <div className="msg" data-directed={aimed || undefined} data-first={row.first} data-last={row.last} data-lit={props.thread === item.id || undefined} data-me={self} data-mentioned={!!me && item.mentions.includes(me.address)} data-sending={item.sending} key={row.key} tabIndex={-1}>
               {row.first ? <Avatar address={author} handle={handle} /> : <span className="avatar-gap" />}
               <div className="msg-col">
-                {row.first && <p className="msg-who"><b style={{ color: tint(author) }}>{handle.startsWith('0x') ? Mention.short(author) : handle}</b><time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time></p>}
+                {row.first && <p className="msg-who"><b style={{ color: tint(author) }}>{handle.startsWith('0x') ? Mention.short(author) : handle}</b><time dateTime={new Date(item.at).toISOString()}>{minute(item.at)}</time>{aimed && <span className="msg-aimed">{item.node ? '✦ On the board' : '✦ To the AI'}</span>}</p>}
                 <div className="msg-bubble">
                   <Markdown compact marks text={marked(item.text, handles, myNames)} />
                 </div>
