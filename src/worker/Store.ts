@@ -843,7 +843,7 @@ export async function settle(env: Cloudflare.Env, input: Settlement) {
       insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent)
       select ?6 || ':' || contributor || ':' || budget, ?1, contributor, 'branch ' || cast(?3 as integer), 'branch:' || cast(?3 as integer), -amount, case when budget = 1 then coalesce(since, ?5) else ?5 end, budget, ?3, ?2
       from shares
-      where amount > 0
+      where amount > 0 and not exists (select 1 from branches where swarm = ?1 and agent = ?2 and branch = ?3 and settled_at is not null)
       on conflict (id) do nothing
       returning contributor, budget, amount`,
     ).bind(input.swarm, input.agent, input.branch, input.left === null ? null : String(input.left), now, settling(input)),

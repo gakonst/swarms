@@ -901,7 +901,6 @@ async function branchMoney(seed: string): Promise<Outcome> {
   const gifts = new Map<string, Gift>()
   const steers: Steer[] = []
   const settled = new Set<number>()
-  const lefts = new Map<number, bigint | null>()
   const groups: string[][] = []
   const of = (c: Address) => [...gifts.values()].filter((gift) => gift.contributor === c)
   const own = (c: Address) => Flow.sum(steers.filter((each) => each.contributor === c && each.budget === 0).map((each) => each.amount))
@@ -1100,8 +1099,7 @@ async function branchMoney(seed: string): Promise<Outcome> {
         if (ids.length) groups.push(ids)
       }
       if (op === 'settle') {
-        const drawn = random.chance(0.25) ? null : BigInt(random.int(0, 2 * L.units)) * L.unit + (random.chance(0.3) ? 1n : 0n)
-        const left = lefts.has(branch) ? (lefts.get(branch) ?? null) : drawn
+        const left = random.chance(0.25) ? null : BigInt(random.int(0, 2 * L.units)) * L.unit + (random.chance(0.3) ? 1n : 0n)
         const breaking = random.chance(L.breaks)
         const want = settled.has(branch) ? [] : refunds(branch, left)
         failing.next = breaking
@@ -1126,7 +1124,6 @@ async function branchMoney(seed: string): Promise<Outcome> {
               note: 'branch:' + branch,
             })
           settled.add(branch)
-          if (!lefts.has(branch)) lefts.set(branch, left)
         }
       }
       if (op === 'unsteer' && groups.length) {
