@@ -491,9 +491,10 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
     if (!closed.ok && closed.status !== 404) throw new Error('Closing run ' + task.id + ' failed, so its budget stays committed: ' + closed.detail)
     sub = await observed(self, swarm, spawned, await list(self, swarm, spawned.agent, true), sub)
   }
+  const final = sub?.status.state ?? 'gone'
   const used = (sub ? Flow.micro(sub.spent_usd) : Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')) + (await dispatched(self, swarm, spawned))
   for (const steer of await lease.steers().catch(() => [])) if (steer.seq > relayed) await self.board.steer(Nodes.nodeId(nid), steer.body, { key: 'relay:' + task.id + ':' + steer.seq })
-  const why = !sub ? 'The run is gone from the gateway.' : !ended ? 'The run stalled and was stopped.' : (sub.status.error ?? 'The run ' + state + '.')
+  const why = !sub ? 'The run is gone from the gateway.' : !ended ? 'The run stalled and was stopped.' : (sub.status.error ?? 'The run ' + final + '.')
   await Nodes.settleRun(self, task.id, used)
   if (sub) charged(self, task.id, spawned, Flow.micro(sub.spent_usd))
   if (nid === Nodes.triage) {
@@ -504,8 +505,8 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
     await Nodes.consider(self)
     return { done }
   }
-  const outcome = state === 'completed' ? result(sub?.result, why) : { ...result(sub?.result, why), outcome: 'stuck' as const, summary: clip(why, 200) }
-  if (state === 'failed' && /over_limit/.test(sub?.status.error ?? '')) self.kv.put('bounded:' + nid, Date.now())
+  const outcome = final === 'completed' ? result(sub?.result, why) : { ...result(sub?.result, why), outcome: 'stuck' as const, summary: clip(why, 200) }
+  if (final === 'failed' && /over_limit/.test(sub?.status.error ?? '')) self.kv.put('bounded:' + nid, Date.now())
   else self.kv.delete('bounded:' + nid)
   await Nodes.ran(self, task.id, outcome, (node, sha, theorem, refutes) => postVerify(self, node, sha, theorem, refutes))
   Machine.settle(self.kv, task.id, JSON.stringify(outcome))

@@ -82,5 +82,12 @@
     "invariant": "backing counted",
     "found": "2026-11-26 by a test/dst scenario: a lowering refused because a key adopted later in the same refresh was not counted yet",
     "fix": "fix(money): raise backings to what their keys paid before lowering others"
+  },
+  {
+    "job": "swarm_wide",
+    "seed": "h3fb7152ee709",
+    "invariant": "lost result",
+    "found": "2026-11-26 by pnpm dst --hunt: a subagent that completed while the object was evicted was missing from a stale list; the watch closed it and read it again, but folded the state it had before the close (gone), so its result became a stuck run",
+    "fix": "fix(tree): fold a run by its subagent's state after the closing read"
   }
 ]
