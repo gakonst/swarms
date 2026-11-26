@@ -21,7 +21,7 @@ export type Settings = { ideaMin: string; quietRuns: number; runCap: string; run
 
 export const defaults: Settings = { ideaMin: '1.000000', quietRuns: 12, runCap: '25.000000', runMin: '0.500000', runStep: '5.000000', slots: 16, triageShare: 0.05 }
 
-export const retry: Work.Retry = { backoffMs: 15_000, maxAttempts: 3 }
+export const retry: Work.Retry = { ...Limits.Nodes.retry }
 
 export const guards = { inherit: true, orphan: true, quiet: true, step: true, told: true }
 

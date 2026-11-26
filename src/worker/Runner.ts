@@ -17,7 +17,7 @@ import * as Verify from './Verify.ts'
 import * as Work from './Work.ts'
 import * as Limits from '../shared/Limits.ts'
 
-export const timing = { checkMs: 60 * 60_000, doingMs: 2_000, idleMs: 60_000, leaseMs: 30 * 60_000, listMs: 2_000, pollMs: 2_000, spawnMs: 120_000, streamDownMs: 20_000, streamUpMs: 120_000, verifyMs: 60_000 }
+export const timing: Record<keyof typeof Limits.Runner.timing, number> = { ...Limits.Runner.timing }
 
 export const rotateAfter = Limits.Runner.rotateAfter
 
@@ -25,7 +25,7 @@ export const verifiers = Limits.Runner.verifiers
 
 export const guards = { adopt: true, bound: true, claims: true, folded: true, halt: true, heard: true, kick: true, late: true, needs: true, relay: true, rest: true, rotate: true, stray: true, topped: true }
 
-export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: 8 }
+export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: Limits.Runner.payingAttempts }
 
 const finished = new Set(['completed', 'failed', 'closed', 'interrupted'])
 
@@ -58,7 +58,7 @@ export function wake(self: Swarm) {
   for (const waiter of woken) waiter()
 }
 
-function wait(self: Swarm, ms: number, signal?: AbortSignal) {
+function wait(ms: number, self: Swarm, signal?: AbortSignal) {
   const rt = runtime(self)
   return new Promise<void>((resolve) => {
     const done = () => {
@@ -199,14 +199,13 @@ function spawning(made: { detail: string; status: number }): 'dispatcher' | 'ref
 async function spawn(self: Swarm, swarm: string, agent: string, args: Gateway.Spawn, run: string, claim: string, signal: AbortSignal): Promise<Gateway.Result<{ sub: number; turn?: string }>> {
   const key = await spawnKey(run)
   const until = Date.now() + timing.spawnMs
-  for (;;) {
-    const made = await Gateway.spawn(self.env, swarm, agent, { ...args, key })
-    if (made.ok) return { ok: true, value: { sub: made.value.agent_id } }
-    const next = spawning(made)
-    if (next === 'dispatcher') break
-    if (next === 'refused' || Date.now() >= until || signal.aborted) return made
-    await wait(self, timing.listMs, signal)
+  let made = await Gateway.spawn(self.env, swarm, agent, { ...args, key })
+  while (!made.ok && spawning(made) === 'starting' && Date.now() < until && !signal.aborted) {
+    await wait(timing.listMs, self, signal)
+    made = await Gateway.spawn(self.env, swarm, agent, { ...args, key })
   }
+  if (made.ok) return { ok: true, value: { sub: made.value.agent_id } }
+  if (spawning(made) !== 'dispatcher') return made
   self.kv.put('prompted:' + run, claim)
   const sent = await Gateway.prompt(self.env, swarm, agent, { id: claim, prompt: 'Spawn this subagent:\n' + JSON.stringify(args), steer: false })
   if (!sent.ok && sent.status !== 409) return sent
@@ -215,7 +214,7 @@ async function spawn(self: Swarm, swarm: string, agent: string, args: Gateway.Sp
     const listed = await list(self, swarm, agent, true)
     const found = listed.ok ? listed.value.find((sub) => sub.role === args.role && sub.parent_agent_id === null) : undefined
     if (found) return { ok: true, value: { sub: found.agent_id, turn: claim } }
-    await wait(self, timing.listMs, signal)
+    await wait(timing.listMs, self, signal)
   }
   return { detail: 'The dispatcher did not start the subagent in time.', ok: false, status: 504 }
 }
@@ -239,7 +238,7 @@ async function ask(self: Swarm, swarm: string, agent: string, question: string, 
   while (Date.now() < until && !signal.aborted) {
     const report = await Gateway.turn(self.env, swarm, agent, id)
     if (report.ok && !['queued', 'running'].includes(report.value.status)) return { spent: Flow.micro(report.value.spent_usd), text: report.value.ok?.message ?? '' }
-    await wait(self, timing.listMs, signal)
+    await wait(timing.listMs, self, signal)
   }
   return { spent: 0n, text: '', turn: id }
 }
@@ -443,7 +442,7 @@ function stepped(self: Swarm, agent: string, block: string) {
       if (!self.treeDoing.has(held.task)) return
       held.sent = Date.now()
       Nodes.doing(self, held.nid)
-    }, due)
+    }, Math.min(due, timing.doingMs))
 }
 
 async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.PoolLease, spawned: Nodes.Spawned, signal: AbortSignal): Promise<Board.Outcome> {
@@ -454,7 +453,8 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   let sub: Gateway.Subagent | undefined
   let relayed = 0
   let topped: { spent: bigint; version: number } | undefined
-  for (;;) {
+  let stalled = false
+  while (!stalled) {
     if (signal.aborted) {
       await halt(self, task.id)
       throw new Board.LeaseLost(task.id)
@@ -484,8 +484,8 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
       await lease.heed(steer.seq)
       relayed = steer.seq
     }
-    if (Date.now() - seen > Math.max(leased(self), timing.leaseMs)) break
-    if (runtime(self).heard === heard) await wait(self, runtime(self).follow?.up ? timing.streamUpMs : timing.streamDownMs, signal)
+    stalled = Date.now() - seen > Math.max(leased(self), timing.leaseMs)
+    if (!stalled && runtime(self).heard === heard) await wait(runtime(self).follow?.up ? timing.streamUpMs : timing.streamDownMs, self, signal)
   }
   idle(self, task.id)
   const state = sub?.status.state ?? 'gone'
@@ -581,15 +581,15 @@ async function checking(self: Swarm, task: Work.Task, lease: Board.PoolLease): P
       outcome: () => self.kv.get<Tree.Check | { failed: string }>(key),
       request: async () => {
         let asked: Awaited<ReturnType<typeof Verify.request>> = { detail: 'not asked', ok: false }
-        for (let attempt = 1; attempt <= Nodes.retry.maxAttempts && !asked.ok; attempt++) {
+        for (let attempt = 1; attempt <= Limits.Nodes.retry.maxAttempts && !asked.ok; attempt++) {
           asked = await Verify.request(self.env, { claim: refutes ? 'refutation' : 'proof', nid, sha, statement: statement ?? '', swarm, theorem })
-          if (!asked.ok && attempt < Nodes.retry.maxAttempts) await wait(self, Work.delay(Nodes.retry, attempt), lease.signal)
+          if (!asked.ok && attempt < Limits.Nodes.retry.maxAttempts) await wait(Work.delay(Limits.Nodes.retry, attempt), self, lease.signal)
         }
         return asked.ok ? { ok: true } : asked
       },
       wait: async (ms) => {
         if (lease.signal.aborted) throw new Board.LeaseLost(task.id)
-        await wait(self, Math.min(ms, timing.verifyMs), lease.signal)
+        await wait(Math.min(ms, timing.verifyMs), self, lease.signal)
         if (lease.signal.aborted) throw new Board.LeaseLost(task.id)
       },
     },
@@ -651,7 +651,7 @@ export const lateMs = Limits.Runner.lateMs
 
 function charged(self: Swarm, run: string, spawned: Nodes.Spawned, spent: bigint) {
   self.kv.put('charged:' + run, { agent: spawned.agent, at: Date.now(), spent: Memo.decimal(spent), sub: spawned.sub } satisfies Charged)
-  setTimeout(() => void late(self).catch(() => undefined), 2_000)
+  setTimeout(() => void late(self).catch(() => undefined), Limits.Runner.chargeAfterMs)
 }
 
 export function late(self: Swarm): Promise<void> {
@@ -771,7 +771,7 @@ export function follow(self: Swarm, swarm: string, agent: string) {
         fails = 0
         const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
         let buffer = ''
-        for (;;) {
+        while (!stop.signal.aborted) {
           const read = await reader.read()
           if (read.done) break
           buffer += read.value

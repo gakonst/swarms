@@ -1,5 +1,5 @@
 # No numeric literal outside src/shared/Limits.ts but 0, 1, 2 and the unit conversions 24, 60, 1000, 1024 and 3600.
-# path count why; 2396 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 2381 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 cli/src/auth.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/account.ts 5 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/ai.ts 2 pre-existing; move it into src/shared/Limits.ts
@@ -103,7 +103,7 @@ src/worker/machines/Tree.ts 2 pre-existing; move it into src/shared/Limits.ts
 src/worker/Mcp.ts 17 pre-existing; move it into src/shared/Limits.ts
 src/worker/Money.ts 1 pre-existing; move it into src/shared/Limits.ts
 src/worker/Mp4.ts 68 pre-existing; move it into src/shared/Limits.ts
-src/worker/Nodes.ts 14 pre-existing; move it into src/shared/Limits.ts
+src/worker/Nodes.ts 12 pre-existing; move it into src/shared/Limits.ts
 src/worker/OAuth.ts 18 pre-existing; move it into src/shared/Limits.ts
 src/worker/Og.ts 8 pre-existing; move it into src/shared/Limits.ts
 src/worker/OpenApi.ts 265 pre-existing; move it into src/shared/Limits.ts
@@ -117,7 +117,7 @@ src/worker/Problem.ts 12 pre-existing; move it into src/shared/Limits.ts
 src/worker/Repo.ts 3 pre-existing; move it into src/shared/Limits.ts
 src/worker/Rest.ts 14 pre-existing; move it into src/shared/Limits.ts
 src/worker/Riding.ts 7 pre-existing; move it into src/shared/Limits.ts
-src/worker/Runner.ts 45 pre-existing; move it into src/shared/Limits.ts (three are HTTP statuses, protocol values: 404 on a subagent close, 409 and 500 on a spawn)
+src/worker/Runner.ts 32 pre-existing; move it into src/shared/Limits.ts (three are HTTP statuses, protocol values: 404 on a subagent close, 409 and 500 on a spawn)
 src/worker/Runs.ts 7 pre-existing; move it into src/shared/Limits.ts
 src/worker/Search.ts 1 pre-existing; move it into src/shared/Limits.ts
 src/worker/Share.ts 17 pre-existing; move it into src/shared/Limits.ts

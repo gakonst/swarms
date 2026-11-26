@@ -1,5 +1,5 @@
 # No test files outside test/dst: the DST sim is the only test.
-# path count why; 18 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 12 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 examples/board-swarm/test/swarm.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/e2e/cli.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/e2e/endpoints.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it

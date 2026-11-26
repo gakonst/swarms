@@ -1,5 +1,5 @@
 # Every timer, sleep and poll waits a deadline from src/shared/Limits.ts; no while (true) or for (;;).
-# path count why; 142 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 129 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 cli/src/commands/account.ts 2 pre-existing; bound it with a Limits deadline
 cli/src/commands/fund.ts 2 pre-existing; bound it with a Limits deadline
 cli/src/commands/watch.ts 3 pre-existing; bound it with a Limits deadline
@@ -33,7 +33,7 @@ src/worker/Nodes.ts 1 pre-existing; bound it with a Limits deadline
 src/worker/Operations.ts 1 pre-existing; bound it with a Limits deadline
 src/worker/Page.ts 1 pre-existing; bound it with a Limits deadline
 src/worker/Rest.ts 1 pre-existing; bound it with a Limits deadline
-src/worker/Runner.ts 14 pre-existing; bound it with a Limits deadline
+src/worker/Runner.ts 1 pre-existing; bound it with a Limits deadline
 src/worker/Runs.ts 2 pre-existing; bound it with a Limits deadline
 src/worker/Swarm.ts 1 pre-existing; bound it with a Limits deadline
 src/worker/Turns.ts 5 pre-existing; bound it with a Limits deadline

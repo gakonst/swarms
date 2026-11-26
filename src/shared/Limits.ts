@@ -131,6 +131,7 @@ export const Nodes = {
   stuckRuns: 3,
   lockMs: 60_000,
   heldMs: 10_000,
+  retry: { backoffMs: 15_000, maxAttempts: 3 },
 } as const
 
 export const OAuth = {
@@ -216,6 +217,20 @@ export const Runner = {
   rotateAfter: 200,
   verifiers: 4,
   lateMs: 10 * 60_000,
+  chargeAfterMs: 2_000,
+  payingAttempts: 8,
+  timing: {
+    checkMs: 60 * 60_000,
+    doingMs: 2_000,
+    idleMs: 60_000,
+    leaseMs: 30 * 60_000,
+    listMs: 2_000,
+    pollMs: 2_000,
+    spawnMs: 120_000,
+    streamDownMs: 20_000,
+    streamUpMs: 120_000,
+    verifyMs: 60_000,
+  },
 } as const
 
 export const Runs = {
