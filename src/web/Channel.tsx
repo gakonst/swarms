@@ -28,11 +28,15 @@ export function lines(node: Tree.Node, view: NodeView | undefined, updates: read
     if (worker.has(delta.event) && summed.has(delta.text.trim())) continue
     out.push({ at: delta.at, id: `d${delta.seq}:${delta.event}`, text: delta.text, who: { address: null, bot: true, name: worker.has(delta.event) ? 'AI' : 'Swarm' } })
   }
-  for (const run of view?.runs ?? []) {
+  const folds = (updates ?? []).filter((delta) => delta.event === 'progress').sort((a, b) => a.seq - b.seq)
+  const used = new Set<number>()
+  for (const run of [...(view?.runs ?? [])].sort((a, b) => a.k - b.k)) {
     if (!run.outcome) continue
-    out.push({ at: run.until ?? run.since, id: `r${run.k}`, tag: `Run ${run.k} ${outcomes[run.outcome]} · ${usd(run.spent)} of ${usd(run.budget)}${run.commit ? ` · ${run.commit.slice(0, 7)}` : ''}`, text: run.summary, who: { address: null, bot: true, name: 'AI' } })
+    const fold = folds.find((delta) => !used.has(delta.seq) && delta.text.trim() === run.summary.trim())
+    if (fold) used.add(fold.seq)
+    out.push({ at: fold?.at ?? run.until ?? run.since, id: `r${run.k}`, tag: `Run ${run.k} ${outcomes[run.outcome]} · ${usd(run.spent)} of ${usd(run.budget)}${run.commit ? ` · ${run.commit.slice(0, 7)}` : ''}`, text: run.summary, who: { address: null, bot: true, name: 'AI' } })
   }
-  for (const steer of view?.steers ?? []) out.push({ at: steer.at, id: `s${steer.at}:${steer.who.handle}`, tag: `Rode it with ${usd(steer.amount)}`, text: steer.note, who: rider(steer.who) })
+  for (const steer of view?.steers ?? []) out.push({ at: steer.at, id: `s${steer.at}:${steer.who.handle}`, tag: Number(steer.amount) > 0 ? `Steered, ${usd(steer.amount)} behind it` : 'Steered', text: steer.note, who: rider(steer.who) })
   for (const idea of view?.suggestions ?? []) out.push({ at: idea.at, id: `i${idea.id}`, text: idea.text, who: rider(idea.who) })
   if (!out.length && node.by.agent !== 'seed') out.push({ at: node.createdAt, id: 'posted', text: node.title, who: rider(node.by) })
   return out.sort((a, b) => a.at - b.at)
