@@ -7,6 +7,7 @@ import { Explored } from './Explored.tsx'
 import { ago, short, usd } from './format.ts'
 import { useNow } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 type Item = { at: number; key: string } & ({ kind: 'backed'; amount: string; note: string | null; who: string } | { kind: 'update'; text: string })
 
@@ -41,18 +42,18 @@ export function Results(props: {
   wishes: readonly Wishlist.Wish[]
 }) {
   const swarm = props.swarm
-  const now = useNow(60_000)
+  const now = useNow(Limits.Clock.minuteMs)
   const [more, setMore] = useState(false)
   const handle = (address: string) => props.members.find((member) => member.address === address)?.handle ?? short(address)
   const made = (props.artifacts ?? []).filter((artifact) => artifact.slug !== 'wishlist' && artifact.slug !== 'surface')
   const pictured = made.filter((artifact) => artifact.form === 'page' || artifact.form === 'image')
   const written = made.filter((artifact) => artifact.form !== 'page' && artifact.form !== 'image')
-  const asked = [...swarm.notes].sort((a, b) => Number(b.weight) - Number(a.weight)).slice(0, 4)
+  const asked = [...swarm.notes].sort((a, b) => Number(b.weight) - Number(a.weight)).slice(0, Limits.WebResults.asked)
   const items: Item[] = [
     ...swarm.contributions.map((item, index): Item => ({ amount: item.amount, at: item.at, key: `c${index}`, kind: 'backed', note: item.note, who: handle(item.contributor) })),
     ...(props.updates ?? []).filter((update) => update.text.trim()).map((update, index): Item => ({ at: update.at, key: `u${index}`, kind: 'update', text: update.text })),
   ].sort((a, b) => b.at - a.at)
-  const shown = more ? items : items.slice(0, 5)
+  const shown = more ? items : items.slice(0, Limits.WebResults.shown)
 
   if (!props.artifacts) return <div aria-busy="true" className="results" />
 
@@ -143,7 +144,7 @@ export function Results(props: {
         <section className="result-section">
           <h2>It needs</h2>
           <ul className="needs">
-            {props.wishes.slice(0, 3).map((wish, index) => <li key={index}>{wish.want}</li>)}
+            {props.wishes.slice(0, Limits.WebResults.wishes).map((wish, index) => <li key={index}>{wish.want}</li>)}
           </ul>
           <button className="result-link" onClick={props.onChat} type="button">Can you help? Say so in the chat →</button>
         </section>

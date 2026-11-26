@@ -247,7 +247,7 @@ export function useLobby(listener: (event: Lobby) => void): State {
   return useSyncExternalStore(watch, () => hall?.state ?? 'opening', () => 'opening' as const)
 }
 
-const listMs = 60_000
+const listMs = Limits.WebWire.listMs
 
 export function useSwarms() {
   const lobby = useLobby((event) => {

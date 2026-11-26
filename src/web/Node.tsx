@@ -15,6 +15,7 @@ import { Overlay } from './Overlay.tsx'
 import * as Pay from './pay.ts'
 import { Link, useBase, useQuery } from './router.tsx'
 import { Mark, word } from './Tree.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 const ends: Record<Tree.End['kind'], string> = { barrier: 'Ruled out by a barrier', exhausted: 'Exhausted', merged: 'Merged', refuted: 'Refuted', rejected: 'Rejected', withdrawn: 'Withdrawn' }
 
@@ -44,12 +45,12 @@ function Checked(props: { check: Tree.Check; title: string }) {
     <section className="node-part node-check">
       <h3>{props.title}</h3>
       <dl>
-        <dt>Commit</dt><dd><a href={`${repo}/commit/${check.commit}`} rel="noreferrer" target="_blank">{check.commit.slice(0, 12)}</a></dd>
+        <dt>Commit</dt><dd><a href={`${repo}/commit/${check.commit}`} rel="noreferrer" target="_blank">{check.commit.slice(0, Limits.Web.shaChars)}</a></dd>
         <dt>Theorem</dt><dd><code>{check.theorem}</code></dd>
         <dt>Statement</dt><dd><code>{check.statement}</code></dd>
         <dt>Axioms</dt><dd>{check.axioms.join(', ')}</dd>
         <dt>Lean</dt><dd>{check.toolchain}</dd>
-        <dt>Mathlib</dt><dd><code>{check.mathlib.slice(0, 12)}</code></dd>
+        <dt>Mathlib</dt><dd><code>{check.mathlib.slice(0, Limits.Web.shaChars)}</code></dd>
         <dt>Checker</dt><dd>{check.checker}</dd>
         <dt>Command</dt><dd><code>{check.command}</code></dd>
         <dt>Exit code</dt><dd>{check.exitCode}</dd>
@@ -221,7 +222,7 @@ export function NodePanel(props: {
           <ol className="node-runs">
             {view.runs.map((run) => (
               <li key={run.task}>
-                <span className="node-run-head">Run {run.k} · {spent(run.spent)} of {usd(run.budget)}{run.outcome ? ` · ${run.outcome}` : ' · working'}{run.commit && <> · <code>{run.commit.slice(0, 7)}</code></>}</span>
+                <span className="node-run-head">Run {run.k} · {spent(run.spent)} of {usd(run.budget)}{run.outcome ? ` · ${run.outcome}` : ' · working'}{run.commit && <> · <code>{run.commit.slice(0, Limits.Web.commitChars)}</code></>}</span>
                 <Inline text={run.summary} />
               </li>
             ))}

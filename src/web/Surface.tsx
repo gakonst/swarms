@@ -1,16 +1,17 @@
 import type * as Kinds from '../shared/Surface.ts'
 import { Inline, Markdown } from './Markdown.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 function fixed(value: number) {
   const size = Math.abs(value)
-  return size >= 100 ? value.toFixed(0) : size >= 10 ? value.toFixed(1).replace(/\.0$/, '') : value.toFixed(2).replace(/0$/, '')
+  return size >= Limits.WebSurface.wholeAbove ? value.toFixed(0) : size >= Limits.WebSurface.tenthsAbove ? value.toFixed(1).replace(/\.0$/, '') : value.toFixed(2).replace(/0$/, '')
 }
 
 function Chart(props: { node: Extract<Kinds.Node, { kind: 'chart' }> }) {
   const node = props.node
-  const width = 600
-  const height = 150
-  const pad = 14
+  const width = Limits.WebSurface.width
+  const height = Limits.WebSurface.height
+  const pad = Limits.WebSurface.pad
   const values = [...node.points, ...node.tried.map(([, value]) => value), ...(node.goal === null ? [] : [node.goal])]
   const low = Math.min(...values)
   const high = Math.max(...values)
@@ -32,8 +33,8 @@ function Chart(props: { node: Extract<Kinds.Node, { kind: 'chart' }> }) {
         <path className="flow-line" d={line} vectorEffect="non-scaling-stroke" />
       </svg>
       <div className="surface-dots" aria-hidden="true">
-        {node.tried.map(([at, value], index) => <i data-tried="true" key={'t' + index} style={{ left: (x(at) / width) * 100 + '%', top: (y(value) / height) * 100 + '%' }} />)}
-        {node.points.map((value, index) => <i key={index} style={{ left: (x(index) / width) * 100 + '%', top: (y(value) / height) * 100 + '%' }} />)}
+        {node.tried.map(([at, value], index) => <i data-tried="true" key={'t' + index} style={{ left: (x(at) / width) * Limits.Web.percent + '%', top: (y(value) / height) * Limits.Web.percent + '%' }} />)}
+        {node.points.map((value, index) => <i key={index} style={{ left: (x(index) / width) * Limits.Web.percent + '%', top: (y(value) / height) * Limits.Web.percent + '%' }} />)}
       </div>
     </figure>
   )
@@ -42,7 +43,7 @@ function Chart(props: { node: Extract<Kinds.Node, { kind: 'chart' }> }) {
 function Bars(props: { node: Extract<Kinds.Node, { kind: 'bars' }> }) {
   const node = props.node
   const max = node.max ?? Math.max(...node.items.map((item) => item.value), node.mark ?? 0)
-  const at = (value: number) => Math.min(100, (value / (max || 1)) * 100) + '%'
+  const at = (value: number) => Math.min(Limits.Web.percent, (value / (max || 1)) * Limits.Web.percent) + '%'
   return (
     <ul className="surface-bars">
       {node.items.map((item, index) => (
@@ -62,10 +63,10 @@ function Bars(props: { node: Extract<Kinds.Node, { kind: 'bars' }> }) {
 function Range(props: { node: Extract<Kinds.Node, { kind: 'range' }> }) {
   const node = props.node
   const unit = node.unit ?? ''
-  const pad = (node.high - node.low) * 0.4 || Math.abs(node.mid) * 0.2 || 1
+  const pad = (node.high - node.low) * Limits.WebSurface.spreadPad || Math.abs(node.mid) * Limits.WebSurface.midPad || 1
   const from = node.low - pad
   const to = node.high + pad
-  const at = (value: number) => ((value - from) / (to - from)) * 100 + '%'
+  const at = (value: number) => ((value - from) / (to - from)) * Limits.Web.percent + '%'
   return (
     <div className="surface-range">
       <p>
@@ -150,7 +151,7 @@ function Body(props: { node: Kinds.Node; onChat: () => void; onSteer: (note: str
             <b>{node.value.toLocaleString('en-US')} / {node.max.toLocaleString('en-US')}</b>
             {node.label && <Inline text={node.label} />}
           </p>
-          <i aria-hidden="true"><em style={{ width: (node.value / node.max) * 100 + '%' }} /></i>
+          <i aria-hidden="true"><em style={{ width: (node.value / node.max) * Limits.Web.percent + '%' }} /></i>
         </div>
       )
     case 'range':

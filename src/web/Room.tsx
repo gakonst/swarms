@@ -83,8 +83,8 @@ export function Unsent(props: { client: string; error: string | undefined }) {
 
 export function tint(address: string) {
   let value = 0
-  for (const char of address.toLowerCase()) value = (value * 31 + char.charCodeAt(0)) >>> 0
-  return `hsl(${value % 360} 38% 36%)`
+  for (const char of address.toLowerCase()) value = (value * Limits.WebRoom.tintPrime + char.charCodeAt(0)) >>> 0
+  return `hsl(${value % Limits.WebRoom.hues} 38% 36%)`
 }
 
 export function Avatar(props: { address: string; handle: string; size?: 'small' }) {
@@ -102,11 +102,20 @@ function backing(text: string) {
 function friendly(text: string) {
   const line = dollars(text).replace(/\.$/, '')
   const behind = /^(\S+) (?:pledged|sent|put|put the) (\$[\d.,]+)(?: [A-Za-z.]+)?(?: they sent)? behind "(.+)"$/.exec(line)
-  if (behind) return `${behind[1]} put ${behind[2]} behind "${behind[3]}"`
+  if (behind) {
+    const [, who, amount, idea] = behind
+    return `${who} put ${amount} behind "${idea}"`
+  }
   const backed = /^(\S+) backed "(.+)" with (\$[\d.,]+)$/.exec(line)
-  if (backed) return `${backed[1]} put ${backed[3]} behind "${backed[2]}"`
+  if (backed) {
+    const [, who, idea, amount] = backed
+    return `${who} put ${amount} behind "${idea}"`
+  }
   const sent = /^(\S+) (?:pledged|sent|funded it with|backed it with) (\$[\d.,]+)(:.*)?$/.exec(line)
-  if (sent) return `${sent[1]} rode in with ${sent[2]}${sent[3] ?? ''}`
+  if (sent) {
+    const [, who, amount, note] = sent
+    return `${who} rode in with ${amount}${note ?? ''}`
+  }
   return line
 }
 
@@ -145,7 +154,7 @@ function rows(messages: readonly Outbox.Shown[], now: number): Row[] {
     if (item.artifact || !item.author) {
       if (item.artifact) out.push({ artifact: item.artifact, at: item.at, count: 1, item, key: Outbox.key(item), kind: 'ai', text: item.text.replace(/^New artifact: /, '') })
       else if (item.text.startsWith('Update: ')) {
-        const text = item.text.slice(8)
+        const text = item.text.slice(Limits.WebRoom.updatePrefixChars)
         const before = out.at(-1)
         if (before && before.kind === 'idle' && Chatter.gist(before.text) === Chatter.gist(text)) out[out.length - 1] = { ...before, at: item.at, count: before.count + 1, text }
         else if (before && before.kind === 'ai' && !before.artifact && !before.item.reactions && !before.item.replies && !item.reactions && !item.replies && Chatter.gist(before.text) === Chatter.gist(text)) out[out.length - 1] = { ...before, at: item.at, count: before.count + 1, item, text }
@@ -155,7 +164,7 @@ function rows(messages: readonly Outbox.Shown[], now: number): Row[] {
     }
     const previous = shown[index - 1]
     const next = shown[index + 1]
-    const joined = (a: Said | undefined, b: Said | undefined) => !!a && !!b && a.author === b.author && b.at - a.at < 5 * 60_000 && day(a.at, now) === day(b.at, now) && !directed(a) && !directed(b)
+    const joined = (a: Said | undefined, b: Said | undefined) => !!a && !!b && a.author === b.author && b.at - a.at < Limits.WebRoom.joinMs && day(a.at, now) === day(b.at, now) && !directed(a) && !directed(b)
     out.push({ at: item.at, first: !joined(previous, item), item, key: Outbox.key(item), kind: 'said', last: !joined(item, next) })
   })
   return out
@@ -254,12 +263,12 @@ export const Room = memo(function Room(props: {
   const [loaded, setLoaded] = useState(!!seed)
   const [failed, setFailed] = useState<string>()
   const [misses, setMisses] = useState(0)
-  const [earlier, setEarlier] = useState(() => (seed?.messages.length ?? 0) >= 100)
+  const [earlier, setEarlier] = useState(() => (seed?.messages.length ?? 0) >= Limits.Operations.messagesPage)
   const [online, setOnline] = useState<readonly string[]>([])
   const [watching, setWatching] = useState(0)
   const [typing, setTyping] = useState<Readonly<Record<string, number>>>({})
   const ticking = Object.values(typing).some((until) => until > Date.now())
-  const now = useNow(ticking ? 1000 : 60_000)
+  const now = useNow(ticking ? 1000 : Limits.WebRoom.tickMs)
   const [text, setText] = useState('')
   const [ai, setAi] = useState(false)
   const [caret, setCaret] = useState(0)
@@ -285,7 +294,7 @@ export const Room = memo(function Room(props: {
       try {
         const room = await Api.room(id, after ? { after } : {})
         setMessages((previous) => merge(after ? previous : [], room.messages))
-        if (!after) setEarlier(room.messages.length >= 100)
+        if (!after) setEarlier(room.messages.length >= Limits.Operations.messagesPage)
         setMembers(room.members)
         setMe(room.me)
         setLoaded(true)
@@ -324,7 +333,7 @@ export const Room = memo(function Room(props: {
       setOnline(signal.online)
       setWatching(signal.watching)
     }
-    if (signal.type === 'typing') setTyping((previous) => ({ ...previous, [signal.address]: Date.now() + 4000 }))
+    if (signal.type === 'typing') setTyping((previous) => ({ ...previous, [signal.address]: Date.now() + Limits.WebRoom.typingMs }))
     if (Wire.stirred(signal, 'members')) void load(last.current)
   })
 
@@ -398,7 +407,7 @@ export const Room = memo(function Room(props: {
     const element = area.current
     if (!element) return
     element.style.height = 'auto'
-    element.style.height = `${Math.min(element.scrollHeight, 132)}px`
+    element.style.height = `${Math.min(element.scrollHeight, Limits.Web.composeMostPx)}px`
   }, [text])
 
   const restored = useRef(false)
@@ -441,12 +450,12 @@ export const Room = memo(function Room(props: {
         ...members.filter((member) => !member.handle.startsWith('0x') && member.address !== me?.address).map((member) => ({ handle: member.handle, hint: '' })),
       ]
         .filter((option) => option.handle.startsWith((query[2] ?? '').toLowerCase()))
-        .slice(0, 6)
+        .slice(0, Limits.WebRoom.options)
     : []
   const steering = (props.steer !== false || asks) && (ai || Mention.steers(text))
   const idea = ai ? text.replace(/\s+/g, ' ').trim() : Mention.idea(text)
   const typers = Object.entries(typing).filter(([address, until]) => until > now && address !== me?.address).map(([address]) => handleOf(address))
-  const here = members.filter((member) => online.includes(member.address)).slice(0, 4)
+  const here = members.filter((member) => online.includes(member.address)).slice(0, Limits.WebRoom.here)
 
   const focus = (at: number) =>
     requestAnimationFrame(() => {
@@ -498,7 +507,7 @@ export const Room = memo(function Room(props: {
     const body = text.trim()
     if (!body || !mine) return
     if (steering && asks) {
-      if (idea.length < 3) return setProblem({ text: 'Say what the swarm should do.' })
+      if (idea.length < Limits.Operations.suggestionLeastChars) return setProblem({ text: 'Say what the swarm should do.' })
       setProblem(undefined)
       return props.onSwarm?.(idea, sender.current, () => {
         setText('')
@@ -508,7 +517,7 @@ export const Room = memo(function Room(props: {
     }
     if (steering) {
       if (!helm) return setProblem({ text: 'Only the riders who steer this swarm tell the AI what to do.' })
-      if (idea.length < 3) return setProblem({ text: 'Say what the AI should try.' })
+      if (idea.length < Limits.Operations.steerLeastChars) return setProblem({ text: 'Say what the AI should try.' })
       if (idea.length > maxNote) return setProblem({ text: `Keep it under ${maxNote} characters.` })
       if (typeof door === 'object' && door.at === 'open' && door.from === 'team') return tell(idea, door.left)
       setProblem(undefined)
@@ -567,7 +576,7 @@ export const Room = memo(function Room(props: {
     const height = element.scrollHeight
     const room = await Api.room(id, { before: first.id }).catch(() => undefined)
     if (!room) return
-    setEarlier(room.messages.length >= 100)
+    setEarlier(room.messages.length >= Limits.Operations.messagesPage)
     setMessages((previous) => merge(previous, room.messages))
     requestAnimationFrame(() => {
       element.scrollTop += element.scrollHeight - height
@@ -670,7 +679,7 @@ export const Room = memo(function Room(props: {
             setCaret(event.target.selectionStart)
             setPick(0)
             setClosed(false)
-            if (Date.now() - typed.current > 3000) {
+            if (Date.now() - typed.current > Limits.WebRoom.typedMs) {
               typed.current = Date.now()
               Wire.line(id)?.typing()
             }
@@ -745,7 +754,7 @@ export const Room = memo(function Room(props: {
                     </button>
                   ) : (
                     <button className="msg-bubble msg-update" disabled={!props.onThread && !props.onResults} onClick={props.onThread ? () => props.onThread?.(row.item.id) : props.onResults} type="button">
-                      <Inline text={Answer.brief(row.text, 320)} />
+                      <Inline text={Answer.brief(row.text, Limits.WebRoom.briefChars)} />
                       <small>{props.onThread ? 'Open thread →' : 'See results →'}</small>
                     </button>
                   )}

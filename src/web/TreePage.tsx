@@ -30,8 +30,9 @@ import { at, backers, useZoom, Explainer, Strip, type Tab, Tabs } from './Strip.
 import { Filters, Mark } from './Tree.tsx'
 import * as Wire from './wire.ts'
 import { Edit } from './Edit.tsx'
+import * as Limits from '../shared/Limits.ts'
 
-const downMs = 15_000
+const downMs = Limits.WebTreePage.downMs
 
 function chosen(raw: string | null): Grove.Filter {
   return Grove.filters.some(([key]) => key === raw) ? (raw as Grove.Filter) : 'all'
@@ -41,7 +42,7 @@ function unfolded(data: TreeView | undefined, selected: string) {
   const told = here().searchParams.get('open')
   const byId = new Map((data?.nodes ?? []).map((node) => [node.id, node] as const))
   const trail: string[] = []
-  for (let node = byId.get(selected); node && node.id !== 'root' && trail.length < 64; node = node.parent ? byId.get(node.parent) : undefined) trail.push(node.id)
+  for (let node = byId.get(selected); node && node.id !== 'root' && trail.length < Limits.WebTreePage.trailMost; node = node.parent ? byId.get(node.parent) : undefined) trail.push(node.id)
   if (told !== null) return new Set(['root', ...told.split(',').filter(Boolean), ...trail])
   return new Set(['root', ...(byId.get('root')?.children ?? []), ...trail])
 }
@@ -68,7 +69,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const base = useBase(id)
   const path = useCallback((nid: string) => (nid === 'root' ? `${base}/board` : `${base}/t/${nid}`), [base])
   const phone = useMedia('(max-width: 899px)')
-  const now = useNow(30_000)
+  const now = useNow(Limits.Web.halfMinuteMs)
   const [filter, setFilter] = useState<Grove.Filter>(() => chosen(here().searchParams.get('filter')))
   const [detail, redetail] = usePoll(() => Api.swarm(id, false), null, id)
   Wire.useListed(detail.data)
@@ -155,14 +156,14 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
     scrolled.current = selected
     const outer = box.getBoundingClientRect()
     const inner = row.getBoundingClientRect()
-    if (inner.top < outer.top || inner.bottom > outer.bottom) box.scrollTop += inner.top - outer.top - Math.min(outer.height / 4, 80)
+    if (inner.top < outer.top || inner.bottom > outer.bottom) box.scrollTop += inner.top - outer.top - Math.min(outer.height / Limits.WebTreePage.scrollShare, Limits.WebTreePage.scrollMostPx)
   })
 
   useEffect(() => {
     if (!grove || !node.data || grove.nodes[selected]) return
     let alive = true
     const climb = async (from: string | null, steps: number) => {
-      if (!from || steps > 8 || !alive) return
+      if (!from || steps > Limits.WebTreePage.stepsMost || !alive) return
       const got = await Api.tree(id, { depth: 1, root: from }).catch(() => undefined)
       if (!got || !alive) return
       setGrove((current) => current && Grove.graft(current, got))
@@ -357,7 +358,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
               <ol className="proofs">
                 {proofs.data?.proofs.map((proof) => (
                   <li key={proof.node}>
-                    <a className="proof" href={`https://github.com/${proof.check.repo}/commit/${proof.check.commit}`} rel="noreferrer" target="_blank"><code>{proof.check.commit.slice(0, 7)}</code><span>{proof.check.theorem}</span><time>{ago(proof.check.at, now)}</time></a>
+                    <a className="proof" href={`https://github.com/${proof.check.repo}/commit/${proof.check.commit}`} rel="noreferrer" target="_blank"><code>{proof.check.commit.slice(0, Limits.Web.commitChars)}</code><span>{proof.check.theorem}</span><time>{ago(proof.check.at, now)}</time></a>
                   </li>
                 ))}
               </ol>

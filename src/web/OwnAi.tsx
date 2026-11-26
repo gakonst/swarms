@@ -6,6 +6,7 @@ import { useAttempt, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Link } from './router.tsx'
 import * as Wallet from './wallet.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const providers = [
   ['anthropic', 'Anthropic', 'sk-ant-…'],
@@ -26,7 +27,7 @@ export function OwnAi(props: { config: Config | undefined }) {
   const address = wallet.address
   const offered = props.config?.ownAi !== false && !gone
   const unavailable = (reason: unknown): never => {
-    if (reason instanceof Api.Failure && reason.status === 503 && reason.code === 'unavailable') setGone(true)
+    if (reason instanceof Api.Failure && reason.status === Limits.Http.unavailable && reason.code === 'unavailable') setGone(true)
     throw reason
   }
   useEffect(() => {

@@ -42,7 +42,7 @@ function challengeUrl(config: Config) {
 
 export function prime(config: Config) {
   if (fixture || server || state.session) return
-  if (primer && Date.now() - primer.at < 60_000) return
+  if (primer && Date.now() - primer.at < Limits.WebWallet.primerMs) return
   const url = challengeUrl(config)
   const response = fetch(url, { body: JSON.stringify({ chainId: config.chainId }), credentials: 'same-origin', headers: { 'content-type': 'application/json' }, method: 'POST', redirect: 'manual' })
   response.catch(() => {})
@@ -52,7 +52,7 @@ export function prime(config: Config) {
 async function primed(input: RequestInfo | URL, init?: RequestInit) {
   const held = primer
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-  if (held && held.url === url && init?.method === 'POST' && Date.now() - held.at < 60_000) {
+  if (held && held.url === url && init?.method === 'POST' && Date.now() - held.at < Limits.WebWallet.heldMs) {
     primer = undefined
     const response = await held.response.catch(() => undefined)
     if (response?.ok) return response
@@ -304,7 +304,7 @@ async function read(token: string, at: number) {
     set({ account })
     return account
   } catch (error) {
-    if (error instanceof Api.Failure && error.status === 401 && state.session?.token === token) signOut()
+    if (error instanceof Api.Failure && error.status === Limits.Http.unauthorized && state.session?.token === token) signOut()
     return undefined
   }
 }
@@ -336,7 +336,7 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
   if (fixture) {
     const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])
     if (Object.values(fixtures.balances).reduce((sum, value) => sum + value, 0n) < input.amount) throw Object.assign(new Error(`Your wallet holds less than this.`), { code: 'insufficient_balance' })
-    const hash = `0x${Date.now().toString(16).padStart(64, '5')}` as Hex
+    const hash = `0x${Date.now().toString(Limits.Hex.radix).padStart(Limits.WebWallet.fixtureHashChars, '5')}` as Hex
     fixtures.sent.set(hash, { amount: input.amount, token: input.token })
     let owed = input.amount
     for (const token of [input.token, ...(Object.keys(fixtures.balances) as Currency[])]) {
@@ -366,7 +366,7 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
   return paid.transaction
 }
 
-const hint = (config: Config) => (config.chainId === 4217 ? { amount: '25', token: 'MACH' } : {})
+const hint = (config: Config) => (config.chainId === Limits.SharedCredit.chainId ? { amount: '25', token: 'MACH' } : {})
 
 export function primeFunds(config: Config) {
   const address = state.session?.address ?? state.address
@@ -379,7 +379,7 @@ export async function fund(config: Config) {
   if (!address) throw new Error('Sign in with Tempo ID first.')
   if (fixture) {
     const [fixtures] = await Promise.all([import('./fixtures.ts'), asked()])
-    fixtures.balances.mach += 25_000_000n
+    fixtures.balances.mach += Limits.WebWallet.fixtureMintUnits
     await refresh(config)
     return 'received'
   }

@@ -57,7 +57,7 @@ const flows: readonly Flow[] = [
       { name: 'Your own problem', url: '/new?fixture' },
       { name: 'Typed', steps: [{ type: ['#question', 'Can a 1B model beat GPT-4 at chess puzzles?'] }], url: '/new?fixture' },
       { name: 'A problem from the list', url: '/new?fixture&q=pq-signatures' },
-      { name: 'Moving the amount', steps: [{ slide: ['.fuel-slide', 8] }], url: '/new?fixture&q=pq-signatures' },
+      { name: 'Moving the amount', steps: [{ slide: ['.fuel-slide', Limits.WebBoard.slideStop] }], url: '/new?fixture&q=pq-signatures' },
       { name: 'Check prompt', steps: [{ click: '.box .fuel-go' }, { click: '.box .fuel-go' }], url: '/new?fixture&q=pq-signatures&scene=hang,in' },
     ],
     id: 'start',
@@ -100,7 +100,7 @@ const flows: readonly Flow[] = [
       { name: 'Busy', url: grove() },
       { name: 'Seeded, statements under review', url: grove('', '&scene=seeded') },
       { name: 'Empty', url: grove('', '&scene=empty') },
-      { name: 'A proof landing', note: 'live', steps: [{ wait: 5000 }], url: grove(`/n/${razb}`, '&scene=landing') },
+      { name: 'A proof landing', note: 'live', steps: [{ wait: Limits.WebBoard.landingMs }], url: grove(`/n/${razb}`, '&scene=landing') },
       { name: 'A dead end, refuted', url: grove(`/n/${refuted}`) },
       { name: 'Since your last visit', url: grove('', '&scene=visit') },
       { name: 'Needs money', url: grove('', '&filter=money') },
@@ -117,10 +117,10 @@ const flows: readonly Flow[] = [
       { name: 'Ride this lemma', steps: [{ click: '.node-ride-btn' }], url: grove(`/n/${razb}`, '&scene=in') },
       { name: 'Ride the whole swarm', steps: [{ click: '.strip-ride' }], url: grove('', '&scene=in') },
       { name: 'Ride an agent swarm', steps: [{ click: '.strip-ride' }], url: idea('bench-coders', '&scene=in,open') },
-      { name: 'Riding an agent swarm', steps: [{ click: '.strip-ride' }, { click: '.ride .fuel-go' }, { wait: 3000 }], url: idea('bench-coders', '&scene=in,open') },
+      { name: 'Riding an agent swarm', steps: [{ click: '.strip-ride' }, { click: '.ride .fuel-go' }, { wait: Limits.WebBoard.rideMs }], url: idea('bench-coders', '&scene=in,open') },
       { name: 'Check prompt', steps: [{ click: '.node-ride-btn' }, { click: '.ride .fuel-go' }], url: grove(`/n/${razb}`, '&scene=hang,in') },
-      { name: 'Riding', steps: [{ click: '.node-ride-btn' }, { click: '.ride .fuel-go' }, { wait: 3000 }], url: grove(`/n/${razb}`, '&scene=in') },
-      { name: 'Sent, not counted yet', steps: [{ click: '.node-ride-btn' }, { click: '.ride .fuel-go' }, { wait: 2600 }], url: grove(`/n/${razb}`, '&scene=uncounted,in') },
+      { name: 'Riding', steps: [{ click: '.node-ride-btn' }, { click: '.ride .fuel-go' }, { wait: Limits.WebBoard.rideMs }], url: grove(`/n/${razb}`, '&scene=in') },
+      { name: 'Sent, not counted yet', steps: [{ click: '.node-ride-btn' }, { click: '.ride .fuel-go' }, { wait: Limits.WebBoard.uncountedMs }], url: grove(`/n/${razb}`, '&scene=uncounted,in') },
       { name: 'Propose a lemma', steps: [{ click: '.node-acts .channel-add' }], url: grove(`/n/${mono}`, '&scene=in') },
       { name: 'An archived swarm', url: idea('dex-guide') },
     ],
@@ -149,7 +149,7 @@ const flows: readonly Flow[] = [
   },
 ]
 
-const sizes = { card: { height: 450, scale: 0.42, width: 800 }, desktop: { height: 900, scale: 0.3, width: 1440 }, phone: { height: 844, scale: 0.42, width: 390 } } as const
+const sizes = { card: { height: Limits.WebBoard.cardHeight, scale: Limits.WebBoard.cardScale, width: Limits.WebBoard.cardWidth }, desktop: { height: Limits.Web.desktopHeight, scale: Limits.WebBoard.desktopScale, width: Limits.Web.desktopWidth }, phone: { height: Limits.Web.phoneHeight, scale: Limits.WebBoard.phoneScale, width: Limits.Web.phoneWidth } } as const
 
 type Size = 'phone' | 'desktop'
 
@@ -180,7 +180,7 @@ const slots = { busy: 0, queue: [] as (() => void)[] }
 
 function claim() {
   return new Promise<void>((resolve) => {
-    if (slots.busy < 6) {
+    if (slots.busy < Limits.WebBoard.slots) {
       slots.busy++
       resolve()
     } else slots.queue.push(resolve)

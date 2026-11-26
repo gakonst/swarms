@@ -10,6 +10,7 @@ import { useNow } from './hooks.ts'
 import { Inline } from './Markdown.tsx'
 import { Surface } from './Surface.tsx'
 import { state, Traces } from './Traces.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 export function Now(props: {
   artifacts: readonly Artifact[] | undefined
@@ -23,7 +24,7 @@ export function Now(props: {
   visible: boolean
 }) {
   const swarm = props.swarm
-  const now = useNow(60_000)
+  const now = useNow(Limits.Clock.minuteMs)
   const [traced, setTraced] = useState(false)
   const told = props.updates?.filter((update) => update.text.trim() && !Chatter.idle(update.text)).at(-1) ?? (swarm.answer?.text.trim() && !Chatter.idle(swarm.answer.text) ? swarm.answer : undefined)
   const brief = props.surface && Brief.brief({ status: Kinds.status(props.surface), surfaced: props.artifacts?.find(Kinds.is), update: told })

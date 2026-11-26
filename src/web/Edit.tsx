@@ -8,6 +8,7 @@ import * as Api from './api.ts'
 import * as Local from './local.ts'
 import { Badge } from './Picture.tsx'
 import { useRoster } from './Steering.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 const emojis = ['🧪', '🧠', '🔬', '🧮', '📐', '🧬', '🔐', '⚡', '🛰️', '🚀', '🤖', '📈', '🌍', '🦀', '🎯', '🔥'] as const
 
@@ -44,7 +45,7 @@ async function shrink(file: File): Promise<Blob> {
   const height = bitmap.height * scale
   context.drawImage(bitmap, (side - width) / 2, (side - height) / 2, width, height)
   bitmap.close()
-  for (const [type, quality] of [['image/webp', 0.9], ['image/webp', 0.7], ['image/png', undefined]] as const) {
+  for (const [type, quality] of [['image/webp', Limits.WebEdit.webpQuality], ['image/webp', Limits.WebEdit.webpSmallQuality], ['image/png', undefined]] as const) {
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality))
     if (blob && blob.type === type && blob.size <= Pictures.most) return blob
   }
@@ -111,7 +112,7 @@ function Sheet(props: { draft: Draft; error: unknown; onClose: () => void; onSav
   }, [])
   const title = draft.title.trim()
   const nickname = draft.nickname.trim().toLowerCase()
-  const why = !title ? 'Give it a title.' : title.length > 80 ? 'Keep the title to 80 characters.' : nickname ? Nickname.invalid(nickname) : undefined
+  const why = !title ? 'Give it a title.' : title.length > Limits.Operations.titleChars ? 'Keep the title to 80 characters.' : nickname ? Nickname.invalid(nickname) : undefined
   const changed = title !== swarm.title || (nickname || null) !== swarm.nickname || draft.look.at !== 'kept'
   const look = (next: Look) => setDraft((current) => ({ ...current, look: next }))
   const emoji = draft.look.at === 'emoji' ? draft.look : { color: 'green' as Pictures.Color, emoji: '🧪' }
@@ -159,7 +160,7 @@ function Sheet(props: { draft: Draft; error: unknown; onClose: () => void; onSav
         </div>
         <label className="edit-field">
           <span>Title</span>
-          <input maxLength={80} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} ref={first} value={draft.title} />
+          <input maxLength={Limits.Operations.titleChars} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} ref={first} value={draft.title} />
         </label>
         <label className="edit-field">
           <span>Address</span>

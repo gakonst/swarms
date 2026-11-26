@@ -4,6 +4,7 @@ import * as Crew from '../shared/Crew.ts'
 import type * as Progress from '../shared/Progress.ts'
 import * as Prose from '../shared/Prose.ts'
 import { Inline } from './Markdown.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 function tidy(text: string) {
   return text
@@ -20,13 +21,13 @@ function sentence(text: string) {
 
 function amount(value: number, metric: string) {
   if (/speed ?up|faster|times/i.test(metric)) return `${value.toFixed(2)}×`
-  return String(Number(value.toPrecision(4)))
+  return String(Number(value.toPrecision(Limits.WebExplored.digits)))
 }
 
 function change(value: number, before: number, better: Progress.Progress['better']) {
   const gain = better === 'lower' ? before / value - 1 : value / before - 1
-  if (!Number.isFinite(gain) || Math.abs(gain) < 0.0005) return undefined
-  return `${gain > 0 ? '+' : '−'}${Math.abs(gain * 100).toFixed(gain > 0.1 || gain < -0.1 ? 0 : 1)}%`
+  if (!Number.isFinite(gain) || Math.abs(gain) < Limits.WebExplored.gainLeast) return undefined
+  return `${gain > 0 ? '+' : '−'}${Math.abs(gain * Limits.Web.percent).toFixed(gain > Limits.WebExplored.wholeGain || gain < -Limits.WebExplored.wholeGain ? 0 : 1)}%`
 }
 
 type Row =
@@ -89,17 +90,17 @@ function Chart(props: { progress: Progress.Progress }) {
   const goal = props.progress.goal
   const top = Math.max(...values)
   const bottom = Math.min(...values)
-  const shownGoal = goal !== null && goal >= bottom && goal <= top + (top - bottom) * 0.6 ? goal : null
+  const shownGoal = goal !== null && goal >= bottom && goal <= top + (top - bottom) * Limits.WebExplored.goalHeadroom ? goal : null
   const high = Math.max(top, shownGoal ?? top)
   const low = Math.min(bottom, shownGoal ?? bottom)
   const span = high - low || 1
   const lower = props.progress.better === 'lower'
-  const width = 600
-  const height = 96
-  const x = (index: number) => 8 + (index / (kept.length - 1)) * (width - 16)
+  const width = Limits.WebExplored.width
+  const height = Limits.WebExplored.height
+  const x = (index: number) => Limits.WebExplored.inset + (index / (kept.length - 1)) * (width - Limits.WebExplored.inset * 2)
   const y = (value: number) => {
     const share = (value - low) / span
-    return 8 + (lower ? share : 1 - share) * (height - 16)
+    return Limits.WebExplored.inset + (lower ? share : 1 - share) * (height - Limits.WebExplored.inset * 2)
   }
   const path = kept.map((step, index) => (index === 0 ? `M${x(0)},${y(step.value)}` : `H${x(index)}V${y(step.value)}`)).join('')
   return (
@@ -107,7 +108,7 @@ function Chart(props: { progress: Progress.Progress }) {
       {shownGoal !== null && <line className="flow-goal" x1="0" x2={width} y1={y(shownGoal)} y2={y(shownGoal)} />}
       <path className="flow-area" d={`${path}V${height}H${x(0)}Z`} />
       <path className="flow-line" d={path} vectorEffect="non-scaling-stroke" />
-      {kept.map((step, index) => <circle className="flow-point" cx={x(index)} cy={y(step.value)} data-merged={step.merged} key={index} r={step.merged ? 3.5 : 2.5} vectorEffect="non-scaling-stroke" />)}
+      {kept.map((step, index) => <circle className="flow-point" cx={x(index)} cy={y(step.value)} data-merged={step.merged} key={index} r={step.merged ? Limits.WebExplored.mergedRadius : Limits.WebExplored.radius} vectorEffect="non-scaling-stroke" />)}
     </svg>
   )
 }
@@ -144,7 +145,7 @@ function Node(props: { row: Row; progress: Progress.Progress }) {
           <b>{title}</b>
           {value !== null && <span className="flow-value">{amount(value, progress.metric)}{delta && <small>{delta}</small>}</span>}
         </span>
-        {said && <Inline className="flow-said" text={Prose.clip(said, open ? 600 : 170)} />}
+        {said && <Inline className="flow-said" text={Prose.clip(said, open ? Limits.WebExplored.openChars : Limits.WebExplored.saidChars)} />}
         {open && more && <Inline className="flow-more" text={sentence(more)} />}
       </button>
     </li>
@@ -174,7 +175,7 @@ function Tree(props: { progress: Progress.Progress; running: boolean }) {
         <p className="flow-stats">
           {[`${merged} merged into main`, tried ? `${tried} tried and not merged` : '', live ? `${live} exploring now` : '', goal !== null ? `goal ${amount(goal, progress.metric)}` : ''].filter(Boolean).join(' · ')}
         </p>
-        {reach !== null && <span aria-hidden="true" className="flow-reach"><i style={{ width: `${Math.round(reach * 1000) / 10}%` }} /></span>}
+        {reach !== null && <span aria-hidden="true" className="flow-reach"><i style={{ width: `${Math.round(reach * 1000) / Limits.Web.tenths}%` }} /></span>}
         <Chart progress={progress} />
       </div>
       <ol className="flow-list">{listed.map((row) => <Node key={row.key} progress={progress} row={row} />)}</ol>
@@ -214,7 +215,7 @@ function Flat(props: { branches: readonly Branch[]; running: boolean }) {
               <i aria-hidden="true" className="flow-dot" />
               <div className="flow-card">
                 <span className="flow-top"><b>{named(branch.role)}</b><span className="flow-state">{looks[state]}</span></span>
-                {said && <Inline className="flow-said" text={Prose.clip(sentence(said), 170)} />}
+                {said && <Inline className="flow-said" text={Prose.clip(sentence(said), Limits.WebExplored.saidChars)} />}
               </div>
             </li>
           )

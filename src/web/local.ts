@@ -14,7 +14,7 @@ const tables = ['swarms', 'nodes', 'messages', 'riders', 'runs', 'views'] as con
 
 type Table = (typeof tables)[number]
 
-const keep = 300
+const keep = Limits.WebLocal.keep
 
 
 const refetched = new Set<Tree.Delta['event']>(['proven', 'ended', 'started', 'progress', 'checking', 'funded', 'moved', 'steered'])
@@ -47,7 +47,7 @@ export function table(key: string): Table {
   if (kind === 'node') return 'nodes'
   if (kind === 'room' || kind === 'replies') return 'messages'
   if (kind === 'rider') return 'riders'
-  if (kind === 'updates' && key.split(':').length === 3) return 'runs'
+  if (kind === 'updates' && key.split(':').length === Limits.WebLocal.runKeyParts) return 'runs'
   return 'views'
 }
 

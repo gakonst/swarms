@@ -9,6 +9,7 @@ import { Inline, Markdown } from './Markdown.tsx'
 import { Overlay } from './Overlay.tsx'
 import { Avatar, tint, typist } from './Room.tsx'
 import * as Wallet from './wallet.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Line = { at: number; id: string; text: string; who: { address: string | null; bot: boolean; name: string }; tag?: string | undefined }
 
@@ -34,7 +35,7 @@ export function lines(node: Tree.Node, view: NodeView | undefined, updates: read
     if (!run.outcome) continue
     const fold = folds.find((delta) => !used.has(delta.seq) && delta.text.trim() === run.summary.trim())
     if (fold) used.add(fold.seq)
-    out.push({ at: fold?.at ?? run.until ?? run.since, id: `r${run.k}`, tag: `Run ${run.k} ${outcomes[run.outcome]} · ${spent(run.spent)} of ${usd(run.budget)}${run.commit ? ` · ${run.commit.slice(0, 7)}` : ''}`, text: Tree.plain(run.summary), who: { address: null, bot: true, name: 'AI' } })
+    out.push({ at: fold?.at ?? run.until ?? run.since, id: `r${run.k}`, tag: `Run ${run.k} ${outcomes[run.outcome]} · ${spent(run.spent)} of ${usd(run.budget)}${run.commit ? ` · ${run.commit.slice(0, Limits.Web.commitChars)}` : ''}`, text: Tree.plain(run.summary), who: { address: null, bot: true, name: 'AI' } })
   }
   for (const steer of view?.steers ?? []) out.push({ at: steer.at, id: `s${steer.at}:${steer.who.handle}`, tag: Number(steer.amount) > 0 ? `Steered, ${usd(steer.amount)} behind it` : 'Steered', text: steer.note, who: rider(steer.who) })
   for (const idea of view?.suggestions ?? []) out.push({ at: idea.at, id: `i${idea.id}`, text: idea.text, who: rider(idea.who) })
@@ -43,7 +44,7 @@ export function lines(node: Tree.Node, view: NodeView | undefined, updates: read
 }
 
 function joined(a: Line | undefined, b: Line, now: number) {
-  return !!a && a.who.name === b.who.name && b.at - a.at < 10 * 60_000 && day(a.at, now) === day(b.at, now)
+  return !!a && a.who.name === b.who.name && b.at - a.at < Limits.WebChannel.joinMs && day(a.at, now) === day(b.at, now)
 }
 
 function Face(props: { who: Line['who'] }) {
@@ -58,7 +59,7 @@ function Spoken(props: { first: boolean; line: Line; now: number }) {
     <li className="msg" data-first={first}>
       {first ? <Face who={line.who} /> : <span className="avatar-gap" />}
       <div className="msg-col">
-        {first && <p className="msg-who"><b style={line.who.bot ? undefined : { color: tint(line.who.address ?? line.who.name) }}>{line.who.name}</b>{line.at > 1e9 && <time dateTime={new Date(line.at).toISOString()}>{day(line.at, props.now) === day(props.now, props.now) ? minute(line.at) : `${day(line.at, props.now)} ${minute(line.at)}`}</time>}</p>}
+        {first && <p className="msg-who"><b style={line.who.bot ? undefined : { color: tint(line.who.address ?? line.who.name) }}>{line.who.name}</b>{line.at > Limits.WebChannel.datedAfterMs && <time dateTime={new Date(line.at).toISOString()}>{day(line.at, props.now) === day(props.now, props.now) ? minute(line.at) : `${day(line.at, props.now)} ${minute(line.at)}`}</time>}</p>}
         {line.tag && <span className="talk-tag">{line.tag}</span>}
         {line.text && <div className="msg-bubble"><Markdown compact text={line.text} /></div>}
       </div>
@@ -75,7 +76,7 @@ export function Talk(props: { doing?: Tree.Doing | null | undefined; empty: stri
         <li className="msg talk-doing" data-first="true" aria-live="polite">
           <span aria-hidden="true" className="avatar avatar-ai">✦</span>
           <div className="msg-col">
-            <p className="msg-who"><b>AI</b><time>{props.doing.at > props.now - 5_000 ? 'working' : `working · ${ago(props.doing.at, props.now)}`}</time></p>
+            <p className="msg-who"><b>AI</b><time>{props.doing.at > props.now - Limits.WebChannel.workingMs ? 'working' : `working · ${ago(props.doing.at, props.now)}`}</time></p>
             <div className="msg-bubble"><i aria-hidden="true" className="talk-pulse" /><Inline text={props.doing.text} /></div>
           </div>
         </li>
@@ -97,7 +98,7 @@ export function Composer(props: { autoFocus?: boolean; config: Config | undefine
     const element = area.current
     if (!element) return
     element.style.height = 'auto'
-    element.style.height = `${Math.min(element.scrollHeight, 132)}px`
+    element.style.height = `${Math.min(element.scrollHeight, Limits.Web.composeMostPx)}px`
   }, [text])
 
   const open = !props.disabled && !!wallet.session

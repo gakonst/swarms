@@ -1,4 +1,5 @@
-export const pace = typeof window !== 'undefined' && window.top !== window ? 0.2 : 1
+import * as Limits from '../shared/Limits.ts'
+export const pace = typeof window !== 'undefined' && window.top !== window ? Limits.WebStage.framedPace : 1
 
 export const scene = new Set((typeof location === 'undefined' ? '' : (new URLSearchParams(location.search).get('scene') ?? '')).split(',').filter(Boolean))
 

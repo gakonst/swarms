@@ -160,7 +160,7 @@ function Table(props: { rows: readonly (readonly string[])[] }) {
         {props.rows.map((row) => (
           <tr key={row.join(' ')}>
             {row.map((cell, index) => (
-              <td key={index}>{index === 0 && row.length === 2 ? <code>{cell}</code> : index === 1 && row.length === 3 ? <code>{cell}</code> : cell}</td>
+              <td key={index}>{index === 0 && row.length === 2 ? <code>{cell}</code> : index === 1 && row.length === Limits.WebDocs.routeColumns ? <code>{cell}</code> : cell}</td>
             ))}
           </tr>
         ))}
@@ -289,7 +289,7 @@ export function Docs() {
                 </td>
                 <td>
                   {route[2]}
-                  {route[3] && <code className="docs-query">{route[3]}</code>}
+                  {route[Limits.WebDocs.queryColumn] && <code className="docs-query">{route[Limits.WebDocs.queryColumn]}</code>}
                 </td>
               </tr>
             ))}

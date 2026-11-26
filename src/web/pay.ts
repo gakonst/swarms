@@ -216,7 +216,7 @@ export function watch(slot: string, listener: () => void) {
 
 function refuses(error: unknown) {
   const status = typeof error === 'object' && error !== null && 'status' in error ? Number(error.status) : 0
-  return status >= 400 && status < 500 && status !== 404 && status !== 408 && status !== 429
+  return status >= Limits.Http.invalid && status < Limits.Http.failed && status !== Limits.Http.missing && status !== Limits.Http.requestTimeout && status !== Limits.Http.tooMany
 }
 
 async function count(owed: Owed): Promise<Counted> {

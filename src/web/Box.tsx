@@ -58,7 +58,7 @@ export const Box = forwardRef<HTMLElement, {
       {!props.bare && (balance > 0 || swarm.contributors > 0) && <div className="box-top">
         <p className="box-balance"><b>{usd(swarm.balance)}</b> raised</p>
         <p className="box-people">
-          {backers.length > 0 && <span className="box-faces">{backers.slice(0, 5).map((member) => <Avatar address={member.address} handle={member.handle} key={member.address} size="small" />)}</span>}
+          {backers.length > 0 && <span className="box-faces">{backers.slice(0, Limits.WebBox.faces).map((member) => <Avatar address={member.address} handle={member.handle} key={member.address} size="small" />)}</span>}
           {swarm.contributors > 0 ? `${swarm.contributors} rider${swarm.contributors === 1 ? '' : 's'}` : 'No riders yet'}
         </p>
       </div>}

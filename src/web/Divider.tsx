@@ -1,14 +1,15 @@
 import { type KeyboardEvent, type PointerEvent, useLayoutEffect, useRef } from 'react'
+import * as Limits from '../shared/Limits.ts'
 
 type Drag = { at: 'idle' } | { at: 'dragging'; from: number; size: number }
 
 const kept = new Map<string, number>()
 
-const narrowest = 280
+const narrowest = Limits.WebDivider.narrowest
 
-const chat = 373
+const chat = Limits.WebDivider.chat
 
-const step = 32
+const step = Limits.WebDivider.step
 
 function bounds(host: HTMLElement) {
   const style = getComputedStyle(host)

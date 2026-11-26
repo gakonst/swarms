@@ -4,10 +4,11 @@ import * as Emoji from '../shared/Reaction.ts'
 import * as Api from './api.ts'
 import * as Outbox from './outbox.ts'
 import { Overlay } from './Overlay.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 const recentKey = 'swarms.emoji'
 
-const recentMost = 6
+const recentMost = Limits.WebReactions.recentMost
 
 function recent(): string[] {
   try {

@@ -11,6 +11,7 @@ import { Inline, Markdown } from './Markdown.tsx'
 import { Acts, Chips, flip, held, Picker, send } from './Reactions.tsx'
 import { Avatar, type Items, Item, marked, tint, Unsent } from './Room.tsx'
 import * as Wire from './wire.ts'
+import * as Limits from '../shared/Limits.ts'
 
 type Loaded = { at: 'loading' } | { at: 'failed'; error: string } | { at: 'ready'; thread: Replied }
 
@@ -34,7 +35,7 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
   const id = props.id
   const swarm = props.swarm
   const wallet = useWallet()
-  const now = useNow(60_000)
+  const now = useNow(Limits.Clock.minuteMs)
   const place = `thread:${swarm}:${id}`
   const [state, setState] = useState<Loaded>(() => stored(swarm, id))
   const [picking, setPicking] = useState<{ anchor: HTMLElement; id: number }>()

@@ -1,9 +1,10 @@
 import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import * as Limits from '../shared/Limits.ts'
 
-const gap = 8
+const gap = Limits.WebOverlay.gap
 
-const edge = 12
+const edge = Limits.WebOverlay.edge
 
 export function Overlay(props: { anchor?: HTMLElement | null | undefined; children: ReactNode; className?: string | undefined; label: string; onClose: () => void }) {
   const card = useRef<HTMLDivElement>(null)
@@ -15,7 +16,7 @@ export function Overlay(props: { anchor?: HTMLElement | null | undefined; childr
   useEffect(() => {
     setMounted(true)
     const escape = (event: KeyboardEvent) => event.key === 'Escape' && close.current()
-    const mark = Math.random().toString(36).slice(2)
+    const mark = Math.random().toString(Limits.WebOverlay.markRadix).slice(2)
     const marked = () => (history.state as { overlay?: string } | null)?.overlay === mark
     const popped = () => {
       if (!marked()) close.current()

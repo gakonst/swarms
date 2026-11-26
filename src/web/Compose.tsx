@@ -8,6 +8,7 @@ import { short } from './format.ts'
 import { asked, dollars, Fuel } from './Contribute.tsx'
 import * as Pay from './pay.ts'
 import { Mark } from './Tree.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 export function Compose(props: { config: Config | undefined; full?: boolean; heading?: string | undefined; onMade?: ((nid: string) => void) | undefined; onSent?: (() => void) | undefined; parent: Tree.Node; said?: string | undefined; swarm: string }) {
   const [title, setTitle] = useState(() => (props.said ? titled(props.said) : ''))
@@ -23,15 +24,15 @@ export function Compose(props: { config: Config | undefined; full?: boolean; hea
       <h3>{props.heading ?? `Add under ${under}`}</h3>
       <label className="compose-field">
         <span className="sr-only">Title</span>
-        <input autoFocus className="compose-title" disabled={busy} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="Its title" value={title} />
+        <input autoFocus className="compose-title" disabled={busy} maxLength={Limits.WebCompose.titleChars} onChange={(event) => setTitle(event.target.value)} placeholder="Its title" value={title} />
       </label>
       <label className="compose-field">
         <span className="sr-only">What and why</span>
-        <textarea className="compose-detail" disabled={busy} maxLength={2000} onChange={(event) => setSpec(event.target.value)} placeholder="What and why (optional)" rows={2} value={spec} />
+        <textarea className="compose-detail" disabled={busy} maxLength={Limits.WebCompose.detailChars} onChange={(event) => setSpec(event.target.value)} placeholder="What and why (optional)" rows={2} value={spec} />
       </label>
       {props.full && (
         <>
-          <label className="node-field"><span>Lean statement (optional)</span><textarea className="mono" disabled={busy} maxLength={2000} onChange={(event) => setStatement(event.target.value)} placeholder="theorem parity_not_ac0 : ..." rows={2} value={statement} /></label>
+          <label className="node-field"><span>Lean statement (optional)</span><textarea className="mono" disabled={busy} maxLength={Limits.WebCompose.detailChars} onChange={(event) => setStatement(event.target.value)} placeholder="theorem parity_not_ac0 : ..." rows={2} value={statement} /></label>
           <label className="node-field"><span>Kind</span>
             <select disabled={busy} onChange={(event) => setForm(event.target.value as Tree.Form)} value={form}>
               <option value="lemma">Lemma</option>
@@ -74,8 +75,8 @@ export function Compose(props: { config: Config | undefined; full?: boolean; hea
 
 export function titled(text: string) {
   const line = text.replace(/\s+/g, ' ').trim()
-  if (line.length <= 120) return line
-  const cut = line.slice(0, 119)
+  if (line.length <= Limits.WebCompose.titleChars) return line
+  const cut = line.slice(0, Limits.WebCompose.cutChars)
   return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 60)).trimEnd()}…`
 }
 

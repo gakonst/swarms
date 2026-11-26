@@ -15,6 +15,7 @@ import { brief, open, problems } from './research.ts'
 import { Back, navigate, useCanBack } from './router.tsx'
 import { Steered } from './Steering.tsx'
 import * as Wire from './wire.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const prefill = { amount: '5', note: '', token: undefined } as const
 
@@ -40,7 +41,7 @@ function useLaunch(slot: string, title: string, goal: string, problem: string | 
   const input = { steering, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}), ...(nickname ? { nickname } : {}) }
   return {
     busy: Pay.busy(Pay.useFlow(slot)),
-    locked: !(input.title.length >= 1 && input.title.length <= 80 && input.goal.length >= 10 && input.goal.length <= 12_000),
+    locked: !(input.title.length >= 1 && input.title.length <= Limits.Operations.titleChars && input.goal.length >= Limits.Operations.goalLeastChars && input.goal.length <= Limits.Operations.goalChars),
     target: () => launch(input, () => {}),
   }
 }
@@ -121,7 +122,7 @@ function Own(props: { config: Config | undefined; name: string | undefined }) {
   const drafted = brief(question)
   const [steering, setSteering] = useState<Steering>('team')
   const launch = useLaunch('own', drafted.title, drafted.goal, undefined, steering, props.name)
-  const free = (list.data ? open(list.data.swarms) : problems).slice(0, 3)
+  const free = (list.data ? open(list.data.swarms) : problems).slice(0, Limits.WebNew.free)
 
   return (
     <div className="page own-page">
@@ -129,7 +130,7 @@ function Own(props: { config: Config | undefined; name: string | undefined }) {
       <Address name={props.name} />
       <label className="own-ask">
         <span className="sr-only">Your problem</span>
-        <textarea autoFocus disabled={launch.busy} id="question" maxLength={10_000} onChange={(event) => setQuestion(event.target.value)} placeholder="e.g. Find the cheapest way to make clean drinking water at home" rows={3} value={question} />
+        <textarea autoFocus disabled={launch.busy} id="question" maxLength={Limits.WebNew.questionChars} onChange={(event) => setQuestion(event.target.value)} placeholder="e.g. Find the cheapest way to make clean drinking water at home" rows={Limits.WebNew.rows} value={question} />
       </label>
       <div className="own-box">
         <Box

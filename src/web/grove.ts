@@ -1,6 +1,7 @@
 import type { TreeView } from '../shared/Api.ts'
 import { decimal, units } from '../shared/Memo.ts'
 import type * as Tree from '../shared/Tree.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Filter = 'all' | 'flight' | 'proven' | 'dead' | 'money'
 
@@ -16,7 +17,7 @@ export type Grove = { headline: Tree.Headline; landed: Readonly<Record<string, n
 
 export type Row = { depth: number; frontier: boolean; hit: boolean; node: Tree.Node; open: boolean }
 
-export const runMin = 500_000n
+export const runMin = Limits.WebGrove.runMinUnits
 
 const statuses: readonly Tree.Status[] = ['proposed', 'funded', 'in flight', 'proven', 'dead end']
 
@@ -81,7 +82,7 @@ export function patch(grove: Grove, delta: Tree.Delta): Grove {
   const pledged = old ? units(next.money.subtree.pledged) - units(old.money.subtree.pledged) : delta.event === 'posted' ? units(next.money.subtree.pledged) : 0n
   const nodes: Record<string, Tree.Node> = { ...grove.nodes, [next.id]: next }
   const moved = statuses.some((status) => change[status] !== 0) || spent !== 0n || left !== 0n || pledged !== 0n
-  for (let at = next.parent, guard = 0; at && guard < 256; guard++) {
+  for (let at = next.parent, guard = 0; at && guard < Limits.WebGrove.parentsMost; guard++) {
     const parent = nodes[at]
     if (!parent) break
     const adopted = !old && !parent.children.includes(next.id) && at === next.parent
@@ -120,13 +121,13 @@ export function rows(nodes: Readonly<Record<string, Tree.Node>>, root: string, o
     const known = hits.get(id)
     if (known !== undefined) return known
     const node = nodes[id]
-    const found = !!node && guard < 64 && (fits(filter, node) || node.children.some((child) => hit(child, guard + 1)))
+    const found = !!node && guard < Limits.WebGrove.depthMost && (fits(filter, node) || node.children.some((child) => hit(child, guard + 1)))
     hits.set(id, found)
     return found
   }
   const walk = (id: string, depth: number) => {
     const node = nodes[id]
-    if (!node || depth > 64) return
+    if (!node || depth > Limits.WebGrove.depthMost) return
     if (filter !== 'all' && !hit(id)) return
     const unfolded = filter !== 'all' || open.has(id)
     out.push({ depth, frontier: frontier(node, nodes), hit: fits(filter, node), node, open: unfolded && node.children.length > 0 })
@@ -138,7 +139,7 @@ export function rows(nodes: Readonly<Record<string, Tree.Node>>, root: string, o
 
 export function trail(nodes: Readonly<Record<string, Tree.Node>>, id: string) {
   const path: Tree.Node[] = []
-  for (let at: string | null = id, guard = 0; at && guard < 64; guard++) {
+  for (let at: string | null = id, guard = 0; at && guard < Limits.WebGrove.depthMost; guard++) {
     const node: Tree.Node | undefined = nodes[at]
     if (!node) break
     path.unshift(node)

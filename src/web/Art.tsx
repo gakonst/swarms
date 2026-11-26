@@ -1,4 +1,5 @@
 import type { Mood } from '../shared/Status.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const palettes: Record<Mood, readonly (readonly [string, string, string, string])[]> = {
   live: [
@@ -24,11 +25,11 @@ const palettes: Record<Mood, readonly (readonly [string, string, string, string]
 }
 
 function hash(text: string, seed: number) {
-  let value = 2166136261 ^ seed
-  for (let index = 0; index < text.length; index++) value = Math.imul(value ^ text.charCodeAt(index), 16777619)
-  value ^= value >>> 13
-  value = Math.imul(value, 0x5bd1e995)
-  return ((value ^ (value >>> 15)) >>> 0) / 4294967296
+  let value = Limits.Edge.fnvOffset ^ seed
+  for (let index = 0; index < text.length; index++) value = Math.imul(value ^ text.charCodeAt(index), Limits.Edge.fnvPrime)
+  value ^= value >>> Limits.WebArt.mixShift
+  value = Math.imul(value, Limits.WebArt.mixPrime)
+  return ((value ^ (value >>> Limits.WebArt.finalShift)) >>> 0) / Limits.Web.uint32Span
 }
 
 export function swatch(id: string, mood: Mood) {
@@ -37,23 +38,23 @@ export function swatch(id: string, mood: Mood) {
 }
 
 export function Art(props: { id: string; mood: Mood; wide?: boolean }) {
-  const width = props.wide ? 96 : 40
-  const height = 40
+  const width = props.wide ? Limits.WebArt.wideWidth : Limits.WebArt.width
+  const height = Limits.WebArt.height
   const colors = swatch(props.id, props.mood)
   const paths = ['', '', '', '']
   let y = 0
   let row = 0
   let last: [number, number, number][] = []
   while (y < height) {
-    const tall = Math.min(height - y, [1, 1, 2, 2, 3, 5, 8][Math.floor(hash(props.id, 100 + row) * 7)]!)
+    const tall = Math.min(height - y, Limits.WebArt.runHeights[Math.floor(hash(props.id, Limits.WebArt.heightSeed + row) * Limits.WebArt.runHeights.length)]!)
     let runs: [number, number, number][] = []
-    if (row > 0 && hash(props.id, 200 + row) < 0.45) runs = last.map(([x, w, c]) => [Math.max(0, Math.min(width - w, x + Math.round((hash(props.id, 300 + row) - 0.5) * 6))), w, c])
+    if (row > 0 && hash(props.id, Limits.WebArt.shiftSeed + row) < Limits.WebArt.shiftShare) runs = last.map(([x, w, c]) => [Math.max(0, Math.min(width - w, x + Math.round((hash(props.id, Limits.WebArt.shiftBySeed + row) - Limits.WebArt.centre) * Limits.WebArt.shiftMost))), w, c])
     else {
-      const count = 1 + Math.floor(hash(props.id, 400 + row) * (props.wide ? 7 : 4))
+      const count = 1 + Math.floor(hash(props.id, Limits.WebArt.countSeed + row) * (props.wide ? Limits.WebArt.wideRuns : Limits.WebArt.runs))
       for (let index = 0; index < count; index++) {
-        const w = 2 + Math.floor(hash(props.id, 500 + row * 16 + index) ** 2 * width * 0.7)
-        const x = Math.floor(hash(props.id, 600 + row * 16 + index) * (width - 1))
-        runs.push([x, Math.min(w, width - x), 1 + Math.floor(hash(props.id, 700 + row * 16 + index) ** 1.6 * 3)])
+        const w = 2 + Math.floor(hash(props.id, Limits.WebArt.widthSeed + row * Limits.WebArt.seedStride + index) ** 2 * width * Limits.WebArt.widthShare)
+        const x = Math.floor(hash(props.id, Limits.WebArt.xSeed + row * Limits.WebArt.seedStride + index) * (width - 1))
+        runs.push([x, Math.min(w, width - x), 1 + Math.floor(hash(props.id, Limits.WebArt.colorSeed + row * Limits.WebArt.seedStride + index) ** Limits.WebArt.colorSkew * Limits.WebArt.colors)])
       }
     }
     for (const [x, w, c] of runs) paths[c] += `M${x} ${y}h${w}v${tall}h-${w}z`
@@ -74,7 +75,7 @@ export function Art(props: { id: string; mood: Mood; wide?: boolean }) {
       <rect fill={colors[0]} height={height} width={width} />
       <path d={paths[1]} fill={`url(#${dots})`} />
       <path d={paths[2]} fill={colors[2]} />
-      <path d={paths[3]} fill={colors[3]} />
+      <path d={paths[Limits.WebArt.topLayer]} fill={colors[Limits.WebArt.topLayer]} />
     </svg>
   )
 }

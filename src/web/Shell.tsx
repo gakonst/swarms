@@ -12,6 +12,7 @@ import { Badge } from './Picture.tsx'
 import { Link, navigate } from './router.tsx'
 import { Opener, Palette, remember, useShortcut } from './Search.tsx'
 import * as Wire from './wire.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const seenKey = 'swarms_seen'
 
@@ -184,9 +185,9 @@ function Foot() {
   )
 }
 
-const swipe = 56
+const swipe = Limits.WebShell.swipe
 
-const edge = 28
+const edge = Limits.WebShell.edge
 
 function held(target: EventTarget | null) {
   return target instanceof Element && !!target.closest('input, textarea, select, pre, .tabs, .tree-filters, .overlay, .sheet, [data-swipe="off"]')
@@ -206,7 +207,7 @@ export function useSwipe(handlers: { edge?: (() => void) | undefined; left?: (()
       if (!from || !touch) return
       const dx = touch.clientX - from.x
       const dy = touch.clientY - from.y
-      if (Math.abs(dx) < swipe || Math.abs(dx) < Math.abs(dy) * 1.6) return
+      if (Math.abs(dx) < swipe || Math.abs(dx) < Math.abs(dy) * Limits.WebShell.swipeSlope) return
       if (dx < 0) handlers.left?.()
       else if (from.x < edge && handlers.edge) handlers.edge()
       else handlers.right?.()

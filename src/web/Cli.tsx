@@ -4,6 +4,7 @@ import * as Site from '../shared/Site.ts'
 import { here } from './boot.ts'
 import { Lost } from './Lost.tsx'
 import * as Wallet from './wallet.ts'
+import * as Limits from '../shared/Limits.ts'
 
 type State = { kind: 'idle' } | { kind: 'busy' } | { address: string; kind: 'done' } | { error: string; kind: 'failed' }
 
@@ -31,7 +32,7 @@ export function CliLogin(props: { config: Config | undefined }) {
   if (state.kind === 'done')
     return (
       <Lost title="The CLI is signed in. Go back to your terminal.">
-        <span className="lost-row">{state.address.slice(0, 6)}…{state.address.slice(-4)}</span>
+        <span className="lost-row">{state.address.slice(0, Limits.SharedMention.headChars)}…{state.address.slice(-Limits.SharedMention.tailChars)}</span>
       </Lost>
     )
   return (

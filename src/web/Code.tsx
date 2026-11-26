@@ -40,7 +40,7 @@ async function fetched<value>(url: string): Promise<value> {
   if (Api.fixture) return import('./fixtures.ts').then((fixtures) => fixtures.git(url) as Promise<value>)
   const response = await fetch(Site.at(url))
   const data = (await response.json().catch(() => undefined)) as value | undefined
-  if (!response.ok || !data) throw new Error(response.status === 404 ? 'Not found.' : "The code can't be read right now. Try again in a minute.")
+  if (!response.ok || !data) throw new Error(response.status === Limits.Http.missing ? 'Not found.' : "The code can't be read right now. Try again in a minute.")
   const told = data as Partial<Unavailable>
   if (told.state === 'unavailable' && typeof told.message === 'string') throw new Unpaid(told.message)
   return data
@@ -71,7 +71,7 @@ function Copy(props: { text: string }) {
 }
 
 function Files(props: { files: readonly string[]; id: string; onOpen: (path: string) => void; open: string | undefined }) {
-  const options = { flattenEmptyDirectories: true, id: props.id, initialExpansion: 1, initialVisibleRowCount: 30, paths: props.files }
+  const options = { flattenEmptyDirectories: true, id: props.id, initialExpansion: 1, initialVisibleRowCount: Limits.WebCode.rowsShown, paths: props.files }
   const [preloaded] = useState(() => (typeof document === 'undefined' ? preload?.(options) : document.getElementById(props.id)?.shadowRoot ? { id: props.id, shadowHtml: '' } : undefined))
   const latest = useRef({ files: new Set(props.files), onOpen: props.onOpen })
   latest.current = { files: new Set(props.files), onOpen: props.onOpen }
@@ -133,7 +133,7 @@ function Viewer(props: { path: string; preset?: string | undefined; sha: string;
 export function Code(props: { repo: Repo | null; swarm: string }) {
   const swarm = props.swarm
   const repo = props.repo
-  const now = useNow(60_000)
+  const now = useNow(Limits.Clock.minuteMs)
   const [tree, setTree] = useState<{ error?: string; unavailable?: string; value?: Tree }>(() => {
     const known = Api.coded(swarm)
     return known && known.name === repo?.name ? { value: known } : {}
@@ -195,7 +195,7 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
         <div className="repo-name">
           <span aria-hidden="true" className="repo-glyph">{'</>'}</span>
           <b>{repo.name}</b>
-          {value && <span className="repo-meta">{value.commits.length >= 20 ? '20+ commits' : `${value.commits.length} commit${value.commits.length === 1 ? '' : 's'}`} · {value.files.length} file{value.files.length === 1 ? '' : 's'}</span>}
+          {value && <span className="repo-meta">{value.commits.length >= Limits.WebCode.commitsMost ? '20+ commits' : `${value.commits.length} commit${value.commits.length === 1 ? '' : 's'}`} · {value.files.length} file{value.files.length === 1 ? '' : 's'}</span>}
         </div>
         <div className="repo-clone">
           <code title={command}>{command}</code>
@@ -216,7 +216,7 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
           <div className="repo-files">
             <div className="repo-latest">
               <span className="repo-latest-text">{head.message.split('\n')[0]}</span>
-              <code>{head.sha.slice(0, 7)}</code>
+              <code>{head.sha.slice(0, Limits.Web.commitChars)}</code>
               {head.date && <span>{ago(Date.parse(head.date), now)}</span>}
             </div>
             <nav aria-label="Path" className="repo-crumbs">

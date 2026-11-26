@@ -5,6 +5,7 @@ import * as Wishlist from '../shared/Wishlist.ts'
 import { seeded } from './boot.ts'
 import { message } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 function source(artifact: Artifact) {
   return /^https?:/.test(artifact.url) ? `${artifact.url}?v=${artifact.version}` : artifact.url
@@ -15,7 +16,7 @@ function rows(text: string, separator: string) {
   let row: string[] = []
   let cell = ''
   let quoted = false
-  for (let index = 0; index < text.length && table.length < 500; index++) {
+  for (let index = 0; index < text.length && table.length < Limits.WebArtifacts.rowsMost; index++) {
     const char = text[index]
     if (quoted) {
       if (char === '"' && text[index + 1] === '"') {
@@ -123,7 +124,7 @@ function Text(props: { artifact: Artifact }) {
       const value: unknown = JSON.parse(state.text)
       if (Array.isArray(value) && value.length && value.every((item) => typeof item === 'object' && item !== null && !Array.isArray(item))) {
         const keys = [...new Set(value.flatMap((item) => Object.keys(item as object)))]
-        return <Grid rows={[keys, ...value.slice(0, 500).map((item) => keys.map((key) => { const cell = (item as Record<string, unknown>)[key]; return typeof cell === 'string' ? cell : JSON.stringify(cell) ?? '' }))]} />
+        return <Grid rows={[keys, ...value.slice(0, Limits.WebArtifacts.rowsMost).map((item) => keys.map((key) => { const cell = (item as Record<string, unknown>)[key]; return typeof cell === 'string' ? cell : JSON.stringify(cell) ?? '' }))]} />
       }
       return <pre className="viewer-pre">{JSON.stringify(value, null, 2)}</pre>
     } catch {

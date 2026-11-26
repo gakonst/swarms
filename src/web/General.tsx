@@ -53,14 +53,14 @@ function count(value: number) {
 }
 
 function joined(a: Said | undefined, b: Said | undefined, now: number) {
-  return !!a && !!b && a.author === b.author && b.at - a.at < 5 * 60_000 && day(a.at, now) === day(b.at, now)
+  return !!a && !!b && a.author === b.author && b.at - a.at < Limits.WebGeneral.joinMs && day(a.at, now) === day(b.at, now)
 }
 
 export function General(props: { config: Config | undefined }) {
   const list = Wire.useSwarms()
   const hello = useHello()
   const wallet = useWallet()
-  const now = useNow(60_000)
+  const now = useNow(Limits.Clock.minuteMs)
   const [room, setRoom] = useState<Room>(() => {
     const seed = seeded<Hall>('general')
     return { messages: seed?.messages ?? [], names: seed?.names ?? {} }
@@ -129,13 +129,13 @@ export function General(props: { config: Config | undefined }) {
     const element = area.current
     if (!element) return
     element.style.height = 'auto'
-    element.style.height = `${Math.min(element.scrollHeight, 132)}px`
+    element.style.height = `${Math.min(element.scrollHeight, Limits.Web.composeMostPx)}px`
   }, [text])
 
   const items = channels(list.data)
   const heads = list.data?.heads ?? {}
   const open = items.filter((swarm) => !swarm.archivedAt)
-  const hot = open.slice(0, 3)
+  const hot = open.slice(0, Limits.WebGeneral.hot)
   const working = open.filter((swarm) => live(swarm, heads[swarm.id])).length
   const raised = items.reduce((sum, swarm) => sum + Number(swarm.balance), 0)
   const spent = items.reduce((sum, swarm) => sum + Number(swarm.spent), 0)

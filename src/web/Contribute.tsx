@@ -7,8 +7,9 @@ import { message, useWallet } from './hooks.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Pay from './pay.ts'
 import * as Wallet from './wallet.ts'
+import * as Limits from '../shared/Limits.ts'
 
-const stops = [1, 2, 3, 5, 8, 10, 15, 20, 25, 35, 50, 75, 100, 150, 250, 500] as const
+const stops = Limits.WebContribute.stops
 
 function grown(marks: readonly number[], amount: string) {
   const next = [...marks]
@@ -154,7 +155,7 @@ export function Fuel(props: {
   const signed = !!wallet.session
   const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && !props.ended && act.at !== 'owed' && !funding
   const text = props.note.trim()
-  const least = Math.ceil(Number(floor) * 100) / 100
+  const least = Math.ceil(Number(floor) * Limits.Web.centsPerDollar) / Limits.Web.centsPerDollar
   const marks = grown(least > stops[0] ? [least, ...stops.filter((stop) => stop > least)] : stops, amount)
   const at = nearest(amount, marks)
   const verb = props.first ? 'Start it' : (props.verb ?? 'Ride it')
@@ -204,9 +205,9 @@ export function Fuel(props: {
       <div className="fuel-amount">
         <label className="fuel-sum">
           <span aria-hidden="true">$</span>
-          <input aria-label="Amount in dollars" disabled={busy} id="amount" inputMode="decimal" onChange={(event) => setAmount(event.target.value.replace(',', '.').replace('$', ''))} ref={sum} style={{ width: `${Math.max(1, amount.length) + 0.4}ch` }} value={amount} />
+          <input aria-label="Amount in dollars" disabled={busy} id="amount" inputMode="decimal" onChange={(event) => setAmount(event.target.value.replace(',', '.').replace('$', ''))} ref={sum} style={{ width: `${Math.max(1, amount.length) + Limits.WebContribute.caretEm}ch` }} value={amount} />
         </label>
-        <input aria-label="Amount" aria-valuetext={dollars(String(marks[at]))} className="fuel-slide" disabled={busy} max={marks.length - 1} min={0} onChange={(event) => setAmount(String(marks[Number(event.target.value)]))} step={1} style={{ '--fill': `${(at / (marks.length - 1)) * 100}%` } as CSSProperties} type="range" value={at} />
+        <input aria-label="Amount" aria-valuetext={dollars(String(marks[at]))} className="fuel-slide" disabled={busy} max={marks.length - 1} min={0} onChange={(event) => setAmount(String(marks[Number(event.target.value)]))} step={1} style={{ '--fill': `${(at / (marks.length - 1)) * Limits.Web.percent}%` } as CSSProperties} type="range" value={at} />
         <p className="fuel-ends"><span>{dollars(String(marks[0]))}</span><span>{dollars(String(marks[marks.length - 1]))}</span></p>
       </div>
       {floor !== smallest && !ok && <p className="fuel-least" data-bad={amount.trim() !== ''}>At least {dollars(floor)}</p>}

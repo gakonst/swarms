@@ -5,8 +5,9 @@ import type * as Tree from '../shared/Tree.ts'
 import { Faces } from './Branches.tsx'
 import { spent as outlay } from './format.ts'
 import { Inline } from './Markdown.tsx'
+import * as Limits from '../shared/Limits.ts'
 
-const first = 6
+const first: number = Limits.WebCrew.first
 
 const marks: Record<Crew.State, [Tree.Status, string]> = {
   done: ['proven', 'Done'],

@@ -49,7 +49,7 @@ async function signed<T>(run: () => Promise<T>): Promise<T> {
     return await run()
   } catch (error) {
     const status = typeof error === 'object' && error !== null && 'status' in error ? error.status : undefined
-    if (status !== 401 || !renewal) throw error
+    if (status !== Limits.Http.unauthorized || !renewal) throw error
     await renewal()
     return run()
   }
@@ -57,7 +57,7 @@ async function signed<T>(run: () => Promise<T>): Promise<T> {
 
 const reading = new Map<string, { at: number; read: Promise<unknown> }>()
 
-const together = 50
+const together = Limits.WebApi.together
 
 function request<T>(path: string, body?: unknown, method?: 'DELETE' | 'PATCH'): Promise<T> {
   if (body !== undefined || method) return send<T>(path, body, method)
@@ -103,7 +103,7 @@ const snapshots = new Map<string, { at: number; read: Promise<Snapshot | null>; 
 
 export function code(id: string, fresh = false) {
   const known = snapshots.get(id)
-  if (known && !fresh && Date.now() - known.at < 30_000) return known.read
+  if (known && !fresh && Date.now() - known.at < Limits.WebApi.freshMs) return known.read
   const entry: { at: number; read: Promise<Snapshot | null>; value?: Snapshot | null } = {
     at: Date.now(),
     read: fixture ? Promise.resolve(null) : request<{ snapshot: Snapshot | null }>(`${v1(id)}/code`).then((body) => (entry.value = body.snapshot)),
@@ -170,7 +170,7 @@ export function live(id: string, after: () => number, listener: (event: Live | {
 
 export function named(name: string) {
   return fixture ? Promise.resolve(null) : request<Named>(`/api/names/${encodeURIComponent(name)}`).catch((error: unknown) => {
-    if (error instanceof Failure && error.status === 404) return null
+    if (error instanceof Failure && error.status === Limits.Http.missing) return null
     throw error
   })
 }

@@ -7,6 +7,7 @@ import { usd } from './format.ts'
 import { Tile } from './Cover.tsx'
 import { Inline } from './Markdown.tsx'
 import { Link } from './router.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 export type Idea = { archived?: boolean; backers: number; balance: number; cover: Cover | null; href: string; id: string; left: number; mood: Status.Mood; pitch: string; title: string; word: Status.Word }
 
@@ -37,8 +38,8 @@ export function Pill(props: { word: Status.Word; mood: Status.Mood }) {
 export function Gauge(props: { balance: number; left: number }) {
   const fill = props.balance > 0 ? Math.min(1, Math.max(0, props.left / props.balance)) : 0
   return (
-    <span aria-hidden="true" className="gauge" data-low={fill < 0.15}>
-      <i style={{ width: `${Math.round(fill * 1000) / 10}%` }} />
+    <span aria-hidden="true" className="gauge" data-low={fill < Limits.WebCard.lowFill}>
+      <i style={{ width: `${Math.round(fill * 1000) / Limits.Web.tenths}%` }} />
     </span>
   )
 }

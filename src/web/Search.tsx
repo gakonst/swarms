@@ -15,19 +15,20 @@ import { Link, navigate, prefetch, usePath } from './router.tsx'
 import { channels } from './Shell.tsx'
 import { Mark, word as said } from './Tree.tsx'
 import * as Wire from './wire.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Found =
   | { at: 'problem'; exact: boolean; key: string; marks: readonly number[]; score: number; swarm: Summary; title: string; to: string; under: string; underMarks: readonly number[] }
   | { at: 'thread'; exact: boolean; key: string; live: boolean; marks: readonly number[]; money: string; score: number; status: Tree.Status; swarm: Summary; title: string; to: string; under: string; underMarks: readonly number[] }
 
-const most = { problems: 8, rest: 6 }
+const most = { problems: Limits.WebSearch.problems, rest: Limits.WebSearch.rest }
 
-const reach = 600
+const reach = Limits.WebSearch.reach
 
 function excerpt(text: string, marks: readonly number[]) {
   const first = marks[0] ?? 0
-  const start = first > 40 ? text.lastIndexOf(' ', first - 30) + 1 : 0
-  const end = Math.min(text.length, start + 140)
+  const start = first > Limits.WebSearch.leadLeast ? text.lastIndexOf(' ', first - Limits.WebSearch.leadChars) + 1 : 0
+  const end = Math.min(text.length, start + Limits.WebSearch.excerptChars)
   return { marks: marks.filter((at) => at >= start && at < end).map((at) => at - start), text: (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : ''), shift: start > 0 ? 1 : 0 }
 }
 
@@ -62,7 +63,7 @@ export function find(query: string, listing: Listing | undefined, shapes: readon
       exact: (named ?? said)!.exact,
       key: swarm.id,
       marks: named?.marks ?? [],
-      score: (named ? named.score : said!.score * 0.4) - (swarm.archivedAt ? 40 : 0),
+      score: (named ? named.score : said!.score * Limits.WebSearch.saidWeight) - (swarm.archivedAt ? Limits.WebSearch.archivedPenalty : 0),
       swarm,
       title,
       to: Nickname.path(swarm),
@@ -80,7 +81,7 @@ export function find(query: string, listing: Listing | undefined, shapes: readon
     for (const thread of shape.threads) {
       const named = Prose.plain(thread.title)
       const found = Fuzzy.match(ask, named)
-      if (found) rest.push({ at: 'thread', exact: found.exact, key: `${id}/t/${thread.id}`, live: thread.live, marks: found.marks, money: thread.money, score: found.score * 0.85, status: thread.status, swarm, title: named, to: `${base}/t/${thread.id}`, under, underMarks: [] })
+      if (found) rest.push({ at: 'thread', exact: found.exact, key: `${id}/t/${thread.id}`, live: thread.live, marks: found.marks, money: thread.money, score: found.score * Limits.WebSearch.threadWeight, status: thread.status, swarm, title: named, to: `${base}/t/${thread.id}`, under, underMarks: [] })
     }
   }
   const strict = problems.some((each) => each.exact) || rest.some((each) => each.exact)

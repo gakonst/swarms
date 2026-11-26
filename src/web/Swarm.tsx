@@ -29,10 +29,11 @@ import { spent, stamp } from './format.ts'
 import { ChatThread } from './Thread.tsx'
 import * as Wire from './wire.ts'
 import { Edit } from './Edit.tsx'
+import * as Limits from '../shared/Limits.ts'
 
-const detailMs = 10_000
+const detailMs = Limits.WebSwarm.detailMs
 
-const shelfMs = 60_000
+const shelfMs = Limits.WebSwarm.shelfMs
 
 export function Swarm(props: { config: Config | undefined; id: string; view: Tab }) {
   const id = props.id
@@ -54,7 +55,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   const [shelf, reshelve, setShelf] = usePoll(() => Api.artifacts(id), wired === 'down' ? shelfMs : null, `artifacts:${id}`)
   const [news, renews] = usePoll(() => Api.updates(id), null, `updates:${id}`)
   const [progress, reprogress] = usePoll(() => Api.progress(id), null, `progress:${id}`)
-  const [tree, rebranch] = usePoll(() => Api.branches(id), wired === 'down' && detail.data?.status === 'running' ? 30_000 : null, `branches:${id}`)
+  const [tree, rebranch] = usePoll(() => Api.branches(id), wired === 'down' && detail.data?.status === 'running' ? Limits.WebSwarm.downMs : null, `branches:${id}`)
   const wishes = useWishes(shelf.data?.artifacts)
   const surface = useSurface(shelf.data?.artifacts, id)
   const opened = useQuery('r')
@@ -208,7 +209,7 @@ function Archived(props: { swarm: Detail }) {
   return (
     <div className="archived" role="note">
       <b>Archived{swarm.archivedAt ? ` ${stamp(swarm.archivedAt)}` : ''}.</b> Read-only: nothing here runs or takes rides.{' '}
-      {Number(swarm.remaining) >= 0.005 ? <>{dollars(swarm.remaining)} is left of the {dollars(swarm.balance)} {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'} put in. It stays in the swarm's gateway credit, still theirs; archiving never spends it.</> : <>Nothing was left of the {dollars(swarm.balance)} riders put in.</>}
+      {Number(swarm.remaining) >= Limits.WebSwarm.leftLeast ? <>{dollars(swarm.remaining)} is left of the {dollars(swarm.balance)} {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'} put in. It stays in the swarm's gateway credit, still theirs; archiving never spends it.</> : <>Nothing was left of the {dollars(swarm.balance)} riders put in.</>}
     </div>
   )
 }

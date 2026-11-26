@@ -4,6 +4,7 @@ import * as Site from '../shared/Site.ts'
 import { boot } from './boot.ts'
 import { Link } from './router.tsx'
 import { NoMatch, Results, useCursor, useFound } from './Search.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 let state: Hello.Hello | undefined
 
@@ -36,7 +37,7 @@ export function useHello() {
   return useSyncExternalStore(watch, read, served)
 }
 
-const shown = 5
+const shown = Limits.WebHello.shown
 
 export function Welcome() {
   const [query, setQuery] = useState('')

@@ -15,6 +15,7 @@ import { Inline } from './Markdown.tsx'
 import { open as openProblems, problems } from './research.ts'
 import { href, Link } from './router.tsx'
 import * as Wire from './wire.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const filters = [
   ['open', 'All'],
@@ -57,16 +58,16 @@ export function board(listing: Listing | undefined) {
 
 export function sown(swarm: Summary, head: Tree.Headline | undefined): Record<Cell, number> {
   const balance = Math.max(0, Number(swarm.balance))
-  const count = Math.round(Math.min(44, 8 + 4 * Math.sqrt(balance)))
+  const count = Math.round(Math.min(Limits.WebHome.cellsMost, Limits.WebHome.cellsLeast + Limits.WebHome.cellsPerRoot * Math.sqrt(balance)))
   if (head) {
     const nodes = Math.max(1, head.proven + head.deadEnds + head.inFlight + head.frontier)
     const proven = Math.round((count * head.proven) / nodes)
     const dead = Math.round((count * head.deadEnds) / nodes)
-    const flight = Math.min(count - proven - dead, head.inFlight, 5)
+    const flight = Math.min(count - proven - dead, head.inFlight, Limits.WebHome.flightMost)
     return { dead, flight, open: count - proven - dead - flight, proven, spent: 0 }
   }
   const spent = balance > 0 ? Math.round(count * Math.min(1, Math.max(0, Number(swarm.spent)) / balance)) : 0
-  const flight = live(swarm, head) ? Math.min(count - spent, Math.max(1, Math.min(5, swarm.machines))) : 0
+  const flight = live(swarm, head) ? Math.min(count - spent, Math.max(1, Math.min(Limits.WebHome.flightMost, swarm.machines))) : 0
   return { dead: 0, flight, open: count - spent - flight, proven: 0, spent }
 }
 
@@ -76,7 +77,7 @@ function useDoing(swarms: readonly Summary[]) {
   useEffect(() => {
     let alive = true
     for (const swarm of swarms)
-      Api.tree(swarm.id, { depth: 8 })
+      Api.tree(swarm.id, { depth: Limits.WebHome.depth })
         .then((view) => {
           const latest = view.nodes.flatMap((node) => doing(node) ?? []).sort((a, b) => b.at - a.at)[0]
           if (alive && latest) setFound((kept) => ({ ...kept, [swarm.id]: latest }))
@@ -138,7 +139,7 @@ function Seed(props: { problem: Problem }) {
   return (
     <li className="limb lot" data-idea="true">
       <Link className="lot-link" to={Nickname.usable(problem.id) ? `/${problem.id}` : `/new?q=${problem.id}`}>
-        <Spiral cells={{ dead: 0, flight: 0, open: 8, proven: 0, spent: 0 }} id={problem.id} live={false} />
+        <Spiral cells={{ dead: 0, flight: 0, open: Limits.WebHome.openCells, proven: 0, spent: 0 }} id={problem.id} live={false} />
         <Inline className="lot-title" text={problem.label} />
         <span className="lot-line"><Inline text={problem.hint} /></span>
       </Link>
@@ -148,7 +149,7 @@ function Seed(props: { problem: Problem }) {
 
 export function Join() {
   const list = Wire.useSwarms()
-  const now = useNow(30_000)
+  const now = useNow(Limits.Web.halfMinuteMs)
   const [filter, setFilter] = useState<Filter>(asked)
   const heads = list.data?.heads ?? {}
   const items = board(list.data)

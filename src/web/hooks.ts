@@ -217,7 +217,7 @@ export function useNow(ms = 1000, active = true) {
 }
 
 function fits(query: string, mobile: boolean) {
-  const width = mobile ? 390 : 1440
+  const width = mobile ? Limits.Web.phoneWidth : Limits.Web.desktopWidth
   const min = /min-width:\s*(\d+)px/.exec(query)?.[1]
   const max = /max-width:\s*(\d+)px/.exec(query)?.[1]
   return (min === undefined || width >= Number(min)) && (max === undefined || width <= Number(max))

@@ -6,6 +6,7 @@ import { ago, spent, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { Inline } from './Markdown.tsx'
 import { Link, useBase } from './router.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 export type Last = { check: Tree.Check; node: string; title: string }
 
@@ -15,7 +16,7 @@ function count(value: number) {
 
 function dollars(value: string) {
   const number = Number(value)
-  return number >= 100 ? `$${Math.round(number).toLocaleString('en-US')}` : usd(value)
+  return number >= Limits.WebHeadline.wholeDollars ? `$${Math.round(number).toLocaleString('en-US')}` : usd(value)
 }
 
 export function Growth(props: { burn: Tree.Burn | undefined; headline: Tree.Headline; now: number }) {
@@ -25,8 +26,8 @@ export function Growth(props: { burn: Tree.Burn | undefined; headline: Tree.Head
   if (!tail || head.proven !== tail.proven || head.deadEnds !== tail.deadEnds) points.push({ at: Math.max(props.now, (tail?.at ?? 0) + 1), deadEnds: head.deadEnds, proven: head.proven, spent: tail?.spent ?? '0' })
   const first = points[0]?.at ?? 0
   const span = Math.max(1, (points.at(-1)?.at ?? 1) - first)
-  const unit = Math.min(22 / Math.max(1, ...points.map((point) => point.proven)), 10 / Math.max(1, ...points.map((point) => point.deadEnds)))
-  const x = (at: number) => 2 + ((at - first) / span) * 196
+  const unit = Math.min(Limits.WebHeadline.provenHeight / Math.max(1, ...points.map((point) => point.proven)), Limits.WebHeadline.deadHeight / Math.max(1, ...points.map((point) => point.deadEnds)))
+  const x = (at: number) => 2 + ((at - first) / span) * Limits.WebHeadline.width
   const steps = (value: (point: Tree.Burn[number]) => number, sign: number) => points.map((point, index) => `${index ? 'H' : 'M'}${x(point.at).toFixed(1)}${index ? '' : ',24'}V${(24 - sign * value(point) * unit).toFixed(1)}`).join('') + 'H200'
   const up = steps((point) => point.proven, 1)
   const down = steps((point) => point.deadEnds, -1)
@@ -78,7 +79,7 @@ export function Since(props: { id: string; nodes: Readonly<Record<string, Tree.N
     let before: number | undefined
     try {
       const saved = Number(localStorage.getItem(visited(props.id)))
-      before = fixture && scene.has('visit') ? Date.now() - 26 * 3_600_000 : saved > 0 ? saved : undefined
+      before = fixture && scene.has('visit') ? Date.now() - Limits.WebHeadline.visitAgoMs : saved > 0 ? saved : undefined
     } catch {}
     setLast(before)
     const leave = () => {
@@ -108,7 +109,7 @@ export function Since(props: { id: string; nodes: Readonly<Record<string, Tree.N
       <p className="since-head"><b>Since your last visit</b> {ago(last, props.now)}</p>
       <p className="since-counts">{changed.proven.length} proven · {changed.dead.length} dead ends · {changed.posted.length} new</p>
       <ul>
-        {[...changed.proven, ...changed.dead].slice(0, 3).map((node) => (
+        {[...changed.proven, ...changed.dead].slice(0, Limits.WebHeadline.changedShown).map((node) => (
           <li key={node.id}><Link keep to={`${base}/t/${node.id}`}>{node.status === 'proven' ? '● ' : '⊘ '}<Inline text={node.title} /></Link></li>
         ))}
       </ul>

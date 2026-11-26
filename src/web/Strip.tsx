@@ -8,6 +8,7 @@ import { Avatar } from './Room.tsx'
 import { href, Link } from './router.tsx'
 import { Opener } from './Search.tsx'
 import { stamp } from './format.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Tab = 'chat' | 'board' | 'results' | 'code' | 'about'
 
@@ -49,7 +50,7 @@ export function profile(backer: { address: string; handle: string | null }) {
 }
 
 function named(backer: Backer) {
-  return backer.handle && !backer.handle.startsWith('0x') ? `@${backer.handle}` : `${backer.address.slice(0, 6)}…${backer.address.slice(-4)}`
+  return backer.handle && !backer.handle.startsWith('0x') ? `@${backer.handle}` : `${backer.address.slice(0, Limits.SharedMention.headChars)}…${backer.address.slice(-Limits.SharedMention.tailChars)}`
 }
 
 export function Backers(props: { list: readonly Backer[]; size: number }) {
@@ -91,7 +92,7 @@ export function Strip(props: { backers: readonly Backer[]; children?: ReactNode;
       </div>
       <div className="strip-line">
         <p className="strip-topic" title={Prose.plain(props.topic)}><Inline text={props.topic} /></p>
-        <Backers list={props.backers} size={3} />
+        <Backers list={props.backers} size={Limits.WebStrip.backers} />
       </div>
     </header>
   )

@@ -10,13 +10,14 @@ import { Avatar } from './Room.tsx'
 import * as Pay from './pay.ts'
 import { href } from './router.tsx'
 import { Mark } from './Tree.tsx'
+import * as Limits from '../shared/Limits.ts'
 
 export type Shape = 'tree' | 'spine'
 
 type Doing = { text: string; at: number }
 
-const first: Record<number, number> = { 0: 5, 1: 3 }
-const step = 6
+const first: Record<number, number> = { 0: Limits.WebBranches.firstTop, 1: Limits.WebBranches.firstChild }
+const step = Limits.WebBranches.step
 
 export function cash(value: string) {
   return usd(value)
@@ -32,7 +33,7 @@ function plain(event: MouseEvent<HTMLElement>) {
 }
 
 export function Faces(props: { funders: readonly Tree.Funder[]; riders: number }) {
-  const shown = props.funders.filter((funder) => funder.who.address).slice(0, 3)
+  const shown = props.funders.filter((funder) => funder.who.address).slice(0, Limits.WebBranches.faces)
   const rest = props.riders - shown.length
   if (!props.riders) return null
   return (
@@ -45,13 +46,13 @@ export function Faces(props: { funders: readonly Tree.Funder[]; riders: number }
 
 export function Tally(props: { node: Tree.Node }) {
   const counts = props.node.counts
-  const proven = Math.min(counts.proven, 9)
+  const proven = Math.min(counts.proven, Limits.WebBranches.provenMarks)
   if (!counts.proven && !counts['in flight'] && !counts['dead end']) return null
   return (
     <span aria-label={`${counts.proven} proven, ${counts['in flight']} in flight, ${counts['dead end']} dead ends`} className="tally" role="img">
       {proven > 0 && <i data-kind="proven">{'+'.repeat(proven)}{counts.proven > proven ? ` ${counts.proven}` : ''}</i>}
-      {counts['in flight'] > 0 && <i data-kind="flight">{'•'.repeat(Math.min(counts['in flight'], 5))}</i>}
-      {counts['dead end'] > 0 && <i data-kind="dead">{'×'.repeat(Math.min(counts['dead end'], 5))}</i>}
+      {counts['in flight'] > 0 && <i data-kind="flight">{'•'.repeat(Math.min(counts['in flight'], Limits.WebBranches.flightMarks))}</i>}
+      {counts['dead end'] > 0 && <i data-kind="dead">{'×'.repeat(Math.min(counts['dead end'], Limits.WebBranches.deadMarks))}</i>}
     </span>
   )
 }
@@ -139,7 +140,7 @@ function Limb(props: Props & { depth: number; id: string; index: number }) {
   const ranked = open ? Grove.ranked(props.nodes, node.id, props.filter) : []
   const kids = ranked.filter((kid) => !props.fresh.has(kid.id))
   const pinned = ranked.filter((kid) => props.fresh.has(kid.id))
-  const limit = props.more[node.id] ?? first[props.depth] ?? 3
+  const limit = props.more[node.id] ?? first[props.depth] ?? Limits.WebBranches.firstDeeper
   const hidden = kids.slice(limit)
   const shown = [...kids.slice(0, limit), ...pinned]
   const proposing = open && !Grove.closed(node) && props.filter === 'all'

@@ -969,6 +969,7 @@ export const Http = {
   gone: 410,
   upgrade: 426,
   tooMany: 429,
+  requestTimeout: 408,
   failed: 500,
   upstream: 502,
   unavailable: 503,
@@ -1112,4 +1113,313 @@ export const MachinePayment = {
 
 export const MachineTree = {
   rank: { checking: 2, quieted: 4, splitting: 3, told: 1 },
+} as const
+
+export const Web = {
+  centsPerDollar: 100,
+  commitChars: 7,
+  composeMostPx: 132,
+  desktopHeight: 900,
+  desktopWidth: 1440,
+  halfMinuteMs: 30_000,
+  percent: 100,
+  phoneHeight: 844,
+  phoneWidth: 390,
+  shaChars: 12,
+  tenths: 10,
+  uint32Span: 4_294_967_296,
+} as const
+
+export const WebApi = {
+  freshMs: 30_000,
+  together: 50,
+} as const
+
+export const WebApp = {
+  nodePrefixChars: 3,
+  warmMs: 1500,
+} as const
+
+export const WebArt = {
+  centre: 0.5,
+  colorSeed: 700,
+  colorSkew: 1.6,
+  colors: 3,
+  countSeed: 400,
+  finalShift: 15,
+  height: 40,
+  heightSeed: 100,
+  mixPrime: 0x5bd1e995,
+  mixShift: 13,
+  runHeights: [1, 1, 2, 2, 3, 5, 8],
+  runs: 4,
+  seedStride: 16,
+  shiftBySeed: 300,
+  shiftMost: 6,
+  shiftSeed: 200,
+  shiftShare: 0.45,
+  topLayer: 3,
+  wideRuns: 7,
+  wideWidth: 96,
+  width: 40,
+  widthSeed: 500,
+  widthShare: 0.7,
+  xSeed: 600,
+} as const
+
+export const WebArtifacts = {
+  rowsMost: 500,
+} as const
+
+export const WebBoard = {
+  cardHeight: 450,
+  cardScale: 0.42,
+  cardWidth: 800,
+  desktopScale: 0.3,
+  landingMs: 5000,
+  phoneScale: 0.42,
+  rideMs: 3000,
+  slideStop: 8,
+  slots: 6,
+  uncountedMs: 2600,
+} as const
+
+export const WebBox = {
+  faces: 5,
+} as const
+
+export const WebBranches = {
+  deadMarks: 5,
+  faces: 3,
+  firstChild: 3,
+  firstDeeper: 3,
+  firstTop: 5,
+  flightMarks: 5,
+  provenMarks: 9,
+  step: 6,
+} as const
+
+export const WebCard = {
+  lowFill: 0.15,
+} as const
+
+export const WebChannel = {
+  datedAfterMs: 1e9,
+  joinMs: 10 * 60_000,
+  workingMs: 5_000,
+} as const
+
+export const WebCode = {
+  commitsMost: 20,
+  rowsShown: 30,
+} as const
+
+export const WebCompose = {
+  cutChars: 119,
+  detailChars: 2000,
+  titleChars: 120,
+} as const
+
+export const WebContribute = {
+  caretEm: 0.4,
+  stops: [1, 2, 3, 5, 8, 10, 15, 20, 25, 35, 50, 75, 100, 150, 250, 500],
+} as const
+
+export const WebCrew = {
+  first: 6,
+} as const
+
+export const WebDivider = {
+  chat: 373,
+  narrowest: 280,
+  step: 32,
+} as const
+
+export const WebDocs = {
+  queryColumn: 3,
+  routeColumns: 3,
+} as const
+
+export const WebEdit = {
+  webpQuality: 0.9,
+  webpSmallQuality: 0.7,
+} as const
+
+export const WebExplored = {
+  digits: 4,
+  gainLeast: 0.0005,
+  goalHeadroom: 0.6,
+  height: 96,
+  inset: 8,
+  mergedRadius: 3.5,
+  openChars: 600,
+  radius: 2.5,
+  saidChars: 170,
+  wholeGain: 0.1,
+  width: 600,
+} as const
+
+export const WebField = {
+  gap: 4.4,
+  half: 0.36,
+  size: 40,
+  start: 3,
+} as const
+
+export const WebFormat = {
+  centUnits: 10_000n,
+  centsPerDollar: 100n,
+  daySeconds: 86_400,
+  decimalBase: 10n,
+  halfCentUnits: 5_000n,
+  justNowSeconds: 10,
+  wholeLeastUnits: 995_000n,
+} as const
+
+export const WebGeneral = {
+  hot: 3,
+  joinMs: 5 * 60_000,
+} as const
+
+export const WebGrove = {
+  depthMost: 64,
+  parentsMost: 256,
+  runMinUnits: 500_000n,
+} as const
+
+export const WebHeadline = {
+  changedShown: 3,
+  deadHeight: 10,
+  provenHeight: 22,
+  visitAgoMs: 26 * 3_600_000,
+  wholeDollars: 100,
+  width: 196,
+} as const
+
+export const WebHello = {
+  shown: 5,
+} as const
+
+export const WebHome = {
+  cellsLeast: 8,
+  cellsMost: 44,
+  cellsPerRoot: 4,
+  depth: 8,
+  flightMost: 5,
+  openCells: 8,
+} as const
+
+export const WebLocal = {
+  keep: 300,
+  runKeyParts: 3,
+} as const
+
+export const WebNew = {
+  free: 3,
+  questionChars: 10_000,
+  rows: 3,
+} as const
+
+export const WebOverlay = {
+  edge: 12,
+  gap: 8,
+  markRadix: 36,
+} as const
+
+export const WebReactions = {
+  recentMost: 6,
+} as const
+
+export const WebResults = {
+  asked: 4,
+  shown: 5,
+  wishes: 3,
+} as const
+
+export const WebRoom = {
+  briefChars: 320,
+  here: 4,
+  hues: 360,
+  joinMs: 5 * 60_000,
+  options: 6,
+  tickMs: 60_000,
+  tintPrime: 31,
+  typedMs: 3000,
+  typingMs: 4000,
+  updatePrefixChars: 8,
+} as const
+
+export const WebSearch = {
+  archivedPenalty: 40,
+  excerptChars: 140,
+  leadChars: 30,
+  leadLeast: 40,
+  problems: 8,
+  reach: 600,
+  rest: 6,
+  saidWeight: 0.4,
+  threadWeight: 0.85,
+} as const
+
+export const WebShell = {
+  edge: 28,
+  swipe: 56,
+  swipeSlope: 1.6,
+} as const
+
+export const WebStage = {
+  framedPace: 0.2,
+} as const
+
+export const WebStrip = {
+  backers: 3,
+} as const
+
+export const WebSurface = {
+  height: 150,
+  midPad: 0.2,
+  pad: 14,
+  spreadPad: 0.4,
+  tenthsAbove: 10,
+  wholeAbove: 100,
+  width: 600,
+} as const
+
+export const WebSwarm = {
+  detailMs: 10_000,
+  downMs: 30_000,
+  leftLeast: 0.005,
+  shelfMs: 60_000,
+} as const
+
+export const WebTraces = {
+  clockChars: 5,
+  far: 2_000_000_000,
+  filledRows: 12,
+  fills: 3,
+  page: 200,
+  pinnedPx: 40,
+} as const
+
+export const WebTreePage = {
+  downMs: 15_000,
+  scrollMostPx: 80,
+  scrollShare: 4,
+  stepsMost: 8,
+  trailMost: 64,
+} as const
+
+export const WebUsername = {
+  nameLeast: 3,
+} as const
+
+export const WebWallet = {
+  fixtureHashChars: 64,
+  fixtureMintUnits: 25_000_000n,
+  heldMs: 60_000,
+  primerMs: 60_000,
+} as const
+
+export const WebWire = {
+  listMs: 60_000,
 } as const

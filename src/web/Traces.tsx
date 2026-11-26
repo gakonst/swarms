@@ -6,10 +6,11 @@ import * as Trace from '../shared/Trace.ts'
 import * as Api from './api.ts'
 import { clock, day } from './format.ts'
 import { agent, speaker, useLive, useNow, useVisible } from './hooks.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const first = 60
 
-const far = 2_000_000_000
+const far = Limits.WebTraces.far
 
 const marks = { error: '!', funds: '$', machine: '▣', message: '❯', output: '‹', status: '·', steer: '➤', thinking: '∴', tool: '›' } as const
 
@@ -28,7 +29,7 @@ function Trail(props: { following: boolean; id: string; kept: Map<string, Kept>;
   const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState<number>()
   const [tries, setTries] = useState(0)
-  const now = useNow(60_000)
+  const now = useNow(Limits.Clock.minuteMs)
   const tip = useRef(held?.tip ?? 0)
   const box = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -93,7 +94,7 @@ function Trail(props: { following: boolean; id: string; kept: Map<string, Kept>;
         (page) => {
           const element = box.current
           anchor.current = element ? element.scrollHeight - element.scrollTop : undefined
-          setEarlier(page.entries.length >= 200)
+          setEarlier(page.entries.length >= Limits.WebTraces.page)
           merge(page.entries)
         },
         () => undefined,
@@ -104,7 +105,7 @@ function Trail(props: { following: boolean; id: string; kept: Map<string, Kept>;
   const rows = useMemo(() => Trace.rows(entries ?? []), [entries])
 
   useEffect(() => {
-    if (!loaded || busy || !earlier || rows.length >= 12 || filled.current >= 3) return
+    if (!loaded || busy || !earlier || rows.length >= Limits.WebTraces.filledRows || filled.current >= Limits.WebTraces.fills) return
     filled.current += 1
     back()
   }, [loaded, busy, earlier, rows.length])
@@ -127,7 +128,7 @@ function Trail(props: { following: boolean; id: string; kept: Map<string, Kept>;
       className="traces-box"
       onScroll={(event) => {
         const element = event.currentTarget
-        pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40
+        pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < Limits.WebTraces.pinnedPx
       }}
       ref={box}
     >
@@ -141,7 +142,7 @@ function Trail(props: { following: boolean; id: string; kept: Map<string, Kept>;
         {rows.map((row) => (
           <li data-kind={row.kind} data-open={open === row.seq || undefined} key={row.seq}>
             <button aria-expanded={open === row.seq} onClick={() => setOpen(open === row.seq ? undefined : row.seq)} title={`${day(row.at, now)} ${clock(row.at)}`} type="button">
-              <time>{clock(row.at).slice(0, 5)}</time>
+              <time>{clock(row.at).slice(0, Limits.WebTraces.clockChars)}</time>
               <b>{named(row.who)}</b>
               <i aria-hidden="true">{marks[row.kind]}</i>
               <span>{row.text}</span>
