@@ -551,8 +551,8 @@ export const canaries: Canary[] = [
   canary(
     'world.team.wallet',
     'src/worker/Operations.ts',
-    "if (!operator) return Problem.fail(502, 'unavailable'",
-    "if (!operator && false) return Problem.fail(502, 'unavailable'",
+    "if (!operator) return Problem.fail(Limits.Http.upstream, 'unavailable'",
+    "if (!operator && false) return Problem.fail(Limits.Http.upstream, 'unavailable'",
     'wallet first',
   ),
   canary(

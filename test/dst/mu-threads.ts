@@ -321,8 +321,8 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
     flip: mutant(
       'threads.operations',
       'src/worker/Operations.ts',
-      "return Memo.units(typeof value === 'number' ? value.toFixed(6) : value)",
-      "return Memo.units(typeof value !== 'number' ? value.toFixed(6) : value)",
+      "return Memo.units(typeof value === 'number' ? value.toFixed(Limits.SharedMemo.decimals) : value)",
+      "return Memo.units(typeof value !== 'number' ? value.toFixed(Limits.SharedMemo.decimals) : value)",
     ),
     invariant: 'a thread refuses a missing message and an @swarm steer, and replies are redacted and paced with the room',
     name: 'threads.operations',

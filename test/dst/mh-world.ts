@@ -801,8 +801,8 @@ export const canaries: Canary[] = [
     flip: mutant(
       'world.unhand.anonymous',
       'src/worker/Operations.ts',
-      "if (!contributor && !operated) return Problem.fail(401, 'unauthorized', \"Sign in with Tempo ID to lend",
-      "if (!contributor && operated) return Problem.fail(401, 'unauthorized', \"Sign in with Tempo ID to lend",
+      "if (!contributor && !operated) return Problem.fail(Limits.Http.unauthorized, 'unauthorized', \"Sign in with Tempo ID to lend",
+      "if (!contributor && operated) return Problem.fail(Limits.Http.unauthorized, 'unauthorized', \"Sign in with Tempo ID to lend",
     ),
     invariant: 'hand auth',
     name: 'world.unhand.anonymous',

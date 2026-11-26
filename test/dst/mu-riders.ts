@@ -167,8 +167,8 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
     flip: mutant(
       'riders.operations',
       'src/worker/Operations.ts',
-      "return Memo.units(typeof value === 'number' ? value.toFixed(6) : value)",
-      "return Memo.units(typeof value !== 'number' ? value.toFixed(6) : value)",
+      "return Memo.units(typeof value === 'number' ? value.toFixed(Limits.SharedMemo.decimals) : value)",
+      "return Memo.units(typeof value !== 'number' ? value.toFixed(Limits.SharedMemo.decimals) : value)",
     ),
     invariant: "a rider's profile lists the swarms they rode with their dollars and the items they created or rode",
     name: 'riders.operations',
