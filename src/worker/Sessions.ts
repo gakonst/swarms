@@ -91,6 +91,10 @@ export async function holder(env: Cloudflare.Env, token: string): Promise<Addres
   return found.address
 }
 
+export function forget(token: string) {
+  held.delete('tempo-id:session:' + token)
+}
+
 export async function who(env: Cloudflare.Env, request: Request) {
   const token = bearer(request)
   return token ? holder(env, token) : undefined
