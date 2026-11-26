@@ -98,6 +98,7 @@ export function usePoll<T>(load: () => Promise<T>, ms: number | null | ((data: T
     return failed === undefined ? undefined : { error: failed, key }
   })
   const [landed, setLanded] = useState(0)
+  const tried = useRef(0)
   const current = useRef(load)
   const visible = useVisible()
   const every = typeof ms === 'function' ? ms(data) : ms
@@ -108,6 +109,7 @@ export function usePoll<T>(load: () => Promise<T>, ms: number | null | ((data: T
 
   const fetched = useStable(() => {
     const wanted = key
+    tried.current = Date.now()
     return Local.load(wanted, () => current.current()).then(
       () => setFailure((previous) => (previous?.key === wanted ? undefined : previous)),
       (error: unknown) => setFailure({ error: message(error), key: wanted }),
@@ -115,7 +117,7 @@ export function usePoll<T>(load: () => Promise<T>, ms: number | null | ((data: T
   })
 
   useEffect(() => {
-    if (visible && !Local.fresh(key)) void fetched()
+    if (visible && !Local.fresh(key) && (failure?.key !== key || tried.current)) void fetched()
   }, [key, visible])
 
   useEffect(() => {
@@ -127,7 +129,7 @@ export function usePoll<T>(load: () => Promise<T>, ms: number | null | ((data: T
 
   useEffect(() => {
     if (!visible || every === null) return
-    const timer = setTimeout(() => void fetched(), Math.max(0, (Local.row(key)?.at ?? 0) + every - Date.now()))
+    const timer = setTimeout(() => void fetched(), Math.max(0, Math.max(Local.row(key)?.at ?? 0, tried.current) + every - Date.now()))
     return () => clearTimeout(timer)
   }, [key, every, visible, landed])
 

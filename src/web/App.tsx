@@ -289,7 +289,7 @@ function Picked(props: { base: string; config: Config | undefined; id: string; n
     if (props.tail.startsWith('/n/')) navigate(`${props.base}/t/${props.tail.slice(3)}${location.search}`, { keep: true, replace: true })
     else if (props.tail.startsWith('/c/')) navigate(`${props.base}${location.search}`, { keep: true, replace: true })
   }, [props.base, props.tail])
-  const page = data?.form === 'tree' && !data.archivedAt ? <TreePage config={props.config} detail={data} id={props.id} nid={props.nid} view={props.view} /> : !data && !detail.error ? <Busy /> : props.nid && data ? <Lost title="This swarm has no tree."><Link className="lost-row" replace to={props.base}>Open it <span aria-hidden="true">→</span></Link></Lost> : <Swarm config={props.config} id={props.id} view={props.view} />
+  const page = data?.form === 'tree' && !data.archivedAt ? <TreePage config={props.config} detail={data} id={props.id} nid={props.nid} view={props.view} /> : !data && !detail.error ? <Busy /> : !data && /no swarm/i.test(detail.error ?? '') ? <Lost title="This swarm is gone."><Link className="lost-row" replace to="/ideas">All swarms <span aria-hidden="true">→</span></Link></Lost> : props.nid && data ? <Lost title="This swarm has no tree."><Link className="lost-row" replace to={props.base}>Open it <span aria-hidden="true">→</span></Link></Lost> : <Swarm config={props.config} id={props.id} view={props.view} />
   return <Base value={props.base}>{page}</Base>
 }
 
