@@ -76,7 +76,9 @@ import * as Edge from './Edge.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Lobby from './Lobby.ts'
+import * as Key from './machines/Key.ts'
 import * as Payment from './machines/Payment.ts'
+import { assert, never } from '../shared/Assert.ts'
 import * as Persona from './Persona.ts'
 import * as Progress from '../shared/Progress.ts'
 import * as Phase from './Phase.ts'
@@ -933,18 +935,33 @@ const unsigned = () => Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID 
 
 const offline = () => Problem.fail(503, 'unavailable', 'Your own AI is not available yet: the Tempo gateway does not keep riders\' keys or plans yet.')
 
+async function door(env: Cloudflare.Env, address?: Address): Promise<Key.Gate> {
+  return Key.gate(address, address ? await Gateway.credentialed(env) : false)
+}
+
+function shut(gate: Exclude<Key.Gate, { at: 'open' }>) {
+  switch (gate.at) {
+    case 'unsigned':
+      return unsigned()
+    case 'offline':
+      return offline()
+    default:
+      return never(gate, 'own AI gate')
+  }
+}
+
 export async function ownAi(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<OwnAi>> {
-  if (!address) return unsigned()
-  if (!(await Gateway.credentialed(env))) return offline()
-  return relayed(await Gateway.ai(env, address))
+  const gate = await door(env, address)
+  if (gate.at !== 'open') return shut(gate)
+  return relayed(await Gateway.ai(env, gate.rider))
 }
 
 export async function ownKey(env: Cloudflare.Env, input: Input<'ownKey'>, address?: Address): Promise<Problem.Result<OwnAi>> {
   const parsed = parse(schema.ownKey, input)
   if (!parsed.ok) return parsed
-  if (!address) return unsigned()
-  if (!(await Gateway.credentialed(env))) return offline()
-  const attached = relayed(await Gateway.attach(env, address, parsed.value.provider, parsed.value.key))
+  const gate = await door(env, address)
+  if (gate.at !== 'open') return shut(gate)
+  const attached = relayed(await Gateway.attach(env, gate.rider, parsed.value.provider, parsed.value.key))
   if (!attached.ok) return attached
   return ownAi(env, address)
 }
@@ -952,41 +969,40 @@ export async function ownKey(env: Cloudflare.Env, input: Input<'ownKey'>, addres
 export async function ownDrop(env: Cloudflare.Env, input: Input<'ownProvider'>, address?: Address): Promise<Problem.Result<OwnAi>> {
   const parsed = parse(schema.ownProvider, input)
   if (!parsed.ok) return parsed
-  if (!address) return unsigned()
-  if (!(await Gateway.credentialed(env))) return offline()
-  const dropped = relayed(await Gateway.unattach(env, address, parsed.value.provider))
+  const gate = await door(env, address)
+  if (gate.at !== 'open') return shut(gate)
+  const dropped = relayed(await Gateway.unattach(env, gate.rider, parsed.value.provider))
   if (!dropped.ok) return dropped
   return ownAi(env, address)
 }
 
 export async function ownSignIn(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<{ url: string }>> {
-  if (!address) return unsigned()
-  if (!(await Gateway.credentialed(env))) return offline()
-  const started = relayed(await Gateway.signIn(env, address))
+  const gate = await door(env, address)
+  if (gate.at !== 'open') return shut(gate)
+  const started = relayed(await Gateway.signIn(env, gate.rider))
   return started.ok ? Problem.ok({ url: started.value.authorization_url }) : started
 }
 
 export async function ownSignedIn(env: Cloudflare.Env, input: Input<'ownCode'>, address?: Address): Promise<Problem.Result<OwnAi>> {
   const parsed = parse(schema.ownCode, input)
   if (!parsed.ok) return parsed
-  if (!address) return unsigned()
-  if (!(await Gateway.credentialed(env))) return offline()
-  const done = relayed(await Gateway.signedIn(env, address, parsed.value.code))
+  const gate = await door(env, address)
+  if (gate.at !== 'open') return shut(gate)
+  const done = relayed(await Gateway.signedIn(env, gate.rider, parsed.value.code))
   if (!done.ok) return done
   return ownAi(env, address)
 }
 
 export async function ownSignOut(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<OwnAi>> {
-  if (!address) return unsigned()
-  if (!(await Gateway.credentialed(env))) return offline()
-  const done = relayed(await Gateway.signOut(env, address))
+  const gate = await door(env, address)
+  if (gate.at !== 'open') return shut(gate)
+  const done = relayed(await Gateway.signOut(env, gate.rider))
   if (!done.ok) return done
   return ownAi(env, address)
 }
 
 export function runsOn(own: OwnAi, harness: Setup.Harness) {
-  if (harness === 'claude') return own.plans.claude.state === 'authenticated' || own.keys.some((key) => key.provider === 'anthropic')
-  return own.keys.some((key) => key.provider === 'openai')
+  return Key.runsOn(Key.access(own), harness)
 }
 
 export async function hostAi(env: Cloudflare.Env, input: Input<'ownAi'>, address?: Address): Promise<Problem.Result<Summary>> {
@@ -999,7 +1015,9 @@ export async function hostAi(env: Cloudflare.Env, input: Input<'ownAi'>, address
   if (row.form === 'tree' && parsed.value.on) return Problem.fail(409, 'conflict', "A tree swarm's items run on its own money: your own AI runs agent swarms only.")
   const rider = address.toLowerCase() as Address
   if (!parsed.value.on) {
-    if (row.ai !== rider) return Problem.fail(403, 'access_denied', "Only the rider whose AI runs this swarm hands it back.")
+    const next = Key.handBack(Key.host(row.ai), rider)
+    if (!next) return Problem.fail(403, 'access_denied', "Only the rider whose AI runs this swarm hands it back.")
+    assert(next.at === 'swarm', 'a handed back swarm runs on its own money', next)
     await Store.host(env, row.id, null)
     await stub(env, row.id).hosted(row.id)
     return Problem.ok(Store.summary({ ...row, ai: null }))

@@ -6,6 +6,7 @@ import * as Clock from './Clock.ts'
 import * as Edge from './Edge.ts'
 import * as Timing from './Timing.ts'
 import * as Limits from '../shared/Limits.ts'
+import * as Key from './machines/Key.ts'
 
 export type Result<value> = { ok: true; value: value } | { detail: string; ok: false; status: number }
 
@@ -271,18 +272,19 @@ export function credentialed(env: Cloudflare.Env) {
   return Edge.cached(
     env,
     `credentialed/${encodeURIComponent(env.GATEWAY_URL)}`,
-    300,
+    Limits.Gateway.credentialedSeconds,
     async () => {
       const answered = await send<unknown>(env, credentials('0x0000000000000000000000000000000000000000'), { open: true })
       if (!answered.ok && answered.status >= 500) throw new Error(answered.detail)
       return answered.ok || answered.status !== 404 || !/^No route/.test(answered.detail)
     },
-    86_400,
+    Limits.Gateway.credentialedStaleSeconds,
   ).catch(() => false)
 }
 
-export function ai(env: Cloudflare.Env, rider: string) {
-  return send<OwnAi>(env, credentials(rider))
+export async function ai(env: Cloudflare.Env, rider: string): Promise<Result<OwnAi>> {
+  const answered = await send<unknown>(env, credentials(rider))
+  return answered.ok ? Key.ownAi(answered.value) : answered
 }
 
 export function attach(env: Cloudflare.Env, rider: string, provider: 'anthropic' | 'openai', key: string) {
@@ -293,8 +295,9 @@ export function unattach(env: Cloudflare.Env, rider: string, provider: 'anthropi
   return send<{ deleted: boolean }>(env, credentials(rider) + '/keys/' + provider, { method: 'DELETE' })
 }
 
-export function signIn(env: Cloudflare.Env, rider: string) {
-  return send<{ authorization_url: string; expires_at: number }>(env, credentials(rider) + '/plans/claude', { body: {} })
+export async function signIn(env: Cloudflare.Env, rider: string): Promise<Result<{ authorization_url: string; expires_at: number }>> {
+  const answered = await send<unknown>(env, credentials(rider) + '/plans/claude', { body: {} })
+  return answered.ok ? Key.signIn(answered.value) : answered
 }
 
 export function signedIn(env: Cloudflare.Env, rider: string, code: string) {
