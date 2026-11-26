@@ -131,5 +131,26 @@
     "invariant": "move kept",
     "found": "2026-11-26 by pnpm dst --seeds: the rider's whole ride was committed to a run, so nothing was movable; the scenario now expects the move refused (harness assumption, not a Swarms bug)",
     "fix": "test(dst): tree api moves the rider's money from where it sits"
+  },
+  {
+    "job": "swarm",
+    "seed": "hbd44b1a2c632",
+    "invariant": "unfinished at end",
+    "found": "2026-11-26 by pnpm dst --hunt: a partition made the gateway refuse a run's spawn six times (503), then one payment refusal (402) reused that count and rested the run for 10.7 hours, so a funded run never started",
+    "fix": "fix(runner): count payment refusals apart from transient gateway errors"
+  },
+  {
+    "job": "gateway_money",
+    "seed": "hd069982649b9",
+    "invariant": "budget",
+    "found": "2026-11-26 by pnpm dst --hunt: two backings lowered in one refresh each rebudgeted the branch (7 to 6.5 to 3.5); the scenario expected a single post (harness assumption, not a Swarms bug)",
+    "fix": "test(dst): gateway money checks a branch's last budget and that it never climbs"
+  },
+  {
+    "job": "swarm_wide",
+    "seed": "hba67031bcf54",
+    "invariant": "unfinished at end",
+    "found": "2026-11-26 by pnpm dst --hunt: same as hbd44b1a2c632 in the wide swarm",
+    "fix": "fix(runner): count payment refusals apart from transient gateway errors"
   }
 ]

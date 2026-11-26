@@ -1415,8 +1415,17 @@ async function gatewayMoney(seed: string): Promise<Outcome> {
         return branch + '=' + Number(total > 0n ? total : 1n) / 1_000_000
       })
       .sort()
-    if (show([...budgets].sort()) !== show(wantBudgets) || others.length)
-      fail('budget', 'round ' + steps + ' ' + show(budgets) + ' expected ' + show(wantBudgets) + ' and to others ' + show(others))
+    const posted = new Map<number, number[]>()
+    for (const one of budgets) {
+      const [branch, value] = one.split('=').map(Number) as [number, number]
+      posted.set(branch, [...(posted.get(branch) ?? []), value])
+    }
+    const finals = [...posted].map(([branch, values]) => branch + '=' + values.at(-1)).sort()
+    const climbed = [...posted].filter(([branch, values]) =>
+      values.some((value, n) => value > (n ? (values[n - 1] ?? 0) : Number((bases.get(branch) ?? 0n) + (was.get(branch) ?? 0n)) / 1_000_000)),
+    )
+    if (show(finals) !== show(wantBudgets) || climbed.length || others.length)
+      fail('budget', 'round ' + steps + ' ' + show(budgets) + ' expected ' + show(wantBudgets) + ', never climbing, and to others ' + show(others))
     const fetch = asked.deposited > 0n && last !== Flow.usd(asked.deposited)
     if (asked.deposits - askedBefore !== (fetch ? 1 : 0))
       fail(
