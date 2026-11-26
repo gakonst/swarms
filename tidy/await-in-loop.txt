@@ -1,11 +1,11 @@
 # No await per iteration over independent items: start them together with Promise.all.
-# path count why; 133 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 132 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 cli/src/commands/account.ts 2 pre-existing; run with Promise.all or make the order a named dependency
 cli/src/commands/fund.ts 2 pre-existing; run with Promise.all or make the order a named dependency
 cli/src/commands/watch.ts 4 pre-existing; run with Promise.all or make the order a named dependency
 src/web/Board.tsx 8 pre-existing; run with Promise.all or make the order a named dependency
 src/web/Edit.tsx 1 pre-existing; run with Promise.all or make the order a named dependency
-src/web/local.ts 2 pre-existing; run with Promise.all or make the order a named dependency
+src/web/local.ts 1 pre-existing; run with Promise.all or make the order a named dependency
 src/web/pay.ts 4 pre-existing; run with Promise.all or make the order a named dependency
 src/web/wire.ts 1 pre-existing; run with Promise.all or make the order a named dependency
 src/worker/Artifacts.ts 1 pre-existing; run with Promise.all or make the order a named dependency

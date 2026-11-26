@@ -481,9 +481,10 @@ async function hydrate() {
   const base = await open()
   if (!base) return
   const transaction = base.transaction([...tables, 'meta', 'outbox'], 'readwrite')
-  for (const name of tables) {
+  const [[swarms, marks], [, boxes], ...read] = await Promise.all([every(transaction.objectStore('meta')), every(transaction.objectStore('outbox')), ...tables.map((name) => every(transaction.objectStore(name)))])
+  for (const [at, name] of tables.entries()) {
     const store = transaction.objectStore(name)
-    const [keys, values] = await every(store)
+    const [keys, values] = read[at]!
     const found = keys.flatMap((key, index) => (typeof key === 'string' ? [[key, values[index] as { at: number; settled: boolean; value: unknown; version: string | undefined }] as const] : []))
     found.sort((a, b) => b[1].at - a[1].at)
     for (const [key] of found.slice(keep)) store.delete(key)
@@ -493,14 +494,12 @@ async function hydrate() {
       ping(key)
     }
   }
-  const [swarms, marks] = await every(transaction.objectStore('meta'))
   swarms.forEach((swarm, index) => {
     const held = marks[index] as { seq: number | undefined; version: string | undefined } | undefined
     if (typeof swarm !== 'string' || !held || versions.has(swarm)) return
     if (held.version) versions.set(swarm, held.version)
     if (held.seq !== undefined && !cursors.has(swarm)) cursors.set(swarm, held.seq)
   })
-  const [, boxes] = await every(transaction.objectStore('outbox'))
   for (const mutation of boxes as Mutation[]) if (!queue.has(mutation.id)) queue.set(mutation.id, { ...mutation, state: 'queued' })
   for (const swarm of new Set((boxes as Mutation[]).map((mutation) => mutation.swarm))) ping(`outbox:${swarm}`)
 }
