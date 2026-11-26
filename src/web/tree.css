@@ -129,6 +129,18 @@
 .limb[data-depth='0'] > .bud .bud-meta { grid-column:2; grid-row:2; justify-content:flex-start; }
 .limb[data-depth='0'] > .bud .bud-money { order:0; min-width:0; text-align:left; }
 .bud-fold { color:var(--faint); }
+.bud-line { grid-column:2 / -1; display:flex; flex-direction:column; gap:2px; min-width:0; font-size:13px; line-height:1.35; color:var(--soft); }
+.bud-head { display:flex; align-items:baseline; gap:8px; min-width:0; white-space:nowrap; }
+.bud-head > b { flex:none; font:500 11px var(--mono); letter-spacing:.02em; color:var(--muted); }
+.bud-line:is([data-state='running'], [data-state='checking']) .bud-head > b { color:var(--fg); }
+.bud-line:is([data-state='running'], [data-state='checking']) .bud-head > b::before { content:''; display:inline-block; width:6px; height:6px; margin-right:5px; border-radius:50%; background:var(--green); transform:translateY(-1px); }
+.bud-line[data-state='done'] .bud-head > b { color:var(--fg); }
+.bud-line:is([data-state='stalled'], [data-state='blocked'], [data-state='stuck']) .bud-head > b { color:var(--warn); }
+.bud-line[data-state='dead'] .bud-head > b { color:var(--faint); text-decoration:line-through; }
+.bud-who { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.bud-who, .bud-cost { flex:0 1 auto; font:11px var(--mono); color:var(--faint); font-feature-settings:'tnum'; }
+.bud-text { min-width:0; overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow-wrap:anywhere; }
+.bud-line time { flex:none; margin-left:auto; font:11px var(--mono); color:var(--faint); }
 .bud-doing { grid-column:2; display:flex; align-items:baseline; gap:8px; min-width:0; font-size:13px; line-height:1.35; color:var(--soft); }
 .bud-doing::before { content:''; flex:none; width:6px; height:6px; border-radius:50%; background:var(--green); transform:translateY(-1px); }
 .bud-doing time { flex:none; margin-left:auto; font:11px var(--mono); color:var(--faint); }

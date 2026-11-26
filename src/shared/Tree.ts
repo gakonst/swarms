@@ -40,6 +40,8 @@ export type Money = {
   subtree: { spent: Usd; left: Usd; pledged: Usd }
 }
 export type Doing = { text: string; at: number }
+export type Last = { event: 'started' | 'progress' | 'checking' | 'proven' | 'ended'; text: string; at: number }
+export type Ran = { k: number; outcome: 'proved' | 'refuted' | 'split' | 'progress' | 'stuck' | 'failed'; summary: string }
 export type Run = { task: string; k: number; attempt: number; agent: number | null; since: number; until: number; budget: Usd; spent: Usd; checking: boolean; doing?: Doing | null; model?: string | null }
 export type Node = {
   id: string
@@ -63,10 +65,41 @@ export type Node = {
   riders: number
   createdAt: number
   updatedAt: number
+  last?: Last | null
+  ran?: Ran | null
 }
 export type Delta = { seq: number; at: number; node: Node; event: 'posted' | 'funded' | 'started' | 'progress' | 'checking' | 'proven' | 'ended' | 'steered' | 'moved' | 'doing'; text: string }
 export type Headline = { proven: number; frontier: number; inFlight: number; deadEnds: number; spent: Usd; pledged: Usd; perProven: Usd | null; lastProvenAt: number | null }
 export type Burn = { at: number; proven: number; deadEnds: number; spent: Usd }[]
+
+export const worked: readonly Last['event'][] = ['started', 'progress', 'checking', 'proven', 'ended']
+
+export type State = 'open' | 'stuck' | 'blocked' | 'queued' | 'running' | 'checking' | 'stalled' | 'paused' | 'done' | 'dead'
+export type Line = { state: State; label: string; text: string; at: number | null; run: number | null; agent: number | null; spent: Usd | null; budget: Usd | null }
+
+const labels: Record<State, string> = { stuck: 'Stuck', blocked: 'Blocked', checking: 'Checking', dead: 'Dead end', done: 'Done', open: 'Open', paused: 'Paused', queued: 'Queued', running: 'Running', stalled: 'Stalled' }
+
+export const graceMs = 2_000
+
+export function line(node: Node, now: number, title: (nid: string) => { title: string; status: Status } | undefined): Line {
+  const last = node.last ?? null
+  const base = { agent: null, at: last?.at ?? null, budget: null, run: null, spent: null, text: last?.text ?? '' }
+  const make = (state: State, rest: Partial<Line> = {}): Line => ({ ...base, ...rest, label: labels[state], state })
+  if (node.status === 'proven') return make('done', node.proof ? { at: node.proof.at || base.at, text: 'Checked by Lean at ' + node.proof.commit.slice(0, 7) } : {})
+  if (node.status === 'dead end') return make('dead', node.end ? { at: node.end.at || base.at, text: node.end.why || node.end.kind } : {})
+  if (node.status === 'in flight' && node.run) {
+    const run = { agent: node.run.agent, budget: node.run.budget, run: node.run.k, spent: node.run.spent }
+    if (node.run.checking) return make('checking', run)
+    if (node.run.until > 0 && node.run.until + graceMs < now) return make('stalled', { ...run, at: node.run.until, text: 'Its lease lapsed' })
+    const doing = node.run.doing?.text ? node.run.doing : null
+    return make('running', { ...run, at: doing?.at ?? node.run.since ?? base.at, text: doing?.text ?? base.text })
+  }
+  const waiting = node.needs.map(title).find((need) => need && need.status !== 'proven')
+  if (waiting) return make('blocked', { at: null, text: 'Waits on ' + waiting.title })
+  if (node.paused !== null) return make('paused', { text: node.paused + ' runs without a result' })
+  if (node.status === 'proposed' && node.ran && (node.ran.outcome === 'stuck' || node.ran.outcome === 'failed')) return make('stuck', { run: node.ran.k, text: node.ran.summary || base.text })
+  return make(node.status === 'funded' ? 'queued' : 'open')
+}
 
 const held = new Set<Board.Stage>(['held', 'lapsed', 'stalled'])
 const waiting = new Set<Board.Stage>(['open', 'blocked', 'scheduled'])

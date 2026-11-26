@@ -783,6 +783,14 @@ function ending(task: Work.Task): Tree.End | null {
   return json<Tree.End>(text) ?? { at: 0, check: null, into: null, kind: 'exhausted', why: text ?? '' }
 }
 
+function ranOf(runs: readonly Work.Task[]): Tree.Ran | null {
+  const task = runs.filter((run) => run.phase === 'done' || run.phase === 'failed').sort((a, b) => kOf(b.id) - kOf(a.id))[0]
+  if (!task) return null
+  if (task.phase === 'failed') return { k: kOf(task.id), outcome: 'failed', summary: (task.outcome && 'failed' in task.outcome ? task.outcome.failed : task.reason) ?? '' }
+  const done = json<{ outcome?: Tree.Ran['outcome']; summary?: string }>(task.outcome && 'done' in task.outcome ? task.outcome.done : undefined)
+  return done?.outcome ? { k: kOf(task.id), outcome: done.outcome, summary: done.summary ?? '' } : null
+}
+
 export type View = { nodes: Map<string, Tree.Node>; seq: number; state: State }
 
 export async function view(self: Swarm): Promise<View> {
@@ -820,6 +828,12 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
       .exec<{ first: number; last: number; node: string }>('SELECT node, MIN(at) AS first, MAX(at) AS last FROM tree_deltas GROUP BY node')
       .toArray()
       .map((row) => [row.node, { first: Number(row.first), last: Number(row.last) }]),
+  )
+  const lasts = new Map(
+    self.ctx.storage.sql
+      .exec<{ at: number; event: Tree.Last['event']; node: string; text: string }>(`SELECT node, event, text, at FROM tree_deltas WHERE seq IN (SELECT MAX(seq) FROM tree_deltas WHERE event IN (${Tree.worked.map(() => '?').join(', ')}) GROUP BY node)`, ...Tree.worked)
+      .toArray()
+      .map((row) => [row.node, { at: Number(row.at), event: row.event, text: row.text }]),
   )
   const kids = new Map<string, string[]>()
   for (const [nid, task] of found.nodes) {
@@ -869,6 +883,8 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
       form: (task.labels['form'] ?? 'idea') as Tree.Form,
       funders,
       id: nid,
+      last: lasts.get(nid) ?? null,
+      ran: ranOf(runs),
       money: {
         committed: Flow.usd(committed > 0n ? committed : 0n),
         granted: Flow.usd(found.ledger.granted.get(nid) ?? 0n),

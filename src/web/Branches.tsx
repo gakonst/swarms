@@ -1,6 +1,6 @@
 import { type CSSProperties, type MouseEvent, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
-import type * as Tree from '../shared/Tree.ts'
+import * as Tree from '../shared/Tree.ts'
 import { Compose, Pending } from './Compose.tsx'
 import { ago, usd } from './format.ts'
 import * as Grove from './grove.ts'
@@ -56,6 +56,23 @@ export function Tally(props: { node: Tree.Node }) {
   )
 }
 
+function Line(props: { line: Tree.Line; now: number; spent: string }) {
+  const line = props.line
+  const cost = line.spent !== null && line.budget !== null ? usd(line.spent) + ' of ' + usd(line.budget) : Number(props.spent) > 0 ? usd(props.spent) + ' spent' : ''
+  const who = line.run !== null ? 'Run ' + line.run + (line.agent !== null ? ' · agent ' + line.agent : '') : ''
+  return (
+    <span className="bud-line" data-state={line.state}>
+      <span className="bud-head">
+        <b>{line.label}</b>
+        {who && <span className="bud-who">{who}</span>}
+        {cost && <span className="bud-cost">{cost}</span>}
+        {line.at !== null && line.at > 0 && <time>{ago(line.at, props.now)}</time>}
+      </span>
+      {line.text && <span className="bud-text"><Inline text={line.text} /></span>}
+    </span>
+  )
+}
+
 type Props = {
   composing: string | undefined
   config: Config | undefined
@@ -79,7 +96,6 @@ type Props = {
 
 function Bud(props: Props & { depth: number; node: Tree.Node }) {
   const node = props.node
-  const live = doing(node)
   const open = props.open.has(node.id) || props.filter !== 'all'
   const folds = node.children.length > 0 && node.form !== 'goal' && props.filter === 'all'
   const act = Pay.useFlow(Pay.slot(props.swarm, node.id))
@@ -109,11 +125,7 @@ function Bud(props: Props & { depth: number; node: Tree.Node }) {
           </button>
         )}
       </span>
-      {live ? (
-        <span className="bud-doing"><Inline text={live.text} /><time>{ago(live.at, props.now)}</time></span>
-      ) : node.status === 'in flight' && node.run ? (
-        <span className="bud-doing">{node.run.checking ? 'The verifier is building it' : `Run ${node.run.k} · ${usd(node.run.spent)} of ${usd(node.run.budget)}`}</span>
-      ) : null}
+      {props.depth > 0 && <Line line={Tree.line(node, props.now, (nid) => props.nodes[nid])} now={props.now} spent={node.money.subtree.spent} />}
     </div>
   )
 }
