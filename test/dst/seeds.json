@@ -1,0 +1,16 @@
+[
+  {
+    "job": "swarm",
+    "seed": "5",
+    "invariant": "overspent",
+    "found": "2026-11-26 by pnpm dst --seeds: a stale subagent list made a run look gone; it settled its commit while its subagent still ran on a 2.34 budget, and the next run committed the same money",
+    "fix": "fix(tree): close a run's subagent before settling it when the list no longer shows it"
+  },
+  {
+    "job": "swarm_wide",
+    "seed": "3",
+    "invariant": "lost pledge",
+    "found": "2026-11-26: a 5-minute partition outlasted the simulated rider's retries (harness bound, not a Swarms bug)",
+    "fix": "test(dst): riders retry past the longest partition"
+  }
+]

@@ -212,7 +212,6 @@ test/lending.test.ts 1 pre-existing hand formatting
 test/lent.test.ts 1 pre-existing hand formatting
 test/lifecycle.test.ts 1 pre-existing hand formatting
 test/load/hook.ts 1 pre-existing hand formatting
-test/load/main.ts 1 pre-existing hand formatting
 test/load/sim.ts 1 pre-existing hand formatting
 test/local.test.ts 1 pre-existing hand formatting
 test/machines.test.ts 1 pre-existing hand formatting

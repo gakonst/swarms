@@ -8,6 +8,14 @@ import type * as RunnerModule from '../../src/worker/Runner.ts'
 import type * as FlowModule from '../../src/worker/Flow.ts'
 import type * as RunModule from '../run.ts'
 import type * as D1Module from '../d1.ts'
+import type * as OperationsModule from '../../src/worker/Operations.ts'
+import type * as CreditModule from '../../src/shared/Credit.ts'
+import type * as TreeModule from '../../src/worker/machines/Tree.ts'
+import type * as SubModule from '../../src/worker/machines/Sub.ts'
+import type * as HandModule from '../../src/worker/machines/Hand.ts'
+import type * as RunModule2 from '../../src/worker/machines/Run.ts'
+import type * as MemoModule from '../../src/shared/Memo.ts'
+import { readFileSync } from 'node:fs'
 
 const { Swarm }: typeof SwarmModule = await import('../../src/worker/Swarm.ts')
 const Store: typeof StoreModule = await import('../../src/worker/Store.ts')
@@ -16,23 +24,49 @@ const Runner: typeof RunnerModule = await import('../../src/worker/Runner.ts')
 const Flow: typeof FlowModule = await import('../../src/worker/Flow.ts')
 const { storage }: typeof RunModule = await import('../run.ts')
 const { open }: typeof D1Module = await import('../d1.ts')
+const Memo: typeof MemoModule = await import('../../src/shared/Memo.ts')
+const Operations: typeof OperationsModule = await import('../../src/worker/Operations.ts')
+const Credit: typeof CreditModule = await import('../../src/shared/Credit.ts')
+const Tree: typeof TreeModule = await import('../../src/worker/machines/Tree.ts')
+const SubMachine: typeof SubModule = await import('../../src/worker/machines/Sub.ts')
+const HandMachine: typeof HandModule = await import('../../src/worker/machines/Hand.ts')
+const Run: typeof RunModule2 = await import('../../src/worker/machines/Run.ts')
+const older = JSON.parse(readFileSync(new URL('../rpc-older.json', import.meta.url), 'utf8')) as { methods: string[] }
 
-export const faultNames = ['evict', 'crash', 'dup', 'reorder', 'stale', 'staleList', 'retry', 'move', 'refuse'] as const
+export const faultNames = ['evict', 'crash', 'dup', 'reorder', 'stale', 'staleList', 'retry', 'move', 'refuse', 'partition', 'lag', 'skew', 'stranded', 'chainLag'] as const
 
 export type Fault = (typeof faultNames)[number]
 
-export const rates: Record<Fault, number> = { crash: 0.004, dup: 0.2, evict: 0.04, move: 0.3, refuse: 0.05, reorder: 0.2, retry: 0.3, stale: 0.1, staleList: 0.05 }
+export const rates: Record<Fault, number> = { chainLag: 0.3, crash: 0.004, dup: 0.2, evict: 0.04, lag: 0.1, move: 0.3, partition: 0.03, refuse: 0.05, reorder: 0.2, retry: 0.3, skew: 0.3, stale: 0.1, staleList: 0.05, stranded: 0.15 }
+
+export const limits = { attempts: 120, chainLagMs: 60_000, partitionMostMs: 5 * 60_000, partitionLeastMs: 20_000, retryMostMs: 10_000, retryLeastMs: 500 }
 
 export type Options = { activeMs: number; children: number; deadlineMs: number; faults: readonly Fault[]; offset: number; pledges: number; seed: string; swarms: number; tailMs: number }
 
 export const defaults: Options = { activeMs: 45 * 60_000, children: 6, deadlineMs: 15 * 60_000, faults: faultNames, offset: 0, pledges: 6, seed: '1', swarms: 4, tailMs: 4 * 60 * 60_000 }
 
-export type Invariant = 'duplicate fold' | 'lost result' | 'ledger drift' | 'negative balance' | 'missed deadline' | 'stuck without wake' | 'unfinished at end' | 'lost pledge' | 'leaked subagent' | 'overspent' | 'unexpected error'
+export type Invariant =
+  | 'duplicate fold'
+  | 'lost result'
+  | 'ledger drift'
+  | 'negative balance'
+  | 'missed deadline'
+  | 'stuck without wake'
+  | 'unfinished at end'
+  | 'lost pledge'
+  | 'leaked subagent'
+  | 'overspent'
+  | 'unexpected error'
+  | 'illegal transition'
+  | 'unversioned record'
+  | 'charged past deposit'
+  | 'duplicate payment'
+  | 'stranded counted'
 
 export type Violation = { detail: string; invariant: Invariant; swarm: number }
 
 export type Report = {
-  counts: { children: number; evictions: number; folds: number; gatewayCalls: number; moves: number; pledges: number; redeliveries: number; subagents: number }
+  counts: { children: number; evictions: number; folds: number; gatewayCalls: number; moves: number; pledges: number; redeliveries: number; steps: number; subagents: number }
   ledger: { contributed: string; drift: string; held: string; spentGateway: string; spentLedger: string }
   options: Options
   slowestFoldMs: number
@@ -188,9 +222,11 @@ type Sub = {
 
 type Stream = { agent: string; controller: ReadableStreamDefaultController<Uint8Array>; inc: Incarnation }
 
-type Incarnation = { alive: boolean; die: () => void; died: Promise<void>; env: Cloudflare.Env; gen: number; swarm: InstanceType<typeof Swarm> }
+type Incarnation = { alive: boolean; die: () => void; died: Promise<void>; env: Cloudflare.Env; gen: number; previous: boolean; swarm: InstanceType<typeof Swarm> }
 
-type Pledge = { acked: number | null; amount: bigint; contributor: string; hash: string; nid: string | null; to: string | null }
+type Pledge = { acked: number | null; amount: bigint; contributor: string; hash: string; nid: string | null; stranded: boolean; to: string | null }
+
+type Transfer = { amount: bigint; from: string; hash: string; lands: number; stranded: boolean; tag: string }
 
 type Sim = {
   calls: number
@@ -200,6 +236,7 @@ type Sim = {
   faulty: boolean
   options: Options
   rate: Record<Fault, number>
+  steps: number
   swarms: SimSwarm[]
   trace: ReturnType<typeof createHash>
 }
@@ -208,6 +245,14 @@ type SimSwarm = {
   agentCount: number
   agents: Set<string>
   alarmToken: number
+  charged: bigint
+  credited: Set<string>
+  deposited: bigint
+  moveKeys: Set<string>
+  partitioned: number
+  transfers: Map<string, Transfer>
+  worker: Cloudflare.Env
+  wrong: { detail: string; invariant: Invariant }[]
   alarming: Incarnation | null
   children: number
   evictions: { at: number; why: string }[]
@@ -306,7 +351,7 @@ function install(sim: Sim) {
   }) as typeof crypto.subtle.digest
   const noted = (args: unknown[]) => {
     const text = args.map((arg) => (arg instanceof Error ? arg.message : String(arg))).join(' ')
-    if (!/evicted/.test(text)) sim.errors.push(text.slice(0, 300))
+    if (!/evicted|Network connection lost|Durable Object reset/.test(text)) sim.errors.push(text.slice(0, 300))
   }
   console.error = (...args: unknown[]) => noted(args)
   console.warn = () => undefined
@@ -418,7 +463,8 @@ function evict(sim: Sim, sw: SimSwarm, why: string) {
 }
 
 function restart(sim: Sim, sw: SimSwarm) {
-  sw.inc = incarnation(sim, sw, sw.inc.gen + 1)
+  const previous = sim.faulty && sim.options.faults.includes('skew') && sw.random.faults.chance(sim.rate.skew)
+  sw.inc = incarnation(sim, sw, sw.inc.gen + 1, previous)
   const at = sw.store.alarm()
   if (at !== null) arm(sim, sw, at)
 }
@@ -491,8 +537,63 @@ function fencedBoard<T extends object>(sim: Sim, sw: SimSwarm, inc: Incarnation,
   })
 }
 
+const foldRank: Record<string, number> = { checking: 2, quieted: 4, splitting: 3, told: 1 }
+
+const settledMarks = ['folded:', 'paid:pledge:', 'paid:move:', 'paid:steer:', 'told:']
+
+const versioned = ['ran:', 'seen:', 'lent:', 'pay:', 'paid:pledge:', 'paid:move:', 'paid:steer:', 'told:']
+
+const watched = [...new Set([...settledMarks, ...versioned, 'run'])]
+
+function wrong(sim: Sim, sw: SimSwarm, invariant: Invariant, detail: string) {
+  if (sw.wrong.length < 20) sw.wrong.push({ detail: detail + ' at +' + Math.round((sim.clock.now - start) / 1000) + 's', invariant })
+}
+
+function version(value: unknown) {
+  return value && typeof value === 'object' ? (value as { v?: unknown }).v : undefined
+}
+
+export function record(sim: Sim, sw: SimSwarm, key: string, before: unknown, after: unknown) {
+  sim.steps += 1
+  if (after === undefined) {
+    if (before !== undefined && settledMarks.some((prefix) => key.startsWith(prefix))) wrong(sim, sw, 'illegal transition', key + ' was deleted; a settled mark never reopens')
+    return
+  }
+  if (versioned.some((prefix) => key.startsWith(prefix)) && typeof version(after) !== 'number') wrong(sim, sw, 'unversioned record', key + ' was stored without a version')
+  if (key.startsWith('ran:')) {
+    const was = Tree.readFold(before)
+    const next = Tree.readFold(after)
+    if (was && next && (foldRank[next.state] ?? 0) < (foldRank[was.state] ?? 0)) wrong(sim, sw, 'illegal transition', key + ' fell from ' + was.state + ' to ' + next.state)
+  } else if (key.startsWith('seen:')) {
+    const was = SubMachine.read(before)
+    const next = SubMachine.read(after)
+    if (!next) wrong(sim, sw, 'unversioned record', key + ' is not a readable subagent record')
+    else if (was) {
+      const from = SubMachine.rank(was.sub.status.state)
+      const to = SubMachine.rank(next.sub.status.state)
+      if (to < from) wrong(sim, sw, 'illegal transition', key + ' went back from ' + was.sub.status.state + ' to ' + next.sub.status.state)
+      else if (from === 2 && next.sub.status.state !== was.sub.status.state) wrong(sim, sw, 'illegal transition', key + ' changed its ended state ' + was.sub.status.state + ' to ' + next.sub.status.state)
+      if (Memo.units(next.spent) < Memo.units(was.spent)) wrong(sim, sw, 'illegal transition', key + ' spent fell from ' + was.spent + ' to ' + next.spent)
+    }
+  } else if (key.startsWith('lent:')) {
+    const was = HandMachine.read(before)
+    const next = HandMachine.read(after)
+    if (!next) wrong(sim, sw, 'unversioned record', key + ' is not a readable hand record')
+    else if (was?.state === 'returned' && next.state !== 'returned' && next.life === was.life) wrong(sim, sw, 'illegal transition', key + ' left returned for ' + next.state)
+  } else if (key === 'run' && before !== undefined) {
+    const was = (before ?? { state: 'new' }) as Parameters<typeof Run.kind>[0]
+    const next = after as Parameters<typeof Run.kind>[0]
+    if (!Run.can(Run.kind(was), Run.kind(next))) wrong(sim, sw, 'illegal transition', 'run went ' + Run.kind(was) + ' -> ' + Run.kind(next))
+    if (Run.rev(next as never) !== Run.rev(was as never) + 1) wrong(sim, sw, 'illegal transition', 'run rev went ' + Run.rev(was as never) + ' -> ' + Run.rev(next as never))
+  } else if (key.startsWith('pay:')) {
+    const at = (after as { at?: unknown }).at
+    if (at !== 'owed' && at !== 'paying') wrong(sim, sw, 'illegal transition', key + ' holds ' + String(at))
+  }
+}
+
 function fencedStorage(sim: Sim, sw: SimSwarm, inc: Incarnation) {
   const inner = sw.store.storage
+  const watching = (key: string) => watched.some((prefix) => key.startsWith(prefix))
   const sync = <T>(work: () => T) => {
     if (!inc.alive) throw new Evicted()
     sim.clock.activity += 1
@@ -508,10 +609,21 @@ function fencedStorage(sim: Sim, sw: SimSwarm, inc: Incarnation) {
       }),
     getAlarm: () => guard(sim, sw, inc, 'storage', () => inner.getAlarm()),
     kv: {
-      delete: (key: string) => sync(() => inner.kv.delete(key)),
+      delete: (key: string) =>
+        sync(() => {
+          const before = watching(key) ? inner.kv.get(key) : undefined
+          const done = inner.kv.delete(key)
+          if (before !== undefined) record(sim, sw, key, before, undefined)
+          return done
+        }),
       get: (key: string) => sync(() => inner.kv.get(key)),
       list: (options?: { prefix?: string }) => sync(() => inner.kv.list(options)),
-      put: (key: string, value: unknown) => sync(() => inner.kv.put(key, value)),
+      put: (key: string, value: unknown) =>
+        sync(() => {
+          const before = watching(key) ? inner.kv.get(key) : undefined
+          inner.kv.put(key, value)
+          if (watching(key)) record(sim, sw, key, before, value)
+        }),
     },
     setAlarm: (at: number) =>
       guard(sim, sw, inc, 'storage', async () => {
@@ -522,10 +634,10 @@ function fencedStorage(sim: Sim, sw: SimSwarm, inc: Incarnation) {
   }
 }
 
-function incarnation(sim: Sim, sw: SimSwarm, gen: number): Incarnation {
+function incarnation(sim: Sim, sw: SimSwarm, gen: number, previous = false): Incarnation {
   let die = () => undefined as void
   const died = new Promise<void>((resolve) => (die = resolve))
-  const inc = { alive: true, die, died, gen } as Incarnation
+  const inc = { alive: true, die, died, gen, previous } as Incarnation
   inc.env = {
     DB: fencedDb(sim, sw, inc, sim.db.env.DB),
     GATEWAY: { fetch: (request: Request) => guard(sim, sw, inc, 'gateway', () => gateway(sim, sw, inc, request)) },
@@ -624,6 +736,8 @@ function raised(sim: Sim, sw: SimSwarm, at: string) {
     allowed += sub.state === 'running' && sub.budget > sub.spent ? sub.budget : sub.spent
   }
   const when = 'at +' + Math.round((sim.clock.now - start) / 1000) + 's (' + at + ')'
+  sw.charged = charged
+  if (charged > sw.deposited) wrong(sim, sw, 'charged past deposit', 'the gateway charged ' + decimal(charged) + ' past ' + decimal(sw.deposited) + ' deposited (' + at + ')')
   if (BigInt(row.spent) > pledged) sw.overspent = 'the ledger spent ' + decimal(BigInt(row.spent)) + ' of ' + decimal(pledged) + ' raised ' + when
   else if (charged > pledged) sw.overspent = 'the gateway charged ' + decimal(charged) + ' of ' + decimal(pledged) + ' raised ' + when
   else if (allowed > pledged) sw.overspent = 'the gateway was allowed ' + decimal(allowed) + ' of ' + decimal(pledged) + ' raised ' + when
@@ -659,14 +773,40 @@ function life(sim: Sim, sw: SimSwarm, sub: Sub) {
   sim.clock.add(step, sw.random.gateway.int(5_000, 30_000))
 }
 
-async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation, request: Request): Promise<Response> {
+function standing(sw: SimSwarm) {
+  return { deposited: decimal(sw.deposited), left: decimal(sw.deposited - sw.charged), spent: decimal(sw.charged) }
+}
+
+function deposit(transfer: Transfer) {
+  return { amount: decimal(transfer.amount), created_at: transfer.lands, from: transfer.from, hash: transfer.hash, log: 0, tag: transfer.tag, token: 'pathusd' }
+}
+
+function credit(sim: Sim, sw: SimSwarm, hash: string) {
+  const transfer = sw.transfers.get(hash.toLowerCase())
+  if (!transfer || sim.clock.now < transfer.lands) return Response.json({ code: 'not_found', detail: 'No receipt for ' + hash }, { status: 404 })
+  if (transfer.stranded) return Response.json({ code: 'invalid_request', detail: 'The transfer names no app of this key' }, { status: 400 })
+  const created = !sw.credited.has(transfer.hash)
+  if (created) {
+    sw.credited.add(transfer.hash)
+    sw.deposited += transfer.amount
+  }
+  return Response.json({ created, credit: standing(sw), deposits: [deposit(transfer)] })
+}
+
+async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation | null, request: Request): Promise<Response> {
   const url = new URL(request.url)
   const path = url.pathname
   const method = request.method
   sim.calls += 1
-  sim.trace.update(`${sim.clock.now} ${sw.index} ${method} ${path}${url.search}\n`)
-  const body = method === 'POST' ? ((await request.json().catch(() => ({}))) as Record<string, unknown>) : {}
+  sim.trace.update(`${sim.clock.now} ${sw.index} ${inc ? 'do' : 'worker'} ${method} ${path}${url.search}\n`)
   const faults = sim.faulty ? sim.options.faults : []
+  if (faults.includes('partition') && sim.clock.now < sw.partitioned) throw new TypeError('Network connection lost.')
+  const body = method === 'POST' ? ((await request.json().catch(() => ({}))) as Record<string, unknown>) : {}
+  const lagging = faults.includes('lag') && sw.random.faults.chance(sim.rate.lag)
+  if (path === '/api/keys/credit' && method === 'POST' && typeof body['hash'] === 'string') return credit(sim, sw, body['hash'])
+  if (path === '/api/keys/credit' && lagging) return Response.json({ code: 'unavailable', detail: 'The spend read is behind' }, { status: 503 })
+  if (path === '/api/keys/credit') return Response.json(standing(sw))
+  if (path === '/api/keys/credit/deposits') return Response.json({ deposits: [...sw.credited].map((hash) => deposit(sw.transfers.get(hash) as Transfer)) })
   if (path === '/v1/agents' && method === 'POST') {
     const id = `agt_${sw.index}_${++sw.agentCount}`
     sw.agents.add(id)
@@ -706,6 +846,7 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation, request: Reques
     life(sim, sw, sub)
     return Response.json({ agent: rawSub(sub), created: true }, { status: 201 })
   }
+  if (agent && path === `/v1/agents/${agent}/subagents` && lagging) return Response.json({ code: 'unavailable', detail: 'The subagent list is behind' }, { status: 503 })
   if (agent && path === `/v1/agents/${agent}/subagents`) {
     const history = sw.history.get(agent) ?? []
     if (faults.includes('staleList') && history.length > 1 && sw.random.faults.chance(sim.rate.staleList)) return Response.json({ agents: JSON.parse(sw.random.faults.pick(history.slice(0, -1))) as unknown[] })
@@ -735,7 +876,7 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation, request: Reques
     const stream = new ReadableStream<Uint8Array>({
       cancel: () => void (entry && sw.streams.delete(entry)),
       start: (controller) => {
-        entry = { agent, controller, inc }
+        if (inc) entry = { agent, controller, inc }
         sw.streams.add(entry)
       },
     })
@@ -750,11 +891,48 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation, request: Reques
   }
   if (agent && path === `/v1/agents/${agent}/events`) return Response.json({ events: [], has_more: false, next_cursor: 0 })
   if (path === '/v1/models') return Response.json({ data: [] })
-  if (path === '/api/keys/credit') return Response.json({ deposited: '10', left: '10', spent: '0' })
   if (path === '/api/keys/me') return Response.json({ wallet: '0x' + 'e'.repeat(40) })
   if (path === '/api/keys/backings') return Response.json({ backings: [], left: '0', spent: '0' })
   if (path === '/v1/hands') return Response.json({ hands: [] })
   return Response.json({ code: 'not_found', detail: 'The simulated gateway has no ' + method + ' ' + path }, { status: 404 })
+}
+
+const reset = 'Durable Object reset because its code was updated.'
+
+function isReset(error: unknown) {
+  return error instanceof Evicted || (error instanceof Error && (error.message === reset || /does not implement the method/.test(error.message)))
+}
+
+async function rpc(sim: Sim, sw: SimSwarm, method: string, args: unknown[]): Promise<unknown> {
+  const inc = sw.inc
+  sim.clock.activity += 1
+  await null
+  if (!inc.alive) throw new Error(reset)
+  if (inc.previous && !older.methods.includes(method)) throw new TypeError('The RPC receiver does not implement the method "' + method + '".')
+  const fn = (inc.swarm as unknown as Record<string, (...args: unknown[]) => unknown>)[method]
+  if (typeof fn !== 'function') throw new TypeError('The RPC receiver does not implement the method "' + method + '".')
+  const answer = await Promise.race([Promise.resolve(fn.apply(inc.swarm, args)).then((value) => ({ value })), inc.died.then(() => null)])
+  if (!answer) throw new Error(reset)
+  return answer.value === undefined ? undefined : structuredClone(answer.value)
+}
+
+function workerEnv(sim: Sim, sw: SimSwarm): Cloudflare.Env {
+  const stub = new Proxy({}, { get: (_, method) => (typeof method !== 'string' || method === 'then' ? undefined : (...args: unknown[]) => rpc(sim, sw, method, args)) })
+  return {
+    DB: sim.db.env.DB,
+    GATEWAY: {
+      fetch: async (request: Request) => {
+        sim.clock.activity += 1
+        await null
+        return gateway(sim, sw, null, request)
+      },
+    },
+    GATEWAY_URL: 'https://gateway.test',
+    LOBBY: { getByName: () => ({ changed: async () => undefined }) },
+    SWARMS: { get: () => stub, idFromName: (name: string) => name },
+    SWARMS_GATEWAY_KEY: 'test',
+    SWARMS_URL: 'https://swarms.test',
+  } as unknown as Cloudflare.Env
 }
 
 async function request<T>(sw: SimSwarm, work: (inc: Incarnation) => Promise<T>): Promise<{ dead: true } | { dead: false; value: T }> {
@@ -764,18 +942,25 @@ async function request<T>(sw: SimSwarm, work: (inc: Incarnation) => Promise<T>):
 }
 
 async function deliver(sim: Sim, sw: SimSwarm, pledge: Pledge) {
-  for (let tries = 0; tries < 40; tries++) {
+  for (let tries = 0; tries < limits.attempts; tries++) {
     try {
-      const answered = await request(sw, (inc) => inc.swarm.treePledge(sw.id, { amount: decimal(pledge.amount), contributor: pledge.contributor, hash: pledge.hash, nid: pledge.nid }))
-      if (!answered.dead) {
+      const answered = await Operations.contribute(sw.worker, { hash: pledge.hash, swarm: sw.id, ...(pledge.nid ? { node: pledge.nid } : {}) })
+      if (answered.ok) {
+        if (pledge.stranded) wrong(sim, sw, 'stranded counted', pledge.hash.slice(0, 10) + ' named no swarm but was taken')
         pledge.acked ??= sim.clock.now
-        pledge.to ??= answered.value.nid
+        pledge.to ??= pledge.nid ?? Nodes.root
+        return
+      }
+      const status = (answered as { status?: number }).status
+      if (status === 400 && pledge.stranded) return
+      if (status !== 404 && status !== 502 && status !== 503) {
+        sim.errors.push('contribute ' + String(status) + ': ' + JSON.stringify(answered).slice(0, 300))
         return
       }
     } catch (error) {
-      if (!(error instanceof Evicted)) sim.errors.push('pledge: ' + String((error as Error)?.message ?? error).slice(0, 300))
+      if (!isReset(error)) sim.errors.push('pledge: ' + String((error as Error)?.message ?? error).slice(0, 300))
     }
-    await sleep(sim, sw.random.drive.int(500, 10_000))
+    await sleep(sim, sw.random.drive.int(limits.retryLeastMs, limits.retryMostMs))
   }
 }
 
@@ -799,12 +984,16 @@ function drive(sim: Sim, sw: SimSwarm) {
     const targeted = i > 0 && sw.random.drive.chance(0.5)
     const retried = sim.options.faults.includes('retry') && sw.random.drive.chance(sim.rate.retry)
     const late = sw.random.drive.chance(0.5) ? 0 : sw.random.drive.int(1_000, 120_000)
-    const pledge: Pledge = { acked: null, amount, contributor, hash, nid: null, to: null }
+    const stranded = sim.options.faults.includes('stranded') && sw.random.drive.chance(sim.rate.stranded)
+    const lag = sim.options.faults.includes('chainLag') && sw.random.drive.chance(sim.rate.chainLag) ? sw.random.drive.int(1_000, limits.chainLagMs) : 0
+    const pledge: Pledge = { acked: null, amount, contributor, hash, nid: null, stranded, to: null }
     sw.pledges.push(pledge)
     sim.clock.add(
       () =>
         void (async () => {
           if (targeted) pledge.nid = sw.random.drive.pick([Nodes.root, ...(await nodes(sw))])
+          const tag = stranded ? '0x' + '0'.repeat(32) : pledge.nid && pledge.nid !== Nodes.root ? Credit.tag(sw.id, 'n:' + pledge.nid) : Credit.tag(sw.id)
+          sw.transfers.set(hash, { amount, from: contributor, hash, lands: sim.clock.now + lag, stranded, tag })
           if (retried) {
             sw.redeliveries += 1
             sim.clock.add(() => void deliver(sim, sw, pledge), late)
@@ -827,10 +1016,25 @@ function drive(sim: Sim, sw: SimSwarm) {
             const to = sw.random.drive.pick(known.filter((nid) => nid !== from.to))
             if (!to || !from.to) return
             sw.moves += 1
-            await request(sw, (inc) => inc.swarm.treeMove(sw.id, { amount: decimal(BigInt(sw.random.drive.int(5, 20)) * 100_000n), contributor: from.contributor, from: from.to as string, to })).catch(() => undefined)
+            const key = 'm' + sw.index + '.' + i
+            sw.moveKeys.add(key)
+            const input = { amount: decimal(BigInt(sw.random.drive.int(5, 20)) * 100_000n), contributor: from.contributor, from: from.to as string, key, to }
+            if (sim.options.faults.includes('retry') && sw.random.drive.chance(sim.rate.retry)) {
+              sw.redeliveries += 1
+              sim.clock.add(() => void rpc(sim, sw, 'treeMove', [sw.id, input]).catch(() => undefined), sw.random.drive.int(0, 120_000))
+            }
+            await rpc(sim, sw, 'treeMove', [sw.id, input]).catch(() => undefined)
           })(),
         sw.random.drive.int(5 * 60_000, activeMs),
       )
+  }
+  if (sim.options.faults.includes('partition')) {
+    const tick = () => {
+      if (!sim.faulty) return
+      if (sw.random.faults.chance(sim.rate.partition)) sw.partitioned = sim.clock.now + sw.random.faults.int(limits.partitionLeastMs, limits.partitionMostMs)
+      sim.clock.add(tick, 60_000)
+    }
+    sim.clock.add(tick, sw.random.faults.int(10_000, 60_000))
   }
   if (sim.options.faults.includes('evict')) {
     const tick = () => {
@@ -894,7 +1098,18 @@ async function check(sim: Sim, sw: SimSwarm, violations: Violation[]) {
   if (open.length && alarm === null) add('stuck without wake', `${listed} open with no alarm set`)
   else if (open.length) add('unfinished at end', `${listed} still open ${Math.round(sim.options.tailMs / 60_000)} minutes after the last fault`)
   if (sw.overspent) add('overspent', sw.overspent)
-  for (const pledge of sw.pledges) if (pledge.acked === null) add('lost pledge', `${pledge.hash.slice(0, 10)} for ${decimal(pledge.amount)} was never acknowledged`)
+  for (const pledge of sw.pledges) if (pledge.acked === null && !pledge.stranded) add('lost pledge', `${pledge.hash.slice(0, 10)} for ${decimal(pledge.amount)} was never acknowledged` + (sw.credited.has(pledge.hash) ? ', though the gateway credited it' : ', and the gateway never credited it'))
+  for (const one of sw.wrong) add(one.invariant, one.detail)
+  for (const pledge of sw.pledges) {
+    if (!pledge.stranded) continue
+    const taken = sim.db.sqlite.prepare("select count(*) as n from flows where swarm = ? and id like ? || '%'").get(sw.id, sw.id + ':' + pledge.hash.toLowerCase()) as { n: number }
+    if (taken.n > 0) add('stranded counted', pledge.hash.slice(0, 10) + ' named no swarm but reached the ledger')
+  }
+  const landed = sw.pledges.filter((pledge) => !pledge.stranded && pledge.acked !== null).length
+  const funded = sw.store.storage.sql.exec("SELECT COUNT(*) AS n FROM tree_deltas WHERE event = 'funded' AND text LIKE '% rode it with $%'").one() as { n: number }
+  if (Number(funded.n) > landed) add('duplicate payment', funded.n + ' pledges were announced for ' + landed + ' transfers')
+  const moved = sim.db.sqlite.prepare("select count(*) as n from flows where swarm = ? and kind = 'move' and amount > 0").get(sw.id) as { n: number }
+  if (Number(moved.n) > sw.moveKeys.size) add('duplicate payment', moved.n + ' moves landed for ' + sw.moveKeys.size + ' asked')
   const rows = await Flow.rows(sim.db.env, sw.id)
   const totals = Flow.totals(rows)
   const buckets = new Map<string, bigint>()
@@ -903,7 +1118,7 @@ async function check(sim: Sim, sw: SimSwarm, violations: Violation[]) {
     buckets.set(key, (buckets.get(key) ?? 0n) + row.amount)
   }
   for (const [key, amount] of buckets) if (amount < 0n) add('negative balance', `${key} holds ${decimal(amount)}`)
-  const contributed = sw.pledges.reduce((sum, pledge) => sum + pledge.amount, 0n)
+  const contributed = sw.pledges.reduce((sum, pledge) => sum + (pledge.stranded ? 0n : pledge.amount), 0n)
   const spentGateway = sw.subs.reduce((sum, sub) => sum + sub.spent, 0n)
   const drift = contributed - spentGateway - totals.held
   if (totals.pledged !== contributed) add('ledger drift', `the ledger holds ${decimal(totals.pledged)} pledged; riders sent ${decimal(contributed)}`)
@@ -915,7 +1130,7 @@ async function check(sim: Sim, sw: SimSwarm, violations: Violation[]) {
 export async function simulate(input: Partial<Options> = {}): Promise<Report> {
   const options = { ...defaults, ...input }
   const began = performance.now()
-  const sim: Sim = { calls: 0, clock: new Clock(start), db: open(), errors: [], faulty: false, options, rate: { ...rates }, swarms: [], trace: createHash('sha256') }
+  const sim: Sim = { calls: 0, clock: new Clock(start), db: open(), errors: [], faulty: false, options, rate: { ...rates }, steps: 0, swarms: [], trace: createHash('sha256') }
   const timing = { ...Runner.timing }
   const restore = install(sim)
   try {
@@ -926,6 +1141,13 @@ export async function simulate(input: Partial<Options> = {}): Promise<Report> {
         agents: new Set<string>(),
         alarmToken: 0,
         alarming: null,
+        charged: 0n,
+        credited: new Set<string>(),
+        deposited: 0n,
+        moveKeys: new Set<string>(),
+        partitioned: 0,
+        transfers: new Map<string, Transfer>(),
+        wrong: [],
         children: 0,
         evictions: [],
         frames: new Map(),
@@ -943,6 +1165,7 @@ export async function simulate(input: Partial<Options> = {}): Promise<Report> {
         subs: [],
       } as unknown as SimSwarm
       sw.inc = incarnation(sim, sw, 0)
+      sw.worker = workerEnv(sim, sw)
       sim.swarms.push(sw)
     }
     for (const sw of sim.swarms) await plant(sim, sw)
@@ -984,6 +1207,7 @@ export async function simulate(input: Partial<Options> = {}): Promise<Report> {
         moves: sum((sw) => sw.moves),
         pledges: sum((sw) => sw.pledges.length),
         redeliveries: sum((sw) => sw.redeliveries),
+        steps: sim.steps,
         subagents: sum((sw) => sw.subs.length),
       },
       ledger: { contributed: decimal(ledger.contributed), drift: decimal(ledger.drift), held: decimal(ledger.held), spentGateway: decimal(ledger.spentGateway), spentLedger: decimal(ledger.spentLedger) },
