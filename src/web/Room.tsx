@@ -264,6 +264,7 @@ export const Room = memo(function Room(props: {
   const [signing, setSigning] = useState(false)
   const [problem, setProblem] = useState<{ short?: boolean; text: string }>()
   const [fresh, setFresh] = useState(0)
+  const [far, setFar] = useState(false)
   const [picking, setPicking] = useState<{ anchor: HTMLElement; id: number }>()
   const list = useRef<HTMLDivElement>(null)
   const sender = useRef<HTMLButtonElement>(null)
@@ -695,7 +696,9 @@ export const Room = memo(function Room(props: {
         className="chat-list"
         onScroll={(event) => {
           const element = event.currentTarget
-          stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60
+          const gap = element.scrollHeight - element.scrollTop - element.clientHeight
+          stick.current = gap < 60
+          setFar(gap > element.clientHeight)
           if (stick.current) setFresh(0)
         }}
         ref={list}
@@ -772,17 +775,18 @@ export const Room = memo(function Room(props: {
           )
         })}
       </div>
-      {fresh > 0 && (
+      {(fresh > 0 || far) && (
         <button
           className="chat-jump"
           onClick={() => {
             list.current?.scrollTo({ behavior: 'smooth', top: list.current.scrollHeight })
             stick.current = true
             setFresh(0)
+            setFar(false)
           }}
           type="button"
         >
-          New messages ↓
+          {fresh > 0 ? 'New messages ↓' : 'Jump to latest ↓'}
         </button>
       )}
       <footer className="chat-foot">
