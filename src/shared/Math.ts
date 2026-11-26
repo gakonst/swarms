@@ -41,7 +41,45 @@ function shown(found: Span, inline: boolean) {
   return found.body.includes('\n') ? '\n\n$$\n' + found.body.replace(/\n[ \t]*/g, '\n') + '\n$$\n\n' : '$$' + body + '$$'
 }
 
-export function normalize(text: string, inline: boolean) {
+const greek: Record<string, string> = {
+  alpha: 'α',
+  beta: 'β',
+  chi: 'χ',
+  delta: 'δ',
+  epsilon: 'ϵ',
+  eta: 'η',
+  gamma: 'γ',
+  iota: 'ι',
+  kappa: 'κ',
+  lambda: 'λ',
+  mu: 'μ',
+  nu: 'ν',
+  omega: 'ω',
+  phi: 'ϕ',
+  pi: 'π',
+  psi: 'ψ',
+  rho: 'ρ',
+  sigma: 'σ',
+  tau: 'τ',
+  theta: 'θ',
+  upsilon: 'υ',
+  varepsilon: 'ε',
+  varphi: 'φ',
+  varpi: 'ϖ',
+  varrho: 'ϱ',
+  varsigma: 'ς',
+  vartheta: 'ϑ',
+  xi: 'ξ',
+  zeta: 'ζ',
+}
+
+function upright(math: string) {
+  return math
+    .replace(/[α-ωϑϕϖϱϵ]/g, (letter) => '\\mathrm{' + letter + '}')
+    .replace(/\\([a-z]+)(?![a-zA-Z])/g, (found, name: string) => (greek[name] ? '\\mathrm{' + greek[name] + '}' : found))
+}
+
+export function normalize(text: string, inline: boolean, portable = false) {
   if (!/[$\\]/.test(text)) return text
   let out = ''
   let at = 0
@@ -68,7 +106,8 @@ export function normalize(text: string, inline: boolean) {
     }
     const found = char === '$' || (char === '\\' && (text[at + 1] === '(' || text[at + 1] === '[')) ? span(text, at) : undefined
     if (found) {
-      out += char === '$' && (inline ? !found.display : true) ? text.slice(at, found.end) : shown(found, inline)
+      const math = char === '$' && (inline ? !found.display : true) ? text.slice(at, found.end) : shown(found, inline)
+      out += portable ? upright(math) : math
       at = found.end
       continue
     }

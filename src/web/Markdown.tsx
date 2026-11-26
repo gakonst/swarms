@@ -122,7 +122,7 @@ export function Markdown(props: { base?: string; compact?: boolean; marks?: bool
   const highlighter = useSyncExternalStore(subscribe, current, current)
   const fenced = fence.test(props.text)
   const transform = useMemo(() => resolve(props.base), [props.base])
-  const body = useMemo(() => normalize(props.text, false), [props.text])
+  const body = useMemo(() => normalize(props.text, false, true), [props.text])
   const active = props.streaming === true
   const options: HtmlOptions = {
     ...(props.marks ? { allowedHtml: marks } : {}),
@@ -193,6 +193,6 @@ export function Inline(props: { className?: string; links?: boolean; text: strin
   useLayoutEffect(() => {
     if (!module) void read().catch(() => {})
   }, [module])
-  const html = useMemo(() => (module ? (props.links ? lines(module).linked : lines(module).line).render(normalize(props.text, true), false).html.trim() : ''), [module, props.links, props.text])
+  const html = useMemo(() => (module ? (props.links ? lines(module).linked : lines(module).line).render(normalize(props.text, true, true), false).html.trim() : ''), [module, props.links, props.text])
   return <span className={props.className ? `inline ${props.className}` : 'inline'} dangerouslySetInnerHTML={{ __html: html }} suppressHydrationWarning />
 }
