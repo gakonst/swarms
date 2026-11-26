@@ -27,6 +27,10 @@ function readRecent() {
   return recent
 }
 
+export function recentIds() {
+  return typeof localStorage === 'undefined' ? none : readRecent()
+}
+
 function watchRecent(listener: () => void) {
   watchers.add(listener)
   return () => {

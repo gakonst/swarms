@@ -13,6 +13,7 @@ import { stood } from './Home.tsx'
 import { Badge } from './Picture.tsx'
 import { Link, navigate, prefetch, usePath } from './router.tsx'
 import { channels } from './Shell.tsx'
+import { recentIds } from './Switcher.tsx'
 import { Mark, word as said } from './Tree.tsx'
 import * as Wire from './wire.ts'
 
@@ -36,12 +37,16 @@ function goalOf(swarm: Summary) {
   return Fuzzy.same(goal, Prose.plain(swarm.title)) ? '' : goal
 }
 
-export function find(query: string, listing: Listing | undefined, shapes: readonly (readonly [string, Shape])[]): Found[] {
+export function find(query: string, listing: Listing | undefined, shapes: readonly (readonly [string, Shape])[], seen: readonly string[] = []): Found[] {
   const swarms = channels(listing)
   const ask = query.trim()
   if (!ask) {
+    const rank = (swarm: Summary) => (seen.includes(swarm.id) ? seen.indexOf(swarm.id) : swarm.archivedAt ? Infinity : seen.length)
     return swarms
-      .filter((swarm) => !swarm.archivedAt)
+      .filter((swarm) => !swarm.archivedAt || seen.includes(swarm.id))
+      .map((swarm, index) => ({ index, swarm }))
+      .sort((a, b) => rank(a.swarm) - rank(b.swarm) || a.index - b.index)
+      .map(({ swarm }) => swarm)
       .slice(0, most.problems)
       .map((swarm) => ({ at: 'problem', exact: true, key: swarm.id, marks: [], score: 0, swarm, title: Prose.plain(swarm.title), to: Nickname.path(swarm), under: goalOf(swarm), underMarks: [] }))
   }
@@ -99,14 +104,14 @@ function gather(swarms: readonly Summary[], known: readonly (readonly [string, S
   }
 }
 
-export function useFound(query: string) {
+export function useFound(query: string, recent = false) {
   const list = Wire.useSwarms()
   const shapes = useShapes()
   const asking = query.trim().length > 0
   useEffect(() => {
     if (asking && list.data) gather(channels(list.data), shapes)
   }, [asking, list.data])
-  return { found: useMemo(() => find(query, list.data, shapes), [query, list.data, shapes]), listing: list.data }
+  return { found: useMemo(() => find(query, list.data, shapes, recent ? recentIds() : []), [query, list.data, shapes, recent]), listing: list.data }
 }
 
 function Lit(props: { className: string; marks: readonly number[]; text: string }) {
@@ -247,14 +252,16 @@ export function Palette() {
 
 function Sheet() {
   const [query, setQuery] = useState('')
-  const { found, listing } = useFound(query)
+  const { found, listing } = useFound(query, true)
   const cursor = useCursor(found, query)
   const id = useId()
   const input = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    input.current?.focus()
     const back = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
-    return () => back?.focus?.()
+    input.current?.focus()
+    return () => {
+      if (back?.isConnected) back.focus({ preventScroll: true })
+    }
   }, [])
   return (
     <div className="find-scrim" onPointerDown={(event) => event.target === event.currentTarget && show(false)}>
@@ -285,7 +292,7 @@ function Sheet() {
           empty={<NoMatch query={query} />}
           found={found}
           id={id}
-          label={query.trim() ? 'Matches' : 'Top problems'}
+          label={query.trim() ? 'Matches' : 'Recent and top problems'}
           listing={listing}
           onPick={() => show(false)}
           onPoint={cursor.setActive}
