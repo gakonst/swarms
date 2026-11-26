@@ -758,8 +758,8 @@ export async function expose(self: Swarm, row: Store.Row, kinds: ReadonlySet<'bu
   }
   const listed = kinds.has('git') ? await Gateway.repos(self.env, row.id) : undefined
   if (listed?.ok) for (const repo of listed.value.repos) if (!repo.public) hidden.push(['git', repo.name])
-  let shown = 0
-  for (const [kind, name] of hidden) if ((await Gateway.reveal(self.env, row.id, kind, name)).ok) shown++
+  const revealed = await Promise.all(hidden.map(([kind, name]) => Gateway.reveal(self.env, row.id, kind, name)))
+  const shown = revealed.filter((one) => one.ok).length
   self.kv.put('published', Date.now())
   console.log(JSON.stringify({ expose: row.id, hidden: hidden.length, shown }))
   if (shown)
@@ -781,9 +781,10 @@ export async function sweep(self: Swarm, row: Store.Row, why = ', which was stil
   const listed = await Gateway.sandboxes(self.env, row.id)
   if (!listed.ok) return
   self.kv.put('sweptSeq', self.last())
-  for (const sandbox of listed.value.sandboxes.filter((found) => found.status !== 'terminated')) {
-    const ended = await Gateway.terminate(self.env, row.id, sandbox.sandboxId)
-    if (ended.ok) self.log('machine', `Shut down ${sandbox.hand ?? sandbox.sandboxId}${why}.`)
+  const running = listed.value.sandboxes.filter((found) => found.status !== 'terminated')
+  const ends = await Promise.all(running.map((sandbox) => Gateway.terminate(self.env, row.id, sandbox.sandboxId)))
+  for (const [index, sandbox] of running.entries()) {
+    if (ends[index]?.ok) self.log('machine', `Shut down ${sandbox.hand ?? sandbox.sandboxId}${why}.`)
   }
 }
 

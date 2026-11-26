@@ -153,10 +153,14 @@ export async function recover(self: Swarm, row: Store.Row, deposited: string) {
 export async function joined(self: Swarm, row: Store.Row, connected: Gateway.Listed[], previous: ReadonlySet<string>) {
   const arrived = connected.some((hand) => !previous.has(hand.name))
   const issued = new Map((arrived ? await Hands.seen(self, row.id, await Hands.list(self.env, row.id), connected) : []).map((hand) => [hand.name, hand]))
-  for (const hand of connected) {
-    if (previous.has(hand.name)) continue
+  const fresh = connected.filter((hand) => !previous.has(hand.name))
+  await Promise.all(
+    fresh
+      .filter((hand) => issued.has(hand.name) && 'cap' in hand && self.turn())
+      .map((hand) => Gateway.cap(self.env, row.id, hand.name, Number(Memo.decimal(allowance(self, row, hand, BigInt(self.kv.get<string>('handCap') ?? '0')))))),
+  )
+  for (const hand of fresh) {
     const guest = issued.get(hand.name)
-    if (guest && 'cap' in hand && self.turn()) await Gateway.cap(self.env, row.id, hand.name, Number(Memo.decimal(allowance(self, row, hand, BigInt(self.kv.get<string>('handCap') ?? '0')))))
     self.log(
       'machine',
       guest
@@ -175,10 +179,14 @@ export async function cap(self: Swarm, row: Store.Row, amount: bigint, known: Ga
   self.kv.put('handCap', String(amount))
   if (!known && !(self.kv.get<Hand[]>('hands') ?? []).length) return
   const listed: Gateway.Listed[] = known ?? (await Gateway.hands(self.env, row.id).then((found) => (found.ok ? found.value.hands : [])))
-  for (const hand of listed.filter((found) => found.connected && 'cap' in found)) {
-    self.kv.put('handTurn:' + hand.name, String(earned(hand)))
-    await Gateway.cap(self.env, row.id, hand.name, Number(Memo.decimal(allowance(self, row, hand, amount))))
-  }
+  await Promise.all(
+    listed
+      .filter((found) => found.connected && 'cap' in found)
+      .map((hand) => {
+        self.kv.put('handTurn:' + hand.name, String(earned(hand)))
+        return Gateway.cap(self.env, row.id, hand.name, Number(Memo.decimal(allowance(self, row, hand, amount))))
+      }),
+  )
 }
 
 export function allowance(self: Swarm, row: Store.Row, hand: Gateway.Listed, perTurn: bigint) {

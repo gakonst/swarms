@@ -58,7 +58,8 @@ export const instance = { lock: 'instance' }
 export const lasting = { lock: 'lasting' }
 
 export async function reclaim(board: Board) {
-  for (const task of await board.held()) if (task.labels['lock'] === instance.lock && task.claim) await board.release(task.id, task.claim, 'its holder restarted')
+  const stale = (await board.held()).flatMap((task) => (task.labels['lock'] === instance.lock && task.claim ? [{ claim: task.claim, id: task.id }] : []))
+  await Promise.all(stale.map((task) => board.release(task.id, task.claim, 'its holder restarted')))
 }
 
 export type Held = { epoch: number; signal: AbortSignal; writable: () => boolean }
