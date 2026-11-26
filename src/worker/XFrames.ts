@@ -295,7 +295,7 @@ export function tree(origin: string, swarm: string, view: View, request?: URL, b
 
 export function node(origin: string, swarm: string, title: string, value: Tree.Node & { review?: boolean }, request?: URL, bot?: string, view?: { nodes: readonly Tree.Node[] }) {
   const base = rooted(origin) + shell(request)
-  const item = Cards.leaf(swarm, title, value)
+  const item = Cards.leaf(title, value)
   const id = encodeURIComponent(swarm)
   const path = `/s/${id}/n/${value.id}`
   const page = `${origin}${path}`

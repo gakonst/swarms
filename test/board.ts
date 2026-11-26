@@ -11,7 +11,7 @@ import { Board } from 'nanocode-ts'
 import { Sql } from 'nanocode-ts/node'
 import * as Work from '../src/worker/Work.ts'
 
-export const module = await WebAssembly.compile(readFileSync(createRequire(import.meta.url).resolve('nanocode-ts/nanocode_wasm.wasm')))
+export const module = await (WebAssembly as unknown as { compile(bytes: Uint8Array): Promise<WebAssembly.Module> }).compile(readFileSync(createRequire(import.meta.url).resolve('nanocode-ts/nanocode_wasm.wasm')))
 
 const directory = mkdtempSync(join(tmpdir(), 'swarms-board-'))
 const hosts: ReturnType<typeof Sql.open>[] = []

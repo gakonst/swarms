@@ -301,21 +301,21 @@ test('a big tree still gets one mark per node, none on top of another, inside th
 })
 
 test('a node card says its status, why, what is under it and, when proven, the commit Lean checked', () => {
-  const proven = Cards.leaf('pnp', 'Does P = NP?', lemmas[0]!)
+  const proven = Cards.leaf('Does P = NP?', lemmas[0]!)
   assert.equal(proven.checked, 'abc1234')
   const svg = Film.svg(Cards.node(fonts, proven, 1200, 630))
   assert.match(svg, /Proven · checked by Lean · abc1234/)
   assert.match(svg, /Parity is not in &lt;AC0&gt; &amp; co/)
   assert.doesNotMatch(svg, /<AC0>/)
-  const dead = Film.svg(Cards.node(fonts, Cards.leaf('pnp', 'Does P = NP?', lemmas[1]!), 1200, 630))
+  const dead = Film.svg(Cards.node(fonts, Cards.leaf('Does P = NP?', lemmas[1]!), 1200, 630))
   assert.match(dead, />Dead end<\/text>/)
   assert.match(dead, /Stopped by a known barrier/)
-  const parent = Cards.leaf('pnp', 'Does P = NP?', program)
+  const parent = Cards.leaf('Does P = NP?', program)
   assert.equal(Cards.below(parent.counts), '1 proven · 1 in flight · 1 dead end · 1 open')
   assert.match(Film.svg(Cards.node(fonts, parent, 1200, 630)), /Under it: 1 proven · 1 in flight · 1 dead end · 1 open/)
   assert.doesNotMatch(Film.svg(Cards.node(fonts, parent, 1200, 630)), /Ride|→/)
   assert.equal(Cards.ask('goal'), 'Ride the whole swarm')
-  const placed = Cards.leaf('pnp', 'Does P = NP?', lemmas[2]!, view)
+  const placed = Cards.leaf('Does P = NP?', lemmas[2]!, view)
   assert.equal(placed.at, 4)
   const scene = Cards.node(fonts, placed, 1200, 630)
   const ringed = scene.marks.filter((mark) => mark.ring)
@@ -360,8 +360,8 @@ test('proofs and dead ends are announced with links to their node, and nothing e
 
 test('a statement nobody has reviewed says so on its card and frame', async () => {
   const value = { ...lemmas[3]!, review: true }
-  assert.match(Film.svg(Cards.node(fonts, Cards.leaf('pnp', 'Does P = NP?', value), 1200, 630)), />Statement under review<\/text>/)
-  assert.doesNotMatch(Film.svg(Cards.node(fonts, Cards.leaf('pnp', 'Does P = NP?', lemmas[3]!), 1200, 630)), /under review/)
+  assert.match(Film.svg(Cards.node(fonts, Cards.leaf('Does P = NP?', value), 1200, 630)), />Statement under review<\/text>/)
+  assert.doesNotMatch(Film.svg(Cards.node(fonts, Cards.leaf('Does P = NP?', lemmas[3]!), 1200, 630)), /under review/)
   assert.notEqual(Share.version(Share.node('pnp', 'Does P = NP?', value)), Share.version(Share.node('pnp', 'Does P = NP?', lemmas[3]!)))
 })
 

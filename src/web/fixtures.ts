@@ -1536,7 +1536,7 @@ export async function branches(key: string): Promise<Branches> {
   return delay({ branches: grown(swarm), steering: swarm.steering })
 }
 
-function directing(swarm: Live, key: string, who: `0x${string}` | undefined) {
+function directing(swarm: Live, who: `0x${string}` | undefined) {
   if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo ID to direct a swarm's money.")
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   const seated = swarm.steering === 'team' ? rostered(swarm).seats.find((found) => found.address === who.toLowerCase()) : undefined
@@ -1546,7 +1546,7 @@ function directing(swarm: Live, key: string, who: `0x${string}` | undefined) {
 
 export async function stop(key: string, branch: number, who: `0x${string}` | undefined): Promise<Branch> {
   const swarm = seed(await find(key))
-  directing(swarm, key, who)
+  directing(swarm, who)
   const target = grown(swarm).find((found) => found.id === branch && found.parent === null)
   if (!target) throw fail(404, 'not_found', `This swarm has no branch ${branch}.`)
   const funded = target.funders.reduce((sum, funder) => sum + units(funder.amount), 0n)
@@ -1565,7 +1565,7 @@ export async function stop(key: string, branch: number, who: `0x${string}` | und
 
 export async function fund(key: string, branch: number, input: { amount: string; artifact?: boolean; message?: string }, who: `0x${string}` | undefined): Promise<Branch> {
   const swarm = seed(await find(key))
-  const seated = directing(swarm, key, who)
+  const seated = directing(swarm, who)
   const target = grown(swarm).find((found) => found.id === branch && found.parent === null)
   if (!target) throw fail(404, 'not_found', `This swarm has no branch ${branch}.`)
   const self = me(swarm, who)
@@ -1587,7 +1587,7 @@ export async function fund(key: string, branch: number, input: { amount: string;
 
 export async function move(key: string, branch: number, input: { amount: string; to: number }, who: `0x${string}` | undefined): Promise<Branch[]> {
   const swarm = seed(await find(key))
-  directing(swarm, key, who)
+  directing(swarm, who)
   const list = grown(swarm)
   const source = list.find((found) => found.id === branch && found.parent === null)
   const target = list.find((found) => found.id === input.to && found.parent === null)

@@ -71,7 +71,7 @@ export function tree(swarm: string, view: { headline: Tree.Headline; nodes: read
 }
 
 export function node(swarm: string, title: string, value: Tree.Node & { review?: boolean }, view?: { nodes: readonly Tree.Node[] }, name: string | null = null): Subject {
-  return { item: Cards.leaf(swarm, title, value, view), kind: 'node', name, node: value.id, swarm }
+  return { item: Cards.leaf(title, value, view), kind: 'node', name, node: value.id, swarm }
 }
 
 export function idea(value: Problem): Subject {

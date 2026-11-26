@@ -1,6 +1,5 @@
 import { site } from './boot.ts'
 import { type ReactNode, useState } from 'react'
-import type { Config } from '../shared/Api.ts'
 import * as Site from '../shared/Site.ts'
 
 
@@ -169,7 +168,7 @@ function Table(props: { rows: readonly (readonly string[])[] }) {
   )
 }
 
-export function Docs(props: { config: Config | undefined }) {
+export function Docs() {
   const origin = site()
   return (
     <div className="page docs">

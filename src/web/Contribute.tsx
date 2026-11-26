@@ -1,7 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Config, Currency } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
-import * as Api from './api.ts'
 import { here } from './boot.ts'
 import { mach, short, usd } from './format.ts'
 import { message, useWallet } from './hooks.ts'

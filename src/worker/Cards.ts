@@ -389,7 +389,7 @@ function alone(node: Tree.Node, counts: Record<Tree.Status, number>): Twig[] {
   return out
 }
 
-export function leaf(swarm: string, title: string, node: Tree.Node & { review?: boolean }, view?: { nodes: readonly Tree.Node[] }): Leaf {
+export function leaf(title: string, node: Tree.Node & { review?: boolean }, view?: { nodes: readonly Tree.Node[] }): Leaf {
   const counts = { ...node.counts }
   counts[node.status] = Math.max(0, counts[node.status] - 1)
   const known = view ? order(view.nodes).findIndex((other) => other.id === node.id) : -1

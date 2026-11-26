@@ -342,7 +342,7 @@ export function App() {
         ) : path === '/about' ? (
           <About />
         ) : path === '/docs' ? (
-          <Docs config={config} />
+          <Docs />
         ) : rider ? (
           <Profile key={rider} who={rider} />
         ) : path === '/me' ? (
