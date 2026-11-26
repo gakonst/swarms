@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from 'react'
+import { type MouseEvent, type ReactNode, useEffect, useState } from 'react'
 import type { Contribution, Detail } from '../shared/Api.ts'
 import { decimal, units } from '../shared/Memo.ts'
 import * as Prose from '../shared/Prose.ts'
@@ -97,7 +97,28 @@ export function Strip(props: { backers: readonly Backer[]; children?: ReactNode;
   )
 }
 
-export function Tabs(props: { base: string; board: string; onShow: (view: Tab) => void; open?: { label: string; onClose: () => void } | undefined; view: Tab }) {
+export function useZoom() {
+  const [zoomed, setZoomed] = useState(false)
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key === '\\') {
+        event.preventDefault()
+        setZoomed((current) => !current)
+        return
+      }
+      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('.find-scrim, .overlay')) return
+      setZoomed((current) => {
+        if (current) event.preventDefault()
+        return false
+      })
+    }
+    addEventListener('keydown', listener)
+    return () => removeEventListener('keydown', listener)
+  }, [])
+  return [zoomed, () => setZoomed((current) => !current)] as const
+}
+
+export function Tabs(props: { base: string; board: string; onShow: (view: Tab) => void; open?: { label: string; onClose: () => void } | undefined; view: Tab; zoom?: { on: boolean; onToggle: () => void } | undefined }) {
   return (
     <nav aria-label="Artifacts" className="tabs">
       {tabs.map(([key, label]) => (
@@ -121,6 +142,11 @@ export function Tabs(props: { base: string; board: string; onShow: (view: Tab) =
           {props.open.label}
           <button aria-label="Close the thread" className="tab-close" onClick={props.open.onClose} type="button"><span aria-hidden="true">×</span></button>
         </span>
+      )}
+      {props.zoom && (
+        <button aria-keyshortcuts="Meta+Backslash Control+Backslash" aria-label={props.zoom.on ? 'Show the chat again' : 'Expand this panel over the chat'} aria-pressed={props.zoom.on} className="tab-zoom" onClick={props.zoom.onToggle} title={props.zoom.on ? 'Show the chat (Esc)' : 'Expand (⌘\\)'} type="button">
+          <svg aria-hidden="true" viewBox="0 0 16 16">{props.zoom.on ? <path d="M9.5 2.5v4h4M6.5 13.5v-4h-4M9.5 6.5l4.5-4.5M6.5 9.5 2 14" /> : <path d="M10 2.5h3.5V6M6 13.5H2.5V10M13.5 2.5 9 7M2.5 13.5 7 9" />}</svg>
+        </button>
       )}
     </nav>
   )

@@ -26,7 +26,7 @@ import { useShown } from './Share.tsx'
 import { useSwipe } from './Shell.tsx'
 import { ChatThread } from './Thread.tsx'
 import { scene } from './stage.ts'
-import { at, backers, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
+import { at, backers, useZoom, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
 import { Filters, Mark } from './Tree.tsx'
 import * as Wire from './wire.ts'
 import { Edit } from './Edit.tsx'
@@ -92,6 +92,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const [settled, setSettled] = useState<string | undefined>()
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<{ members: Member[] }>(`room:${id}`)?.members ?? [])
   const [replying, setReplying, unthread] = useThread()
+  const [zoomed, zoom] = useZoom()
   const [talked, setTalked] = useState<Readonly<Record<string, Said>>>({})
   const [asking, setAsking] = useState<{ anchor: HTMLElement | null; sent: () => void; text: string }>()
   const awaited = useRef<string | undefined>(undefined)
@@ -288,7 +289,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const repo = proofs.data?.proofs[0]?.check.repo
   const count = root ? root.children.length : 0
   return (
-    <article className="grove" data-view={view} data-replying={replying !== undefined && !thread ? '' : undefined} data-thread={thread || undefined} data-wire={wired}>
+    <article className="grove" data-view={view} data-zoom={zoomed || undefined} data-replying={replying !== undefined && !thread ? '' : undefined} data-thread={thread || undefined} data-wire={wired}>
       <Strip backers={top} edit={<Edit swarm={swarm} />} onRide={root ? ride : undefined} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{head.proven.toLocaleString('en-US')}</b> proven</span>
         <span data-live={head.inFlight > 0 || undefined}><b>{head.inFlight.toLocaleString('en-US')}</b> in flight</span>
@@ -299,7 +300,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
       </div>
       <Divider label="Resize the chat and the artifacts" name="swarm" />
       <section aria-label="Artifacts" className="pane" data-open={opened || undefined}>
-      <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} open={opened ? { label: 'Thread', onClose: thread ? close : unthread } : undefined} view={view} />
+      <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} open={opened ? { label: 'Thread', onClose: thread ? close : unthread } : undefined} view={view} zoom={{ on: zoomed, onToggle: zoom }} />
       {(seen.has('board') || seen.has('chat')) && (
         <div className="grove-body panel panel-board" hidden={view !== 'board' && view !== 'chat'}>
           <section aria-label="Threads" className="grove-tree">

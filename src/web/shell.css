@@ -72,6 +72,9 @@
 .thread-close { display:grid; place-items:center; width:36px; height:36px; border:0; border-radius:50%; background:none; font-size:22px; line-height:1; color:var(--muted); cursor:pointer; }
 .thread-close:hover { background:var(--wash); color:var(--fg); }
 .pane[data-open] > .panel { display:none; }
+.tab-zoom { flex:none; align-self:center; display:grid; place-items:center; width:30px; height:30px; margin-left:auto; border:0; border-radius:8px; background:none; color:var(--muted); cursor:pointer; }
+.tab-zoom:hover, .tab-zoom[aria-pressed='true'] { background:var(--wash); color:var(--fg); }
+.tab-zoom svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
 .thread-talked { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin:0 0 12px; padding-bottom:10px; border-bottom:1px solid var(--line); font:12px var(--mono); color:var(--muted); }
 .thread-talked > span i { font-style:normal; color:var(--faint); }
 .tab-open { gap:2px; color:var(--fg); border-bottom-color:var(--fg); }
@@ -217,6 +220,8 @@
   .pane > :is(.thread, .chat-thread) { flex:1 1 0; margin-right:calc(var(--margin) * -1); }
   .pane > :is(.thread, .chat-thread) > .thread-head { display:none; }
   .thread-back { display:none; }
+  :is(.grove, .swarm-shell)[data-zoom] > :is(.panel-chat, .split-handle) { display:none; }
+  :is(.grove, .swarm-shell)[data-zoom] > .pane { grid-column:1 / -1; padding-left:0; }
   .tab-chat { display:none; }
   .tab[data-default] { border-bottom-color:var(--fg); color:var(--fg); }
   .split-handle { position:relative; display:grid; place-items:center; width:13px; cursor:col-resize; touch-action:none; }
@@ -235,6 +240,7 @@
   :is(.grove, .swarm-shell)[data-view]:not([data-view='chat']) > .panel-chat, :is(.grove, .swarm-shell)[data-view='chat'] > .pane > .panel { display:none; }
   .pane > :is(.thread, .chat-thread) { position:fixed; inset:0; z-index:40; height:var(--screen, 100dvh); padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); animation:thread-in .2s var(--ease); }
   .thread-x { display:none; }
+  .tab-zoom { display:none; }
   .general > .pane { display:none; }
 }
 

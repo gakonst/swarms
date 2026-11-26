@@ -23,7 +23,7 @@ import { Room } from './Room.tsx'
 import * as Pay from './pay.ts'
 import { useShown } from './Share.tsx'
 import { Reins, steerer, useRoster } from './Steering.tsx'
-import { at, backers, dollars, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
+import { at, backers, dollars, useZoom, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
 import { back, Link, navigate, useBase, useQuery, useThread } from './router.tsx'
 import { stamp } from './format.ts'
 import { ChatThread } from './Thread.tsx'
@@ -67,6 +67,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<RoomState>(`room:${id}`)?.members ?? [])
   const wallet = useWallet()
   const [replying, setReplying, unthread] = useThread()
+  const [zoomed, zoom] = useZoom()
   const roster = useRoster(id, detail.data?.steering ?? 'open')
   const steers = steerer(roster?.steering ?? detail.data?.steering ?? 'open', roster, wallet.session?.address ?? wallet.address)
 
@@ -133,7 +134,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   }
 
   return (
-    <article className="swarm-shell" data-view={view} data-replying={replying !== undefined ? '' : undefined}>
+    <article className="swarm-shell" data-view={view} data-zoom={zoomed || undefined} data-replying={replying !== undefined ? '' : undefined}>
       <Strip backers={backers(swarm.contributions, names)} edit={<Edit swarm={swarm} />} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span className="strip-left"><b>{dollars(swarm.remaining)}</b> left</span>
@@ -155,7 +156,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
       </div>
       <Divider label="Resize the chat and the artifacts" name="swarm" />
       <section aria-label="Artifacts" className="pane" data-open={replying !== undefined || undefined}>
-      <Tabs base={base} board="Board" onShow={show} open={replying !== undefined ? { label: 'Thread', onClose: unthread } : undefined} view={view} />
+      <Tabs base={base} board="Board" onShow={show} open={replying !== undefined ? { label: 'Thread', onClose: unthread } : undefined} view={view} zoom={{ on: zoomed, onToggle: zoom }} />
       <div className="panel panel-page panel-board" hidden={view !== 'board' && view !== 'chat'}>
         <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'board' || view === 'chat'} />
       </div>
