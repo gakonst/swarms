@@ -27,6 +27,8 @@ type Tailed = { checked: number; done: boolean; exit: number | null; offset: num
 
 export const page = { most: 500, standard: 100 }
 
+export const guards = { more: true, running: true, versioned: true }
+
 const chunk = Limits.Runs.chunk
 
 const pages = Limits.Runs.pages
@@ -53,7 +55,7 @@ function loaded(self: Swarm): Held {
   const known = memory.get(self)
   if (known) return known
   const kv = self.ctx.storage.kv
-  const current = kv.get<number>('runs:v') === tracking
+  const current = kv.get<number>('runs:v') === tracking || !guards.versioned
   const held = current ? { cursor: kv.get<number>('runs:cursor') ?? 0, state: kv.get<Fleet.Tracker>('runs:tracker') ?? Fleet.tracker() } : { cursor: 0, state: Fleet.tracker() }
   memory.set(self, held)
   return held
@@ -156,7 +158,7 @@ export function listed(self: Swarm, machine: string, query: { cursor?: number | 
     .map(row)
   const total = Number(sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM runs WHERE machine = ?', machine).one().n)
   const shown = rows.slice(0, query.limit)
-  return { commands: shown, next: rows.length > query.limit ? (shown.at(-1)?.seq ?? null) : null, total }
+  return { commands: shown, next: guards.more && rows.length > query.limit ? (shown.at(-1)?.seq ?? null) : null, total }
 }
 
 function json(text: string | null) {
@@ -268,7 +270,7 @@ async function refresh(self: Swarm, swarm: string, sandbox: string, machine: Fle
   const kv = self.ctx.storage.kv
   const kept = kv.get<Kept>(key) ?? { checked: 0, complete: false, newest: null, older: undefined }
   const now = Date.now()
-  if ((kept.complete && finished(machine, now)) || now - kept.checked < logMs) return null
+  if ((kept.complete && (!guards.running || finished(machine, now))) || now - kept.checked < logMs) return null
   const sql = self.ctx.storage.sql
   const insert = (entries: Gateway.Logged['entries'], above: number | null) => {
     for (const entry of entries) {

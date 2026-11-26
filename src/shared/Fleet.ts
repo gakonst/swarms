@@ -42,6 +42,8 @@ export type Tracked = { command: Command; kind: 'command' } | { answer: Answer; 
 
 export const watched = ['tool', 'output', 'error', 'machine'] as const
 
+export const guards = { exit: true, speaker: true, unwrap: true }
+
 const shown: Record<string, string> = {
   apt: 'Packages',
   blockNetwork: 'Network',
@@ -276,7 +278,7 @@ function answer(waiting: Tracker['pending'][number], entry: Entry, ms: number | 
   return {
     clipped: detail.length >= 1990 && detail.endsWith('…'),
     exit,
-    failed: entry.kind === 'error' || /exit [1-9]/.test(entry.text) || (exit !== null && exit !== 0) || /timedOut\\*"\s*:\s*true/.test(detail),
+    failed: entry.kind === 'error' || /exit [1-9]/.test(entry.text) || (guards.exit && exit !== null && exit !== 0) || /timedOut\\*"\s*:\s*true/.test(detail),
     log: /logPath\\*"\s*:\s*\\*"([^"\\]+)/.exec(detail)?.[1] ?? null,
     ms: ms ?? (entry.at > waiting.at ? entry.at - waiting.at : null),
     output: entry.seq,
@@ -290,7 +292,7 @@ export function track(state: Tracker, entry: Entry, ms: number | null = null): T
   const who = entry.who ?? null
   state.pending = state.pending.flatMap((waiting) => {
     if (waiting.who === who && entry.kind === 'tool') return []
-    if (waiting.who === who && (entry.kind === 'output' || entry.kind === 'error')) {
+    if ((waiting.who === who || !guards.speaker) && (entry.kind === 'output' || entry.kind === 'error')) {
       found.push({ answer: answer(waiting, entry, ms), kind: 'answer' })
       return []
     }
@@ -350,7 +352,7 @@ export function readable(text: string) {
       return [typeof stdout === 'string' ? stdout.replace(/\n$/, '') : '', typeof stderr === 'string' && stderr ? `stderr:\n${stderr.replace(/\n$/, '')}` : ''].filter(Boolean).join('\n') || 'No output.'
     }
     const inner = unwrapped(value)
-    if (inner === undefined) return current
+    if (inner === undefined || !guards.unwrap) return current
     current = inner
   }
   return current

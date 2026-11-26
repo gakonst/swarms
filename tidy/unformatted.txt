@@ -222,7 +222,6 @@ test/riders.test.ts 1 pre-existing hand formatting
 test/run.test.ts 1 pre-existing hand formatting
 test/run.ts 1 pre-existing hand formatting
 test/runner.test.ts 1 pre-existing hand formatting
-test/runs.test.ts 1 pre-existing hand formatting
 test/site.test.ts 1 pre-existing hand formatting
 test/sockets.test.ts 1 pre-existing hand formatting
 test/status.test.ts 1 pre-existing hand formatting
