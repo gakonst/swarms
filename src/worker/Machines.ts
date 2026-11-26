@@ -103,15 +103,17 @@ async function fulls(env: Cloudflare.Env, swarm: string, agent: string, wanted: 
         if (!first || !last) return
         const read = await Gateway.event(env, swarm, agent, first.event, Math.min(128, last.event - first.event + 1)).catch(() => undefined)
         if (!read?.ok) return
-        for (const item of group) {
-          const kept = full(
-            read.value.events.find((event) => event.seq === item.event),
-            item.tool,
-          )
-          if (!kept) continue
-          found.set(item.event, kept)
-          await caches.default.put(key(env, swarm, agent, item.event), Response.json(kept, { headers: { 'cache-control': `public, max-age=${keptSeconds}` } })).catch(() => undefined)
-        }
+        await Promise.all(
+          group.map(async (item) => {
+            const kept = full(
+              read.value.events.find((event) => event.seq === item.event),
+              item.tool,
+            )
+            if (!kept) return
+            found.set(item.event, kept)
+            await caches.default.put(key(env, swarm, agent, item.event), Response.json(kept, { headers: { 'cache-control': `public, max-age=${keptSeconds}` } })).catch(() => undefined)
+          }),
+        )
   })
   return found
 }

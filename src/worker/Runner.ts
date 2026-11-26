@@ -268,7 +268,7 @@ async function strays(self: Swarm, swarm: string, agent: string) {
   const listed = await list(self, swarm, agent, true)
   if (!listed.ok) return
   const open = new Set((await self.board.tasks()).filter((task) => task.labels['kind'] === 'run' && !Work.terminal(task.phase)).map((task) => 'n:' + (task.labels['node'] ?? '') + '#' + Nodes.kOf(task.id)))
-  for (const sub of listed.value) if (guards.stray && sub.parent_agent_id === null && !finished.has(sub.status.state) && !open.has(sub.role)) await Gateway.close(self.env, swarm, agent, sub.agent_id)
+  await Promise.all(listed.value.filter((sub) => guards.stray && sub.parent_agent_id === null && !finished.has(sub.status.state) && !open.has(sub.role)).map((sub) => Gateway.close(self.env, swarm, agent, sub.agent_id)))
 }
 
 async function refusal(self: Swarm, task: Work.Task, lease: Board.PoolLease, failure: { detail: string; status: number }): Promise<never> {
@@ -699,13 +699,8 @@ async function charge(self: Swarm) {
 }
 
 export async function dispatched(self: Swarm, swarm: string, spawned: Nodes.Spawned) {
-  let total = Memo.units(spawned.pick?.spent ?? '0')
-  for (const turn of [spawned.turn, spawned.pick?.turn]) {
-    if (!turn) continue
-    const report = await Gateway.turn(self.env, swarm, spawned.agent, turn)
-    if (report.ok) total += Flow.micro(report.value.spent_usd)
-  }
-  return total
+  const reports = await Promise.all([spawned.turn, spawned.pick?.turn].map((turn) => (turn ? Gateway.turn(self.env, swarm, spawned.agent, turn) : undefined)))
+  return reports.reduce((total, report) => (report?.ok ? total + Flow.micro(report.value.spent_usd) : total), Memo.units(spawned.pick?.spent ?? '0'))
 }
 
 export async function spentOf(self: Swarm, run: string, close = false): Promise<bigint | null> {
@@ -836,9 +831,10 @@ export async function tick(self: Swarm): Promise<number | null> {
   const rt = runtime(self)
   if (rt.first) {
     rt.first = false
-    for (const task of await self.board.held())
-      if (task.claim && (((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && !(guards.claims && rt.claims.has(task.claim))) || (task.labels['kind'] === 'settle' && !self.settling.has(task.claim))))
-        await self.board.release(task.id, task.claim, 'its worker restarted')
+    const stale = (await self.board.held()).flatMap((task) =>
+      task.claim && (((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && !(guards.claims && rt.claims.has(task.claim))) || (task.labels['kind'] === 'settle' && !self.settling.has(task.claim))) ? [{ claim: task.claim, id: task.id }] : [],
+    )
+    await Promise.all(stale.map((task) => self.board.release(task.id, task.claim, 'its worker restarted')))
     await Nodes.reconcile(self, (run) => spentOf(self, run, true))
   }
   await late(self).catch((error: unknown) => console.error('Charging late spend failed', error))

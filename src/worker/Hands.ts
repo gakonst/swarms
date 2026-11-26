@@ -49,12 +49,14 @@ function holds(found: Work.Task, now: number) {
 }
 
 async function adopt(board: Work.Board, rows: readonly Row[], now: number) {
-  for (const row of rows) {
-    if (row.returned_at !== null || (await board.task(task(row.name)))) continue
-    const posted = await board.post({ id: task(row.name), labels: slot, spec: row.label })
-    const left = (row.seen_at ?? row.created_at) + unseenMs - now
-    if (posted.ok && left > 0) await board.claim(task(row.name), { leaseMs: left })
-  }
+  await Promise.all(
+    rows.map(async (row) => {
+      if (row.returned_at !== null || (await board.task(task(row.name)))) return
+      const posted = await board.post({ id: task(row.name), labels: slot, spec: row.label })
+      const left = (row.seen_at ?? row.created_at) + unseenMs - now
+      if (posted.ok && left > 0) await board.claim(task(row.name), { leaseMs: left })
+    }),
+  )
 }
 
 const lives = new WeakMap<Swarm, string>()
@@ -236,12 +238,14 @@ export async function seen(self: Swarm, swarm: string, rows: readonly Row[], lis
   const board = self.board
   const now = Date.now()
   await adopt(board, rows, now)
-  for (const row of rows) {
-    const at = record(self, row.name)
-    const found = row.returned_at === null && (!at || at.state === 'minted') && used(listed?.find((hand) => hand.name === row.name)) ? await board.task(task(row.name)) : null
-    if (found?.phase === 'claimed' && found.claim) await board.renew(found.id, found.claim, unseenMs)
-    else if (found?.phase === 'open') await board.claim(found.id, { leaseMs: unseenMs })
-  }
+  await Promise.all(
+    rows.map(async (row) => {
+      const at = record(self, row.name)
+      const found = row.returned_at === null && (!at || at.state === 'minted') && used(listed?.find((hand) => hand.name === row.name)) ? await board.task(task(row.name)) : null
+      if (found?.phase === 'claimed' && found.claim) await board.renew(found.id, found.claim, unseenMs)
+      else if (found?.phase === 'open') await board.claim(found.id, { leaseMs: unseenMs })
+    }),
+  )
   const names = rows
     .filter((row) => (row.seen_at === null || row.seen_at < now - freshMs) && used(listed?.find((hand) => hand.name === row.name)))
     .map((row) => row.name)

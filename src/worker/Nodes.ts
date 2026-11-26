@@ -710,8 +710,8 @@ export async function ran(self: Swarm, run: string, result: Result, verify: (nid
   const prepared = () =>
     (read ??= (async () => {
       const found = await state(self)
-      const titled = new Map<string, string>()
-      for (const child of result.children) titled.set(normalized(child.title).toLowerCase(), await childId(nid, child.title))
+      const ids = await Promise.all(result.children.map((child) => childId(nid, child.title)))
+      const titled = new Map(result.children.map((child, index) => [normalized(child.title).toLowerCase(), ids[index] ?? '']))
       return { found, titled }
     })())
   return Machine.runFold(
@@ -759,8 +759,8 @@ export async function reconcile(self: Swarm, spentOf: (run: string) => Promise<b
       if (spent !== null) await settleRun(self, run, spent)
     }
   }
-  for (const runs of found.runs.values())
-    for (const task of runs) if (guards.orphan && !terminal(task) && !found.ledger.runs.has(task.id) && task.labels['node'] !== undefined) await self.board.cancel(task.id, 'orphan')
+  const orphans = [...found.runs.values()].flat().filter((task) => guards.orphan && !terminal(task) && !found.ledger.runs.has(task.id) && task.labels['node'] !== undefined)
+  await Promise.all(orphans.map((task) => self.board.cancel(task.id, 'orphan')))
   for (const [nid, task] of found.nodes) if (terminal(task) && left(found, nid) > 0n) await settleNode(self, nid)
 }
 
