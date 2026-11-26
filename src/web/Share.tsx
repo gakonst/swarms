@@ -36,7 +36,7 @@ async function copy(text: string) {
   }
 }
 
-export type Cheer = { amount: string; node?: string | undefined; swarm: string; title?: string | undefined }
+export type Cheer = { amount: string; node?: string | undefined; started?: boolean | undefined; swarm: string; title?: string | undefined }
 
 let cheer: Cheer | undefined
 
@@ -66,7 +66,7 @@ export function celebrate(next: Cheer) {
 }
 
 Pay.listen((_slot, act) => {
-  if (act.at === 'counted') celebrate({ amount: act.amount, node: act.node, swarm: act.swarm, title: act.title })
+  if (act.at === 'counted') celebrate({ amount: act.amount, node: act.node, started: act.started, swarm: act.swarm, title: act.title })
 })
 
 function subscribe(listener: () => void) {
@@ -116,12 +116,13 @@ function Sheet(props: { cheer: Cheer }) {
   }, [id])
   const close = () => show(undefined)
   const shared = swarm && links(swarm, props.cheer.amount)
+  const head = props.cheer.started ? 'You started it' : "You're riding"
   return (
     <div className="sheet cheer-sheet" onClick={(event) => event.target === event.currentTarget && close()}>
-      <div aria-label="You're riding" aria-modal="true" className="sheet-card cheer" role="dialog">
+      <div aria-label={head} aria-modal="true" className="sheet-card cheer" role="dialog">
         <button aria-label="Close" className="sheet-close" onClick={close} type="button">×</button>
         <p aria-hidden="true" className="cheer-mark">✓</p>
-        <h3 className="cheer-head">You're riding · {cut(props.cheer.amount)}</h3>
+        <h3 className="cheer-head">{head} · {cut(props.cheer.amount)}</h3>
         {(props.cheer.title ?? swarm) && <p className="cheer-what"><Inline text={props.cheer.title ?? swarm?.title ?? ''} /></p>}
         {swarm && !props.cheer.title && <p className="cheer-stats"><b>{swarm.contributors}</b> rider{swarm.contributors === 1 ? '' : 's'} · <b>{usd(swarm.balance)}</b> raised</p>}
         <div className="cheer-go">

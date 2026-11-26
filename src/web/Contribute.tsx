@@ -65,11 +65,11 @@ const working = {
   signing: 'Signing in…',
 } as const
 
-async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency): Promise<Pay.Owed> {
+async function transfer(config: Config, target: Target, amount: bigint, note: string, token: Currency, started: boolean): Promise<Pay.Owed> {
   if (!config.credit) throw new Error('Riding is not available right now. Try again in a moment.')
   const { memo } = await import('../shared/Credit.ts')
   const hash = await Wallet.send(config, { amount, memo: memo(config.credit.owner, target.id, target.node ? `n:${target.node}` : note), to: config.credit.recipient, token })
-  return { amount: decimal(amount), hash, note, swarm: target.id, ...(target.node ? { node: target.node } : {}), ...(target.parent ? { parent: target.parent } : {}), ...(target.title ? { title: target.title } : {}) }
+  return { amount: decimal(amount), hash, note, swarm: target.id, ...(target.node ? { node: target.node } : {}), ...(target.parent ? { parent: target.parent } : {}), ...(target.title ? { title: target.title } : {}), ...(started ? { started } : {}) }
 }
 
 export function dollars(amount: string) {
@@ -85,7 +85,7 @@ export function Told(props: { act: Pay.Act; config: Config | undefined; onFund: 
         {act.tries < Pay.retries.length ? 'Trying again by itself. Nothing is paid twice.' : 'Nothing is paid twice.'}
       </Alert>
     )
-  if (act.at === 'counted') return <Alert action={{ label: 'Add more', onClick: () => Pay.forget(props.slot) }} title={`You're riding. ${dollars(act.amount)} is in.`} tone="good" />
+  if (act.at === 'counted') return <Alert action={{ label: 'Add more', onClick: () => Pay.forget(props.slot) }} title={`${act.started ? 'You started it' : "You're riding"}. ${dollars(act.amount)} is in.`} tone="good" />
   if (act.at === 'refused')
     return (
       <Alert action={props.config && { href: `${props.config.explorer}/tx/${act.owed.hash}`, label: short(act.owed.hash) }} title="Sent, but it cannot be counted." tone="bad">
@@ -189,7 +189,7 @@ export function Fuel(props: {
       }
       const target = await props.target()
       if (start.creates) Pay.move(props.slot, { type: 'created' })
-      const owed = await transfer(config, target, units(amount), text, token)
+      const owed = await transfer(config, target, units(amount), text, token, start.creates)
       props.onNote('')
       void Pay.record(owed, props.slot)
       props.onSent?.(target)
