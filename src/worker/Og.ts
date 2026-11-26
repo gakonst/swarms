@@ -135,9 +135,6 @@ export async function warm(env: Cloudflare.Env, url: URL) {
   const found = await subject(env, key)
   if (!found) return
   const version = encodeURIComponent(Share.version(found))
-  for (const name of ['card.png', 'poster.png', 'video.mp4'] as const) {
-    if (name === 'video.mp4' && !Share.moving(found)) continue
-    const response = await env.OBJECTS.fetch(new Request(url.origin + '/og/' + key + '/' + name + '?v=' + version))
-    await response.body?.cancel()
-  }
+  const names = Share.moving(found) ? (['card.png', 'poster.png', 'video.mp4'] as const) : (['card.png', 'poster.png'] as const)
+  await Promise.all(names.map(async (name) => (await env.OBJECTS.fetch(new Request(url.origin + '/og/' + key + '/' + name + '?v=' + version))).body?.cancel()))
 }

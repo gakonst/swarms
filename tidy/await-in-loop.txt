@@ -1,5 +1,5 @@
 # No await per iteration over independent items: start them together with Promise.all.
-# path count why; 150 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 145 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 cli/src/commands/account.ts 2 pre-existing; run with Promise.all or make the order a named dependency
 cli/src/commands/fund.ts 2 pre-existing; run with Promise.all or make the order a named dependency
 cli/src/commands/watch.ts 4 pre-existing; run with Promise.all or make the order a named dependency
@@ -17,12 +17,11 @@ src/worker/Machines.ts 14 pre-existing; run with Promise.all or make the order a
 src/worker/machines/Tree.ts 2 pre-existing; run with Promise.all or make the order a named dependency
 src/worker/Mcp.ts 1 pre-existing; run with Promise.all or make the order a named dependency
 src/worker/Money.ts 8 pre-existing; run with Promise.all or make the order a named dependency
-src/worker/Nodes.ts 16 pre-existing; run with Promise.all or make the order a named dependency
-src/worker/Og.ts 2 pre-existing; run with Promise.all or make the order a named dependency
+src/worker/Nodes.ts 15 pre-existing; run with Promise.all or make the order a named dependency
 src/worker/Operations.ts 5 pre-existing; run with Promise.all or make the order a named dependency
 src/worker/Page.ts 2 pre-existing; run with Promise.all or make the order a named dependency
 src/worker/Riding.ts 1 pre-existing; run with Promise.all or make the order a named dependency
-src/worker/Runner.ts 31 pre-existing; run with Promise.all or make the order a named dependency
+src/worker/Runner.ts 29 pre-existing; run with Promise.all or make the order a named dependency
 src/worker/Runs.ts 3 pre-existing; run with Promise.all or make the order a named dependency
 src/worker/Swarm.ts 1 pre-existing; run with Promise.all or make the order a named dependency
 src/worker/Triage.ts 9 pre-existing; run with Promise.all or make the order a named dependency

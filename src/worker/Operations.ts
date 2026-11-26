@@ -1943,8 +1943,8 @@ export async function propose(env: Cloudflare.Env, input: Input<'propose'>, orig
   const request = parsed.value
   const row = await treeRow(env, request.swarm, true)
   if (!row.ok) return row
-  const nid = await Nodes.nid(request.parent, request.title)
-  const said = request.said === undefined ? null : { mentions: mentioned(await Store.members(env, row.value.id), request.said), text: request.said }
+  const [nid, members] = await Promise.all([Nodes.nid(request.parent, request.title), request.said === undefined ? undefined : Store.members(env, row.value.id)])
+  const said = request.said === undefined || members === undefined ? null : { mentions: mentioned(members, request.said), text: request.said }
   const proposal: Riding.Proposal = { by: address.toLowerCase(), form: request.form, parent: request.parent, said, statement: request.statement ?? null, title: request.title, words: request.spec }
   const kept = answered(await stub(env, row.value.id).treePropose(row.value.id, nid, proposal))
   if (!kept.ok) return kept

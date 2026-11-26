@@ -359,10 +359,8 @@ export const tolerance = Limits.Riding.tolerance
 export async function health(self: Swarm): Promise<Ledgered> {
   const swarm = Nodes.swarm(self)
   await Runner.late(self).catch((error: unknown) => console.error('Charging late spend failed', error))
-  const rows = await Flow.rows(self.env, swarm)
+  const [rows, live, credit] = await Promise.all([Flow.rows(self.env, swarm), Runner.live(self), Gateway.credit(self.env, swarm)])
   const totals = Flow.totals(rows)
-  const live = await Runner.live(self)
-  const credit = await Gateway.credit(self.env, swarm)
   const gateway = credit.ok ? { deposited: credit.value.deposited, left: credit.value.left, spent: credit.value.spent } : null
   const drift = gateway ? Memo.units(gateway.left) - (totals.held - live) : 0n
   const balanced = Payment.balanced(Payment.audit(rows))

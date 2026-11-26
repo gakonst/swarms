@@ -356,8 +356,8 @@ async function file(env: Env, swarm: string, sandbox: string, path: string) {
 export async function collected(env: Env, input: Named & { sandbox: string }): Promise<Read | null> {
   const exit = await file(env, input.swarm, input.sandbox, machine.out + '/exit')
   if (exit === null) return null
-  const text = await file(env, input.swarm, input.sandbox, machine.out + '/check.json')
-  const log = (await file(env, input.swarm, input.sandbox, machine.out + '/check.log')) ?? ''
+  const [text, logged] = await Promise.all([file(env, input.swarm, input.sandbox, machine.out + '/check.json'), file(env, input.swarm, input.sandbox, machine.out + '/check.log')])
+  const log = logged ?? ''
   await gateway(env, '/v1/compute/terminate', { sandboxId: input.sandbox }, app(input.swarm))
   const named: Named = { claim: input.claim, nid: input.nid, sha: input.sha, swarm: input.swarm }
   const url = `${Site.home(env)}/v1/swarms/${input.swarm}/proofs/${input.nid}`

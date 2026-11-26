@@ -723,13 +723,14 @@ export async function spentOf(self: Swarm, run: string, close = false): Promise<
 }
 
 export async function live(self: Swarm) {
-  let total = 0n
-  for (const task of await self.board.tasks()) {
-    if (task.labels['kind'] !== 'run' || Work.terminal(task.phase) || (await self.board.task(Nodes.settleId(task.id)))?.phase === 'done') continue
-    const spent = await spentOf(self, task.id)
-    total += spent ?? Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')
-  }
-  return total
+  const running = (await self.board.tasks()).filter((task) => task.labels['kind'] === 'run' && !Work.terminal(task.phase))
+  const spent = await Promise.all(
+    running.map(async (task) => {
+      if ((await self.board.task(Nodes.settleId(task.id)))?.phase === 'done') return 0n
+      return (await spentOf(self, task.id)) ?? Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')
+    }),
+  )
+  return spent.reduce((total, each) => total + each, 0n)
 }
 
 export function follow(self: Swarm, swarm: string, agent: string) {

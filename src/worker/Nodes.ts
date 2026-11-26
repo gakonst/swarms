@@ -258,7 +258,7 @@ export function emit(self: Swarm, nid: string, event: Event, text: string) {
 async function send(self: Swarm, delta: Tree.Delta, stored: boolean) {
   if (self.listened()) Chat.broadcast(self, { delta, type: 'delta' })
   const frame = new TextEncoder().encode((stored ? 'id: ' + delta.seq + '\n' : '') + 'data: ' + JSON.stringify(delta) + '\n\n')
-  for (const writer of [...self.treeWatchers]) await writer.write(frame).catch(() => self.treeWatchers.delete(writer))
+  await Promise.all([...self.treeWatchers].map((writer) => writer.write(frame).catch(() => self.treeWatchers.delete(writer))))
 }
 
 export function doing(self: Swarm, nid: string) {
@@ -360,8 +360,8 @@ export function gitDue(self: Swarm) {
 }
 
 async function project(self: Swarm) {
-  const found = await state(self)
-  const files = new Map((await Verify.template()).map((file) => [file.path, file]))
+  const [found, template] = await Promise.all([state(self), Verify.template()])
+  const files = new Map(template.map((file) => [file.path, file]))
   for (const [nid, task] of found.nodes) {
     const statement = parse(task.spec).statement
     if (statement !== null) files.set(Verify.statementPath(nid), { path: Verify.statementPath(nid), text: Verify.statementFile(nid, statement) })

@@ -470,8 +470,8 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
     const found = self.ctx.storage.sql.exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n).toArray()[0]
     if (Math.max(self.branched, self.born) > (self.kv.get<number>('settledAt') ?? 0)) await Branching.settled(self, money.row).catch((error: unknown) => console.error('Settling closed branches failed', error))
     const repo = await Repo.located(self, money.row)
-    const commits = repo.state === 'ready' && Follow.cued(self, 'git', run.started) ? await Repo.pushed(self, row.id, repo.name, found?.base ?? null) : []
-    const spent = (await charged(self, row, run)) ?? BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
+    const [commits, charge] = await Promise.all([repo.state === 'ready' && Follow.cued(self, 'git', run.started) ? Repo.pushed(self, row.id, repo.name, found?.base ?? null) : [], charged(self, row, run)])
+    const spent = charge ?? BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
     const grew = run.balance !== undefined && BigInt(money.row.balance) > BigInt(run.balance)
     const short = money.known && money.left < Store.reserveOf(money.row)
     const refused = status !== 'completed' && (short || ((broke(message) || unpaidBy !== undefined) && !grew))
