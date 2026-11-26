@@ -2194,6 +2194,7 @@ export async function archive(env: Cloudflare.Env, input: Input<'swarm'>, addres
   const archived = await stub(env, row.id).archive(row.id, at).then(() => undefined, (error: unknown) => (error instanceof Error ? error.message : String(error)))
   if (archived !== undefined) return Problem.fail(503, 'unavailable', 'The swarm was not archived. ' + archived + ' Try again shortly.')
   await Store.archive(env, row.id, at)
+  Edge.put(env, 'swarms?status=', (await Store.list(env)).map((each) => Store.summary(each)), idleSeconds)
   const updated = await Store.find(env, row.id)
   return Problem.ok(Store.summary(updated ?? row))
 }
