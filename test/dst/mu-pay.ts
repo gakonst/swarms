@@ -108,6 +108,7 @@ async function pay(seed: string): Promise<Outcome> {
           at: 'counted',
           node: 'n1',
           parent: undefined,
+          started: undefined,
           swarm: 's1',
           title: undefined,
         })
@@ -163,7 +164,15 @@ async function pay(seed: string): Promise<Outcome> {
           a.deepEqual(Pay.flow('s1'), { at: 'owed', owed: sent, tries: 0 })
           answering(problem(409, 'conflict', 'This transaction is already counted.'))
           a.deepEqual(await Pay.retry('s1'), { at: 'counted' })
-          a.deepEqual(Pay.flow('s1'), { amount: '5.000000', at: 'counted', node: undefined, parent: undefined, swarm: 's1', title: undefined })
+          a.deepEqual(Pay.flow('s1'), {
+            amount: '5.000000',
+            at: 'counted',
+            node: undefined,
+            parent: undefined,
+            started: undefined,
+            swarm: 's1',
+            title: undefined,
+          })
         }
         const asked = answering(counted)
         Pay.move('s1', events.start)
@@ -199,7 +208,15 @@ async function pay(seed: string): Promise<Outcome> {
           asked.map((each) => each.body),
           [{ hash: '0xabc' }],
         )
-        a.deepEqual(reloaded.flow('s1'), { amount: '5.000000', at: 'counted', node: undefined, parent: undefined, swarm: 's1', title: undefined })
+        a.deepEqual(reloaded.flow('s1'), {
+          amount: '5.000000',
+          at: 'counted',
+          node: undefined,
+          parent: undefined,
+          started: undefined,
+          swarm: 's1',
+          title: undefined,
+        })
         a.deepEqual(owed(), [])
         a.deepEqual(Pay.flow('s1'), { at: 'idle' })
       },
@@ -245,7 +262,15 @@ async function pay(seed: string): Promise<Outcome> {
         a.deepEqual(await counting, { at: 'counted' })
         a.equal(asked[0]?.url, '/swarms/v1/swarms/s1/contributions')
         a.deepEqual(asked[0]?.body, { hash: '0xdef', node: 'n9' })
-        a.deepEqual(Pay.flow(Pay.slot('s1', 'n9')), { amount: '1.000000', at: 'counted', node: 'n9', parent: 'root', swarm: 's1', title: 'A new lemma' })
+        a.deepEqual(Pay.flow(Pay.slot('s1', 'n9')), {
+          amount: '1.000000',
+          at: 'counted',
+          node: 'n9',
+          parent: 'root',
+          started: undefined,
+          swarm: 's1',
+          title: 'A new lemma',
+        })
         a.deepEqual(Pay.ghosts('s1', 'root'), [])
         a.deepEqual(heard, ['s1/propose/root signing', 's1/propose/root creating', 's1/propose/root paying', 's1/n/n9 counting', 's1/n/n9 counted'])
         stop()
@@ -288,7 +313,15 @@ async function pay(seed: string): Promise<Outcome> {
         a.deepEqual(Pay.flow(Pay.slot('s1', 'n7')), { at: 'owed', owed: made, tries: 0 })
         await new Promise((resolve) => setTimeout(resolve, Pay.retries[0] + 300))
         a.equal(asked.length, 2)
-        a.deepEqual(Pay.flow(Pay.slot('s1', 'n7')), { amount: '1.000000', at: 'counted', node: 'n7', parent: 'root', swarm: 's1', title: 'A late lemma' })
+        a.deepEqual(Pay.flow(Pay.slot('s1', 'n7')), {
+          amount: '1.000000',
+          at: 'counted',
+          node: 'n7',
+          parent: 'root',
+          started: undefined,
+          swarm: 's1',
+          title: 'A late lemma',
+        })
         a.deepEqual(owed(), [])
       },
     ],

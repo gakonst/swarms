@@ -647,13 +647,16 @@ export type Checker = {
 export function checker(fail: (invariant: string, detail: string) => void, count: () => void): Checker {
   let at = 'check'
   const show = (value: unknown) => JSON.stringify(value, (_, one: unknown) => (typeof one === 'bigint' ? one + 'n' : one))?.slice(0, 300)
+  const bare = (value: unknown) =>
+    JSON.stringify(value, (_, one: unknown) => (one === undefined ? '<undefined>' : typeof one === 'bigint' ? one + 'n' : one))?.slice(0, 300)
+  const differ = (got: unknown, want: unknown) => (show(got) === show(want) ? bare(got) + ' is not ' + bare(want) : show(got) + ' is not ' + show(want))
   const check = (ok: boolean, detail: string, note?: unknown) => {
     count()
     if (!ok) fail(at, (typeof note === 'string' ? note + ': ' : '') + detail)
   }
   return {
     as: (name: string) => void (at = name),
-    deepEqual: (got: unknown, want: unknown, note?: unknown) => check(isDeepStrictEqual(got, want), show(got) + ' is not ' + show(want), note),
+    deepEqual: (got: unknown, want: unknown, note?: unknown) => check(isDeepStrictEqual(got, want), differ(got, want), note),
     doesNotMatch: (got: string, pattern: RegExp, note?: unknown) => check(!pattern.test(got), show(got) + ' matches ' + pattern, note),
     doesNotThrow: (run: () => unknown, note?: unknown) => {
       let thrown: unknown

@@ -194,5 +194,12 @@
     "invariant": "older pause",
     "found": "2026-11-26 by pnpm dst --hunt: the scenario formatted 595 atomics as $0.00059 through two float divisions while Status shows the exact $0.000595 as $0.0006 (harness rounding, not a Swarms bug)",
     "fix": "test(dst): format scenario dollars from one exact division"
+  },
+  {
+    "job": "pay",
+    "seed": "h9fee38c190b6",
+    "invariant": "a transfer the server could not count yet stays owed, a retry counts it, and one already counted is counted",
+    "found": "2026-11-26 by pnpm dst --hunt: every pay seed failed once counted acts carried started: undefined (f8ccd6a) while the scenario expected no such key; the checker printed both sides alike since JSON drops undefined (harness assumption, not a Swarms bug)",
+    "fix": "test(dst): pay expects the started key on counted acts"
   }
 ]
