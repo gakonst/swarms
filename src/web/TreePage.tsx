@@ -252,11 +252,13 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   }
 
   const show = (next: Tab) => {
-    if (next === view) return
+    if (next === view && !thread && replying === undefined) return
     navigate(next === 'board' ? carried(`${base}/board`) : at(base, next), { keep: true, replace: true })
   }
 
   const propose = (nid: string) => `${path(nid)}?propose`
+
+  const opened = thread || replying !== undefined
 
   if (!grove)
     return tree.error ? (
@@ -286,11 +288,11 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
         <span className="strip-mood" data-mood={stood.mood} title={Status.line(stood.word)}><i />{Status.pill(stood.word)}</span>
       </Strip>
       <div className="panel panel-chat">
-        <Room config={props.config} items={items} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} onSwarm={root ? ask : undefined} onThread={setReplying} steer={false} swarm={swarm} thread={replying} visible={!thread} />
+        <Room config={props.config} items={items} onArtifact={results} onBack={steer} onMessages={heard} onResults={results} onSwarm={root ? ask : undefined} onThread={setReplying} steer={false} swarm={swarm} thread={replying} visible />
       </div>
       <Divider label="Resize the chat and the artifacts" name="swarm" />
-      <section aria-label="Artifacts" className="pane">
-      <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} view={view} />
+      <section aria-label="Artifacts" className="pane" data-open={opened || undefined}>
+      <Tabs base={base} board={count ? `Threads ${count}` : 'Threads'} onShow={show} open={opened ? { label: 'Thread', onClose: thread ? close : unthread } : undefined} view={view} />
       {(seen.has('board') || seen.has('chat')) && (
         <div className="grove-body panel panel-board" hidden={view !== 'board' && view !== 'chat'}>
           <section aria-label="Threads" className="grove-tree">
@@ -362,11 +364,19 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
           <Explainer spec={root?.spec} swarm={swarm} />
         </div>
       )}
-      </section>
       {thread && (
-        <aside aria-label="Thread" className="thread" {...swiped}>
+        <aside
+          aria-label="Thread"
+          className="thread"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || event.defaultPrevented || (event.target instanceof Element && event.target.closest('.overlay'))) return
+            event.preventDefault()
+            close()
+          }}
+          {...swiped}
+        >
           <header className="thread-head">
-            <button aria-label="Close the thread" className="thread-close" onClick={close} type="button"><span aria-hidden="true">{phone ? '‹' : '×'}</span></button>
+            <button aria-label="Close the thread" className="thread-close" onClick={close} type="button"><span aria-hidden="true" className="thread-x">×</span><span aria-hidden="true" className="thread-back">‹</span></button>
             <p><b>Thread</b><span><i aria-hidden="true">#</i>general</span></p>
           </header>
           <div className="thread-body">
@@ -405,6 +415,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
         </aside>
       )}
       {replying !== undefined && !thread && <ChatThread config={props.config} id={replying} items={items} key={replying} onClose={unthread} swarm={id} />}
+      </section>
       {asking && root && (
         <Overlay anchor={asking.anchor} className="compose-card" label="Add it to the board" onClose={() => setAsking(undefined)}>
           <Compose

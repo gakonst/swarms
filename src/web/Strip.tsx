@@ -97,14 +97,14 @@ export function Strip(props: { backers: readonly Backer[]; children?: ReactNode;
   )
 }
 
-export function Tabs(props: { base: string; board: string; onShow: (view: Tab) => void; view: Tab }) {
+export function Tabs(props: { base: string; board: string; onShow: (view: Tab) => void; open?: { label: string; onClose: () => void } | undefined; view: Tab }) {
   return (
     <nav aria-label="Artifacts" className="tabs">
       {tabs.map(([key, label]) => (
         <a
-          aria-current={props.view === key ? 'page' : undefined}
+          aria-current={props.view === key && !props.open ? 'page' : undefined}
           className={key === 'chat' ? 'tab tab-chat' : 'tab'}
-          data-default={(key === 'board' && props.view === 'chat') || undefined}
+          data-default={(key === 'board' && props.view === 'chat' && !props.open) || undefined}
           href={href(at(props.base, key))}
           key={key}
           onClick={(event: MouseEvent<HTMLAnchorElement>) => {
@@ -116,6 +116,12 @@ export function Tabs(props: { base: string; board: string; onShow: (view: Tab) =
           {key === 'board' ? props.board : label}
         </a>
       ))}
+      {props.open && (
+        <span aria-current="page" className="tab tab-open">
+          {props.open.label}
+          <button aria-label="Close the thread" className="tab-close" onClick={props.open.onClose} type="button"><span aria-hidden="true">×</span></button>
+        </span>
+      )}
     </nav>
   )
 }

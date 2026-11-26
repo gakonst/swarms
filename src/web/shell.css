@@ -71,6 +71,10 @@
 .thread-head p .inline { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .thread-close { display:grid; place-items:center; width:36px; height:36px; border:0; border-radius:50%; background:none; font-size:22px; line-height:1; color:var(--muted); cursor:pointer; }
 .thread-close:hover { background:var(--wash); color:var(--fg); }
+.pane[data-open] > .panel { display:none; }
+.tab-open { gap:2px; color:var(--fg); border-bottom-color:var(--fg); }
+.tab-close { display:grid; place-items:center; width:24px; height:24px; margin-right:-6px; border:0; border-radius:50%; background:none; font-size:17px; line-height:1; color:var(--muted); cursor:pointer; }
+.tab-close:hover { background:var(--wash); color:var(--fg); }
 .thread-body { flex:1; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; padding:16px 20px 40px; scrollbar-gutter:stable; }
 
 .general .strip-stats[data-ready='false'] { visibility:hidden; }
@@ -205,12 +209,12 @@
 @container hub (min-width:1000px) {
   :is(.grove, .swarm-shell) { display:grid; grid-template-columns:minmax(0, 1fr) auto min(var(--pane, clamp(340px, 34vw, 600px)), max(280px, calc(100% - 373px))); grid-template-rows:auto minmax(0, 1fr); }
   :is(.grove, .swarm-shell) > .strip { grid-column:1 / -1; grid-row:1; }
-  :is(.grove, .swarm-shell) > :is(.panel-chat, .thread) { grid-column:1; grid-row:2; min-width:0; padding-right:10px; }
+  :is(.grove, .swarm-shell) > .panel-chat { grid-column:1; grid-row:2; min-width:0; padding-right:10px; }
   :is(.grove, .swarm-shell) > .split-handle { grid-column:2; grid-row:2; }
   :is(.grove, .swarm-shell) > .pane { grid-column:3; grid-row:2; margin-right:calc(var(--margin) * -1); padding:0 var(--margin) 0 12px; }
-  :is(.grove, .swarm-shell)[data-replying] > .pane { display:none; }
-  :is(.grove, .swarm-shell) > .chat-thread { grid-column:3; grid-row:2; border-left:1px solid var(--line); }
-  .grove[data-thread] > .panel-chat { display:none; }
+  .pane > :is(.thread, .chat-thread) { flex:1 1 0; margin-right:calc(var(--margin) * -1); }
+  .pane > :is(.thread, .chat-thread) > .thread-head { display:none; }
+  .thread-back { display:none; }
   .tab-chat { display:none; }
   .tab[data-default] { border-bottom-color:var(--fg); color:var(--fg); }
   .split-handle { position:relative; display:grid; place-items:center; width:13px; cursor:col-resize; touch-action:none; }
@@ -225,16 +229,14 @@
   :is(.grove, .swarm-shell) { display:flex; flex-direction:column; }
   :is(.grove, .swarm-shell) > .pane { display:contents; }
   :is(.grove, .swarm-shell) > .pane > .tabs { order:1; }
-  :is(.grove, .swarm-shell) > :is(.panel-chat, .thread, .chat-thread), :is(.grove, .swarm-shell) > .pane > .panel { order:2; flex:1 1 0; min-height:0; }
-  :is(.grove, .swarm-shell)[data-view]:not([data-view='chat']) > :is(.panel-chat, .chat-thread), :is(.grove, .swarm-shell)[data-view='chat'] > .pane > .panel { display:none; }
-  :is(.grove, .swarm-shell)[data-thread] > .panel-chat, :is(.grove, .swarm-shell)[data-thread] > .pane > .panel { display:none; }
-  :is(.grove, .swarm-shell)[data-replying] > .panel-chat { display:none; }
+  :is(.grove, .swarm-shell) > .panel-chat, :is(.grove, .swarm-shell) > .pane > .panel { order:2; flex:1 1 0; min-height:0; }
+  :is(.grove, .swarm-shell)[data-view]:not([data-view='chat']) > .panel-chat, :is(.grove, .swarm-shell)[data-view='chat'] > .pane > .panel { display:none; }
+  .pane > :is(.thread, .chat-thread) { position:fixed; inset:0; z-index:40; height:var(--screen, 100dvh); padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); animation:thread-in .2s var(--ease); }
+  .thread-x { display:none; }
   .general > .pane { display:none; }
 }
 
 @media (max-width:719px) {
-  .grove > .thread { animation:sheet-in .24s var(--ease); }
-  .grove[data-thread] > .strip { display:none; }
 }
 
 @media (min-width:800px) and (max-width:899px) {

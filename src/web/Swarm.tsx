@@ -66,6 +66,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   const [stir, setStir] = useState(0)
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<RoomState>(`room:${id}`)?.members ?? [])
   const wallet = useWallet()
+  const [replying, setReplying, unthread] = useThread()
   const roster = useRoster(id, detail.data?.steering ?? 'open')
   const steers = steerer(roster?.steering ?? detail.data?.steering ?? 'open', roster, wallet.session?.address ?? wallet.address)
 
@@ -128,10 +129,8 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
     navigate(`${Nickname.path(renamed)}${view === 'chat' ? '' : `/${view}`}${location.search}`, { keep: true, replace: true })
   }
   const show = (next: Tab) => {
-    if (next !== view) navigate(at(base, next), { keep: true, replace: true })
+    if (next !== view || replying !== undefined) navigate(at(base, next), { keep: true, replace: true })
   }
-  const [replying, setReplying, unthread] = useThread()
-
 
   return (
     <article className="swarm-shell" data-view={view} data-replying={replying !== undefined ? '' : undefined}>
@@ -155,8 +154,8 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
         />
       </div>
       <Divider label="Resize the chat and the artifacts" name="swarm" />
-      <section aria-label="Artifacts" className="pane">
-      <Tabs base={base} board="Board" onShow={show} view={view} />
+      <section aria-label="Artifacts" className="pane" data-open={replying !== undefined || undefined}>
+      <Tabs base={base} board="Board" onShow={show} open={replying !== undefined ? { label: 'Thread', onClose: unthread } : undefined} view={view} />
       <div className="panel panel-page panel-board" hidden={view !== 'board' && view !== 'chat'}>
         <Now artifacts={shelf.data?.artifacts} branches={tree.data?.branches} onChat={() => show('chat')} onSteer={steer} stir={stir} surface={surface} swarm={swarm} updates={news.data?.updates} visible={view === 'board' || view === 'chat'} />
       </div>
@@ -173,8 +172,8 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
           {!archived && <Machines config={props.config} swarm={swarm} />}
         </div>
       )}
-      </section>
       {replying !== undefined && <ChatThread config={props.config} id={replying} key={replying} onClose={unthread} swarm={id} />}
+      </section>
       {riding && !archived && (
         <Overlay anchor={riding.anchor} className="ride ride-box" label="Ride it" onClose={() => setRiding(undefined)}>
           <Box

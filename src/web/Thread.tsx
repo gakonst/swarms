@@ -153,7 +153,7 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
       }}
     >
       <header className="thread-head">
-        <button aria-label="Close the thread" className="thread-close" onClick={props.onClose} type="button"><span aria-hidden="true">×</span></button>
+        <button aria-label="Close the thread" className="thread-close" onClick={props.onClose} type="button"><span aria-hidden="true" className="thread-x">×</span><span aria-hidden="true" className="thread-back">‹</span></button>
         <p><b>Thread</b><span>{count} {count === 1 ? 'reply' : 'replies'}{thread?.parent.node ? ' · board item' : ''}</span></p>
       </header>
       <div
