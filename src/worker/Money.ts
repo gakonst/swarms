@@ -18,7 +18,7 @@ export const everything: Plan = { credit: true, hands: true }
 
 const unbackedMs = Limits.Money.unbackedMs
 
-export const guards = { fresh: true }
+export const guards = { fresh: true, lower: true }
 
 function earned(hand: Gateway.Listed) {
   const charges = hand['charges'] as { usd?: unknown } | null | undefined
@@ -51,7 +51,7 @@ async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {
     if (counted < held) lowering.push([each, gift, counted])
     else raising.push([each, gift, counted])
   }
-  for (const [each, gift, counted] of [...raising, ...lowering]) {
+  for (const [each, gift, counted] of [...raising, ...(guards.lower ? lowering : [])]) {
     const taken = await Store.lower(self.env, row.id, gift.id, String(counted), gift.amount)
     if (!taken) continue
     changed = true

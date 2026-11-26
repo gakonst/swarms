@@ -42,7 +42,7 @@ export const next: Record<Kind, readonly Kind[]> = {
   working: ['working', 'ending'],
 }
 
-export const guards = { fence: true, legal: true, once: true, resume: true }
+export const guards = { fence: true, legal: true, once: true, resume: true, unpaid: true }
 
 export class Refused extends Error {
   readonly kind: 'Illegal' | 'Stale'
@@ -84,7 +84,7 @@ export function end(store: Store, n: number, report: Report, unpaid?: Ending['un
   const now = read(store)
   if (now.state !== 'working' || now.n !== n) throw new Refused('Stale', 'turn ' + n + ' is not running (' + kind(now) + ')')
   if (now.ending && guards.resume) return now
-  return write(store, { ...now, ending: { done: [], report, ...(unpaid ? { unpaid } : {}) } }, rev(now))
+  return write(store, { ...now, ending: { done: [], report, ...(unpaid && guards.unpaid ? { unpaid } : {}) } }, rev(now))
 }
 
 export type Ended = Extract<Phase.Run, { state: 'working' }> & { ending: Ending; rev?: number | undefined; v?: number | undefined }

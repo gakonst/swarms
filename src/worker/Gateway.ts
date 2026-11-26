@@ -149,6 +149,8 @@ export async function wallet(env: Cloudflare.Env) {
 
 let pricing: { at: number; value: Map<string, Setup.Price> } | undefined
 
+export const guards = { direct: true }
+
 export async function prices(env: Cloudflare.Env) {
   if (pricing && Date.now() - pricing.at < 600_000) return pricing.value
   const listed = await Edge.cached(
@@ -174,7 +176,7 @@ async function models(env: Cloudflare.Env) {
   for (const model of listed.data ?? []) {
     const price = model.pricing
     if (model.kind !== 'generate' || model.capabilities?.tools === false || price?.input === undefined || price.output === undefined) continue
-    if (Setup.direct(model.id)) continue
+    if (guards.direct && Setup.direct(model.id)) continue
     found.push({ cached: price.cached ?? price.input, id: model.id, input: price.input, output: price.output })
   }
   return found

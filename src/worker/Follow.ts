@@ -45,6 +45,8 @@ export type Stream = { fails: number; state: 'streaming' } | { retry: number; st
 
 export const streaming: Stream = { fails: 0, state: 'streaming' }
 
+export const guards = { stall: true }
+
 const streamFails = Limits.Follow.streamFails
 
 const fallbackMs = Limits.Follow.fallbackMs
@@ -111,7 +113,7 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   if (report && !report.ok && report.status !== 401 && report.status < 500)
     return Turns.finish(self, row, run, { error: report.detail, request_id: run.turn, status: 'failed' })
   const until = await Turns.lease(self, run)
-  if (until !== undefined && Date.now() >= until) {
+  if (guards.stall && until !== undefined && Date.now() >= until) {
     const failing = down || (!!report && !report.ok && report.status >= 500)
     const idle = Math.round((Date.now() - Turns.progress(self, run).progressed) / 60_000)
     const detail = !failing ? '' : !report || report.ok ? ': its events did not load' : `: ${report.detail}`

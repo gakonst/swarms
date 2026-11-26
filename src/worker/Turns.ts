@@ -90,6 +90,8 @@ export const retry: Work.Retry = { backoffMs: 15_000, maxAttempts: 8 }
 
 export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: retry.maxAttempts }
 
+export const guards = { gone: true, known: true }
+
 export const sponsorWaitMs = Limits.Turns.sponsorWaitMs
 
 export function wakeIn(attempts: number, sponsor: boolean) {
@@ -696,7 +698,7 @@ async function quiet(self: Swarm, row: Store.Row) {
   const agent = self.agent()?.id
   if (!agent) return true
   const listed = await Gateway.subagents(self.env, row.id, agent)
-  if (!listed.ok) return listed.status < 500
+  if (!listed.ok) return guards.gone && listed.status < 500
   return listed.value.every((subagent) => !['pending', 'queued', 'running'].includes(subagent.status.state))
 }
 
@@ -808,7 +810,7 @@ export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
   const money = await Money.refresh(self, row, { credit: true, hands: run.settled === undefined })
   const paused = self.run()
   if (paused.state !== 'paused' || paused.at !== run.at) return null
-  if (!money.known) return Date.now() + Clock.minuteMs
+  if (guards.known && !money.known) return Date.now() + Clock.minuteMs
   if (
     Phase.resumes(run.pause, { balance: BigInt(money.row.balance), due: Phase.due(run, Date.now()), left: money.left, reserve: Store.reserveOf(money.row) })
   ) {

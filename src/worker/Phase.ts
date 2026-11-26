@@ -164,7 +164,7 @@ export function due(run: Run, now: number) {
 
 function woken(run: Run) {
   if (run.state !== 'paused' || run.pause.why !== 'money') return Infinity
-  if (run.pause.wake !== null) return Math.min(run.pause.wake, run.at + maxPatienceMs)
+  if (run.pause.wake !== null) return guards.patience ? Math.min(run.pause.wake, run.at + maxPatienceMs) : run.pause.wake
   return refused(run.pause) ? run.at + rereadMs : Infinity
 }
 
@@ -194,7 +194,7 @@ export function reason(pause: Pause) {
   return short(pause)
 }
 
-export const guards = { exact: true }
+export const guards = { exact: true, patience: true }
 
 export function stuck(failure: Failure | null, sponsor: boolean) {
   if (sponsor) return reasons.sponsor
