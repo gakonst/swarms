@@ -66,6 +66,26 @@ export const Feedback = {
   swarmMost: 64,
 } as const
 
+export const Fixture = {
+  askMs: 600,
+  beatMs: 4000,
+  chatterJitterMs: 9000,
+  chatterMs: 14_000,
+  checkingMs: 2000,
+  createMs: 400,
+  fundMs: 500,
+  lobbyMs: 10_000,
+  moveMs: 300,
+  openMs: 200,
+  postMs: 250,
+  provenMs: 4500,
+  pulseMs: 5000,
+  reactMs: 150,
+  readMs: 160,
+  repliesMs: 200,
+  typingMs: 2400,
+} as const
+
 export const Follow = {
   streamFails: 2,
   fallbackMs: 5 * 60_000,

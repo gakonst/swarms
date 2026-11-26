@@ -2,6 +2,7 @@ import * as Answer from '../shared/Answer.ts'
 import * as Shelf from '../shared/Artifact.ts'
 import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Hall, Heard, Kind, Lent, OwnAi, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Reacted, Reaction, Replied, Replies, Room, Roster, Said, Shouted, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
+import * as Limits from '../shared/Limits.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
 import * as Progress from '../shared/Progress.ts'
@@ -428,14 +429,14 @@ const fixtures: Live[] = [
   }),
 ]
 
-function delay<T>(value: T, wanted = 160) {
+function delay<T>(wanted: number, value: T) {
   const ms = wanted * pace
   if (scene.has('wait')) return new Promise<T>(() => {})
   if (scene.has('down')) return new Promise<T>((_, reject) => setTimeout(() => reject(fail(503, 'unavailable', 'Swarms is not answering right now.')), ms))
   return steady(value, ms)
 }
 
-function steady<T>(value: T, ms = 160) {
+function steady<T>(value: T, ms: number = Limits.Fixture.readMs) {
   return new Promise<T>((resolve) => setTimeout(() => resolve(structuredClone(value)), ms * pace))
 }
 
@@ -539,7 +540,7 @@ export function swarms() {
   const funders = Object.fromEntries(swarms.map((swarm) => [swarm.id, riding(gifts.get(swarm.id.split('~')[0]!) ?? [])]))
   const riders = new Set(swarms.flatMap((swarm) => (gifts.get(swarm.id.split('~')[0]!) ?? []).map((gift) => gift.contributor.toLowerCase()))).size
   const heads = Object.fromEntries(swarms.filter((swarm) => swarm.id.split('~')[0] === treeId && !swarm.archivedAt).map((swarm) => [swarm.id, Tree.headline(Object.values(derive()))]))
-  return delay({ funders, heads, riders, swarms })
+  return delay(Limits.Fixture.readMs, { funders, heads, riders, swarms })
 }
 
 function riding(gifts: readonly Contribution[]): Tree.Funder[] {
@@ -562,7 +563,7 @@ function crowd() {
 }
 
 export async function swarm(key: string) {
-  return delay(detail(await find(key)))
+  return delay(Limits.Fixture.readMs, detail(await find(key)))
 }
 
 export async function feed(key: string, after: number, filter: { before?: number; limit?: number; who?: string } = {}) {
@@ -570,7 +571,7 @@ export async function feed(key: string, after: number, filter: { before?: number
     (entry) => entry.seq > after && (filter.before === undefined || entry.seq < filter.before) && (filter.who === undefined || (entry.who ?? 'agent') === filter.who),
   )
   const page = filter.before === undefined ? entries.slice(0, filter.limit ?? 200) : entries.slice(-(filter.limit ?? 200))
-  return delay({ entries: page, next: page.at(-1)?.seq ?? after })
+  return delay(Limits.Fixture.readMs, { entries: page, next: page.at(-1)?.seq ?? after })
 }
 
 const musings = [
@@ -670,7 +671,7 @@ export function create(input: { goal: string; nickname?: string; problem?: strin
   swarm.nickname = input.nickname ?? null
   swarm.archivedAt = null
   fixtures.unshift(swarm)
-  return delay(summary(swarm), 400)
+  return delay(Limits.Fixture.createMs, summary(swarm))
 }
 
 function begin(swarm: Live) {
@@ -705,7 +706,7 @@ export async function contribute(key: string, input: { hash: string; note?: stri
   settle(swarm)
   pulsed(key, swarm)
   changed(key, ['detail', 'members'])
-  return delay({ contribution, swarm: summary(swarm) }, 500)
+  return delay(Limits.Fixture.fundMs, { contribution, swarm: summary(swarm) })
 }
 
 const kit = typeof location === 'undefined' ? '' : location.origin + Site.at('/kit/swarm.css')
@@ -888,15 +889,15 @@ export function git(url: string): Promise<unknown> {
   const ref = parsed.searchParams.get('ref') ?? 'main'
   const commit = ref === 'main' ? log[0] : log.find((item) => item.sha === ref)
   const read = parsed.pathname.split('/').at(-1)
-  if (read === 'log') return delay({ commits: log.map(({ paths: _paths, ...item }) => item), cursor: null })
+  if (read === 'log') return delay(Limits.Fixture.readMs, { commits: log.map(({ paths: _paths, ...item }) => item), cursor: null })
   if (!commit) return Promise.reject(fail(404, 'not_found', 'No commit has this ref.'))
-  if (read === 'files') return delay({ files: Object.keys(files).sort().map((path) => ({ path, type: 'blob' })) })
+  if (read === 'files') return delay(Limits.Fixture.readMs, { files: Object.keys(files).sort().map((path) => ({ path, type: 'blob' })) })
   if (read === 'read') {
     const path = parsed.searchParams.get('path') ?? ''
     const text = files[path]
-    return text === undefined ? Promise.reject(fail(404, 'not_found', 'No file has this path.')) : delay({ path, size: text.length, text })
+    return text === undefined ? Promise.reject(fail(404, 'not_found', 'No file has this path.')) : delay(Limits.Fixture.readMs, { path, size: text.length, text })
   }
-  return delay({ files: commit.paths.map((path) => added(path, files[path] ?? '')) })
+  return delay(Limits.Fixture.readMs, { files: commit.paths.map((path) => added(path, files[path] ?? '')) })
 }
 
 const commit = (sha: string, parents: string[], message: string) => ({ date: null, message, parents, sha })
@@ -943,7 +944,7 @@ export async function updates(key: string) {
 }
 
 export function artifacts(key: string) {
-  return find(key).then(() => delay({ artifacts: shelves[key] ?? [] }))
+  return find(key).then(() => delay(Limits.Fixture.readMs, { artifacts: shelves[key] ?? [] }))
 }
 
 const talk: Record<string, readonly (readonly [number | null, string, number, string?])[]> = {
@@ -1021,7 +1022,7 @@ function mentions(swarm: Live, text: string) {
 
 export function account(who: `0x${string}` | undefined): Promise<Account> {
   if (!who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to read your account.'))
-  return delay({ address: who, handle: called(who), name: names.get(who.toLowerCase()) ?? null })
+  return delay(Limits.Fixture.readMs, { address: who, handle: called(who), name: names.get(who.toLowerCase()) ?? null })
 }
 
 export async function rider(who: string): Promise<Profile> {
@@ -1037,7 +1038,7 @@ export async function rider(who: string): Promise<Profile> {
   const shown = fixtures.map(summary).sort((a, b) => Number(b.id === treeId) - Number(a.id === treeId)).slice(0, 3)
   const swarms = shown.map((one, index) => ({ balance: one.balance, form: one.form, id: one.id, nickname: one.nickname, ridden: decimal(BigInt(12 - index * 4) * 1_000_000n), riders: one.contributors, since: one.createdAt, started: index === 1, title: one.title }))
   const ridden = decimal(swarms.reduce((sum, one) => sum + units(one.ridden), 0n))
-  return delay({ items, rider: { address, handle, name: names.get(address) ?? null }, ridden, swarms })
+  return delay(Limits.Fixture.readMs, { items, rider: { address, handle, name: names.get(address) ?? null }, ridden, swarms })
 }
 
 const own: OwnAi = {
@@ -1240,7 +1241,7 @@ export async function room(key: string, query: { after?: number; before?: number
   const swarm = seed(await find(key))
   const top = swarm.chat.filter((item) => item.parent === undefined)
   const messages = (query.before ? top.filter((item) => item.id < (query.before ?? 0)).slice(-100) : query.after ? top.filter((item) => item.id > (query.after ?? 0)) : top.slice(-100)).map((item) => decorated(swarm, item))
-  return delay({ me: me(swarm, who), members: members(swarm), messages, next: messages.at(-1)?.id ?? query.after ?? 0 })
+  return delay(Limits.Fixture.readMs, { me: me(swarm, who), members: members(swarm), messages, next: messages.at(-1)?.id ?? query.after ?? 0 })
 }
 
 export async function replies(key: string, message: number, after: number, who: `0x${string}` | undefined): Promise<Replied> {
@@ -1249,7 +1250,7 @@ export async function replies(key: string, message: number, after: number, who: 
   const parent = swarm.chat.find((item) => item.id === top)
   if (top === undefined || !parent) throw fail(404, 'not_found', 'No message in this room has that id.')
   const list = swarm.chat.filter((item) => item.parent === top && item.id > after).map((item) => decorated(swarm, item))
-  return delay({ me: me(swarm, who), members: members(swarm), next: list.at(-1)?.id ?? after, parent: decorated(swarm, parent), replies: list }, 200)
+  return delay(Limits.Fixture.repliesMs, { me: me(swarm, who), members: members(swarm), next: list.at(-1)?.id ?? after, parent: decorated(swarm, parent), replies: list })
 }
 
 export async function react(key: string, message: number, input: { emoji: string; on: boolean }, who: `0x${string}` | undefined): Promise<Reacted> {
@@ -1266,13 +1267,13 @@ export async function react(key: string, message: number, input: { emoji: string
   const kept = list.filter((item) => item.who.length)
   known.set(message, kept)
   tell(key, { id: message, reactions: kept, type: 'reacted' })
-  return delay({ id: message, reactions: kept }, 150)
+  return delay(Limits.Fixture.reactMs, { id: message, reactions: kept })
 }
 
 export async function say(key: string, input: { artifact?: boolean; parent?: number; steer?: string; text: string }, who: `0x${string}` | undefined): Promise<Posted> {
   const swarm = seed(await find(key))
   if (scene.has('stall')) return new Promise<Posted>(() => {})
-  if (scene.has('mute')) return new Promise<Posted>((_, reject) => setTimeout(() => reject(fail(503, 'unavailable', 'The room is not answering right now.')), 600))
+  if (scene.has('mute')) return new Promise<Posted>((_, reject) => setTimeout(() => reject(fail(503, 'unavailable', 'The room is not answering right now.')), Limits.Fixture.askMs))
   if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to post in a room.')
   if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
   const self = me(swarm, who) as Me
@@ -1284,7 +1285,7 @@ export async function say(key: string, input: { artifact?: boolean; parent?: num
     const parent = rooted(swarm, input.parent)
     if (parent === undefined) throw fail(404, 'not_found', 'No message in this room has that id to reply to.')
     const reply = post(key, swarm, { artifact: null, at: Date.now(), author: who, id: (swarm.chat.at(-1)?.id ?? 0) + 1, mentions: mentions(swarm, text), parent, steer: null, text })
-    return delay({ me: self, message: reply }, 250)
+    return delay(Limits.Fixture.postMs, { me: self, message: reply })
   }
   if (swarm.steering === 'team' && Mention.steers(text) && !seated) throw fail(403, 'not_member', "Only this swarm's team steers it. Its admins add who may: ask one of them in the room.")
   let steer: Said['steer'] = null
@@ -1301,7 +1302,7 @@ export async function say(key: string, input: { artifact?: boolean; parent?: num
     changed(key, ['detail', 'members'])
   }
   const message = post(key, swarm, { artifact: null, at: Date.now(), author: who, id: (swarm.chat.at(-1)?.id ?? 0) + 1, mentions: mentions(swarm, text), steer, text })
-  return delay({ me: me(swarm, who) as Me, message }, 250)
+  return delay(Limits.Fixture.postMs, { me: me(swarm, who) as Me, message })
 }
 
 export async function btw(key: string, input: { branch?: number; question: string; thread: readonly { answer: string; question: string }[] }, who: `0x${string}` | undefined) {
@@ -1313,7 +1314,7 @@ export async function btw(key: string, input: { branch?: number; question: strin
     throw fail(403, 'not_member', "Side questions are paid from the swarm's money, so they take at least $0.01 of your own sent to it.")
   const branch = input.branch === undefined ? undefined : grown(swarm).find((found) => found.id === input.branch)
   const answer = `${branch ? `${branch.role}, from what it has done on its branch` : `From what it has done so far on "${swarm.title}"`}: ${input.thread.length ? 'building on your earlier questions, ' : ''}it would answer "${input.question.trim()}" from its last update without stopping its work.`
-  return delay({ answer, question: input.question.trim() }, 600)
+  return delay(Limits.Fixture.askMs, { answer, question: input.question.trim() })
 }
 
 const versions = new Map<string, number>()
@@ -1366,9 +1367,9 @@ export function chatter(key: string, listen: boolean, listener: (event: Chatter 
           swarm.chat.push(message)
           tell(key, { message, type: 'said' })
           next()
-        }, 2400)
+        }, Limits.Fixture.typingMs)
       })
-    }, 14_000 + ((turn * 7919) % 9000))
+    }, Limits.Fixture.chatterMs + ((turn * 7919) % Limits.Fixture.chatterJitterMs))
   }
   const follow = () => {
     let sent: string | undefined
@@ -1387,7 +1388,7 @@ export function chatter(key: string, listen: boolean, listener: (event: Chatter 
         fed = swarm.feed.length
         updates = swarm.updates.length
       }, () => {})
-    }, 5000)
+    }, Limits.Fixture.pulseMs)
   }
   setTimeout(() => {
     if (!alive) return
@@ -1396,7 +1397,7 @@ export function chatter(key: string, listen: boolean, listener: (event: Chatter 
     if (!offline) listener({ type: 'welcome', version: String(versions.get(key) ?? 0) })
     follow()
     if (!listen) next()
-  }, 200)
+  }, Limits.Fixture.openMs)
   return {
     close: () => {
       alive = false
@@ -1431,8 +1432,8 @@ export function lobby(listener: (event: Lobby | { type: 'open' | 'closed' }) => 
         sent.set(swarm.id, json)
         listener({ swarm, type: 'swarm' })
       }
-    }, 10_000)
-  }, 200)
+    }, Limits.Fixture.lobbyMs)
+  }, Limits.Fixture.openMs)
   return () => {
     alive = false
     clearTimeout(opened)
@@ -1460,7 +1461,7 @@ export async function edit(key: string, who: `0x${string}` | undefined, edits: {
   if (edits.title !== undefined) swarm.title = edits.title.trim()
   if (edits.nickname !== undefined) swarm.nickname = edits.nickname
   if (edits.picture !== undefined) swarm.picture = edits.picture
-  return delay(summary(swarm))
+  return delay(Limits.Fixture.readMs, summary(swarm))
 }
 
 export async function paint(key: string, who: `0x${string}` | undefined, image: Blob): Promise<Summary> {
@@ -1469,7 +1470,7 @@ export async function paint(key: string, who: `0x${string}` | undefined, image: 
 
 export async function team(key: string): Promise<Roster> {
   const swarm = seed(await find(key))
-  return delay(rostered(swarm))
+  return delay(Limits.Fixture.readMs, rostered(swarm))
 }
 
 function governed(swarm: Live, who: `0x${string}` | undefined) {
@@ -1480,7 +1481,7 @@ function governed(swarm: Live, who: `0x${string}` | undefined) {
 function regrouped(swarm: Live, next: Roster) {
   rosters.set(swarm.id, next)
   tell(swarm.id, { roster: next, type: 'roster' })
-  return delay(next, 250)
+  return delay(Limits.Fixture.postMs, next)
 }
 
 export async function govern(key: string, input: { memberBudget?: number | null; steering?: Steering }, who: `0x${string}` | undefined): Promise<Roster> {
@@ -1491,7 +1492,7 @@ export async function govern(key: string, input: { memberBudget?: number | null;
   const current = rostered(swarm)
   if (input.memberBudget === undefined) {
     tell(key, { roster: current, type: 'roster' })
-    return delay(current, 250)
+    return delay(Limits.Fixture.postMs, current)
   }
   return regrouped(swarm, { ...current, memberBudget: input.memberBudget === null ? null : decimal(units(String(input.memberBudget))), team: current.team ?? team0 })
 }
@@ -1583,7 +1584,7 @@ function grown(swarm: Live): Branch[] {
 
 export async function branches(key: string): Promise<Branches> {
   const swarm = seed(await find(key))
-  return delay({ branches: grown(swarm), steering: swarm.steering })
+  return delay(Limits.Fixture.readMs, { branches: grown(swarm), steering: swarm.steering })
 }
 
 function directing(swarm: Live, who: `0x${string}` | undefined) {
@@ -1610,7 +1611,7 @@ export async function stop(key: string, branch: number, who: `0x${string}` | und
     planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), ...target.funders.map((funder) => ({ amount: -(back * units(funder.amount)) / funded, branch, contributor: funder.address }))])
   push(swarm, 'status', `${Mention.at(called(who as string))} stopped ${target.role} (branch ${branch}).`, null, Date.now())
   changed(key, ['branches', 'members'])
-  return delay(grown(swarm).find((found) => found.id === branch) as Branch, 300)
+  return delay(Limits.Fixture.moveMs, grown(swarm).find((found) => found.id === branch) as Branch)
 }
 
 export async function fund(key: string, branch: number, input: { amount: string; artifact?: boolean; message?: string }, who: `0x${string}` | undefined): Promise<Branch> {
@@ -1632,7 +1633,7 @@ export async function fund(key: string, branch: number, input: { amount: string;
     swarm.updatedAt = at
   } else push(swarm, 'funds', `${Mention.at(called(who as string))} put ${usd(decimal(amount))} behind ${after.role} (branch ${branch}), whose budget is now ${usd(after.budget ?? '0')}.`, null, Date.now())
   changed(key, ['branches', 'members'])
-  return delay(after, 300)
+  return delay(Limits.Fixture.moveMs, after)
 }
 
 export async function move(key: string, branch: number, input: { amount: string; to: number }, who: `0x${string}` | undefined): Promise<Branch[]> {
@@ -1650,7 +1651,7 @@ export async function move(key: string, branch: number, input: { amount: string;
   planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), { amount: -amount, branch, contributor }, { amount, branch: input.to, contributor }])
   const after = grown(swarm)
   changed(key, ['branches', 'members'])
-  return delay([after.find((found) => found.id === branch) as Branch, after.find((found) => found.id === input.to) as Branch], 300)
+  return delay(Limits.Fixture.moveMs, [after.find((found) => found.id === branch) as Branch, after.find((found) => found.id === input.to) as Branch])
 }
 
 
@@ -1903,7 +1904,7 @@ function twig(key: string, nidGiven: string) {
 export function treeView(key: string, query: { depth?: number; root?: string }): Promise<TreeView> {
   if (key !== treeId) return Promise.reject(fail(404, 'not_found', 'No swarm has this id.'))
   const nodes = derive()
-  return delay({ headline: Tree.headline(Object.values(nodes)), nodes: deep(nodes, query.root ?? 'root', query.depth ?? 3), seq: treeSeq })
+  return delay(Limits.Fixture.readMs, { headline: Tree.headline(Object.values(nodes)), nodes: deep(nodes, query.root ?? 'root', query.depth ?? 3), seq: treeSeq })
 }
 
 function told(found: Twig): Tree.Delta[] {
@@ -1920,7 +1921,7 @@ export function nodeView(key: string, nidGiven: string): Promise<NodeView> {
   try {
     const found = twig(key, nidGiven)
     const node = derive()[found.id]!
-    return delay({ ...node, funders: found.funders, runs: [...found.runs].reverse(), steers: found.steers, suggestions: found.suggestions })
+    return delay(Limits.Fixture.readMs, { ...node, funders: found.funders, runs: [...found.runs].reverse(), steers: found.steers, suggestions: found.suggestions })
   } catch (error) {
     return Promise.reject(error)
   }
@@ -1928,7 +1929,7 @@ export function nodeView(key: string, nidGiven: string): Promise<NodeView> {
 
 export function nodeUpdates(key: string, nidGiven: string): Promise<NodeUpdates> {
   try {
-    return delay({ deltas: told(twig(key, nidGiven)).slice(0, 30), next: treeSeq })
+    return delay(Limits.Fixture.readMs, { deltas: told(twig(key, nidGiven)).slice(0, 30), next: treeSeq })
   } catch (error) {
     return Promise.reject(error)
   }
@@ -1941,7 +1942,7 @@ export function burn(key: string): Promise<ProgressView> {
   const total = grove.reduce((sum, each) => sum + each.spent, 0n)
   const hours = 48
   const now = Date.now()
-  return delay({ burn: scene.has('empty') ? [] : Array.from({ length: hours + 1 }, (_, index) => {
+  return delay(Limits.Fixture.readMs, { burn: scene.has('empty') ? [] : Array.from({ length: hours + 1 }, (_, index) => {
     const when = now - (hours - index) * 3_600_000
     return { at: when, deadEnds: dead.filter((time) => time <= when).length, proven: proven.filter((time) => time <= when).length, spent: decimal((total * BigInt(index)) / BigInt(hours)) }
   }) })
@@ -1949,7 +1950,7 @@ export function burn(key: string): Promise<ProgressView> {
 
 export function proofs(key: string): Promise<ProofsView> {
   if (key !== treeId) return Promise.reject(fail(404, 'not_found', 'No swarm has this id.'))
-  return delay({ proofs: grove.filter((each) => each.proof).map((each) => ({ check: each.proof!, node: each.id, title: each.title })).sort((a, b) => b.check.at - a.check.at) })
+  return delay(Limits.Fixture.readMs, { proofs: grove.filter((each) => each.proof).map((each) => ({ check: each.proof!, node: each.id, title: each.title })).sort((a, b) => b.check.at - a.check.at) })
 }
 
 function emit(found: Twig, event: Tree.Delta['event'], text: string) {
@@ -1975,7 +1976,7 @@ export async function propose(key: string, input: { form: Tree.Form; parent: str
   if (input.said?.trim()) proposed.set(made, input.said.trim())
   proposals.set(made, { by: who(0), createdAt: Date.now(), deltas: [], end: null, form: input.form, funders: [], id: made, inherited: 0n, left: 0n, needs: [], parent: parent.id, pledged: 0n, proof: null, run: null, runs: [], spent: 0n, statement: input.statement?.trim() || null, status: 'proposed', steers: [], suggestions: [], title: input.title.trim(), updatedAt: Date.now(), words: input.spec.trim() })
   const memo = `0x${hex(`memo:${made}`, 64)}` as `0x${string}`
-  return delay({ nid: made, transfer: { amount: '1.000000', call: null, link: '', memo, memoText: `n:${made}`, note: `n:${made}`, swarm: key, symbol: 'USDC.e', to: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE', token: 'usdce', tokenAddress: '0x20C000000000000000000000b9537d11c60E8b50' } }, 400)
+  return delay(Limits.Fixture.createMs, { nid: made, transfer: { amount: '1.000000', call: null, link: '', memo, memoText: `n:${made}`, note: `n:${made}`, swarm: key, symbol: 'USDC.e', to: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE', token: 'usdce', tokenAddress: '0x20C000000000000000000000b9537d11c60E8b50' } })
 }
 
 async function uncountable() {
@@ -2011,7 +2012,7 @@ export async function ride(key: string, input: { hash: string; node: string }): 
   const swarm = await find(key)
   swarm.contributions.push({ amount: decimal(amount), at: Date.now(), contributor: visitor, hash, note: null, token: sent.get(hash)?.token ?? 'usdce' })
   settle(swarm)
-  return delay({ contribution: swarm.contributions.at(-1)!, swarm: summary(swarm) }, 500)
+  return delay(Limits.Fixture.fundMs, { contribution: swarm.contributions.at(-1)!, swarm: summary(swarm) })
 }
 
 export async function suggest(key: string, input: { parent: string; text: string }, by: `0x${string}` | undefined): Promise<Suggested> {
@@ -2019,14 +2020,14 @@ export async function suggest(key: string, input: { parent: string; text: string
   const found = twig(key, input.parent)
   const made = `idea-${found.suggestions.length + 2}`
   found.suggestions.unshift({ at: Date.now(), id: made, text: input.text.trim(), who: who(0) })
-  return delay({ id: made }, 300)
+  return delay(Limits.Fixture.moveMs, { id: made })
 }
 
 export async function steerNode(key: string, nidGiven: string, input: { amount: string; note: string }, by: `0x${string}` | undefined): Promise<Tree.Node> {
   if (!by) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to steer.')
   const found = twig(key, nidGiven)
   found.steers.unshift({ amount: input.amount, at: Date.now(), note: input.note.trim(), who: who(0) })
-  return delay(emit(found, 'steered', `@ada: ${input.note.trim()}`).node, 300)
+  return delay(Limits.Fixture.moveMs, emit(found, 'steered', `@ada: ${input.note.trim()}`).node)
 }
 
 export async function moveNode(key: string, nidGiven: string, input: { amount: string; to: string }, by: `0x${string}` | undefined): Promise<Tree.Node> {
@@ -2047,7 +2048,7 @@ export async function moveNode(key: string, nidGiven: string, input: { amount: s
     else target.funders.unshift({ amount: decimal(amount), since: Date.now(), who: who(0) })
     emit(target, 'moved', `@ada moved ${usd(input.amount)} here`)
   }
-  return delay(emit(found, 'moved', `@ada moved ${usd(input.amount)} ${target ? 'to ' + target.title : 'to their free money'}`).node, 300)
+  return delay(Limits.Fixture.moveMs, emit(found, 'moved', `@ada moved ${usd(input.amount)} ${target ? 'to ' + target.title : 'to their free money'}`).node)
 }
 
 function woods(listener: (event: Chatter | { type: 'open' | 'closed' }) => void) {
@@ -2066,7 +2067,7 @@ function woods(listener: (event: Chatter | { type: 'open' | 'closed' }) => void)
         timers.push(setTimeout(() => {
           if (found.run) found.run = { ...found.run, checking: true }
           emit(found, 'checking', 'Run 4 says proved; the verifier is building it')
-        }, 2000))
+        }, Limits.Fixture.checkingMs))
         timers.push(setTimeout(() => {
           found.status = 'proven'
           found.run = null
@@ -2074,20 +2075,20 @@ function woods(listener: (event: Chatter | { type: 'open' | 'closed' }) => void)
           found.proof.at = Date.now()
           found.runs.push({ budget: '5.000000', commit: found.proof.commit, k: found.runs.length + 1, outcome: 'proved', since: Date.now() - 600_000, spent: '1.120000', summary: 'Proved the AND gate bound for all k; sent to the verifier', task: `r:${found.id}:${found.runs.length + 1}`, until: Date.now() })
           emit(found, 'proven', 'Checked by Lean')
-        }, 4500))
+        }, Limits.Fixture.provenMs))
       }
     }
     if (!scene.has('empty') && !scene.has('seeded'))
       beat = setInterval(() => {
         const busy = grove.filter((each) => each.status === 'in flight' && each.run && !each.run.checking)
-        const found = busy[Math.floor(Date.now() / 4000) % Math.max(1, busy.length)]
+        const found = busy[Math.floor(Date.now() / Limits.Fixture.beatMs) % Math.max(1, busy.length)]
         if (!found?.run) return
         found.spent += 30_000n
         found.left = found.left > 30_000n ? found.left - 30_000n : 0n
         found.run = { ...found.run, spent: decimal(units(found.run.spent) + 30_000n) }
         emit(found, 'progress', 'Spent $0.03 on the next step')
-      }, 4000)
-  }, 200))
+      }, Limits.Fixture.beatMs)
+  }, Limits.Fixture.openMs))
   return {
     close: () => {
       for (const timer of timers) clearTimeout(timer)
@@ -2110,7 +2111,7 @@ const hallListeners = new Set<(event: Heard | { type: 'open' | 'closed' }) => vo
 
 export async function general(query: { after?: number; before?: number }): Promise<Hall> {
   const messages = query.before ? hallSaid.filter((item) => item.id < (query.before ?? 0)) : hallSaid.filter((item) => item.id > (query.after ?? 0))
-  return delay({ messages, names: Object.fromEntries(hallSaid.flatMap((item) => (item.author ? [[item.author, called(item.author)]] : []))), next: messages.at(-1)?.id ?? query.after ?? 0 })
+  return delay(Limits.Fixture.readMs, { messages, names: Object.fromEntries(hallSaid.flatMap((item) => (item.author ? [[item.author, called(item.author)]] : []))), next: messages.at(-1)?.id ?? query.after ?? 0 })
 }
 
 export async function shout(text: string, who: `0x${string}` | undefined): Promise<Shouted> {
@@ -2120,7 +2121,7 @@ export async function shout(text: string, who: `0x${string}` | undefined): Promi
   const message: Said = { artifact: null, at: Date.now(), author: who, id: (hallSaid.at(-1)?.id ?? 0) + 1, mentions: [], steer: null, text: text.trim() }
   hallSaid.push(message)
   for (const listener of hallListeners) listener({ message, name, type: 'said' })
-  return delay({ message, name }, 250)
+  return delay(Limits.Fixture.postMs, { message, name })
 }
 
 export function hall(listener: (event: Heard | { type: 'open' | 'closed' }) => void) {
@@ -2129,7 +2130,7 @@ export function hall(listener: (event: Heard | { type: 'open' | 'closed' }) => v
     if (offline) return
     listener({ type: 'open' })
     listener({ type: 'welcome' })
-  }, 200)
+  }, Limits.Fixture.openMs)
   return () => {
     clearTimeout(opened)
     hallListeners.delete(listener)
