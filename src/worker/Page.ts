@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { waitUntil } from 'cloudflare:workers'
-import { render } from '#ssr'
 import type { Boot, Face } from '../shared/Boot.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Hello from '../shared/Hello.ts'
@@ -293,6 +292,7 @@ async function draw(request: Request, env: Cloudflare.Env) {
     const boot: Boot = { base: Site.prefix(url), config: await configuring, data, face: face(request.headers.get('cookie')), hello: Hello.parse(request.headers.get('cookie')), mobile: mobile(request), now: Date.now(), rail: Rail.parse(request.headers.get('cookie')), site: Site.url(env, url), socket: `${url.protocol === 'https:' ? 'wss' : 'ws'}://${url.host}${Site.prefix(url)}`, url: url.href, zone: zone(request.headers.get('cookie')) }
     await writer.write(encoder.encode(`<title>${escape(head.title)}</title><meta name="description" content="${escape(head.description)}">${Share.tags(head)}${closing}<div id="root">`))
     try {
+      const { render } = await import('#ssr')
       const stream = await store.run(boot, () => render(request.signal))
       const reader = stream.getReader()
       for (;;) {
