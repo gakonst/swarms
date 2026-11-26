@@ -213,7 +213,6 @@ test/sockets.test.ts 1 pre-existing hand formatting
 test/status.test.ts 1 pre-existing hand formatting
 test/store.test.ts 1 pre-existing hand formatting
 test/sweep.test.ts 1 pre-existing hand formatting
-test/team.test.ts 1 pre-existing hand formatting
 test/telegram.test.ts 1 pre-existing hand formatting
 test/threads.test.ts 1 pre-existing hand formatting
 test/triage.test.ts 1 pre-existing hand formatting

@@ -46,7 +46,6 @@ test/sockets.test.ts 1 pre-existing unit test; port what it checks to a test/dst
 test/status.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/store.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/sweep.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/team.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/telegram.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/threads.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/triage.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
