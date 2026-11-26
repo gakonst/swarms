@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import { createHash } from 'node:crypto'
 import * as Answer from '../../src/shared/Answer.ts'
 import * as Fuzzy from '../../src/shared/Fuzzy.ts'
@@ -615,3 +616,33 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
   { flip: mutant('read'), invariant: 'unique ids', name: 'surface.read', scenario: 'surface', seeds: ['1', '2', '3'] },
   { flip: mutant('seen'), invariant: 'leaves', name: 'showing.seen', scenario: 'showing', seeds: ['1', '2', '3'] },
 ]
+
+export function checker(fail: (invariant: string, detail: string) => void, count: () => void) {
+  let at = 'check'
+  const show = (value: unknown) => JSON.stringify(value, (_, one: unknown) => (typeof one === 'bigint' ? one + 'n' : one))?.slice(0, 300)
+  const check = (ok: boolean, detail: string, note?: unknown) => {
+    count()
+    if (!ok) fail(at, (typeof note === 'string' ? note + ': ' : '') + detail)
+  }
+  return {
+    as: (name: string) => void (at = name),
+    deepEqual: (got: unknown, want: unknown, note?: unknown) => check(isDeepStrictEqual(got, want), show(got) + ' is not ' + show(want), note),
+    doesNotMatch: (got: string, pattern: RegExp, note?: unknown) => check(!pattern.test(got), show(got) + ' matches ' + pattern, note),
+    equal: (got: unknown, want: unknown, note?: unknown) => check(Object.is(got, want), show(got) + ' is not ' + show(want), note),
+    match: (got: string, pattern: RegExp, note?: unknown) => check(pattern.test(got), show(got) + ' does not match ' + pattern, note),
+    notEqual: (got: unknown, want: unknown, note?: unknown) => check(!Object.is(got, want), show(got) + ' equals ' + show(want), note),
+    ok: (value: unknown, note?: unknown) => check(!!value, 'not true', note),
+    rejects: async (promise: Promise<unknown>, pattern?: RegExp) => {
+      const error = await promise.then(
+        () => undefined,
+        (thrown: unknown) => thrown,
+      )
+      check(
+        error !== undefined && (!pattern || pattern.test(String((error as Error)?.message ?? error))),
+        'did not reject' + (pattern ? ' with ' + pattern : ''),
+      )
+    },
+  }
+}
+
+export type Checker = ReturnType<typeof checker>
