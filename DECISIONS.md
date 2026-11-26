@@ -1570,13 +1570,13 @@ Run from the pushed `origin/main`, with the Cloudflare credentials, on a machine
    CTX=tempo wrangler ctx exec pnpm exec wrangler deployments list --name swarms
    CTX=tempo wrangler ctx exec pnpm exec wrangler secret list --name swarms
    ```
-   Write the values of every secret that list names (`SWARMS_GATEWAY_KEY`, `SWARMS_GITHUB_WEBHOOK_SECRET`, and `SWARMS_GITHUB_TOKEN` if listed) into a JSON file outside the repository, such as `~/.swarms-site.secrets.json`, from where they are kept; Cloudflare cannot read them back from `swarms`.
+   `swarms-site` holds no secrets of its own (2026-11-26): Cloudflare cannot read a secret back, so instead of copying them, `swarms` exports a named entrypoint, `Vault` (`src/worker/Vault.ts`), whose `secrets()` hands over the four the site uses (`SWARMS_GATEWAY_KEY`, `SWARMS_GITHUB_WEBHOOK_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`; never `SWARMS_SECRET`). A named entrypoint answers only a service binding that names it, so only `swarms-site`'s `VAULT` binding reaches it. The site reads them once per isolate (`Filled.filled`, cached, retried after a failure) and merges them into its env before routing; where its own env already has them (local dev, tests) it never calls the vault. A secret is still set or rotated once, on `swarms` only.
 1. Create `swarms-site` without its custom domains:
    ```
    jq 'del(.routes)' dist/swarms_site/wrangler.json > dist/swarms_site/wrangler.first.json
-   CTX=tempo wrangler ctx exec pnpm exec wrangler deploy -c dist/swarms_site/wrangler.first.json --secrets-file ~/.swarms-site.secrets.json
+   CTX=tempo wrangler ctx exec pnpm exec wrangler deploy -c dist/swarms_site/wrangler.first.json
    ```
-   It serves only `swarms-site.tempo-dev.workers.dev`, against today's `swarms` (which still serves `/og` and `/v1/auth` itself). Check it: `curl -s https://swarms-site.tempo-dev.workers.dev/swarms/v1/health`, `curl -s https://swarms-site.tempo-dev.workers.dev/swarms/v1/swarms/06cf5d7c8f92 | jq '{id, failure}'`, `curl -s -o /dev/null -w '%{http_code}\n' https://swarms-site.tempo-dev.workers.dev/swarms/og/about/card.png`.
+   It serves only `swarms-site.tempo-dev.workers.dev`, against today's `swarms`, which has no `Vault` yet, so its routes that call the gateway fail until step 2; nobody reaches that address. After step 2, check it: `curl -s https://swarms-site.tempo-dev.workers.dev/swarms/v1/health`, `curl -s https://swarms-site.tempo-dev.workers.dev/swarms/v1/swarms/06cf5d7c8f92 | jq '{id, failure}'`, `curl -s -o /dev/null -w '%{http_code}\n' https://swarms-site.tempo-dev.workers.dev/swarms/og/about/card.png`.
 2. Deploy the objects' script:
    ```
    CTX=tempo wrangler ctx exec pnpm exec wrangler deploy -c dist/swarms/wrangler.json

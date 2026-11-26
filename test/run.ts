@@ -8,7 +8,7 @@ import './host.ts'
 registerHooks({
   resolve: (specifier, context, next) =>
     specifier === 'cloudflare:workers'
-      ? { shortCircuit: true, url: 'data:text/javascript,export const waitUntil = () => {}; export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env } }' }
+      ? { shortCircuit: true, url: 'data:text/javascript,export const waitUntil = () => {}; export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env } }; export class WorkerEntrypoint { constructor(ctx, env) { this.ctx = ctx; this.env = env } }' }
       : next(specifier, context),
 })
 

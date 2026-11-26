@@ -4,6 +4,7 @@ import * as Signin from './Signin.ts'
 
 export { Lobby } from './Lobby.ts'
 export { Swarm } from './Swarm.ts'
+export { Vault } from './Vault.ts'
 
 export default {
   fetch(request: Request, env: Cloudflare.Env) {

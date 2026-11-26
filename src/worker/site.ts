@@ -1,3 +1,4 @@
+import * as Filled from './Filled.ts'
 import { Hono } from 'hono'
 import * as Artifacts from './Artifacts.ts'
 import * as Code from './Code.ts'
@@ -347,7 +348,8 @@ function paged(path: string) {
 }
 
 export default {
-  fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext) {
+  async fetch(request: Request, given: Cloudflare.Env, context: ExecutionContext) {
+    const env = await Filled.filled(given, given.VAULT)
     const url = new URL(request.url)
     const www = Site.www(url)
     if (www) return new Response(null, { headers: { location: www }, status: 301 })
