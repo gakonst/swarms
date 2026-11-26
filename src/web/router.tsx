@@ -31,7 +31,7 @@ export function href(path: string) {
   const scene = base.searchParams.get('scene')
   url.searchParams.set('fixture', '')
   if (scene) url.searchParams.set('scene', scene)
-  return Site.at(`${url.pathname}${url.search}${url.hash}`)
+  return Site.at(`${url.pathname}${url.search.replace(/([?&]fixture)=(?=&|$)/, '$1')}${url.hash}`)
 }
 
 const warmers: ((path: string) => void)[] = []
