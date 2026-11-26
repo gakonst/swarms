@@ -24,7 +24,7 @@ import * as Pay from './pay.ts'
 import { useShown } from './Share.tsx'
 import { Reins, steerer, useRoster } from './Steering.tsx'
 import { at, backers, dollars, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
-import { back, Link, navigate, useBase, useQuery } from './router.tsx'
+import { back, Link, navigate, useBase, useQuery, useThread } from './router.tsx'
 import { stamp } from './format.ts'
 import { ChatThread } from './Thread.tsx'
 import * as Wire from './wire.ts'
@@ -130,7 +130,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   const show = (next: Tab) => {
     if (next !== view) navigate(at(base, next), { keep: true, replace: true })
   }
-  const [replying, setReplying] = useState<number>()
+  const [replying, setReplying, unthread] = useThread()
 
 
   return (
@@ -174,7 +174,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
         </div>
       )}
       </section>
-      {replying !== undefined && <ChatThread config={props.config} id={replying} key={replying} onClose={() => setReplying(undefined)} swarm={id} />}
+      {replying !== undefined && <ChatThread config={props.config} id={replying} key={replying} onClose={unthread} swarm={id} />}
       {riding && !archived && (
         <Overlay anchor={riding.anchor} className="ride ride-box" label="Ride it" onClose={() => setRiding(undefined)}>
           <Box

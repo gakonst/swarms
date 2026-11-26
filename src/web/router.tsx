@@ -1,4 +1,4 @@
-import { createContext, type MouseEvent, type ReactNode, useContext, useSyncExternalStore } from 'react'
+import { createContext, type MouseEvent, type ReactNode, useCallback, useContext, useSyncExternalStore } from 'react'
 import * as Site from '../shared/Site.ts'
 import { fixture } from './api.ts'
 import { here } from './boot.ts'
@@ -54,6 +54,36 @@ export function navigate(path: string, options: { replace?: boolean; keep?: bool
   else history.pushState({ depth: depth() + 1 }, '', href(path))
   dispatchEvent(new PopStateEvent('popstate'))
   if (!options.keep) scrollTo(0, 0)
+}
+
+let threaded: string | undefined
+
+function withThread(id: number | undefined) {
+  const url = new URL(location.href)
+  if (id === undefined) url.searchParams.delete('thread')
+  else url.searchParams.set('thread', String(id))
+  return `${Site.strip(url.pathname)}${url.search}`
+}
+
+export function useThread() {
+  const raw = useQuery('thread')
+  const id = raw !== null && /^[0-9]+$/.test(raw) ? Number(raw) : undefined
+  const open = useCallback(
+    (next: number) => {
+      if (next === id) return
+      const pushed = threaded === location.href
+      navigate(withThread(next), { keep: true, replace: id !== undefined })
+      if (id === undefined || pushed) threaded = location.href
+    },
+    [id],
+  )
+  const close = useCallback(() => {
+    if (id === undefined) return
+    if (threaded === location.href && depth() > 0) history.back()
+    else navigate(withThread(undefined), { keep: true, replace: true })
+    threaded = undefined
+  }, [id])
+  return [id, open, close] as const
 }
 
 export function useCanBack() {

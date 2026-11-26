@@ -20,7 +20,7 @@ import { NodePanel, Ride } from './Node.tsx'
 import { Overlay } from './Overlay.tsx'
 import * as Pay from './pay.ts'
 import { Room } from './Room.tsx'
-import { back, Link, navigate, useBase } from './router.tsx'
+import { back, Link, navigate, useBase, useThread } from './router.tsx'
 import { shareTree } from './channels.ts'
 import { useShown } from './Share.tsx'
 import { useSwipe } from './Shell.tsx'
@@ -89,7 +89,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set())
   const [settled, setSettled] = useState<string | undefined>()
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<{ members: Member[] }>(`room:${id}`)?.members ?? [])
-  const [replying, setReplying] = useState<number>()
+  const [replying, setReplying, unthread] = useThread()
   const [asking, setAsking] = useState<{ anchor: HTMLElement | null; sent: () => void; text: string }>()
   const awaited = useRef<string | undefined>(undefined)
   const chatMade = useRef(new Set<string>())
@@ -400,7 +400,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
           )}
         </aside>
       )}
-      {replying !== undefined && !thread && <ChatThread config={props.config} id={replying} items={items} key={replying} onClose={() => setReplying(undefined)} swarm={id} />}
+      {replying !== undefined && !thread && <ChatThread config={props.config} id={replying} items={items} key={replying} onClose={unthread} swarm={id} />}
       {asking && root && (
         <Overlay anchor={asking.anchor} className="compose-card" label="Add it to the board" onClose={() => setAsking(undefined)}>
           <Compose
