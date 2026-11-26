@@ -1,11 +1,13 @@
-export const bodyMost = 1_000_000
-export const batchMost = 64
-export const nameMost = 128
-export const lineMost = 4_000_000
+import * as Limits from './Limits.ts'
+
+export const bodyMost = Limits.Mcp.bodyBytes
+export const batchMost = Limits.Mcp.batchMost
+export const nameMost = Limits.Mcp.nameMost
+export const lineMost = Limits.Mcp.lineBytes
 
 export const versions = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05', '2024-10-07'] as const
 
-export const codes = { internal: -32603, method: -32601, params: -32602, parse: -32700, request: -32600 } as const
+export const codes = Limits.JsonRpc
 
 export type Id = string | number | null
 

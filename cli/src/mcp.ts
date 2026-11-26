@@ -1,5 +1,6 @@
 import * as readline from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
+import * as Limits from '../../src/shared/Limits.ts'
 import * as Rpc from '../../src/shared/Rpc.ts'
 
 export type Options = { token?: string | undefined; url: string }
@@ -30,7 +31,7 @@ function refused(error: unknown) {
 function events(text: string) {
   return text
     .split(/\r?\n\r?\n/)
-    .map((block) => block.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n'))
+    .map((block) => block.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice('data:'.length).trimStart()).join('\n'))
     .filter((data) => data.length > 0)
 }
 
@@ -46,7 +47,7 @@ function remote(options: Options) {
     const session = response.headers.get('mcp-session-id')
     if (session) state.session = session
     const text = await response.text()
-    if (response.status === 202) return undefined
+    if (response.status === Limits.Mcp.accepted) return undefined
     const type = response.headers.get('content-type') ?? ''
     const parsed = type.includes('text/event-stream') ? events(text).map(Rpc.parse).flatMap((each) => each?.messages ?? []) : (Rpc.parse(text)?.messages ?? [])
     const found = parsed.find((each) => each.id === message.id && each.method === undefined)

@@ -101,6 +101,21 @@ export const Machines = {
 
 export const Mcp = {
   watchMost: 300,
+  bodyBytes: 1_000_000,
+  lineBytes: 4_000_000,
+  batchMost: 64,
+  nameMost: 128,
+  accepted: 202,
+  malformed: 400,
+  tooLarge: 413,
+} as const
+
+export const JsonRpc = {
+  internal: -32603,
+  method: -32601,
+  params: -32602,
+  parse: -32700,
+  request: -32600,
 } as const
 
 export const Money = {

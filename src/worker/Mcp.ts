@@ -101,9 +101,9 @@ function refuse(site: string, caller: OAuth.Caller, refused: { id: unknown; scop
 async function body(request: Request) {
   const length = Number(request.headers.get('content-length') ?? 0)
   const bytes = length > Rpc.bodyMost ? undefined : await request.arrayBuffer()
-  if (!bytes || bytes.byteLength > Rpc.bodyMost) return Response.json(Rpc.failure(null, Rpc.codes.request, `Request body exceeds ${Rpc.bodyMost} bytes.`), { status: 413 })
+  if (!bytes || bytes.byteLength > Rpc.bodyMost) return Response.json(Rpc.failure(null, Rpc.codes.request, `Request body exceeds ${Rpc.bodyMost} bytes.`), { status: Limits.Mcp.tooLarge })
   const parsed = Rpc.parse(new TextDecoder().decode(bytes))
-  if (!parsed) return Response.json(Rpc.failure(null, Rpc.codes.parse, 'Parse error: Invalid JSON-RPC message'), { status: 400 })
+  if (!parsed) return Response.json(Rpc.failure(null, Rpc.codes.parse, 'Parse error: Invalid JSON-RPC message'), { status: Limits.Mcp.malformed })
   return parsed
 }
 
@@ -124,7 +124,7 @@ export async function handle(request: Request, env: Cloudflare.Env) {
   if (refused) return refuse(site, caller, refused)
   const answers = await Promise.all(parsed.messages.filter(Rpc.request).map((message) => answer(server, message, { signal: request.signal })))
   Rpc.assert(answers.length <= parsed.messages.length, 'every answer has its request')
-  if (answers.length === 0) return new Response(null, { status: 202 })
+  if (answers.length === 0) return new Response(null, { status: Limits.Mcp.accepted })
   return Response.json(parsed.batch ? answers : answers[0])
 }
 
