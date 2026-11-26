@@ -491,7 +491,7 @@ test('the public API names only the statuses a run can have, and done is not one
   const Operations = await import('../src/worker/Operations.ts')
   const Phase = await import('../src/worker/Phase.ts')
   const document = OpenApi.document('https://swarms.test') as unknown as { components: { schemas: { Status: { enum: string[] } } } }
-  assert.deepEqual(document.components.schemas.Status.enum, ['funding', 'running', 'paused'])
+  assert.deepEqual(document.components.schemas.Status.enum, ['funding', 'running', 'paused', 'archived'])
   assert.ok(!Operations.schema.list.safeParse({ status: 'done' }).success)
   const money = { left: '0', wake: null, why: 'money' } as const
   const runs = [
@@ -504,7 +504,7 @@ test('the public API names only the statuses a run can have, and done is not one
     { at: 0, pause: { why: 'unfunded' }, state: 'paused' },
   ] as const
   const projected = new Set(runs.flatMap((run) => [0, 3].map((n) => Phase.project(run as never, n).status)))
-  assert.deepEqual([...projected].sort(), [...Operations.statuses].sort())
+  assert.deepEqual([...projected, 'archived'].sort(), [...Operations.statuses].sort())
 })
 
 test('the branches a swarm last listed are answered when the gateway is slow or failing to list them, instead of making the reader wait or fail', async (t) => {

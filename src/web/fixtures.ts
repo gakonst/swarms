@@ -487,11 +487,11 @@ function summary(swarm: Live): Summary {
     remaining: swarm.remaining,
     setup: swarm.setup,
     spent: swarm.spent,
-    status: swarm.status,
+    status: swarm.archivedAt ? 'archived' : swarm.status,
     steering: swarm.steering,
     title: swarm.title,
     updatedAt: swarm.updatedAt,
-    why: why(swarm) === 'stuck' || reason(swarm) ? why(swarm) : null,
+    why: !swarm.archivedAt && (why(swarm) === 'stuck' || reason(swarm)) ? why(swarm) : null,
   }
 }
 

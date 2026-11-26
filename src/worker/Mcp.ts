@@ -265,7 +265,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
     {
       annotations: reading,
       description:
-        'List the funded swarms, most recently active first (at most 100), each with its title, goal, status, balance (everything its backers put in), spent and remaining (balance less spent), machines, backers and latest answer. status filters: funding (funded, its agent has not started yet), running (its agent is working) or paused (out of money; new money resumes it).',
+        'List the funded swarms, most recently active first (at most 100), each with its title, goal, status, balance (everything its backers put in), spent and remaining (balance less spent), machines, backers and latest answer. status filters: funding (funded, its agent has not started yet), running (its agent is working) paused (out of money; new money resumes it) or archived (read-only: nothing runs and it takes no rides).',
       inputSchema: Operations.schema.list.shape,
     },
     async (input) => reply(await Operations.list(read, input)),

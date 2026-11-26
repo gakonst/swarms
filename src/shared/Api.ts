@@ -2,7 +2,7 @@ import type { Picture } from './Picture.ts'
 import type * as Setup from './Setup.ts'
 import type * as Tree from './Tree.ts'
 
-export type Status = 'funding' | 'running' | 'paused'
+export type Status = 'funding' | 'running' | 'paused' | 'archived'
 
 export type Token = 'ousd' | 'pathusd' | 'usdce'
 

@@ -4,11 +4,13 @@ import { createRequire } from 'node:module'
 import { Board } from 'nanocode-ts'
 import { Sql } from 'nanocode-ts/node'
 import type { Reaction, Said } from '../../src/shared/Api.ts'
+import * as Standing from '../../src/shared/Status.ts'
 import { reasons } from '../../src/shared/Status.ts'
 import { redact } from '../../src/shared/Trail.ts'
 import * as Cursor from '../../src/worker/machines/Cursor.ts'
 import * as Run from '../../src/worker/machines/Run.ts'
 import * as Phase from '../../src/worker/Phase.ts'
+import * as Store from '../../src/worker/Store.ts'
 import * as Work from '../../src/worker/Work.ts'
 
 export type Violation = { detail: string; invariant: string }
@@ -16,6 +18,7 @@ export type Violation = { detail: string; invariant: string }
 export type Outcome = { steps: number; violations: Violation[] }
 
 export const limits = {
+  archived: { checks: 400 },
   lifecycle: { events: 9, overlap: 3, rings: 3, waitRounds: 2000 },
   outbox: { steps: 400, unpostedTwins: false },
   phase: { checks: 3000, moneyMost: 10_000_000, nMost: 3 },
@@ -1037,12 +1040,57 @@ function reworded() {
   return () => void (said['broke'] = was)
 }
 
-export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = { lifecycle, outbox, phase, work }
+async function archived(seed: string): Promise<Outcome> {
+  const random = rng(seed, 'archived')
+  const { fail, violations } = recorder()
+  const lifecycles = ['funding', 'running', 'paused'] as const
+  const whys = [null, 'unfunded', 'money', 'costly', 'rest', 'idle', 'stuck'] as const
+  let steps = 0
+  for (; steps < limits.archived.checks; steps++) {
+    const at = random.chance(0.5) ? random.int(1, limits.archived.checks) : null
+    const row = {
+      ai: null,
+      answer: null,
+      archived_at: at,
+      balance: random.int(0, limits.phase.moneyMost),
+      contributors: random.int(0, limits.phase.nMost),
+      created_at: steps,
+      form: 'agent',
+      goal: 'goal',
+      id: 's' + steps,
+      machines: 0,
+      nickname: null,
+      pool_left: 0,
+      problem: null,
+      remaining: random.int(0, limits.phase.moneyMost),
+      setup: null,
+      spent: 0,
+      status: random.pick(lifecycles),
+      steering: 'open',
+      title: 'swarm ' + steps,
+      updated_at: steps,
+      waiting: random.chance(0.5) ? 'tempo' : null,
+      why: random.pick(whys),
+    } as unknown as Store.Row
+    const shown = Store.summary(row)
+    const told = canon({ archived_at: at, status: row.status, why: row.why })
+    if ((shown.status === 'archived') !== (at !== null)) fail('archived status', told + ' showed status ' + shown.status)
+    if (at === null && shown.status !== row.status) fail('archived status', told + ' showed status ' + shown.status)
+    if (at !== null && (shown.why !== null || shown.waiting !== null))
+      fail('archived status', told + ' still showed why ' + shown.why + ' waiting ' + shown.waiting)
+    const word = Standing.word({ ...shown, archivedAt: random.chance(0.5) ? shown.archivedAt : null })
+    if ((word === 'Stopped') !== (at !== null)) fail('archived status', told + ' read as ' + word)
+  }
+  return { steps, violations }
+}
+
+export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = { archived, lifecycle, outbox, phase, work }
 
 export const canaries: { flip: () => () => void; invariant: string; name: string; scenario: string; seeds: string[] }[] = [
   { flip: flag(Run.guards, 'once'), invariant: 'turn once', name: 'lifecycle.once', scenario: 'lifecycle', seeds: ['1', '2', '3'] },
   { flip: flag(Cursor.guards, 'seq'), invariant: 'seq once', name: 'lifecycle.seq', scenario: 'lifecycle', seeds: ['1', '2', '3'] },
   { flip: reworded, invariant: 'reason', name: 'phase.reason', scenario: 'phase', seeds: ['1', '2', '3'] },
+  { flip: flag(Store.guards, 'archived'), invariant: 'archived status', name: 'store.archived', scenario: 'archived', seeds: ['1', '2', '3'] },
   { flip: flag(Phase.guards, 'exact'), invariant: 'reason', name: 'phase.short', scenario: 'phase', seeds: ['1', '2', '3'] },
   { flip: flag(Work.guards, 'deadline'), invariant: 'deadline', name: 'work.serial.deadline', scenario: 'work', seeds: ['1', '2', '3'] },
 ]

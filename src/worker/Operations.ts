@@ -99,7 +99,7 @@ import { clip } from '../shared/Trail.ts'
 import { ids } from '../shared/ResearchBrief.ts'
 import * as Limits from '../shared/Limits.ts'
 
-export const statuses = ['funding', 'running', 'paused'] as const satisfies readonly Status[]
+export const statuses = ['funding', 'running', 'paused', 'archived'] as const satisfies readonly Status[]
 
 export const kinds = ['tool', 'output', 'message', 'thinking', 'steer', 'funds', 'status', 'machine', 'error'] as const satisfies readonly Kind[]
 

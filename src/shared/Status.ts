@@ -118,7 +118,7 @@ export function refused(swarm: Stood) {
 }
 
 export function standing(swarm: Stood): Standing {
-  if (swarm.archivedAt) return { action: null, mood: 'new', word: 'Stopped' }
+  if (swarm.archivedAt || swarm.status === 'archived') return { action: null, mood: 'new', word: 'Stopped' }
   if ((swarm.inFlight ?? 0) > 0) return { action: null, mood: 'live', word: 'Working' }
   if (swarm.status === 'funding' && Number(swarm.balance) <= 0) return { action: 'Ride it to start it', mood: 'new', word: 'Not started' }
   if (!fueled(swarm) || swarm.why === 'unfunded' || (swarm.status === 'paused' && swarm.why === 'money' && starved(swarm.reason)))
