@@ -1,3 +1,4 @@
+import * as Limits from '../../../src/shared/Limits.ts'
 import { type Context, browse, Failure, sleep } from '../context.ts'
 
 type Account = { address: string; handle: string; name: string | null }
@@ -15,19 +16,17 @@ export async function login(ctx: Context) {
     const opened = await browse(ctx, started.verification_uri_complete)
     ctx.say(`${opened ? 'Opened' : 'Open'} ${started.verification_uri_complete}\nCode: ${started.user_code}\nWaiting for you to sign in with Tempo ID…`)
     const until = Date.now() + started.expires_in * 1000
-    const every = Math.max(250, Number(process.env['SWARMS_POLL_MS'] ?? started.interval * 1000))
-    for (;;) {
+    const every = Math.max(Limits.Cli.pollFloorMs, Number(process.env['SWARMS_POLL_MS'] ?? started.interval * 1000))
+    let polled: Polled | undefined
+    while (polled?.status !== 'approved') {
+      if (polled && Date.now() > until) throw new Failure('The sign-in code expired before it was approved.', { code: 'expired', next: 'Run swarms login again.' })
       await sleep(every)
-      const polled = await ctx.api<Polled>('POST', '/v1/auth/device/token', { device_code: started.device_code }, { token: '' }).catch((error: unknown) => {
+      polled = await ctx.api<Polled>('POST', '/v1/auth/device/token', { device_code: started.device_code }, { token: '' }).catch((error: unknown) => {
         if (error instanceof Failure && error.status === 410) throw new Failure('The sign-in code expired.', { code: 'expired', next: 'Run swarms login again.', status: 410 })
         throw error
       })
-      if (polled.status === 'approved') {
-        token = polled.token
-        break
-      }
-      if (Date.now() > until) throw new Failure('The sign-in code expired before it was approved.', { code: 'expired', next: 'Run swarms login again.' })
     }
+    token = polled.token
   }
   const me = await ctx.api<Account>('GET', '/v1/me', undefined, { token }).catch((error: unknown) => {
     if (error instanceof Failure && error.status === 401) throw new Failure('That token is not a live session.', { code: 'unauthorized', next: 'Run swarms login without --token to sign in in the browser.', status: 401 })

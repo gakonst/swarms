@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http'
 import { type Context, Failure, hint, line, page, sleep, swarm, text as body } from '../context.ts'
+import * as Limits from '../../../src/shared/Limits.ts'
 import { entry } from './swarms.ts'
 
 type Frame = { data: unknown; event: string; id: string | null }
@@ -31,7 +32,7 @@ export async function watch(ctx: Context) {
       response = await ctx.request(`/v1/swarms/${encodeURIComponent(id)}/live${after ? `?after=${after}` : ''}`, { headers: { accept: 'text/event-stream' }, signal: stop.signal })
     } catch {
       if (stop.signal.aborted) break
-      await sleep(1000)
+      await sleep(Limits.Cli.reconnectMs)
       continue
     }
     const status = response.statusCode ?? 0
@@ -76,7 +77,7 @@ export async function watch(ctx: Context) {
       }
     } catch {}
     response.destroy()
-    if (!stop.signal.aborted) await sleep(1000)
+    if (!stop.signal.aborted) await sleep(Limits.Cli.reconnectMs)
   }
   return 0
 }

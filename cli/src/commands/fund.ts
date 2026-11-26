@@ -1,4 +1,5 @@
 import { browse, confirm, type Context, Failure, page, sleep, swarm, usd } from '../context.ts'
+import * as Limits from '../../../src/shared/Limits.ts'
 import type { Summary } from './swarms.ts'
 
 type Prepared = { amount: string | null; link: string; memo: string; swarm: string; symbol: string; to: string; token: string }
@@ -32,14 +33,15 @@ export async function ride(ctx: Context, summary: Summary, amount: string): Prom
   const before = units((await ctx.api<Summary>('GET', path)).balance)
   const opened = await browse(ctx, prepared.link)
   ctx.say(`${opened ? 'Opened' : 'Open'} ${prepared.link}\nSend ${usd(given)} with Tempo Wallet there. Waiting for the transfer to be counted…`)
-  const until = Date.now() + Number(ctx.flag('timeout') ?? 900) * 1000
-  const every = Math.max(250, Number(process.env['SWARMS_POLL_MS'] ?? 2000))
-  for (;;) {
+  const until = Date.now() + Number(ctx.flag('timeout') ?? Limits.Cli.fundTimeoutSeconds) * 1000
+  const every = Math.max(Limits.Cli.pollFloorMs, Number(process.env['SWARMS_POLL_MS'] ?? Limits.Cli.fundPollMs))
+  let now: Summary | undefined
+  while (!now || units(now.balance) - before < units(given)) {
+    if (now && Date.now() > until) throw new Failure('No transfer was counted in time.', { code: 'timeout', next: `If you sent it, count it with swarms fund ${summary.nickname ?? summary.id} ${given} --hash <0x…>.` })
     await sleep(every)
-    const now = await ctx.api<Summary>('GET', path)
-    if (units(now.balance) - before >= units(given)) return { amount: given, balance: now.balance, counted: true, hash: null, link: prepared.link, swarm: now, url: page(ctx.host, now) }
-    if (Date.now() > until) throw new Failure('No transfer was counted in time.', { code: 'timeout', next: `If you sent it, count it with swarms fund ${summary.nickname ?? summary.id} ${given} --hash <0x…>.` })
+    now = await ctx.api<Summary>('GET', path)
   }
+  return { amount: given, balance: now.balance, counted: true, hash: null, link: prepared.link, swarm: now, url: page(ctx.host, now) }
 }
 
 export async function fund(ctx: Context) {

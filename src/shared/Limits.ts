@@ -27,6 +27,13 @@ export const Chat = {
   repliersShown: 3,
 } as const
 
+export const Cli = {
+  fundPollMs: 2000,
+  fundTimeoutSeconds: 900,
+  pollFloorMs: 250,
+  reconnectMs: 1000,
+} as const
+
 export const Clock = {
   quietMs: 600_000,
   hourMs: 3_600_000,

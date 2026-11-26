@@ -1,9 +1,9 @@
 # No numeric literal outside src/shared/Limits.ts but 0, 1, 2 and the unit conversions 24, 60, 1000, 1024 and 3600.
-# path count why; 2347 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 2343 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 cli/src/auth.ts 4 pre-existing; move it into src/shared/Limits.ts
-cli/src/commands/account.ts 5 pre-existing; move it into src/shared/Limits.ts
+cli/src/commands/account.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/ai.ts 2 pre-existing; move it into src/shared/Limits.ts
-cli/src/commands/fund.ts 7 pre-existing; move it into src/shared/Limits.ts
+cli/src/commands/fund.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/hands.ts 2 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/swarms.ts 11 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/watch.ts 7 pre-existing; move it into src/shared/Limits.ts
