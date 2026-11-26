@@ -6,7 +6,7 @@ Crowdfunded AI agents that research and build in the open, on the Tempo gateway'
 
 - Keep code simple and changes small. Match the surrounding code and preserve unrelated work.
 - No code comments, no tests outside `test/dst`, no test-only dependencies. `scripts/tidy.ts` refuses them.
-- `test/dst` is the deterministic simulator and the only test: it runs by seed (`pnpm dst`), and every invariant comes with a named canary mutation the simulator catches.
+- `test/dst` is the deterministic simulator and the only test: it runs by seed (`pnpm dst`), and every invariant comes with a named canary mutation the simulator catches. No new unit tests: add a DST scenario and a mutant. A bug a seed finds stays as a seed in `test/dst/seeds.json`; `pnpm dst --hunt --minutes N` looks for more.
 - No magic constants or arbitrary caps: every limit lives in `src/shared/Limits.ts` and comes from a protocol, a measurement or a policy. Surface invalid states; never hide them with silent truncation, clamping or fallbacks.
 - Invariants are `assert()`ed from `src/shared/Assert.ts` and crash the request.
 - Make invalid states unrepresentable: a lifecycle is one discriminated union checked by its transitions (`Phase.Run`). Stored records and Worker↔Durable Object RPC parse at the boundary with zod into versioned unions, N-1 both ways.
