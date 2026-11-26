@@ -120,6 +120,8 @@ export type Hand = { connected: boolean; name: string }
 
 export type Code = { app: string; clone: string; name: string; owner: string }
 
+export type Unavailable = { message: string; reason: 'treasury'; state: 'unavailable' }
+
 export type Snapshot = {
   at: number
   commits: { author?: { email: string | null; name: string | null }; date: string | null; message: string; parents?: string[]; sha: string }[]

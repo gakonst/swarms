@@ -12,6 +12,7 @@ import type {
   Branches,
   Roster,
   Artifact,
+  Unavailable,
   Config,
   Contributed,
   Detail,
@@ -820,12 +821,14 @@ export async function wait(env: Cloudflare.Env, input: Input<'wait'>, signal?: A
   }
 }
 
-export async function artifacts(env: Cloudflare.Env, input: Input<'swarm'>, origin: string): Promise<Problem.Result<{ artifacts: Artifact[] }>> {
+export async function artifacts(env: Cloudflare.Env, input: Input<'swarm'>, origin: string): Promise<Problem.Result<{ artifacts: Artifact[]; unavailable?: Unavailable }>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
   if (!(await Store.exists(env, parsed.value.swarm))) return missing()
 
-  const found = await Artifacts.list(env, parsed.value.swarm)
+  const shelf = await Artifacts.listed(env, parsed.value.swarm)
+  if (shelf.unavailable) return Problem.ok({ artifacts: [], unavailable: shelf.unavailable })
+  const found = shelf.artifacts
   if (!found) return Problem.fail(502, 'upstream_failed', "The gateway did not list the swarm's artifacts.")
   return Problem.ok({ artifacts: found.map((artifact) => ({ ...artifact, url: origin + artifact.url })) })
 }

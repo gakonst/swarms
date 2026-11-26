@@ -302,6 +302,15 @@ async function socket(url: string) {
   })
 }
 
+/** Why the answer is a known state outside Swarms, or undefined: the gateway's treasury cannot pay storage, said by Swarms' degraded answer (its x-swarms-unavailable header or {state: 'unavailable', reason: 'treasury'} body) or by the gateway's own 503 passed through. A degraded answer served from a snapshot is real data, not external. */
+export function external(status: number, header: string | null, body: unknown) {
+  const whole = (typeof body === 'object' && body ? body : {}) as { unavailable?: unknown }
+  const told = (typeof whole.unavailable === 'object' && whole.unavailable ? whole.unavailable : whole) as { detail?: unknown; message?: unknown; reason?: unknown; state?: unknown }
+  if (header === 'treasury' || (told.state === 'unavailable' && told.reason === 'treasury')) return typeof told.message === 'string' ? told.message : 'the gateway cannot pay storage now'
+  if (status === 503 && typeof told.detail === 'string' && /treasury cannot cover/i.test(told.detail)) return told.detail
+  return undefined
+}
+
 export async function call(root: string, probe: Probe, token: string | undefined, spec: Spec | undefined, samples: number, sockets = root, made?: string): Promise<Row> {
   const signed = probe.signed ?? 'out'
   const route = probe.route ?? probe.path
@@ -368,6 +377,8 @@ export async function call(root: string, probe: Probe, token: string | undefined
     const bad = probe.check(body, response)
     if (bad) notes.push(bad)
   }
+  const outside = external(response.status, response.headers.get('x-swarms-unavailable'), body)
+  if (outside) return { method: probe.method, ms: Math.round(median(times)), note: `external: ${outside.slice(0, 90)}`, ok: true, route, samples: times, server: servers.length ? Math.round(median(servers)) : undefined, signed, status: 'ext' }
   const failed = notes.some((note) => /^(expected|not JSON|content-type|error body|OpenAPI|\$|bad:)/.test(note))
   return { ...(probe.patient ? { patient: true } : {}), method: probe.method, ms: Math.round(median(times)), note: notes.join('; '), ok: !failed, route, samples: times, server: servers.length ? Math.round(median(servers)) : undefined, signed, status: response.status }
 }
@@ -939,6 +950,7 @@ export function stats(rows: Row[]) {
   const times = timed.filter((row) => row.method !== 'WS').flatMap((row) => row.samples)
   const servers = timed.flatMap((row) => (row.server === undefined ? [] : [row.server]))
   return {
+    external: rows.filter((row) => row.status === 'ext').map((row) => `${row.method} ${row.route}`),
     failed: rows.filter((row) => !row.ok).length,
     p50: Math.round(percentile(times, 50)),
     p95: Math.round(percentile(times, 95)),
@@ -964,6 +976,7 @@ export function summary(report: { root: string; rows: Row[]; world: World }) {
     table(report.rows),
     '',
     `${counted.total} routes, ${counted.failed} failed, ${counted.slow} over ${target} ms. Wall p50 ${counted.p50} ms, p95 ${counted.p95} ms; server p50 ${counted.server50} ms, p95 ${counted.server95} ms.`,
+    ...(counted.external.length ? ['', `External (the gateway's treasury cannot pay storage now, so these answer an empty state, not a failure): ${counted.external.join(', ')}.`] : []),
   ].join('\n')
 }
 

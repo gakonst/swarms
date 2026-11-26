@@ -2,7 +2,7 @@ import { File } from '@pierre/diffs/react'
 import type { FileTreeOptions, FileTreeSsrPayload } from '@pierre/trees'
 import { FileTree, useFileTree } from '@pierre/trees/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Code as Repo, Snapshot } from '../shared/Api.ts'
+import type { Code as Repo, Snapshot, Unavailable } from '../shared/Api.ts'
 import * as Site from '../shared/Site.ts'
 import * as Api from './api.ts'
 import { ago } from './format.ts'
@@ -26,6 +26,8 @@ const readMs = 20_000
 
 let preload: Preload | undefined
 
+class Unpaid extends Error {}
+
 export function preloads(next: Preload) {
   preload = next
 }
@@ -39,6 +41,8 @@ async function fetched<value>(url: string): Promise<value> {
   const response = await fetch(Site.at(url))
   const data = (await response.json().catch(() => undefined)) as value | undefined
   if (!response.ok || !data) throw new Error(response.status === 404 ? 'Not found.' : "The code can't be read right now. Try again in a minute.")
+  const told = data as Partial<Unavailable>
+  if (told.state === 'unavailable' && typeof told.message === 'string') throw new Unpaid(told.message)
   return data
 }
 
@@ -130,7 +134,7 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
   const swarm = props.swarm
   const repo = props.repo
   const now = useNow(60_000)
-  const [tree, setTree] = useState<{ error?: string; value?: Tree }>(() => {
+  const [tree, setTree] = useState<{ error?: string; unavailable?: string; value?: Tree }>(() => {
     const known = Api.coded(swarm)
     return known && known.name === repo?.name ? { value: known } : {}
   })
@@ -165,7 +169,7 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
       .finally(() => clearTimeout(timer))
       .then(
         (value) => alive && setTree({ value }),
-        (error: unknown) => alive && setTree((known) => (known.value ? known : { error: message(error) })),
+        (error: unknown) => alive && setTree((known) => (known.value ? known : error instanceof Unpaid ? { unavailable: error.message } : { error: message(error) })),
       )
     return () => {
       alive = false
@@ -199,7 +203,9 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
         </div>
       </header>
 
-      {tree.error && !value ? (
+      {tree.unavailable && !value ? (
+        <p className="repo-empty">{tree.unavailable}</p>
+      ) : tree.error && !value ? (
         <p className="repo-quiet">{tree.error} <button className="repo-again" onClick={() => { setTree({}); setStirs((count) => count + 1) }} type="button">Try again</button></p>
       ) : !value ? (
         <div className="repo-files repo-ghost" aria-busy="true"><p className="repo-quiet">Reading the code…</p></div>

@@ -181,6 +181,10 @@ export const Relay = {
   beatMs: 25_000,
 } as const
 
+export const Storage = {
+  unpaid: 503,
+}
+
 export const Repo = {
   snapshotMs: 60_000,
   snapshotFiles: 2_000,

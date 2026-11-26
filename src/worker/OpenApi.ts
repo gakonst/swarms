@@ -211,7 +211,7 @@ const schemas = {
   }),
   Code: object(
     { app: string, clone: { description: 'A read-only git remote: git clone <clone> fetches the whole history without a key; pushes are refused.', type: 'string' }, name: string, owner: address },
-    'The public repository that keeps the swarm\'s code, cloned read-only from clone, or read without a key from the gateway at /p/<owner>/<app>/git/<name>/files, read, log and diff.',
+    'The public repository that keeps the swarm\'s code, cloned read-only from clone, or read without a key from the gateway at /p/<owner>/<app>/git/<name>/files, read, log and diff. The site\'s own reads of it, /api/swarms/<id>/git/files, read, log and diff, never fail because the gateway\'s treasury cannot pay Code Storage: they answer the swarm\'s snapshot where it covers the read (header x-swarms-unavailable: treasury; snapshot), and otherwise 200 with {state: unavailable, reason: treasury, message} in plain words (header x-swarms-unavailable: treasury).',
   ),
   Config: object({
     auth: { description: 'Where to sign in with Tempo ID: POST <auth>/challenge, then POST <auth>.', type: 'string' },
@@ -773,7 +773,7 @@ export function document(origin: string) {
         get: { description: "Every node's deltas after a seq, oldest first: what the tree stream sends as delta events.", operationId: 'treeDeltas', parameters: [swarm, ...queried(Operations.schema.nodeUpdates, ['after', 'limit'])], responses: { ...ok(ref('NodeUpdates'), 'The deltas and the seq to ask after next.'), ...failures(400, 404) }, summary: 'Tree deltas' },
       },
       '/v1/swarms/{id}/code': {
-        get: { description: "A snapshot of the swarm's code: its newest commits, its files and its README, or null before its first commit.", operationId: 'getCode', parameters: [swarm], responses: { ...ok(object({ snapshot: nullable({ type: 'object' }) }), 'The snapshot.'), ...failures(404) }, summary: 'Code' },
+        get: { description: "A snapshot of the swarm's code: its newest commits, its files and its README, or null before its first commit or while the gateway's treasury cannot pay Code Storage and no snapshot was taken yet.", operationId: 'getCode', parameters: [swarm], responses: { ...ok(object({ snapshot: nullable({ type: 'object' }) }), 'The snapshot.'), ...failures(404) }, summary: 'Code' },
       },
       '/v1/swarms/{id}/nodes/{nid}/updates': {
         get: { description: "A node's deltas after a seq, oldest first; the room socket and /live carry the same.", operationId: 'nodeUpdates', parameters: [swarm, parameter('nid', 'path', string, 'The node id: root, triage or 10 hex characters.'), ...queried(Operations.schema.nodeUpdates, ['after', 'limit'])], responses: { ...ok(ref('NodeUpdates'), 'The deltas and the seq to ask after next.'), ...failures(400, 404) }, summary: 'Node updates' },
@@ -944,7 +944,22 @@ export function document(origin: string) {
           description: "The dashboards, charts, tables and write-ups the swarm's agents published, from the public manifests under artifacts/ in the swarm's gateway kv. Load each from its url.",
           operationId: 'listArtifacts',
           parameters: [swarm],
-          responses: { ...ok(object({ artifacts: { items: ref('Artifact'), type: 'array' } }), 'The artifacts.'), ...failures(404, 502) },
+          responses: {
+            ...ok(
+              optional(
+                object({
+                  artifacts: { items: ref('Artifact'), type: 'array' },
+                  unavailable: object(
+                    { message: string, reason: { enum: ['treasury'], type: 'string' }, state: { enum: ['unavailable'], type: 'string' } },
+                    "Present, with no artifacts, while the gateway's treasury cannot pay Code Storage, so the kv that lists them cannot be read: message says so in plain words.",
+                  ),
+                }),
+                ['unavailable'],
+              ),
+              'The artifacts.',
+            ),
+            ...failures(404, 502),
+          },
           summary: 'Artifacts',
         },
       },

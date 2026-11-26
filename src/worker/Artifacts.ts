@@ -1,8 +1,9 @@
-import type { Artifact } from '../shared/Api.ts'
+import type { Artifact, Unavailable } from '../shared/Api.ts'
 import * as Shelf from '../shared/Artifact.ts'
 import * as Site from '../shared/Site.ts'
 import * as Edge from './Edge.ts'
 import * as Gateway from './Gateway.ts'
+import * as Storage from './Storage.ts'
 import * as Timing from './Timing.ts'
 import * as Limits from '../shared/Limits.ts'
 
@@ -19,8 +20,15 @@ export function base(swarm: string) {
 }
 
 export async function list(env: Cloudflare.Env, swarm: string, cached = true): Promise<Artifact[] | undefined> {
+  return (await listed(env, swarm, cached)).artifacts
+}
+
+export async function listed(env: Cloudflare.Env, swarm: string, cached = true): Promise<{ artifacts?: Artifact[]; unavailable?: Unavailable }> {
   const read = () => shelf(env, swarm)
-  return (cached ? Edge.cached(env, `artifacts/${swarm}`, fresh, read, 600) : read()).catch(() => undefined)
+  return (cached ? Edge.cached(env, `artifacts/${swarm}`, fresh, read, 600) : read()).then(
+    (artifacts) => ({ artifacts }),
+    (error: unknown) => (error instanceof Storage.Unpaid ? { unavailable: Storage.unavailable() } : {}),
+  )
 }
 
 async function shelf(env: Cloudflare.Env, swarm: string): Promise<Artifact[]> {
@@ -30,13 +38,14 @@ async function shelf(env: Cloudflare.Env, swarm: string): Promise<Artifact[]> {
   let cursor: string | null = null
   for (let page = 0; page < 3; page++) {
     const query: URLSearchParams = new URLSearchParams({ prefix: Shelf.prefix, ...(cursor ? { cursor } : {}) })
-    const [response, body]: readonly [Response, { cursor: string | null; entries: Entry[] } | undefined] = await Timing.span(
+    const [response, body, failed]: readonly [Response, { cursor: string | null; entries: Entry[] } | undefined, string] = await Timing.span(
       'gw.p.kv',
       Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/kv?${query}`, { headers: { accept: 'application/json' } }).then(
-        async (response) => [response, response.ok ? ((await response.json()) as { cursor: string | null; entries: Entry[] }) : undefined] as const,
+        async (response) => [response, response.ok ? ((await response.json()) as { cursor: string | null; entries: Entry[] }) : undefined, response.ok ? '' : await response.text()] as const,
       ),
     )
     if (response.status === 404) return []
+    if (Storage.unpaid(response.status, failed)) throw new Storage.Unpaid(failed)
     if (!response.ok || !body) throw new Error(`The gateway answered ${response.status} for the artifacts.`)
     entries.push(...body.entries)
     cursor = body.cursor
@@ -90,6 +99,11 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
   const upstream = await Timing.span('gw.p.bucket', Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/bucket/${key}`, { headers, method: request.method === 'HEAD' ? 'HEAD' : 'GET' }))
   if (upstream.status === 404) return text(404, 'No such artifact file, or it is not public.')
   if (upstream.status === 429) return text(429, 'Too many artifact reads right now. Try again in a minute.')
+  if (upstream.status === Storage.status && Storage.unpaid(upstream.status, await upstream.clone().text())) {
+    const told = text(Storage.status, "The gateway can't pay for storage right now, so this page can't be read. It comes back once the gateway can pay again.")
+    told.headers.set(Storage.header, 'treasury')
+    return told
+  }
   if (!upstream.ok && upstream.status !== 304 && upstream.status !== 206) return text(502, `The gateway answered ${upstream.status}.`)
 
   const answer = new Headers({

@@ -1,4 +1,6 @@
+import type { Snapshot } from '../shared/Api.ts'
 import * as Gateway from './Gateway.ts'
+import * as Storage from './Storage.ts'
 import * as Store from './Store.ts'
 import * as Timing from './Timing.ts'
 
@@ -34,6 +36,12 @@ export async function proxy(env: Cloudflare.Env, context: Pick<ExecutionContext,
     'gw.p.git',
     Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/git/${encodeURIComponent(repo)}/${read}?${query}${forever ? '' : `&at=${Math.floor(Date.now() / 5000)}`}`, { headers: { accept: 'application/json', ...(request.headers.get('cf-connecting-ip') ? { 'cf-connecting-ip': request.headers.get('cf-connecting-ip') ?? '' } : {}) } }).then(async (response) => [response, await response.arrayBuffer()] as const),
   )
+  if (upstream.status === Storage.status) {
+    const text = new TextDecoder().decode(body)
+    const snapshot = Storage.unpaid(upstream.status, text) ? ((await Timing.object(env.SWARMS.get(env.SWARMS.idFromName(swarm))).code()) as Snapshot | null) : null
+    const degraded = Storage.degraded(read, query, snapshot, upstream.status, text)
+    if (degraded) return Response.json(degraded.body, { headers: { 'cache-control': 'no-store', [Storage.header]: degraded.snapshot ? 'treasury; snapshot' : 'treasury' } })
+  }
   const response = new Response(body, {
     headers: {
       'cache-control': upstream.ok ? (forever ? 'public, max-age=31536000, immutable' : 'public, max-age=5') : 'no-store',

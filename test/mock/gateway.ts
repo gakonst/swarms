@@ -75,6 +75,7 @@ type App = {
 
 export type Options = {
   chain?: Chain.Chain
+  codeStorage?: 'paid' | 'treasury'
   credentialRoute?: boolean
   dispatcherBudget?: number | null
   dispatcherUsd?: number
@@ -129,7 +130,7 @@ export async function start(options: Options = {}) {
   const scripts = [...(options.scripts ?? [])]
   const calls: { at: number; method: string; path: string; status: number }[] = []
   const errors: string[] = []
-  const settings = { credentialRoute: options.credentialRoute ?? true, dispatcherBudget: options.dispatcherBudget, dispatcherUsd: options.dispatcherUsd ?? 0.0005, spawnRoute: options.spawnRoute ?? true, unsolicited: options.unsolicited ?? false }
+  const settings = { codeStorage: options.codeStorage ?? 'paid', credentialRoute: options.credentialRoute ?? true, dispatcherBudget: options.dispatcherBudget, dispatcherUsd: options.dispatcherUsd ?? 0.0005, spawnRoute: options.spawnRoute ?? true, unsolicited: options.unsolicited ?? false }
   const keyed = new Map<string, number>()
   const owned = new Map<string, { claude: string; keys: Map<string, { added_at: number; hint: string }> }>()
   let agentCount = 0
@@ -439,6 +440,7 @@ export async function start(options: Options = {}) {
     if (path === '/mock/settings' && method === 'POST') {
       if ('dispatcherBudget' in body) settings.dispatcherBudget = body['dispatcherBudget'] as number | null | undefined
       if (typeof body['unsolicited'] === 'boolean') settings.unsolicited = body['unsolicited']
+      if (body['codeStorage'] === 'paid' || body['codeStorage'] === 'treasury') settings.codeStorage = body['codeStorage']
       if (typeof body['spawnRoute'] === 'boolean') settings.spawnRoute = body['spawnRoute']
       if (typeof body['credentialRoute'] === 'boolean') settings.credentialRoute = body['credentialRoute']
       if (typeof body['dispatcherUsd'] === 'number') settings.dispatcherUsd = body['dispatcherUsd']
@@ -467,6 +469,7 @@ export async function start(options: Options = {}) {
       const parts = path.split('/')
       const found = apps.get(parts[3] ?? '')
       if (!found) throw new Problem(404, 'not_found', 'No such app.')
+      if (settings.codeStorage === 'treasury' && (parts[4] !== 'git' || parts.length > 5)) throw new Problem(503, 'unavailable', "The gateway's treasury cannot cover Code Storage now, and this caller cannot pay it directly.")
       if (parts[4] === 'kv' || parts[4] === 'bucket') return { entries: [...(parts[4] === 'kv' ? found.kv : found.bucket)].filter(([, stored]) => stored.public).map(([stored]) => ({ key: stored })), objects: [] }
       if (parts.length <= 5) return { repos: [...found.git].filter(([, stored]) => stored.public).map(([repo]) => ({ name: repo, public: true })) }
       const ref = url.searchParams.get('ref')
