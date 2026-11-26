@@ -139,7 +139,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
         <span><b>{dollars(swarm.spent)}</b> spent</span>
         <span className="strip-left"><b>{dollars(swarm.remaining)}</b> left</span>
         <span className="strip-mood" data-mood={stood.mood} title={Status.told(swarm)}><i />{Status.badge(swarm)}</span>
-        {swarm.ai && <span className="strip-ai">on @{swarm.ai.handle}'s own AI</span>}
+        {swarm.ai && <span className="strip-ai">on <span className="strip-ai-who">@{swarm.ai.handle}'s </span>own AI</span>}
       </Strip>
       <div className="panel panel-chat">
         <Room

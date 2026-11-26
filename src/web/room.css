@@ -332,6 +332,7 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 .own-act { grid-column:2; grid-row:1 / span 2; align-self:center; }
 .own-form { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--rule); }
 .own-form .own-link { grid-column:1 / -1; font:12px var(--mono); color:var(--fg); }
+.own-form .own-act { grid-row:2; }
 .own-input { width:100%; min-height:40px; padding:0 12px; border:1px solid var(--line); border-radius:10px; background:none; color:var(--fg); font:16px var(--mono); }
 .own-error { margin:0; font:13px var(--mono); color:var(--bad, #c0392b); overflow-wrap:anywhere; }
 .own-host { display:grid; gap:6px; margin-top:12px; }
