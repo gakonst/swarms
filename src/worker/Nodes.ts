@@ -11,6 +11,7 @@ import * as Verify from './Verify.ts'
 import * as Machine from './machines/Tree.ts'
 import * as Work from './Work.ts'
 import * as Limits from '../shared/Limits.ts'
+import * as Assert from '../shared/Assert.ts'
 
 export const root = 'root'
 
@@ -841,8 +842,10 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
     if (parent !== null) kids.set(parent, [...(kids.get(parent) ?? []), nid])
   }
   const nodes = new Map<string, Tree.Node>()
-  const build = (nid: string): Tree.Node => {
-    const task = found.nodes.get(nid) as Work.Task
+  const build = (nid: string, depth: number): Tree.Node => {
+    Assert.bounded(depth, Limits.Nodes.depthMost, 'A node tree depth')
+    const task = found.nodes.get(nid)
+    Assert.assert(task !== undefined, 'A node in the tree has its task.', nid)
     const runs = found.runs.get(nid) ?? []
     const verifies = found.verifies.get(nid) ?? []
     const status = Tree.status({ node: task, runs, verifies })
@@ -858,7 +861,7 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
       : null
     const parsed = parse(task.spec)
     const childIds = (kids.get(nid) ?? []).sort()
-    const built = childIds.map(build)
+    const built = childIds.map((child) => build(child, depth + 1))
     const counts = zero()
     counts[status] += 1
     let subSpent = (found.ledger.spent.get(nid) ?? 0n) + live
@@ -907,10 +910,12 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
       title: parsed.title,
       updatedAt: times.get(nid)?.last ?? 0,
     }
+    Assert.assert((status === 'proven') === (task.phase === 'done') && (node.proof === null || status === 'proven'), 'Only a proven node holds a proof.', { nid, status })
+    Assert.assert((status === 'dead end') === (node.end !== null), 'A node is a dead end exactly when it has ended.', { nid, status })
     nodes.set(nid, node)
     return node
   }
-  for (const [nid, task] of found.nodes) if (parentOf(task) === null || !found.nodes.has(parentOf(task) ?? '')) build(nid)
+  for (const [nid, task] of found.nodes) if (parentOf(task) === null || !found.nodes.has(parentOf(task) ?? '')) build(nid, 0)
   for (const node of nodes.values()) node.funders = node.funders.slice(0, 5)
   return { nodes, seq: seq(self), state: found }
 }

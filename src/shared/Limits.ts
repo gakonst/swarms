@@ -108,6 +108,7 @@ export const Money = {
 } as const
 
 export const Nodes = {
+  depthMost: 256,
   claimPollMs: 50,
   claimTries: 200,
   stuckRuns: 3,
