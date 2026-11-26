@@ -117,5 +117,19 @@
     "invariant": "cap",
     "found": "2026-11-26 by pnpm dst --seeds: with colliding name suffixes, a reissued hand name hit the done board task of a freed, never-seen hand, so the claim failed and issue answered full with 3 of the slots held",
     "fix": "fix(hands): skip hand names that still have a board task"
+  },
+  {
+    "job": "mf-nodes.api",
+    "seed": "h54a3f247eb80",
+    "invariant": "move kept",
+    "found": "2026-11-26 by pnpm dst --hunt: the runner pulled a fresh root ride down to a child before the rider moved it, so moving it from the root was refused (harness assumption, not a Swarms bug)",
+    "fix": "test(dst): tree api moves the rider's money from where it sits"
+  },
+  {
+    "job": "mf-nodes.api",
+    "seed": "394",
+    "invariant": "move kept",
+    "found": "2026-11-26 by pnpm dst --seeds: the rider's whole ride was committed to a run, so nothing was movable; the scenario now expects the move refused (harness assumption, not a Swarms bug)",
+    "fix": "test(dst): tree api moves the rider's money from where it sits"
   }
 ]

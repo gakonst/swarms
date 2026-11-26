@@ -1224,10 +1224,21 @@ async function api(seed: string): Promise<Outcome> {
     const tx = hash()
     deposits.set(tx, { amount: Memo.decimal(free), from: ana, tag: Credit.tag(id, 'n:ffffffffff') })
     await Operations.contribute(w.env, { hash: tx, swarm: id })
-    const moving = free / 2n
-    const moved = await Operations.nodeMove(w.env, { amount: Memo.decimal(moving), node: 'root', swarm: id, to: '' }, ana)
-    if (!moved.ok) fail('move kept', 'a rider could not move ' + Memo.decimal(moving) + ' of their own: ' + JSON.stringify(moved).slice(0, 160))
-    const stolen = await Operations.nodeMove(w.env, { amount: Memo.decimal(BigInt(random.int(1, Number(moving)))), node: '', swarm: id, to: 'root' }, bo)
+    const placed = await Operations.standing(w.env, { swarm: id }, ana)
+    const bucket = (placed.ok ? placed.value.buckets : []).reduce<{ amount: string; node: string } | null>(
+      (best, one) => (best && Memo.units(best.amount) >= Memo.units(one.amount) ? best : one),
+      null,
+    )
+    const moving = bucket ? Memo.units(bucket.amount) / 2n : 0n
+    const moved = await Operations.nodeMove(w.env, { amount: Memo.decimal(moving > 0n ? moving : free), node: bucket?.node ?? 'root', swarm: id, to: '' }, ana)
+    if (moving > 0n && !moved.ok) fail('move kept', 'a rider could not move ' + Memo.decimal(moving) + ' of their own: ' + JSON.stringify(moved).slice(0, 160))
+    if (moving === 0n && moved.ok)
+      fail('move kept', 'a rider whose money is all committed moved ' + Memo.decimal(free) + ': ' + JSON.stringify(moved).slice(0, 160))
+    const stolen = await Operations.nodeMove(
+      w.env,
+      { amount: Memo.decimal(BigInt(random.int(1, Number(moving > 0n ? moving : free)))), node: '', swarm: id, to: 'root' },
+      bo,
+    )
     if (stolen.ok || stolen.status !== 409) fail('move kept', 'another rider moved free money that is not theirs: ' + JSON.stringify(stolen).slice(0, 160))
     const mine = await Operations.standing(w.env, { swarm: id }, ana)
     if (!mine.ok || mine.value.free !== Memo.decimal(moving))
