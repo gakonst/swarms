@@ -23,7 +23,7 @@ export const rotateAfter = Limits.Runner.rotateAfter
 
 export const verifiers = Limits.Runner.verifiers
 
-export const guards = { adopt: true, late: true, rest: true, rotate: true, stray: true }
+export const guards = { adopt: true, bound: true, claims: true, folded: true, halt: true, heard: true, kick: true, late: true, needs: true, relay: true, rest: true, rotate: true, stray: true, topped: true }
 
 export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: 8 }
 
@@ -124,7 +124,7 @@ export function result(raw: string | undefined, fallback: string): Nodes.Result 
         const one = child as Record<string, unknown>
         const title = text(one['title'], 200)
         if (!title) return []
-        return [{ needs: Array.isArray(one['needs']) ? one['needs'].filter((need): need is string => typeof need === 'string').slice(0, 20) : [], spec: text(one['spec']) ?? '', statement: text(one['statement']), title }]
+        return [{ needs: guards.needs && Array.isArray(one['needs']) ? one['needs'].filter((need): need is string => typeof need === 'string').slice(0, 20) : [], spec: text(one['spec']) ?? '', statement: text(one['statement']), title }]
       })
     : []
   const commit = text(value['commit'], 64)?.toLowerCase() ?? null
@@ -335,7 +335,7 @@ async function running(self: Swarm, task: Work.Task, lease: Board.PoolLease): Pr
   const triaging = nid === Nodes.triage
   const k = Nodes.kOf(task.id)
   const role = 'n:' + nid + '#' + k
-  const folded = self.kv.get<string>(Machine.foldedKey(task.id))
+  const folded = guards.folded ? self.kv.get<string>(Machine.foldedKey(task.id)) : undefined
   if (folded) return { done: folded }
   const found = await Nodes.state(self)
   const budget = found.ledger.runs.get(task.id) ?? 0n
@@ -368,7 +368,7 @@ async function running(self: Swarm, task: Work.Task, lease: Board.PoolLease): Pr
         const made = await spawn(self, swarm, agent.value, args, task.id, lease.claim, abort.signal)
         if (!made.ok) return await refusal(self, task, lease, made)
         spawned = { agent: agent.value, at: Date.now(), sub: made.value.sub, ...(made.value.turn ? { turn: made.value.turn } : {}), ...(chosen ? { pick: chosen } : {}) }
-        budgeted = !made.value.turn
+        budgeted = guards.bound && !made.value.turn
         counted(self, agent.value)
         const last = steers.at(-1)
         if (last) await Nodes.heedNode(self, nid, last.seq)
@@ -472,13 +472,13 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
         Nodes.changed(self)
       }
       if (finished.has(sub.status.state)) break
-      if (topped?.spent !== now || topped.version !== self.treeVersion) {
+      if (!guards.topped || topped?.spent !== now || topped.version !== self.treeVersion) {
         const total = await Nodes.topUp(self, task.id, now)
         if (total !== null) await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(total))
         topped = { spent: now, version: self.treeVersion }
       }
     }
-    for (const steer of (await lease.steers()).filter((one) => one.seq > relayed)) {
+    for (const steer of guards.relay ? (await lease.steers()).filter((one) => one.seq > relayed) : []) {
       const told = await Gateway.tell(self.env, swarm, spawned.agent, spawned.sub, steer.body, priority(self, steer.body))
       if (!told.ok) break
       await lease.heed(steer.seq)
@@ -635,7 +635,7 @@ export async function halt(self: Swarm, run: string) {
   const task = await self.board.task(run)
   if (task && !Work.terminal(task.phase)) await self.board.cancel(run, 'Its node ended.')
   const spawned = self.kv.get<Nodes.Spawned>('run:' + run)
-  const spent = await spentOf(self, run, true)
+  const spent = await spentOf(self, run, guards.halt)
   if (spent === null) return
   await Nodes.settleRun(self, run, spent)
   if (spawned) charged(self, run, spawned, spent - (await dispatched(self, Nodes.swarm(self), spawned)))
@@ -779,7 +779,7 @@ export function follow(self: Swarm, swarm: string, agent: string) {
           buffer = blocks.pop() ?? ''
           for (const block of blocks) {
             for (const found of block.matchAll(/"seq":\s*(\d+)/g)) after = Math.max(after, Number(found[1]))
-            if (/"type":\s*"(?:status|completion)"/.test(block)) {
+            if (guards.heard && /"type":\s*"(?:status|completion)"/.test(block)) {
               rt.heard += 1
               rt.listing = undefined
             }
@@ -819,7 +819,7 @@ export function ensure(self: Swarm) {
     rt.pools.runs = Board.pool(board, { concurrency: Nodes.units(self).slots, idleMs: timing.idleMs, label: ['kind', 'run'], leaseMs: leased(self), pollMs: timing.pollMs, run: (task, lease) => run(self, task, lease), wake: woken(rt) })
   if (!rt.pools.verifies || rt.pools.verifies.stats().state !== 'running')
     rt.pools.verifies = Board.pool(board, { concurrency: verifiers, idleMs: timing.idleMs, label: ['kind', 'verify'], leaseMs: leased(self), pollMs: timing.pollMs, run: (task, lease) => check(self, task, lease), wake: woken(rt) })
-  for (const kick of kicks) kick()
+  if (guards.kick) for (const kick of kicks) kick()
 }
 
 export async function stop(self: Swarm) {
@@ -837,7 +837,7 @@ export async function tick(self: Swarm): Promise<number | null> {
   if (rt.first) {
     rt.first = false
     for (const task of await self.board.held())
-      if (task.claim && (((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && !rt.claims.has(task.claim)) || (task.labels['kind'] === 'settle' && !self.settling.has(task.claim))))
+      if (task.claim && (((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && !(guards.claims && rt.claims.has(task.claim))) || (task.labels['kind'] === 'settle' && !self.settling.has(task.claim))))
         await self.board.release(task.id, task.claim, 'its worker restarted')
     await Nodes.reconcile(self, (run) => spentOf(self, run, true))
   }
