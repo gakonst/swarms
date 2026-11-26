@@ -1,7 +1,5 @@
-import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
+import * as Rpc from '../shared/Rpc.ts'
 import * as Site from '../shared/Site.ts'
 import * as Feedback from './Feedback.ts'
 import * as Machines from './Machines.ts'
@@ -47,17 +45,43 @@ const needs: Record<string, Need> = {
 
 const labels: Record<string, string> = { swarm_contribute: 'swarms:read to prepare a transfer, swarms:money to count one by its hash' }
 
-type Registry = Map<string, (input: Record<string, unknown>) => OAuth.Scope>
+type Result = { content: { text: string; type: 'text' }[]; isError?: true }
 
-type Message = { id?: unknown; method?: unknown; params?: { arguments?: unknown; name?: unknown } }
+type Extra = { signal: AbortSignal }
 
-function blocked(body: unknown, caller: OAuth.Caller, registry: Registry) {
-  for (const message of (Array.isArray(body) ? body : [body]) as Message[]) {
-    if (!message || message.method !== 'tools/call' || typeof message.params?.name !== 'string') continue
-    const need = registry.get(message.params.name)
-    const input = typeof message.params.arguments === 'object' && message.params.arguments !== null ? (message.params.arguments as Record<string, unknown>) : {}
-    const scope = need?.(input)
-    if (scope && !caller.scopes.has(scope)) return { id: message.id ?? null, scope, tool: message.params.name }
+type Tool = {
+  annotations: Record<string, boolean>
+  description: string
+  meta: Record<string, unknown>
+  run: (input: Record<string, unknown>, extra: Extra) => Promise<Result>
+  scope: (input: Record<string, unknown>) => OAuth.Scope
+  shape: z.ZodRawShape
+}
+
+type Resource = { description: string; mimeType: string; name: string; uri: string }
+
+type Contents = { contents: { mimeType: string; text: string; uri: string }[] }
+
+type Template = {
+  list: () => Promise<Resource[]>
+  metadata: { description: string; mimeType: string; title: string }
+  name: string
+  read: (uri: URL, swarm: string) => Promise<Contents>
+  suffix: string
+}
+
+type Server = { instructions: string; templates: Template[]; tools: Map<string, Tool> }
+
+const scheme = 'swarm://'
+
+function blocked(messages: Rpc.Message[], caller: OAuth.Caller, server: Server) {
+  for (const message of messages) {
+    if (message.method !== 'tools/call' || typeof message.params?.['name'] !== 'string') continue
+    const name = message.params['name']
+    const args = message.params['arguments']
+    const input = typeof args === 'object' && args !== null ? (args as Record<string, unknown>) : {}
+    const scope = server.tools.get(name)?.scope(input)
+    if (scope && !caller.scopes.has(scope)) return { id: message.id ?? null, scope, tool: name }
   }
   return undefined
 }
@@ -74,6 +98,15 @@ function refuse(site: string, caller: OAuth.Caller, refused: { id: unknown; scop
   )
 }
 
+async function body(request: Request) {
+  const length = Number(request.headers.get('content-length') ?? 0)
+  const bytes = length > Rpc.bodyMost ? undefined : await request.arrayBuffer()
+  if (!bytes || bytes.byteLength > Rpc.bodyMost) return Response.json(Rpc.failure(null, Rpc.codes.request, `Request body exceeds ${Rpc.bodyMost} bytes.`), { status: 413 })
+  const parsed = Rpc.parse(new TextDecoder().decode(bytes))
+  if (!parsed) return Response.json(Rpc.failure(null, Rpc.codes.parse, 'Parse error: Invalid JSON-RPC message'), { status: 400 })
+  return parsed
+}
+
 export async function handle(request: Request, env: Cloudflare.Env) {
   if (request.method !== 'POST')
     return Problem.json({ code: 'invalid_request', detail: 'Use POST for MCP over streamable HTTP.', status: 405 })
@@ -84,20 +117,100 @@ export async function handle(request: Request, env: Cloudflare.Env) {
     const description = 'The access token expired or was revoked: refresh it or sign in again.'
     return Response.json({ error: { code: -32001, message: description }, id: null, jsonrpc: '2.0' }, { headers: { 'www-authenticate': OAuth.challenge(site, { error: { code: 'invalid_token', description } }) }, status: 401 })
   }
-  const registry: Registry = new Map()
-  const server = create(env, Replica.read(env, request), site, caller, registry)
-  const refused = blocked(await request.clone().json().catch(() => undefined), caller, registry)
+  const parsed = await body(request)
+  if (parsed instanceof Response) return parsed
+  const server = create(env, Replica.read(env, request), site, caller)
+  const refused = blocked(parsed.messages, caller, server)
   if (refused) return refuse(site, caller, refused)
-  const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true })
-  await server.connect(transport)
-  return transport.handleRequest(request)
+  const answers = await Promise.all(parsed.messages.filter(Rpc.request).map((message) => answer(server, message, { signal: request.signal })))
+  Rpc.assert(answers.length <= parsed.messages.length, 'every answer has its request')
+  if (answers.length === 0) return new Response(null, { status: 202 })
+  return Response.json(parsed.batch ? answers : answers[0])
 }
 
-function text(value: unknown): CallToolResult {
+async function answer(server: Server, message: Rpc.Message & { id: Rpc.Id; method: string }, extra: Extra) {
+  try {
+    return Rpc.result(message.id, await dispatch(server, message.method, message.params ?? {}, extra))
+  } catch (error) {
+    if (error instanceof Rpc.Failure) return Rpc.failure(message.id, error.code, error.message)
+    return Rpc.failure(message.id, Rpc.codes.internal, error instanceof Error ? error.message : String(error))
+  }
+}
+
+function dispatch(server: Server, method: string, params: Rpc.Params, extra: Extra) {
+  if (method === 'initialize')
+    return {
+      protocolVersion: Rpc.version(params['protocolVersion']),
+      capabilities: { resources: { listChanged: false, subscribe: false }, tools: { listChanged: false } },
+      serverInfo: { name: 'swarms', version: '1.1.0' },
+      instructions: server.instructions,
+    }
+  if (method === 'ping') return {}
+  if (method === 'tools/list') return { tools: [...server.tools].map(([name, tool]) => listing(name, tool)) }
+  if (method === 'tools/call') return call(server, params, extra)
+  if (method === 'resources/list') return resources(server)
+  if (method === 'resources/templates/list') return { resourceTemplates: server.templates.map((template) => ({ name: template.name, uriTemplate: `${scheme}{swarm}${template.suffix}`, ...template.metadata })) }
+  if (method === 'resources/read') return read(server, params)
+  throw new Rpc.Failure(Rpc.codes.method, 'Method not found')
+}
+
+function listing(name: string, tool: Tool) {
+  return {
+    name,
+    description: tool.description,
+    inputSchema: z.toJSONSchema(z.object(tool.shape), { io: 'input', target: 'draft-7' }),
+    annotations: tool.annotations,
+    execution: { taskSupport: 'forbidden' },
+    _meta: tool.meta,
+  }
+}
+
+function issues(error: z.ZodError) {
+  return error.issues.map((issue) => (issue.path.length ? `${issue.message} at ${issue.path.map(String).join('.')}` : issue.message)).join('\n')
+}
+
+async function call(server: Server, params: Rpc.Params, extra: Extra): Promise<Result> {
+  const name = params['name']
+  if (typeof name !== 'string' || name.length === 0 || name.length > Rpc.nameMost) throw new Rpc.Failure(Rpc.codes.params, `A tool name is a string of 1 to ${Rpc.nameMost} characters.`)
+  const tool = server.tools.get(name)
+  if (!tool) throw new Rpc.Failure(Rpc.codes.params, `Tool ${name} not found`)
+  const parsed = await z.object(tool.shape).safeParseAsync(params['arguments'] ?? {})
+  if (!parsed.success) return { content: [{ text: `MCP error ${Rpc.codes.params}: Input validation error: Invalid arguments for tool ${name}: ${issues(parsed.error)}`, type: 'text' }], isError: true }
+  try {
+    return await tool.run(parsed.data, extra)
+  } catch (error) {
+    return { content: [{ text: error instanceof Error ? error.message : String(error), type: 'text' }], isError: true }
+  }
+}
+
+async function resources(server: Server) {
+  const lists = await Promise.all(server.templates.map(async (template) => (await template.list()).map((resource) => ({ ...template.metadata, ...resource }))))
+  return { resources: lists.flat() }
+}
+
+function matched(uri: string, template: Template) {
+  if (!uri.startsWith(scheme) || !uri.endsWith(template.suffix)) return undefined
+  const swarm = uri.slice(scheme.length, uri.length - template.suffix.length)
+  if (swarm.length === 0 || swarm.includes('/')) return undefined
+  return decodeURIComponent(swarm)
+}
+
+async function read(server: Server, params: Rpc.Params) {
+  const given = params['uri']
+  if (typeof given !== 'string' || !URL.canParse(given)) throw new Rpc.Failure(Rpc.codes.params, `Resource ${String(given)} not found`)
+  const uri = new URL(given)
+  for (const template of server.templates) {
+    const swarm = matched(uri.toString(), template)
+    if (swarm !== undefined) return template.read(uri, swarm)
+  }
+  throw new Rpc.Failure(Rpc.codes.params, `MCP error ${Rpc.codes.params}: Resource ${uri} not found`)
+}
+
+function text(value: unknown): Result {
   return { content: [{ text: JSON.stringify(value, null, 2), type: 'text' }] }
 }
 
-function reply<value>(result: Problem.Result<value>, shape: (value: value) => unknown = (value) => value): CallToolResult {
+function reply<value>(result: Problem.Result<value>, shape: (value: value) => unknown = (value) => value): Result {
   if (!result.ok) return { ...text({ code: result.code, detail: result.detail, status: result.status }), isError: true }
   return text(shape(result.value))
 }
@@ -106,7 +219,7 @@ const reading = { openWorldHint: false, readOnlyHint: true } as const
 
 const confirming = z.string().trim().max(200).optional().describe('The exact confirmation phrase this call names when it refuses without one. Ask the user first: this moves money or cannot be undone.')
 
-function confirmed(given: unknown, phrase: string): CallToolResult | undefined {
+function confirmed(given: unknown, phrase: string): Result | undefined {
   const tidy = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase()
   if (typeof given === 'string' && tidy(given) === tidy(phrase)) return undefined
   return { ...text({ code: 'confirm_required', confirm: phrase, detail: `This moves money or cannot be undone. Ask the user, then call again with confirm: "${phrase}".`, status: 428 }), isError: true }
@@ -125,21 +238,26 @@ function brief(value: Awaited<ReturnType<typeof Operations.get>>, origin: string
 
 const watchMost = Limits.Mcp.watchMost
 
-function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, caller: OAuth.Caller, registry: Registry) {
-  const server = new McpServer({ name: 'swarms', version: '1.1.0' }, { capabilities: { resources: { listChanged: false, subscribe: false } }, instructions: instructions(origin) })
+function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, caller: OAuth.Caller): Server {
+  const tools = new Map<string, Tool>()
   const address = caller.address
   const operated = caller.operated
-  const registerTool: McpServer['registerTool'] = (name, config, handler) => {
-    const need: Need = needs[name] ?? (config.annotations?.readOnlyHint ? 'swarms:read' : 'swarms:admin')
+  const registerTool = <shape extends z.ZodRawShape>(
+    name: string,
+    config: { annotations: Record<string, boolean>; description: string; inputSchema: shape },
+    handler: (input: z.output<z.ZodObject<shape>>, extra: Extra) => Result | Promise<Result>,
+  ) => {
+    Rpc.assert(name.length <= Rpc.nameMost, `tool name ${name} is at most ${Rpc.nameMost} characters`)
+    Rpc.assert(!tools.has(name), `tool ${name} is registered once`)
+    const need: Need = needs[name] ?? (config.annotations['readOnlyHint'] ? 'swarms:read' : 'swarms:admin')
     const scope = typeof need === 'function' ? need : () => need
     const label = labels[name] ?? scope({})
-    registry.set(name, scope)
-    const guarded = (async (input: Record<string, unknown>, extra: unknown) => {
-      const wanted = scope(input ?? {})
-      if (!caller.scopes.has(wanted)) return { ...text({ code: 'insufficient_scope', detail: `${name} needs the ${wanted} scope.`, scope: wanted, status: caller.bearer === 'none' ? 401 : 403 }), isError: true }
-      return (handler as (input: Record<string, unknown>, extra: unknown) => unknown)(input, extra)
-    }) as unknown as typeof handler
-    return server.registerTool(name, { ...config, _meta: { ...config._meta, 'swarms/scope': label }, description: `${config.description ?? ''} Scope: ${label}.` }, guarded)
+    const run = async (input: Record<string, unknown>, extra: Extra) => {
+      const wanted = scope(input)
+      if (!caller.scopes.has(wanted)) return { ...text({ code: 'insufficient_scope', detail: `${name} needs the ${wanted} scope.`, scope: wanted, status: caller.bearer === 'none' ? 401 : 403 }), isError: true } as const
+      return handler(input as z.output<z.ZodObject<shape>>, extra)
+    }
+    tools.set(name, { annotations: config.annotations, description: `${config.description} Scope: ${label}.`, meta: { 'swarms/scope': label }, run, scope, shape: config.inputSchema })
   }
 
   registerTool(
@@ -552,24 +670,22 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
     return { contents: [{ mimeType: 'application/json', text: JSON.stringify(result.value, null, 2), uri: uri.href }] }
   }
 
-  const named = (variables: Record<string, string | string[]>) => {
-    const value = variables['swarm']
-    return decodeURIComponent(Array.isArray(value) ? (value[0] ?? '') : (value ?? ''))
-  }
+  const templates: Template[] = [
+    {
+      list: async () => (await listed()).map((swarm) => ({ description: swarm.goal.slice(0, 200), mimeType: 'application/json', name: `${swarm.title} status`, uri: `${scheme}${swarm.id}/status` })),
+      metadata: { description: "A swarm's status as swarm_status answers it: status, money, whether its agent is working, its latest update and its page.", mimeType: 'application/json', title: 'Swarm status' },
+      name: 'swarm-status',
+      read: async (uri, swarm) => contents(uri, brief(await Operations.get(read, { swarm }), origin)),
+      suffix: '/status',
+    },
+    {
+      list: async () => (await listed()).filter((swarm) => swarm.form === 'tree').map((swarm) => ({ description: swarm.goal.slice(0, 200), mimeType: 'application/json', name: `${swarm.title} tree`, uri: `${scheme}${swarm.id}/tree` })),
+      metadata: { description: "A tree swarm's tree as swarm_tree answers it: the headline and its nodes three levels down, each with its status, money and checked proof.", mimeType: 'application/json', title: 'Swarm tree' },
+      name: 'swarm-tree',
+      read: async (uri, swarm) => contents(uri, await Operations.tree(read, { swarm })),
+      suffix: '/tree',
+    },
+  ]
 
-  server.registerResource(
-    'swarm-status',
-    new ResourceTemplate('swarm://{swarm}/status', { list: async () => ({ resources: (await listed()).map((swarm) => ({ description: swarm.goal.slice(0, 200), mimeType: 'application/json', name: `${swarm.title} status`, uri: `swarm://${swarm.id}/status` })) }) }),
-    { description: "A swarm's status as swarm_status answers it: status, money, whether its agent is working, its latest update and its page.", mimeType: 'application/json', title: 'Swarm status' },
-    async (uri, variables) => contents(uri, brief(await Operations.get(read, { swarm: named(variables) }), origin)),
-  )
-
-  server.registerResource(
-    'swarm-tree',
-    new ResourceTemplate('swarm://{swarm}/tree', { list: async () => ({ resources: (await listed()).filter((swarm) => swarm.form === 'tree').map((swarm) => ({ description: swarm.goal.slice(0, 200), mimeType: 'application/json', name: `${swarm.title} tree`, uri: `swarm://${swarm.id}/tree` })) }) }),
-    { description: "A tree swarm's tree as swarm_tree answers it: the headline and its nodes three levels down, each with its status, money and checked proof.", mimeType: 'application/json', title: 'Swarm tree' },
-    async (uri, variables) => contents(uri, await Operations.tree(read, { swarm: named(variables) })),
-  )
-
-  return server
+  return { instructions: instructions(origin), templates, tools }
 }
