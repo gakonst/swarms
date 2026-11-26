@@ -77,6 +77,7 @@ function WalletButton(props: { config: Config | undefined }) {
   const [open, setOpen] = useState(false)
   const [funding, setFunding] = useState(false)
   const [funded, setFunded] = useState<string>()
+  const [signing, setSigning] = useState(false)
   const menu = useRef<HTMLDivElement>(null)
   const token = wallet.session?.token
   const known = !!wallet.account
@@ -161,9 +162,15 @@ function WalletButton(props: { config: Config | undefined }) {
     )
   return (
     <button
+      aria-busy={signing || undefined}
       className="btn btn-medium wallet"
+      disabled={signing}
       onClick={() => {
-        if (props.config) Wallet.signIn(props.config).then(() => setError(undefined), (reason: unknown) => setError(message(reason)))
+        setSigning(true)
+        void (props.config ? Promise.resolve(props.config) : Api.config())
+          .then((config) => Wallet.signIn(config))
+          .then(() => setError(undefined), (reason: unknown) => setError(message(reason)))
+          .finally(() => setSigning(false))
       }}
       onFocus={prime}
       onPointerDown={prime}
@@ -171,7 +178,7 @@ function WalletButton(props: { config: Config | undefined }) {
       title={error ?? 'Sign in with Tempo ID to post in rooms and see your balance'}
       type="button"
     >
-      Sign in
+      {signing ? 'Signing in…' : 'Sign in'}
     </button>
   )
 }
