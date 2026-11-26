@@ -3,23 +3,21 @@ import type { Member, Roster, Seat } from '../shared/Api.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Gateway from './Gateway.ts'
+import { Held, limits } from './Held.ts'
 import * as Problem from './Problem.ts'
 import * as Store from './Store.ts'
 import * as Limits from '../shared/Limits.ts'
 
 export const period = Limits.Team.period
 
-const freshMs = Limits.Team.freshMs
-
-const held = new Map<string, { at: number; roster: Roster }>()
+const held = new Held<Roster>(limits.rosters)
 
 export function forget(swarm: string) {
   held.delete(swarm)
 }
 
 export function cached(swarm: string) {
-  const known = held.get(swarm)
-  return known && Date.now() - known.at < freshMs ? known.roster : undefined
+  return held.get(swarm)
 }
 
 type Chair = { address: Address; limit: bigint | null; role: Seat['role'] }
@@ -68,7 +66,7 @@ export async function roster(env: Cloudflare.Env, row: Store.Row, loaded?: reado
     steering: row.steering,
     team: row.team,
   }
-  held.set(row.id, { at: Date.now(), roster: value })
+  held.set(row.id, value)
   return value
 }
 

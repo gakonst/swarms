@@ -4,10 +4,11 @@ import * as Mention from '../shared/Mention.ts'
 import * as Pictures from '../shared/Picture.ts'
 import * as Setup from '../shared/Setup.ts'
 import type * as Tree from '../shared/Tree.ts'
+import { assert } from '../shared/Assert.ts'
+import { Held, limits } from './Held.ts'
 import * as Payment from './machines/Payment.ts'
 import * as Replica from './Replica.ts'
 import * as Search from './Search.ts'
-import * as Limits from '../shared/Limits.ts'
 
 const ways = ['transfer', 'machine'] as const satisfies readonly Way[]
 
@@ -169,16 +170,20 @@ export async function riding(env: Cloudflare.Env) {
   return { funders, riders: Number((count?.results[0] as { riders?: number } | undefined)?.riders ?? 0) }
 }
 
-const known = new Set<string>()
+const known = new Held<true>(limits.known)
 
-const writes = new Map<string, number>()
+const writes = new Held<number>(limits.writes)
+
+const sequence = { last: 0 }
 
 export function epoch(swarm: string) {
   return writes.get(swarm) ?? 0
 }
 
 function wrote(swarm: string) {
-  writes.set(swarm, epoch(swarm) + 1)
+  sequence.last += 1
+  assert(Number.isSafeInteger(sequence.last), 'the write sequence stays a safe integer')
+  writes.set(swarm, sequence.last)
 }
 
 export function seen(id: string) {
@@ -186,27 +191,26 @@ export function seen(id: string) {
 }
 
 export function know(ids: readonly string[]) {
-  for (const id of ids) known.add(id)
+  for (const id of ids) known.set(id, true)
 }
 
-const absent = new Map<string, number>()
+const absent = new Held<true>(limits.absent)
 
-export const absentMs = Limits.Store.absentMs
+export const absentMs = limits.absent.ms
 
 function missed(id: string) {
-  return (absent.get(id) ?? 0) > Date.now()
+  return absent.has(id)
 }
 
 function miss(id: string) {
-  if (absent.size > 1000) absent.clear()
-  absent.set(id, Date.now() + absentMs)
+  absent.set(id, true)
 }
 
 export async function exists(env: Cloudflare.Env, id: string) {
   if (known.has(id)) return true
   if (missed(id)) return false
   const found = (await fresh(env, (db) => db.prepare('select 1 from swarms where id = ?').bind(id).first())) !== null
-  if (found) known.add(id)
+  if (found) known.set(id, true)
   else miss(id)
   return found
 }
@@ -214,14 +218,14 @@ export async function exists(env: Cloudflare.Env, id: string) {
 export async function findAll(env: Cloudflare.Env, ids: readonly string[]) {
   if (!ids.length) return new Map<string, Row>()
   const { results } = await env.DB.prepare(totals + ' where s.id in (select value from json_each(?))').bind(JSON.stringify(ids)).all<Row>()
-  for (const row of results) known.add(row.id)
+  for (const row of results) known.set(row.id, true)
   return new Map(results.map((row) => [row.id, row]))
 }
 
 export async function find(env: Cloudflare.Env, id: string) {
   if (!known.has(id) && missed(id)) return null
   const row = await fresh(env, (db) => db.prepare(totals + ' where s.id = ?').bind(id).first<Row>())
-  if (row) known.add(row.id)
+  if (row) known.set(row.id, true)
   else miss(id)
   return row
 }
@@ -233,18 +237,18 @@ async function fresh<T>(env: Cloudflare.Env, read: (db: D1Database) => Promise<T
 
 export async function steering(env: Cloudflare.Env, id: string) {
   const row = await fresh(env, (db) => db.prepare('select steering from swarms where id = ?').bind(id).first<{ steering: Steering }>())
-  if (row) known.add(id)
+  if (row) known.set(id, true)
   return row?.steering ?? null
 }
 
-const repos = new Map<string, { at: number; repo: string }>()
+const repos = new Held<string>(limits.repos)
 
 export async function repo(env: Cloudflare.Env, id: string) {
   const cached = repos.get(id)
-  if (cached && Date.now() - cached.at < 60_000) return cached.repo
+  if (cached !== undefined) return cached
   const row = await fresh(env, (db) => db.prepare('select repo from swarms where id = ?').bind(id).first<{ repo: string | null }>())
-  if (row) known.add(id)
-  if (row?.repo) repos.set(id, { at: Date.now(), repo: row.repo })
+  if (row) known.set(id, true)
+  if (row?.repo) repos.set(id, row.repo)
   return row?.repo ?? null
 }
 
@@ -259,7 +263,7 @@ export async function insert(
   ).bind(input.id, input.title, input.goal, input.problem, input.creator, input.steering, now, now, input.setup ?? null, input.form ?? 'agent', input.nickname ?? null)
   const named = input.nickname
   const row = await (named ? env.DB.batch<Row>([freeing(env, named), swarm, claiming(env, named, input.id, now)]).then((results) => results[1]?.results[0] ?? null, taken) : swarm.first<Row>()).finally(() => wrote(input.id))
-  if (row) known.add(row.id)
+  if (row) known.set(row.id, true)
   return row
 }
 
@@ -283,27 +287,20 @@ export async function called(env: Cloudflare.Env, name: string) {
   return fresh(env, (db) => db.prepare('select n.swarm, c.name as current from swarm_names n left join swarm_names c on c.swarm = n.swarm and c.current = 1 where n.name = ?').bind(name).first<Called>())
 }
 
-const recent = new Map<string, { at: number; swarm: string; value: unknown }>()
-
-const recency = Limits.Store.recency
+const recent = new Held<{ swarm: string; value: unknown }>(limits.recent)
 
 async function recalled<T>(key: string, read: () => Promise<T>, swarm: (value: T) => string | undefined) {
   const held = recent.get(key)
-  if (held && Date.now() - held.at < recency) return held.value as T
+  if (held) return held.value as T
   const value = await read()
   const owner = swarm(value)
   if (owner === undefined) return value
-  recent.delete(key)
-  recent.set(key, { at: Date.now(), swarm: owner, value })
-  for (const old of recent.keys()) {
-    if (recent.size <= 2000) break
-    recent.delete(old)
-  }
+  recent.set(key, { swarm: owner, value })
   return value
 }
 
 function forget(swarm: string) {
-  for (const [key, held] of recent) if (held.swarm === swarm) recent.delete(key)
+  recent.drop((held) => held.swarm === swarm)
 }
 
 export function calledRecently(env: Cloudflare.Env, name: string) {
@@ -538,7 +535,7 @@ async function tally(env: Cloudflare.Env, id: string): Promise<Ledger | undefine
   ])
   const row = found?.results[0] as Row | undefined
   if (!row) return undefined
-  known.add(row.id)
+  known.set(row.id, true)
   return {
     contributions: (given?.results as Gift[]).map(contribution),
     notes: (steered) => weighed(weights?.results as Weighed[], BigInt(row.balance), steered),
@@ -579,7 +576,7 @@ export async function backed(env: Cloudflare.Env, id: string) {
     const [found, listed, weights] = await from.DB.batch<Record<string, unknown>>([from.DB.prepare(totals + ' where s.id = ?').bind(id), backers(from, id), weighing(from, id)])
     const row = found?.results[0] as Row | undefined
     if (!row) return undefined
-    known.add(row.id)
+    known.set(row.id, true)
     return { members: membered(listed?.results as Backer[]), notes: (steered: ReadonlySet<string>) => weighed(weights?.results as Weighed[], BigInt(row.balance), steered), row }
   })
 }
@@ -589,7 +586,7 @@ export async function rostered(env: Cloudflare.Env, id: string) {
     const [found, listed] = await from.DB.batch<Record<string, unknown>>([from.DB.prepare(totals + ' where s.id = ?').bind(id), backers(from, id)])
     const row = found?.results[0] as Row | undefined
     if (!row) return undefined
-    known.add(row.id)
+    known.set(row.id, true)
     return { members: membered(listed?.results as Backer[]), row }
   })
 }

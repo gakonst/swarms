@@ -7,10 +7,8 @@ import * as Store from './Store.ts'
 
 export const path = '/feedback'
 
-let handler: Handler.Handler | undefined
-
 export function feedback(env: Cloudflare.Env) {
-  handler ??= Handler.feedback({
+  return Handler.feedback({
     accept: (context) => [new URL(context.request.url).origin, new URL(Site.url(env, context.request.url)).origin].includes(context.request.headers.get('origin') ?? ''),
     app: 'swarms-site',
     fetch: (request) => send(env, request),
@@ -19,7 +17,6 @@ export function feedback(env: Cloudflare.Env) {
     path,
     repo: 'swarms',
   })
-  return handler
 }
 
 async function send(env: Cloudflare.Env, request: Request) {

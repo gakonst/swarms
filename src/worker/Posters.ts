@@ -20,8 +20,6 @@ let kit: Promise<{ fonts: Cards.Fonts; kit: Film.Kit }> | undefined
 
 const made = new Map<string, Made>()
 
-const making = new Map<string, Promise<Made | undefined>>()
-
 function ready() {
   kit ??= initWasm(resvg).then(() => {
     const buffers = [new Uint8Array(serif), new Uint8Array(mono)]
@@ -115,21 +113,13 @@ async function recall(url: string): Promise<Made | undefined> {
   return item
 }
 
-function produce(url: string, work: () => Promise<Made | undefined>) {
-  let task = making.get(url)
-  if (!task) {
-    task = work()
-      .then((item) => {
-        if (item) {
-          remember(url, item)
-          waitUntil(caches.default.put(url, served(new Request(url), item)).catch(() => undefined))
-        }
-        return item
-      })
-      .finally(() => making.delete(url))
-    making.set(url, task)
+async function produce(url: string, work: () => Promise<Made | undefined>) {
+  const item = await work()
+  if (item) {
+    remember(url, item)
+    waitUntil(caches.default.put(url, served(new Request(url), item)).catch(() => undefined))
   }
-  return task
+  return item
 }
 
 export async function serve(env: Cloudflare.Env, request: Request) {

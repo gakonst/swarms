@@ -1,26 +1,27 @@
 import { waitUntil } from 'cloudflare:workers'
+import { Held, limits } from './Held.ts'
 import * as Timing from './Timing.ts'
 import * as Limits from '../shared/Limits.ts'
 
-const memory = new Map<string, { at: number; value: unknown }>()
+const memory = new Held<unknown>(limits.edge)
 
-const refreshing = new Set<string>()
+const refreshing = new Held<true>(limits.refreshes)
 
 export async function cached<T>(env: Cloudflare.Env, key: string, seconds: number, read: () => Promise<T>, stale = seconds * 3, patience = 0): Promise<T> {
   const now = Date.now()
-  const local = memory.get(key)
+  const local = memory.entry(key, now)
   if (local && now - local.at < seconds * 1000) return local.value as T
   const request = new Request(new URL(`/__cache/${key}`, env.SWARMS_URL))
   const colo = await shared(request)
   const kept = local && (!colo || local.at >= colo.at) ? local : colo
   if (kept && now - kept.at < seconds * 1000) {
-    memory.set(key, kept)
+    memory.set(key, kept.value, kept.at)
     return kept.value as T
   }
   if (kept && now - kept.at < stale * 1000) {
-    memory.set(key, kept)
-    if (refreshing.has(key)) return kept.value as T
-    refreshing.add(key)
+    memory.set(key, kept.value, kept.at)
+    if (refreshing.has(key, now)) return kept.value as T
+    refreshing.set(key, true, now)
     const task = refresh(key, request, stale, read).finally(() => refreshing.delete(key))
     const raced = patience > 0 ? await Promise.race([task.then((value) => ({ value }), () => undefined), new Promise<undefined>((resolve) => setTimeout(resolve, patience))]) : undefined
     if (raced) return raced.value as T
@@ -41,7 +42,7 @@ export function hold<T>(env: Cloudflare.Env, key: string, value: T, seconds: num
 
 export function put<T>(env: Cloudflare.Env, key: string, value: T, stale: number) {
   const at = Date.now()
-  memory.set(key, { at, value })
+  memory.set(key, value, at)
   waitUntil(
     caches.default
       .put(new Request(new URL(`/__cache/${key}`, env.SWARMS_URL)), Response.json(value, { headers: { 'cache-control': `public, max-age=${stale}`, 'x-cached-at': String(at) } }))
@@ -88,7 +89,7 @@ async function shared(request: Request) {
 function refresh<T>(key: string, request: Request, stale: number, read: () => Promise<T>) {
   return read().then((value) => {
     const at = Date.now()
-    memory.set(key, { at, value })
+    memory.set(key, value, at)
     waitUntil(
       caches.default
         .put(request, Response.json(value, { headers: { 'cache-control': `public, max-age=${stale}`, 'x-cached-at': String(at) } }))
@@ -97,13 +98,13 @@ function refresh<T>(key: string, request: Request, stale: number, read: () => Pr
     return value
   })
 }
-const drawn = new Map<string, Drawn>()
+const drawn = new Held<Drawn>(limits.pages)
 
-const drawing = new Map<string, Promise<void>>()
+const drawing = new Held<true>(limits.draws)
 
 const pageFresh = Limits.Edge.pageFresh
 
-const pageStale = Limits.Edge.pageStale
+const pageStale = limits.pages.ms
 
 type Drawn = { at: number; body: ArrayBuffer; headers: [string, string][] }
 
@@ -124,15 +125,15 @@ export async function page(request: Request, variant: string, draw: Draw): Promi
   search.sort()
   const key = new Request(new URL(`/__page${url.pathname}?${search}`, url.origin))
   const now = Date.now()
-  const kept = drawn.get(key.url) ?? (await recall(key))
+  const kept = drawn.get(key.url, now) ?? (await recall(key))
   if (kept && now - kept.at < pageStale) {
-    if (now - kept.at >= pageFresh && !drawing.has(key.url)) {
+    if (now - kept.at >= pageFresh && !drawing.has(key.url, now)) {
       const again = new Request(request.url, { headers: request.headers })
       const task = draw(again)
         .then(({ response, whole }) => keepPage(key, response, whole))
         .catch(() => undefined)
         .finally(() => drawing.delete(key.url))
-      drawing.set(key.url, task)
+      drawing.set(key.url, true, now)
       waitUntil(task)
     }
     return served(kept, now - kept.at < pageFresh ? 'hit' : 'stale')
@@ -157,12 +158,7 @@ async function keepPage(key: Request, response: Response, whole: Promise<boolean
   if (response.status !== 200 || !(await whole)) return
   const at = Date.now()
   const headers = [...response.headers].filter(([name]) => name !== 'set-cookie' && name !== 'x-page-cache')
-  drawn.delete(key.url)
-  drawn.set(key.url, { at, body, headers })
-  for (const old of drawn.keys()) {
-    if (drawn.size <= 48) break
-    drawn.delete(old)
-  }
+  drawn.set(key.url, { at, body, headers }, at)
   const copy = new Headers(headers)
   copy.set('cache-control', `public, max-age=${pageStale / 1000}`)
   copy.set('x-drawn-at', String(at))
@@ -175,6 +171,6 @@ async function recall(key: Request): Promise<Drawn | undefined> {
   const at = Number(hit.headers.get('x-drawn-at') ?? 0)
   const headers = [...hit.headers].filter(([name]) => !['age', 'cache-control', 'cf-cache-status', 'content-encoding', 'content-length', 'expires', 'x-drawn-at'].includes(name))
   const kept = { at, body: await hit.arrayBuffer(), headers: [...headers, ['cache-control', 'private, no-cache'] as [string, string]] }
-  drawn.set(key.url, kept)
+  if (Date.now() - at < pageStale) drawn.set(key.url, kept, at)
   return kept
 }

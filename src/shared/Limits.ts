@@ -304,3 +304,21 @@ export const Watch = {
 export const Work = {
   serialWaitMs: 30_000,
 } as const
+
+export const Held = {
+  absent: { entries: 1024, ms: Store.absentMs },
+  draws: { entries: 64, ms: 60_000 },
+  edge: { entries: 512, ms: 31 * 86_400_000 },
+  fleets: { entries: 512, ms: Operations.lendingMs },
+  known: { entries: 8192, ms: 3_600_000 },
+  lending: { entries: 512, ms: Operations.lendingMs },
+  origins: { entries: 8, ms: 86_400_000 },
+  pages: { entries: 48, ms: Edge.pageStale },
+  recent: { entries: 2000, ms: Store.recency },
+  refreshes: { entries: 512, ms: 60_000 },
+  repos: { entries: 1024, ms: 60_000 },
+  rosters: { entries: 512, ms: Team.freshMs },
+  sessions: { entries: 500, ms: Sessions.heldMs },
+  unconditional: { entries: 1024, ms: Operations.unconditionalMs },
+  writes: { entries: 8192, ms: 3_600_000 },
+} as const

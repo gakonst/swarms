@@ -90,6 +90,7 @@ import * as Team from './Team.ts'
 import type { Contributed as Told, Stamp, Swarm, View } from './Swarm.ts'
 import * as Words from './Words.ts'
 import * as Fleet from '../shared/Fleet.ts'
+import { Held, limits } from './Held.ts'
 import * as Brief from '../shared/ResearchBrief.ts'
 import { clip } from '../shared/Trail.ts'
 import { ids } from '../shared/ResearchBrief.ts'
@@ -502,12 +503,12 @@ async function older<T>(call: () => T | Promise<T>, fallback: () => T | Promise<
   }
 }
 
-const unconditional = new Map<string, number>()
+const unconditional = new Held<true>(limits.unconditional)
 
-export const unconditionalMs = Limits.Operations.unconditionalMs
+export const unconditionalMs = limits.unconditional.ms
 
 async function viewed(env: Cloudflare.Env, id: string, shape: Shape): Promise<View> {
-  if ((unconditional.get(id) ?? 0) > Date.now()) return (await stub(env, id).view(shape)) as View
+  if (unconditional.has(id)) return (await stub(env, id).view(shape)) as View
   const key = `view/${id}/${new URLSearchParams(Object.entries(shape).map(([name, value]) => [name, String(value)]))}`
   const minute = Edge.minute()
   const held = await Edge.held<{ minute: string; view: View }>(env, key)
@@ -515,7 +516,7 @@ async function viewed(env: Cloudflare.Env, id: string, shape: Shape): Promise<Vi
   const view = (await older(
     () => stub(env, id).viewed(shape, known?.stamp.version ?? null),
     () => {
-      unconditional.set(id, Date.now() + unconditionalMs)
+      unconditional.set(id, true)
       return stub(env, id).view(shape)
     },
     'A conditional swarm view failed, so the whole view was read',
@@ -1671,9 +1672,7 @@ export async function unhand(env: Cloudflare.Env, input: Input<'unhand'>, addres
   return Problem.ok({ hand: name, removed: true, swarm: row.id })
 }
 
-const lending = new Map<string, { at: number; hands: Lent[] }>()
-
-const lendingMs = Limits.Operations.lendingMs
+const lending = new Held<Lent[]>(limits.lending)
 
 export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ hands: Lent[] }>> {
   const parsed = parse(schema.swarm, input)
@@ -1681,7 +1680,7 @@ export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise
   const gone = await legacy(env, parsed.value.swarm, false)
   if (!gone.ok) return gone
   const cached = lending.get(parsed.value.swarm)
-  if (cached && Date.now() - cached.at < lendingMs) return Problem.ok({ hands: cached.hands })
+  if (cached) return Problem.ok({ hands: cached })
   const swarm = parsed.value.swarm
   const [exists, issued] = await Promise.all([Store.exists(env, swarm), Hands.list(env, swarm)])
   if (!exists) return missing()
@@ -1689,7 +1688,7 @@ export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise
   const listed = await Hands.listing(env, swarm)
   if (listed?.some((hand) => Hands.used(hand))) waitUntil(Promise.resolve(stub(env, swarm).lent(swarm)).catch((error: unknown) => console.error('Marking lent hands seen failed', error)))
   const lent = Hands.lent(issued, listed)
-  if (listed) lending.set(parsed.value.swarm, { at: Date.now(), hands: lent })
+  if (listed) lending.set(parsed.value.swarm, lent)
   return Problem.ok({ hands: lent })
 }
 
@@ -1820,17 +1819,17 @@ export async function problems(env: Cloudflare.Env): Promise<Problem.Result<{ pr
   return Problem.ok({ problems: Brief.problems.map((item) => ({ ...item, open: !taken.has(item.id), swarm: taken.get(item.id) ?? null })) })
 }
 
-const fleets = new Map<string, { at: number; machines: Fleet.Machine[] }>()
+const fleets = new Held<Fleet.Machine[]>(limits.fleets)
 
 export async function machines(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ machines: Fleet.Machine[] }>> {
   const parsed = parse(schema.swarm, input)
   if (!parsed.ok) return parsed
   const cached = fleets.get(parsed.value.swarm)
-  if (cached && Date.now() - cached.at < lendingMs) return Problem.ok({ machines: cached.machines })
+  if (cached) return Problem.ok({ machines: cached })
   if (!(await Store.exists(env, parsed.value.swarm))) return missing()
   const [folded, lent] = await Promise.all([stub(env, parsed.value.swarm).fleet(), hands(env, input)])
   const machines = Fleet.lend(folded as unknown as Fleet.Machine[], lent.ok ? lent.value.hands : []).map((machine) => ({ ...machine, runs: machine.runs ?? { count: 0, failed: 0, last: null } }))
-  fleets.set(parsed.value.swarm, { at: Date.now(), machines })
+  fleets.set(parsed.value.swarm, machines)
   return Problem.ok({ machines })
 }
 

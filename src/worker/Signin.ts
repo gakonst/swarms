@@ -5,6 +5,7 @@ import { http } from 'viem'
 import { z } from 'zod'
 import * as Site from '../shared/Site.ts'
 import * as Chain from './Chain.ts'
+import { Held, limits } from './Held.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
 import { bearer, days, path, store } from './Sessions.ts'
@@ -21,18 +22,13 @@ function create(env: Cloudflare.Env, origin: string) {
   })
 }
 
-const instances = new Map<string, ReturnType<typeof create>>()
+const instances = new Held<ReturnType<typeof create>>(limits.origins)
 
 // Sign-in is for the site the Worker serves: SWARMS_URL, or the local host a dev server answers on
 // (Site.url), so a page on localhost signs in without a tunnel. A challenge's stored message names
 // its origin, so completing and reading sessions works with any instance.
 function accounts(env: Cloudflare.Env, origin = new URL(env.SWARMS_URL).origin) {
-  let instance = instances.get(origin)
-  if (!instance) {
-    instance = create(env, origin)
-    instances.set(origin, instance)
-  }
-  return instance
+  return instances.get(origin) ?? instances.set(origin, create(env, origin))
 }
 
 const verifying = z.object({

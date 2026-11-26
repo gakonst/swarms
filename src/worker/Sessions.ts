@@ -1,5 +1,6 @@
 import type { Store } from 'accounts'
 import type { Address } from 'viem'
+import { Held, limits } from './Held.ts'
 import * as Replica from './Replica.ts'
 import * as Limits from '../shared/Limits.ts'
 
@@ -13,19 +14,11 @@ function live(row: Stored | null): unknown {
   return row && (row.expires_at === null || row.expires_at > Date.now()) ? JSON.parse(row.value) : undefined
 }
 
-const held = new Map<string, { at: number; row: Stored }>()
-
-const heldMs = Limits.Sessions.heldMs
+const held = new Held<Stored>(limits.sessions)
 
 function hold(key: string, row: Stored | null) {
   if (!row) return row
-  held.delete(key)
-  held.set(key, { at: Date.now(), row })
-  for (const old of held.keys()) {
-    if (held.size <= 500) break
-    held.delete(old)
-  }
-  return row
+  return held.set(key, row)
 }
 
 export function store(db: D1Database): Store.Store {
@@ -33,7 +26,7 @@ export function store(db: D1Database): Store.Store {
   return {
     getItem: async (key) => {
       const kept = held.get(key)
-      if (kept && Date.now() - kept.at < heldMs) return live(kept.row)
+      if (kept) return live(kept)
       return live(hold(key, (await read(db.withSession('first-unconstrained'), key)) ?? (await read(db, key))))
     },
     removeItem: async (key) => {
