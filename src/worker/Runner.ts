@@ -486,8 +486,9 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   idle(self, task.id)
   const state = sub?.status.state ?? 'gone'
   const ended = sub ? finished.has(state) : true
-  if (sub && (!ended || state === 'completed')) {
-    await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
+  if (!sub || !ended || state === 'completed') {
+    const closed = await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
+    if (!closed.ok && closed.status !== 404) throw new Error('Closing run ' + task.id + ' failed, so its budget stays committed: ' + closed.detail)
     sub = await observed(self, swarm, spawned, await list(self, swarm, spawned.agent, true), sub)
   }
   const used = (sub ? Flow.micro(sub.spent_usd) : Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')) + (await dispatched(self, swarm, spawned))
