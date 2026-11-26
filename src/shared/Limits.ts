@@ -59,6 +59,13 @@ export const Feed = {
   indexMs: 1_000,
 } as const
 
+export const Feedback = {
+  contextMost: 8000,
+  messageLeast: 3,
+  messageMost: 4000,
+  swarmMost: 64,
+} as const
+
 export const Follow = {
   streamFails: 2,
   fallbackMs: 5 * 60_000,
@@ -70,6 +77,8 @@ export const Follow = {
 
 export const Gateway = {
   operatorSeconds: 86_400,
+  credentialedSeconds: 300,
+  credentialedStaleSeconds: 86_400,
 } as const
 
 export const Hands = {
@@ -294,6 +303,7 @@ export const Swarm = {
 export const Team = {
   period: 30 * 86_400_000,
   freshMs: 30_000,
+  nameMost: 64,
 } as const
 
 export const Triage = {

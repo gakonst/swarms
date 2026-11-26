@@ -1,5 +1,7 @@
 import { Handler } from 'nanocode-ts/feedback/server'
 import { z } from 'zod'
+import { assert, never } from '../shared/Assert.ts'
+import * as Limits from '../shared/Limits.ts'
 import * as Site from '../shared/Site.ts'
 import * as Gateway from './Gateway.ts'
 import * as Problem from './Problem.ts'
@@ -26,11 +28,29 @@ async function send(env: Cloudflare.Env, request: Request) {
 }
 
 export const schema = z.object({
-  context: z.string().trim().max(8000).optional().describe('What helps reproduce it: the calls made, ids, the exact error that came back. Never credentials.'),
+  context: z.string().trim().max(Limits.Feedback.contextMost).optional().describe('What helps reproduce it: the calls made, ids, the exact error that came back. Never credentials.'),
   kind: z.enum(['bug', 'feature', 'question', 'other']).default('bug').describe('bug, feature, question or other.'),
-  message: z.string().trim().min(3).max(4000).describe('What was tried, what was expected and what happened.'),
-  swarm: z.string().trim().min(1).max(64).optional().describe('The swarm it is about, the last part of its page URL /s/<id>.'),
+  message: z.string().trim().min(Limits.Feedback.messageLeast).max(Limits.Feedback.messageMost).describe('What was tried, what was expected and what happened.'),
+  swarm: z.string().trim().min(1).max(Limits.Feedback.swarmMost).optional().describe('The swarm it is about, the last part of its page URL /s/<id>.'),
 })
+
+const answer = z
+  .object({
+    detail: z.string().optional().catch(undefined),
+    id: z.string().optional().catch(undefined),
+    link: z.string().optional().catch(undefined),
+    reason: z.string().optional().catch(undefined),
+  })
+  .catch({})
+
+export type Filing = { at: 'filed'; id: string; link: string } | { at: 'failed'; why: string }
+
+export function filing(ok: boolean, status: number, raw: unknown): Filing {
+  const found = answer.parse(raw)
+  if (!ok || !found.id || !found.link) return { at: 'failed', why: found.detail ?? found.reason ?? `status ${status}` }
+  assert(found.id.length > 0 && found.link.length > 0, 'a filed report has an id and a link', found)
+  return { at: 'filed', id: found.id, link: found.link }
+}
 
 export async function file(env: Cloudflare.Env, input: unknown): Promise<Problem.Result<{ id: string; link: string }>> {
   const parsed = schema.safeParse(input)
@@ -51,8 +71,13 @@ export async function file(env: Cloudflare.Env, input: unknown): Promise<Problem
       method: 'POST',
     }),
   )
-  const answer = (await response.json().catch(() => ({}))) as { detail?: string; id?: string; link?: string; reason?: string }
-  if (!response.ok || !answer.id || !answer.link)
-    return Problem.fail(502, 'upstream_failed', `The report was not filed: ${answer.detail ?? answer.reason ?? `status ${response.status}`}`)
-  return Problem.ok({ id: answer.id, link: new URL(answer.link, origin).href })
+  const filed = filing(response.ok, response.status, await response.json().catch(() => ({})))
+  switch (filed.at) {
+    case 'failed':
+      return Problem.fail(502, 'upstream_failed', `The report was not filed: ${filed.why}`)
+    case 'filed':
+      return Problem.ok({ id: filed.id, link: new URL(filed.link, origin).href })
+    default:
+      return never(filed, 'feedback filing')
+  }
 }

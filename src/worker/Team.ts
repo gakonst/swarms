@@ -7,6 +7,8 @@ import { Held, limits } from './Held.ts'
 import * as Problem from './Problem.ts'
 import * as Store from './Store.ts'
 import * as Limits from '../shared/Limits.ts'
+import { assert } from '../shared/Assert.ts'
+import { z } from 'zod'
 
 export const period = Limits.Team.period
 
@@ -22,15 +24,27 @@ export function cached(swarm: string) {
 
 type Chair = { address: Address; limit: bigint | null; role: Seat['role'] }
 
+const amount = z.union([z.number(), z.string(), z.null()]).optional()
+
+const listing = z.object({
+  memberBudget: amount,
+  members: z.array(z.object({ limit: amount, member: z.string().regex(/^0x[0-9a-fA-F]{40}$/), role: z.enum(['admin', 'member']) })),
+})
+
 async function mates(env: Cloudflare.Env, team: string) {
   const [listed, operator] = await Promise.all([Gateway.teammates(env, team), Gateway.wallet(env)])
   if (!listed.ok) throw new Error(`The gateway did not list the swarm's team: ${listed.detail}`)
   if (!operator) throw new Error("The gateway did not say which wallet holds the swarm's team.")
+  const read = listing.safeParse(listed.value)
+  if (!read.success) {
+    console.error("The gateway listed the swarm's team in an unreadable shape", read.error.issues)
+    throw new Error("The gateway listed the swarm's team in an unreadable shape.")
+  }
   return {
-    chairs: listed.value.members
+    chairs: read.data.members
       .filter((mate) => mate.member.toLowerCase() !== operator)
       .map((mate): Chair => ({ address: mate.member.toLowerCase() as Address, limit: units(mate.limit), role: mate.role })),
-    memberBudget: units(listed.value.memberBudget),
+    memberBudget: units(read.data.memberBudget),
   }
 }
 
@@ -66,6 +80,7 @@ export async function roster(env: Cloudflare.Env, row: Store.Row, loaded?: reado
     steering: row.steering,
     team: row.team,
   }
+  assert(value.admins.every((one) => one === one.toLowerCase()), 'roster admins are lowercased', value.admins)
   held.set(row.id, value)
   return value
 }
@@ -100,7 +115,7 @@ async function led(env: Cloudflare.Env, team: string, admin: Address): Promise<P
 }
 
 export function named(row: { id: string; title: string }) {
-  const kept = row.title.replace(/[^\p{L}\p{M}\p{N} ._&'-]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 64).trim()
+  const kept = row.title.replace(/[^\p{L}\p{M}\p{N} ._&'-]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, Limits.Team.nameMost).trim()
   return kept || 'Swarm ' + row.id
 }
 
@@ -109,6 +124,7 @@ async function founded(env: Cloudflare.Env, row: Store.Row): Promise<Problem.Res
   if (!made.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not create the swarm's team: ${made.detail}`)
   const mine = made.value.address.toLowerCase() as Address
   const held = await Store.teamed(env, row.id, mine)
+  assert(!held || held === held.toLowerCase(), "a swarm's team address is lowercased", held)
   if (held !== mine) await Gateway.disband(env, mine).catch(() => undefined)
   return held ? Problem.ok(held) : Problem.fail(404, 'not_found', 'No swarm has this id.')
 }
@@ -119,6 +135,7 @@ export async function ensure(env: Cloudflare.Env, row: Store.Row, admin: Address
   const seated = await led(env, team.value, admin)
   if (!seated.ok) return seated
   forget(row.id)
+  assert(team.value.length > 0, 'an ensured swarm has a team', row.id)
   return Problem.ok({ ...row, team: team.value })
 }
 
