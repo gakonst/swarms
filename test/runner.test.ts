@@ -149,6 +149,9 @@ test('a rider steers the node in flight; the note reaches its subagent and is he
   assert.ok(steered.ok, JSON.stringify(steered))
   await until(() => (g.subs[0]?.messages.length ?? 0) === 1)
   assert.match(g.subs[0]?.messages[0] ?? '', /behind this, from @.*\] Try circuits first/)
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  const told = w.swarm.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM tree_deltas WHERE node = 'root' AND event = 'steered'").one().n
+  assert.equal(Number(told), 1)
   const refused = await w.swarm.treeSteer(id, { amount: '0', contributor: ana, nid: 'root', note: 'Mine' })
   assert.deepEqual([refused.ok, !refused.ok && refused.status], [false, 403])
 })

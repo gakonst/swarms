@@ -479,7 +479,6 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
       if (!told.ok) break
       await lease.heed(steer.seq)
       relayed = steer.seq
-      Nodes.emit(self, nid, 'steered', clip(steer.body, 280))
     }
     if (Date.now() - seen > Math.max(leased(self), timing.leaseMs)) break
     if (runtime(self).heard === heard) await wait(self, runtime(self).follow?.up ? timing.streamUpMs : timing.streamDownMs, signal)
