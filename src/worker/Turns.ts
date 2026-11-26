@@ -50,14 +50,14 @@ export function roomed(origin: string, swarm: string) {
 export { sponsorless }
 
 function aiRefused(message: string | null) {
-  return !!message && (/\b(Messages|Responses|Chat Completions|Chat) HTTP 40[13]\b/.test(message) || / attached any more\b/.test(message))
+  return !!message && (/\b(Messages|Responses|Chat Completions|Chat)\b[^:]*\bHTTP 40[13]\b/.test(message) || / attached any more\b/.test(message))
 }
 
 async function unhost(self: Swarm, row: Store.Row, detail: string | null) {
   const handle = row.ai_name ? '@' + row.ai_name : row.ai ? Mention.short(row.ai) : 'The rider'
   await Store.host(self.env, row.id, null)
   await self.hosted(row.id)
-  self.log('error', `${handle}'s own AI refused the agent, so the swarm runs on its riders' money again. Attach a working key or plan under Use your own AI and turn it back on.`, detail === null ? null : redact(detail))
+  self.log('error', `${handle}'s own AI can no longer run the agent, so the swarm runs on its riders' money again. Attach a working key or plan under Use your own AI and turn it back on.`, detail === null ? null : redact(detail))
   return { ...row, ai: null, ai_name: null }
 }
 
