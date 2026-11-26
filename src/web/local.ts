@@ -17,7 +17,7 @@ const keep = 300
 
 const flushMs = 250
 
-const refetched = new Set<Tree.Delta['event']>(['proven', 'ended', 'started', 'funded', 'moved', 'steered'])
+const refetched = new Set<Tree.Delta['event']>(['proven', 'ended', 'started', 'progress', 'checking', 'funded', 'moved', 'steered'])
 
 const rows = new Map<string, Row>()
 const cold = new Set<string>()

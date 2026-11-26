@@ -50,7 +50,7 @@ test('deltas keep node rows current, so a moved welcome with a cursor leaves the
   Local.welcome(swarm, 'v1')
   Local.put(`node:${swarm}:n1`, { funders: ['f'], id: 'n1', runs: ['r'], title: 'a' })
   Local.put(`updates:${swarm}:n1`, { deltas: [], next: 0 })
-  Local.delta(swarm, delta(7, 'progress'))
+  Local.delta(swarm, delta(7, 'posted'))
   assert.deepEqual(Local.value(`node:${swarm}:n1`), { funders: ['f'], id: 'n1', parent: 'root', runs: ['r'], title: 't7' })
   assert.deepEqual((Local.value(`updates:${swarm}:n1`) as { next: number }).next, 7)
   assert.equal(Local.cursor(swarm), 7)
