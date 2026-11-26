@@ -677,3 +677,17 @@ test("a turn the gateway's empty fee sponsor could not pay waits on the sponsor,
   assert.equal(Store.summary(row).waiting, 'tempo', 'the list, rail and lobby read the wait from D1')
 })
 
+
+test("an archive whose old agent's spend cannot be read settles none of its branches, and settles them at what they left once it can", async (t) => {
+  let listing: () => Response = () => Response.json({ detail: "The subagents' spending could not be read from the ledger; retry." }, { status: 503 })
+  const w = world((_request, url) => (url.pathname === '/v1/agents/agt_old/subagents' ? listing() : undefined))
+  t.after(w.restore)
+  await w.seed()
+  await w.env.DB.prepare("insert into steers (id, swarm, contributor, note, note_id, amount, created_at, budget, branch, agent) values ('s1', ?1, ?2, 'branch 7', 'branch:7', '400000', 1, 0, 7, 'agt_old')").bind(id, rider).run()
+  const returned = async () => (await w.env.DB.prepare("select coalesce(sum(-cast(amount as integer)), 0) as back from steers where swarm = ?1 and branch = 7 and cast(amount as integer) < 0").bind(id).first<{ back: number }>())?.back
+  await assert.rejects(w.swarm.archive(id, Date.now()), /could not be read/)
+  assert.equal(await returned(), 0)
+  listing = () => Response.json({ agents: [{ agent_id: 7, budget_usd: 0.4, parent_agent_id: null, role: 'b', spent_usd: 0.3, status: { state: 'closed' }, task: 't' }] })
+  await w.swarm.archive(id, Date.now())
+  assert.equal(await returned(), 100000)
+})

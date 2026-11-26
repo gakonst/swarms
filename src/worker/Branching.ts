@@ -64,7 +64,8 @@ export async function settled(self: Swarm, row: Store.Row) {
 
 export async function release(self: Swarm, swarm: string, current: string) {
   for (const old of await Store.replaced(self.env, swarm, current)) {
-    const listed = old.agent ? await Gateway.subagents(self.env, swarm, old.agent).catch(() => undefined) : undefined
+    const listed = old.agent ? await Gateway.subagents(self.env, swarm, old.agent).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 })) : undefined
+    if (listed && !listed.ok && listed.status !== 404) throw new Error("The old agent's branches were not settled, since what they spent could not be read: " + listed.detail)
     for (const branch of old.branches) {
       const found = listed?.ok ? listed.value.find((agent) => agent.agent_id === branch) : undefined
       await settle(self, { agent: old.agent, branch, left: found ? unspent(found) : null, swarm })

@@ -2174,7 +2174,8 @@ export async function archive(env: Cloudflare.Env, input: Input<'swarm'>, addres
   const allowed = await owned(env, row, address, operated, "Only the swarm's admins and the operator archive it.")
   if (!allowed.ok) return allowed
   const at = row.archived_at ?? Date.now()
-  await stub(env, row.id).archive(row.id, at)
+  const archived = await stub(env, row.id).archive(row.id, at).then(() => undefined, (error: unknown) => (error instanceof Error ? error.message : String(error)))
+  if (archived !== undefined) return Problem.fail(503, 'unavailable', 'The swarm was not archived. ' + archived + ' Try again shortly.')
   await Store.archive(env, row.id, at)
   const updated = await Store.find(env, row.id)
   return Problem.ok(Store.summary(updated ?? row))
