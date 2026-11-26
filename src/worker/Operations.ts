@@ -1032,7 +1032,7 @@ export async function hostAi(env: Cloudflare.Env, input: Input<'ownAi'>, address
   if (!runsOn(own.value, harness))
     return Problem.fail(409, 'conflict', `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect an Anthropic key or your Claude plan' : 'Codex: connect an OpenAI key'} under Use your own AI first.`)
   await Store.host(env, row.id, rider)
-  await stub(env, row.id).hosted(row.id)
+  await stub(env, row.id).hosted(row.id, true)
   return Problem.ok(Store.summary({ ...row, ai: rider, ai_name: (await Store.account(env, rider)).name }))
 }
 

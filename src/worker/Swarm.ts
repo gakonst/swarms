@@ -253,10 +253,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.touches += 1
   }
 
-  hosted(swarm: string) {
+  async hosted(swarm: string, on = false) {
     this.marked += 1
     this.kv.put('id', swarm)
     this.changed('detail')
+    if (on) await this.wake('money')
   }
 
   stamp(): Stamp {
