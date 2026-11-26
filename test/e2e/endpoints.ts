@@ -1,5 +1,7 @@
 import * as Http from 'node:http'
 import * as Https from 'node:https'
+import { realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 export type Kind = 'json' | 'html' | 'sse' | 'socket' | 'bytes' | 'download' | 'mcp' | 'redirect'
 
@@ -868,11 +870,68 @@ export async function run(options: { made?: string | undefined; operator?: strin
     for (const probe of list) rows.push(await call(root, probe, token, spec, samples, world.socket, made))
     rows.push(...(await mcp(root, world)))
     rows.push(...(await cli(root, world)))
+    if (production(root)) for (const each of layout(root, world)) rows.push(await call(each.root, each.probe, undefined, spec, 1))
     if (made && signed && !unwritable(root, `/v1/swarms/${made}`, made, env['SWARMS_SWEEP_WRITES'])) rows.push(...(await exercise(root, token!, made)))
   } finally {
     if (created?.id) rows.push(...(await archive(root, operator!, created.id)))
   }
   return { root, rows, spec: !!spec, world }
+}
+
+/** The production hosts of the two Workers: `swarms` (the objects: `/og`, the three `/v1/auth` writes, every other request handed to `SITE`) at its workers.dev address, the paradigm.xyz proxy in front of it, and `swarms-site` at its own. */
+export const hosts = {
+  objects: 'https://swarms.tempo-dev.workers.dev/swarms',
+  proxy: 'https://paradigm.xyz/swarms',
+  site: 'https://swarms-site.tempo-dev.workers.dev/swarms',
+} as const
+
+const productionHosts = new Set(['swarms.new', 'www.swarms.new', 'paradigm.xyz', 'swarms.tempo-dev.workers.dev', 'swarms-site.tempo-dev.workers.dev'])
+
+/** Whether root is production, whose two-Worker layout the sweep also reads at each Worker's own host. */
+export function production(root: string) {
+  try {
+    return productionHosts.has(new URL(root).hostname)
+  } catch {
+    return false
+  }
+}
+
+function png(_: unknown, response: Response) {
+  const type = response.headers.get('content-type') ?? ''
+  return type.startsWith('image/png') ? undefined : `bad: content-type ${type || 'none'}, not image/png`
+}
+
+function movedTo(location: string) {
+  return (_: unknown, response: Response) => (response.headers.get('location') === location ? undefined : `bad: moved to ${response.headers.get('location') ?? 'nowhere'}, not ${location}`)
+}
+
+/**
+ * Reads, never writes, that pin the two-Worker layout, each a probe on the host it names (patient: another host's latency stays out of the stats):
+ * `/og` drawn by `swarms` (GET and HEAD) whether asked of it or of `swarms-site` through `OBJECTS`,
+ * a GET under `/v1/auth` passing through `swarms` to the site's API (only the three POSTs are `Signin`'s; the sweep sends those to a local base),
+ * and `swarms.tempo-dev.workers.dev` serving the site: the API through `SITE`, pages moved to paradigm.xyz/swarms, which serves them.
+ */
+export function layout(root: string, world: World): { probe: Probe; root: string }[] {
+  const at = (host: string, probe: Probe) => ({ probe: { ...probe, patient: true, route: `${new URL(host).host} ${probe.route ?? probe.path}` }, root: host })
+  const v = `/v1/swarms/${world.swarm}`
+  const og = (method: string): Probe => ({ check: png, kind: 'bytes', method, path: '/og/about/card.png', status: [200] })
+  const auth: Probe = { kind: 'json', method: 'GET', path: '/v1/auth/challenge', status: [404, 405] }
+  return [
+    { probe: { ...og('HEAD'), route: '/og/about/card.png (HEAD)' }, root },
+    { probe: { ...auth, route: '/v1/auth/challenge (GET)' }, root },
+    at(hosts.objects, { kind: 'json', method: 'GET', path: '/v1/health', status: [200] }),
+    at(hosts.objects, { kind: 'json', method: 'GET', path: v, route: '/v1/swarms/:id', status: [200] }),
+    at(hosts.objects, { check: (body) => ((body as Spec)?.paths ? undefined : 'bad: no paths'), kind: 'json', method: 'GET', path: '/openapi.json', status: [200] }),
+    at(hosts.objects, og('GET')),
+    at(hosts.objects, { ...og('HEAD'), route: '/og/about/card.png (HEAD)' }),
+    at(hosts.objects, { ...auth, route: '/v1/auth/challenge (GET)' }),
+    at(hosts.objects, { accept: 'text/html', check: movedTo('https://paradigm.xyz/swarms/docs'), kind: 'redirect', method: 'GET', path: '/docs', status: [301] }),
+    at(hosts.proxy, { kind: 'html', method: 'GET', path: '/docs', status: [200] }),
+    at(hosts.proxy, { kind: 'json', method: 'GET', path: v, route: '/v1/swarms/:id', status: [200] }),
+    at(hosts.site, { kind: 'json', method: 'GET', path: '/v1/health', status: [200] }),
+    at(hosts.site, og('GET')),
+    at(hosts.site, { ...auth, route: '/v1/auth/challenge (GET)' }),
+  ]
 }
 
 export function stats(rows: Row[]) {
@@ -994,15 +1053,40 @@ export function coldTable(report: { idle: number; root: string; routes: string[]
   return lines.join('\n')
 }
 
-if (import.meta.main) {
+/** Writes the report to stdout; a report that cannot be written (a full disk, a closed pipe) fails the run instead of exiting 0 with nothing printed. */
+export function report(text: string, failed: boolean, out: NodeJS.WritableStream = process.stdout) {
+  process.exitCode = failed ? 1 : 0
+  let told = false
+  const lost = (error: Error) => {
+    process.exitCode = 1
+    if (told) return
+    told = true
+    process.stderr.write(`endpoints: could not write the report: ${error.message}\n`)
+  }
+  out.once('error', lost)
+  out.write(text + '\n', (error) => {
+    if (error) lost(error)
+  })
+}
+
+/** Whether this file is the process's entry: import.meta.main, or argv[1] on a node that lacks it (before 22.18 and 24.2), which would otherwise run nothing and exit 0. */
+export function entry(meta: { main?: boolean; url: string }, argv = process.argv) {
+  if (typeof meta.main === 'boolean') return meta.main
+  if (!argv[1]) return false
+  try {
+    return realpathSync(argv[1]) === realpathSync(fileURLToPath(meta.url))
+  } catch {
+    return false
+  }
+}
+
+if (entry(import.meta)) {
   const given = process.argv.slice(2).filter((arg) => !arg.startsWith('--'))[0]
   if (process.argv.includes('--cold') || process.env['SWARMS_COLD'] === '1') {
-    const report = await cold(base(given))
-    console.log(coldTable(report))
-    if (report.runs.some((run) => !run.phases.status || run.phases.status >= 500)) process.exitCode = 1
+    const cooled = await cold(base(given))
+    report(coldTable(cooled), cooled.runs.some((run) => !run.phases.status || run.phases.status >= 500))
   } else {
-    const report = await run({ root: given })
-    console.log(summary(report))
-    if (stats(report.rows).failed) process.exitCode = 1
+    const swept = await run({ root: given })
+    report(summary(swept), stats(swept.rows).failed > 0)
   }
 }
