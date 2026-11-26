@@ -254,6 +254,16 @@ export const Posters = {
   fresh: 300_000,
 } as const
 
+export const Provider = {
+  repeats: 3,
+  firstMs: 15 * 60_000,
+  mostMs: 4 * 60 * 60_000,
+  messageMost: 400,
+  probeSeconds: 60,
+  probeCpu: 0.125,
+  probeMemory: 128,
+} as const
+
 export const Relay = {
   ringBytes: 2_000_000,
   backlogSize: 500,

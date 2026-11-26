@@ -152,5 +152,12 @@
     "invariant": "unfinished at end",
     "found": "2026-11-26 by pnpm dst --hunt: same as hbd44b1a2c632 in the wide swarm",
     "fix": "fix(runner): count payment refusals apart from transient gateway errors"
+  },
+  {
+    "job": "mf-run.provider",
+    "seed": "1",
+    "invariant": "provider pause",
+    "found": "2026-11-26 in production: a swarm whose H200 compute_create kept failing with the gateway's GPU provider over its spend limit took 13 turns ($2.33) that ran nothing, since a failed machine call never paused it",
+    "fix": "fix(worker): a provider outage pauses the swarm on that provider and probes it instead of spending turns"
   }
 ]

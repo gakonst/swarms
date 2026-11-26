@@ -7,6 +7,7 @@ import type * as BranchingModule from '../../src/worker/Branching.ts'
 import type * as GatewayModule from '../../src/worker/Gateway.ts'
 import type * as MoneyModule from '../../src/worker/Money.ts'
 import type * as PhaseModule from '../../src/worker/Phase.ts'
+import type * as ProviderModule from '../../src/worker/Provider.ts'
 import type * as TurnsModule from '../../src/worker/Turns.ts'
 import type * as SwarmModule from '../../src/worker/Swarm.ts'
 import { reasons } from '../../src/shared/Status.ts'
@@ -122,6 +123,7 @@ export const limits = {
     stuck: { before: [2, 4], passMs: [60_000, 120_000], stallMinutes: [21, 28] },
     throwing: { attempts: [2, 5], extra: [1, 3], jitterMs: 5_000 },
   },
+  provider: { mostMinutes: 4 * 60 + 1, pollMs: 11_000, repeats: 3, ringsMost: 6, roundsMost: 4 },
   failures: {
     backoffMs: 15_000,
     calmMs: 10 * 60_000,
@@ -186,6 +188,7 @@ let Operations: typeof OperationsModule
 let Branching: typeof BranchingModule
 let Gateway: typeof GatewayModule
 let Money: typeof MoneyModule
+let Provider: typeof ProviderModule
 
 async function load() {
   if (harness) return
@@ -201,6 +204,7 @@ async function load() {
     Branching = await import('../../src/worker/Branching.ts')
     Gateway = await import('../../src/worker/Gateway.ts')
     Money = await import('../../src/worker/Money.ts')
+    Provider = await import('../../src/worker/Provider.ts')
   } finally {
     loading()
   }
@@ -2060,7 +2064,125 @@ function pauses() {
   return { canaries, scenarios }
 }
 
-const parts = [gateway(), failures(), money(), pauses()]
+function providers() {
+  const world = async () => harness.world
+  const spendLimit = 'Compute provider error 8: Workspace swarms-gw has exceeded its spend limit. Raise it in the workspace settings to start new sandboxes.'
+  const capacity = '{"code":"unavailable","detail":"Modal has no capacity for an H200 in any region right now."}'
+
+  async function outage(random: Rng, fail: Fail) {
+    const { id } = await import('../run.ts')
+    const Store = await import('../../src/worker/Store.ts')
+    const L = limits.provider
+    const hard = random.chance(0.5)
+    const text = hard ? spendLimit : capacity
+    const fails = hard ? 1 : L.repeats
+    let up = false
+    let probes = 0
+    let seq = 0
+    let events: unknown[] = []
+    let report: Record<string, unknown> = { request_id: 'agt_1:1', status: 'running' }
+    const w = (await world())((request, url) => {
+      if (url.pathname === '/api/keys/credit') return Response.json({ deposited: '5', left: '5', spent: '0' })
+      if (url.pathname === '/v1/agents/agt_1/events' && url.searchParams.get('live') !== '1') {
+        const page = events
+        events = []
+        return Response.json({ events: page, has_more: false, next_cursor: seq })
+      }
+      if (url.pathname.startsWith('/v1/agents/agt_1/turns/agt_1:')) return Response.json(report)
+      if (url.pathname === '/v1/compute/create' && request.method === 'POST') {
+        probes += 1
+        return up
+          ? Response.json({ provider: 'modal', sandboxId: 'sb-probe' })
+          : Response.json({ code: 'upstream_failed', detail: spendLimit }, { status: 502 })
+      }
+      if (url.pathname === '/v1/compute/terminate') return Response.json({ ok: true })
+      return undefined
+    })
+    const turns = () => w.calls.filter((call) => call === 'POST /v1/agents/agt_1/turns').length
+    try {
+      await w.seed('5000000')
+      await w.swarm.wake('money')
+      await w.ring()
+      if (w.swarm.run().state !== 'working') fail('provider pause', 'the turn did not start: ' + w.swarm.run().state)
+      const before = random.int(0, L.repeats - 1)
+      for (let i = 0; i < before; i++)
+        events.push({
+          created_at: Date.now(),
+          event: { event: { payload: { result: 'ok', status: 'completed', tool: 'mcp__gateway__compute_status' }, type: 'tool.result' }, source: 'agent' },
+          request_id: 'agt_1:1',
+          seq: ++seq,
+        })
+      for (let i = 0; i < fails; i++)
+        events.push({
+          created_at: Date.now(),
+          event: {
+            event: { payload: { result: [{ text, type: 'text' }], status: 'failed', tool: 'mcp__gateway__compute_create' }, type: 'tool.result' },
+            source: 'agent',
+          },
+          request_id: 'agt_1:1',
+          seq: ++seq,
+        })
+      w.swarm.checked = 0
+      for (let ring = 0; ring < L.ringsMost && w.swarm.run().state === 'working'; ring++) {
+        w.pass(random.int(L.pollMs, 2 * L.pollMs))
+        await w.ring()
+      }
+      const paused = w.swarm.run()
+      const pause = paused.state === 'paused' ? paused.pause : undefined
+      const down = Phase.outaged(pause)
+      if (!down || down.name !== 'modal' || down.spent !== hard)
+        fail('provider pause', (hard ? 'a spend-limit failure' : fails + ' identical capacity failures') + ' left ' + JSON.stringify(paused))
+      const said = pause ? Phase.reason(pause) : ''
+      if (hard && said !== "Waiting on Modal: the gateway's GPU provider account is over its spend limit. It tries again by itself.")
+        fail('provider pause', 'the pause said ' + JSON.stringify(said))
+      const row = await Store.find(w.env, id)
+      const seen = JSON.stringify([row?.status, row?.why, row ? Store.summary(row).waiting : undefined])
+      if (down && seen !== JSON.stringify(['paused', 'provider', 'modal'])) fail('provider pause', 'D1 read the wait as ' + seen)
+      report = { request_id: 'agt_1:1', status: 'completed' }
+      const started = turns()
+      const rounds = random.int(1, L.roundsMost)
+      for (let round = 0; round < rounds; round++) {
+        w.pass(L.mostMinutes * limits.pause.minute)
+        await w.ring()
+        await w.ring()
+      }
+      if (turns() !== started)
+        fail('provider spend', 'the swarm started ' + (turns() - started) + ' turns over ' + rounds + ' rounds while its provider was down')
+      if (down && probes < rounds) fail('provider spend', 'it probed ' + probes + ' times over ' + rounds + ' rounds')
+      const held = w.swarm.run()
+      if (down && (held.state !== 'paused' || !Phase.outaged(held.pause)))
+        fail('provider pause', 'with the provider still down it left ' + JSON.stringify(held))
+      up = true
+      for (let ring = 0; ring < L.ringsMost && turns() === started; ring++) {
+        w.pass(L.mostMinutes * limits.pause.minute)
+        await w.ring()
+      }
+      if (down && turns() === started) fail('provider resume', 'after the provider came back the swarm stayed ' + JSON.stringify(w.swarm.run()))
+      if (w.swarm.kv.get('provider') !== undefined) fail('provider resume', 'the outage was kept: ' + JSON.stringify(w.swarm.kv.get('provider')))
+      return 4
+    } finally {
+      w.restore()
+    }
+  }
+
+  const scenarios = { 'mf-run.provider': scenario('mf-run.provider', [outage]) }
+
+  const canaries = [
+    {
+      flip: () => {
+        Provider.guards.pause = false
+        return () => void (Provider.guards.pause = true)
+      },
+      invariant: 'provider pause',
+      name: 'mf-run.provider.keep',
+      scenario: 'mf-run.provider',
+      seeds: ['1', '2', '3', '4'],
+    },
+  ]
+  return { canaries, scenarios }
+}
+
+const parts = [gateway(), failures(), money(), pauses(), providers()]
 
 export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = Object.assign({}, ...parts.map((part) => part.scenarios))
 

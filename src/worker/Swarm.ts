@@ -579,7 +579,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   why(): Why | null {
-    return Phase.paused(this.run())?.why ?? (Turns.stuck(this) ? 'stuck' : null)
+    const paused = Phase.paused(this.run())
+    return paused ? Phase.halt(paused) : Turns.stuck(this) ? 'stuck' : null
   }
 
   working(): Working | null {

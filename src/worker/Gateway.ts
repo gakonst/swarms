@@ -431,6 +431,16 @@ export async function event(env: Cloudflare.Env, swarm: string, agent: string, s
   return send<Page>(env, `/v1/agents/${agent}/events?after=${seq - 1}&limit=${limit}`, { app: app(swarm) })
 }
 
+export async function probe(env: Cloudflare.Env, swarm: string) {
+  const seconds = Limits.Provider.probeSeconds
+  const made = await send<{ sandboxId: string }>(env, '/v1/compute/create', {
+    app: app(swarm),
+    body: { cpu: Limits.Provider.probeCpu, lease: seconds, memory: Limits.Provider.probeMemory, provider: 'modal', timeout: seconds },
+  })
+  if (made.ok) await terminate(env, swarm, made.value.sandboxId)
+  return made
+}
+
 export function terminate(env: Cloudflare.Env, swarm: string, sandboxId: string) {
   return send<unknown>(env, '/v1/compute/terminate', { app: app(swarm), body: { sandboxId } })
 }

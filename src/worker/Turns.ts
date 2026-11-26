@@ -6,6 +6,7 @@ import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Setup from '../shared/Setup.ts'
 import * as Site from '../shared/Site.ts'
+import * as Status from '../shared/Status.ts'
 import { sponsorless } from '../shared/Status.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
@@ -23,6 +24,7 @@ import * as Branching from './Branching.ts'
 import * as Chat from './Chat.ts'
 import * as Work from './Work.ts'
 import * as Run from './machines/Run.ts'
+import * as Provider from './Provider.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
 import * as Limits from '../shared/Limits.ts'
 
@@ -532,11 +534,12 @@ export async function finish(self: Swarm, row: Store.Row, run: Turning, report: 
   if (Run.kind(self.run()) === 'working') {
     Relay.ended(self)
     const unpaid = self.kv.get<{ count: number; error: string }>('unpaid')
+    const provider = self.kv.get<Provider.Seen>('provider')
     const error = typeof report.error === 'string' ? report.error : report.error?.message
     const message = report.ok?.message ?? error ?? null
     const status = report.status === 'completed' ? 'completed' : report.status === 'cancelled' ? 'cancelled' : 'failed'
     try {
-      Run.end(Run.kv(self.kv), run.n, { message, status, ...(error ? { error } : {}) }, unpaid)
+      Run.end(Run.kv(self.kv), run.n, { message, status, ...(error ? { error } : {}) }, unpaid, provider)
     } catch (thrown) {
       if (thrown instanceof Run.Refused) return Date.now() + Clock.retryMs
       throw thrown
@@ -577,7 +580,9 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
     const spent = charge ?? BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
     const grew = run.balance !== undefined && BigInt(money.row.balance) > BigInt(run.balance)
     const short = money.known && money.left < Store.reserveOf(money.row)
-    const refused = status !== 'completed' && (short || ((broke(message) || unpaidBy !== undefined) && !grew))
+    const down = run.ending.provider
+    const outage = !short && Provider.decisive(down) ? { message: down.message, name: down.provider, spent: down.spent, tries: 1 } : undefined
+    const refused = outage !== undefined || (status !== 'completed' && (short || ((broke(message) || unpaidBy !== undefined) && !grew)))
     const pushed = commits.length ? ` and pushed ${commits.length} commit${commits.length === 1 ? '' : 's'} to ${repo.state === 'ready' ? repo.name : ''}` : ''
     const lines = commits.map((commit) => `${commit.sha.slice(0, 7)} ${commit.message.split('\n')[0]}`)
     Run.once(store, n, 'turned', () => {
@@ -597,6 +602,7 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
         commits: lines,
         left: String(money.left),
         needs: String(Store.reserveOf(money.row)),
+        ...(outage ? { provider: outage } : {}),
         pushed,
         refused,
         remaining: String(BigInt(money.row.balance) - BigInt(money.row.spent)),
@@ -653,7 +659,7 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
   })
 
   const closing = Run.ending(store, n)
-  const { attempts, balance, due, left, needs, refused, remaining, short, sponsor } = facts()
+  const { attempts, balance, due, left, needs, provider, refused, remaining, short, sponsor } = facts()
   if (status !== 'completed' && fresh.ai && aiRefused(message)) fresh = await unhost(self, fresh, message)
   if (refused) {
     await pause(
@@ -664,9 +670,10 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
         left,
         needs,
         remaining,
-        wake: short ? null : Date.now() + wakeIn(attempts ?? 1, sponsor),
+        wake: short ? null : Date.now() + (provider ? Provider.later(provider.tries) : wakeIn(attempts ?? 1, sponsor)),
         why: 'money',
         ...(sponsor ? { sponsor: true } : {}),
+        ...(provider ? { provider } : {}),
       },
       Run.rev(closing),
     )
@@ -676,6 +683,30 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
   const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : renewed ? Date.now() : (due ?? Date.now())
   await self.move(fresh, { since: run.since, state: 'waiting', until }, {}, Run.rev(Run.ending(store, n)))
   return until
+}
+
+async function probed(self: Swarm, row: Store.Row, run: Phase.Paused, down: Phase.Outage) {
+  const tried = down.name === 'modal' ? await Gateway.probe(self.env, row.id) : undefined
+  const now = self.run()
+  if (now.state !== 'paused' || now.at !== run.at) return null
+  const still = tried && !tried.ok ? Provider.found('compute_create', 'HTTP ' + tried.status + ': ' + tried.detail, true) : undefined
+  if (!still) {
+    self.kv.delete('provider')
+    self.log(
+      'status',
+      tried ? Status.providers[down.name] + ' started a machine again, so the swarm goes back to work.' : 'Trying ' + Status.providers[down.name] + ' again.',
+    )
+    self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
+    return null
+  }
+  const tries = down.tries + 1
+  const wake = Date.now() + Provider.later(tries)
+  self.set({
+    ...run,
+    pause: { ...run.pause, provider: { ...down, message: still.message, spent: still.spent || down.spent, tries }, wake } as Phase.Pause,
+    settled: Date.now(),
+  })
+  return wake
 }
 
 async function projected(self: Swarm, swarm: string, answer: ReturnType<typeof Answer.parse> | undefined, ended: Search.Turn | undefined) {
@@ -799,7 +830,8 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause, exp
   if (!guards.ordered) await self.moved(row)
   self.set({ at, pause, ...(pause.why === 'unfunded' ? { settled: at } : {}), state: 'paused' }, expect)
   if (telling && self.turned() && !(Phase.again(run) && Phase.refused(pause))) Chat.announce(self, text)
-  if (shown?.why !== pause.why) self.log('status', text)
+  if ((shown ? Phase.halt(shown) : undefined) !== Phase.halt(pause)) self.log('status', text)
+  if (Phase.outaged(pause)) self.kv.delete('provider')
   if (guards.ordered) await self.moved(row)
   const alarm = await self.ctx.storage.getAlarm()
   if (alarm === null || alarm > Date.now() + settleMs) await self.ctx.storage.setAlarm(Date.now() + settleMs)
@@ -814,6 +846,8 @@ export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
   const paused = self.run()
   if (paused.state !== 'paused' || paused.at !== run.at) return null
   if (guards.known && !money.known) return Date.now() + Clock.minuteMs
+  const down = Phase.outaged(run.pause)
+  if (down && Phase.due(run, Date.now()) && money.left >= Store.reserveOf(money.row)) return probed(self, row, paused, down)
   if (
     Phase.resumes(run.pause, { balance: BigInt(money.row.balance), due: Phase.due(run, Date.now()), left: money.left, reserve: Store.reserveOf(money.row) })
   ) {

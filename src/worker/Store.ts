@@ -149,7 +149,7 @@ export function summary(row: Row): Summary {
     steering: row.steering ?? 'open',
     title: row.title,
     updatedAt: row.updated_at,
-    waiting: archived ? null : (((row.status === 'paused' || row.status === 'funding') && row.why === 'money') || (row.status === 'running' && row.why === 'stuck') ? (row.waiting ?? null) : null),
+    waiting: archived ? null : (((row.status === 'paused' || row.status === 'funding') && (row.why === 'money' || row.why === 'provider')) || (row.status === 'running' && row.why === 'stuck') ? (row.waiting ?? null) : null),
     why: archived ? null : row.status === 'paused' || row.status === 'funding' ? (row.why ?? null) : row.why === 'stuck' ? 'stuck' : null,
   }
 }

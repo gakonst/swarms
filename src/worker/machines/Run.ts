@@ -1,5 +1,6 @@
 import * as Assert from '../../shared/Assert.ts'
 import * as Phase from '../Phase.ts'
+import type * as Provider from '../Provider.ts'
 
 export const version = 2
 
@@ -17,6 +18,7 @@ export type Facts = {
   finished?: boolean | undefined
   left: string
   needs: string
+  provider?: Phase.Outage | undefined
   pushed: string
   refused: boolean
   remaining?: string | undefined
@@ -25,7 +27,13 @@ export type Facts = {
   sponsor: boolean
 }
 
-export type Ending = { done: Effect[]; facts?: Facts | undefined; report: Report; unpaid?: { count: number; error: string } | undefined }
+export type Ending = {
+  done: Effect[]
+  facts?: Facts | undefined
+  provider?: Provider.Seen | undefined
+  report: Report
+  unpaid?: { count: number; error: string } | undefined
+}
 
 export type Kind = Phase.State | 'ending'
 
@@ -80,11 +88,11 @@ export function write(store: Store, run: Phase.Run | Stored, expect?: number): S
   return stored
 }
 
-export function end(store: Store, n: number, report: Report, unpaid?: Ending['unpaid']): Stored {
+export function end(store: Store, n: number, report: Report, unpaid?: Ending['unpaid'], provider?: Ending['provider']): Stored {
   const now = read(store)
   if (now.state !== 'working' || now.n !== n) throw new Refused('Stale', 'turn ' + n + ' is not running (' + kind(now) + ')')
   if (now.ending && guards.resume) return now
-  return write(store, { ...now, ending: { done: [], report, ...(unpaid && guards.unpaid ? { unpaid } : {}) } }, rev(now))
+  return write(store, { ...now, ending: { done: [], report, ...(unpaid && guards.unpaid ? { unpaid } : {}), ...(provider ? { provider } : {}) } }, rev(now))
 }
 
 export type Ended = Extract<Phase.Run, { state: 'working' }> & { ending: Ending; rev?: number | undefined; v?: number | undefined }

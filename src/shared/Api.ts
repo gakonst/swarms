@@ -201,9 +201,11 @@ export type Brief = Omit<Update, 'text'> & { excerpt: string }
 
 export type Failure = { at: number; code: string | null; message: string; route: string; status: number | null }
 
-export type Waiting = 'tempo'
+export type Provider = 'browserbase' | 'e2b' | 'modal'
 
-export type Why = 'unfunded' | 'money' | 'costly' | 'rest' | 'idle' | 'stuck'
+export type Waiting = 'tempo' | Provider
+
+export type Why = 'unfunded' | 'money' | 'provider' | 'costly' | 'rest' | 'idle' | 'stuck'
 
 export type Halt = Exclude<Why, 'stuck'>
 

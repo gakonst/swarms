@@ -1,5 +1,5 @@
 import { cash } from './Answer.ts'
-import type { Failure, Summary, Waiting } from './Api.ts'
+import type { Failure, Provider, Summary, Waiting } from './Api.ts'
 import { decimal } from './Memo.ts'
 import * as Limits from './Limits.ts'
 
@@ -26,6 +26,19 @@ export const reasons = {
   stalled: 'Its last turns made no progress. It tries again by itself.',
   unfunded: 'Nobody is riding it yet.',
 } as const
+
+export const providers: Record<Provider, string> = { browserbase: 'Browserbase', e2b: 'E2B', modal: 'Modal' }
+
+const accounts: Record<Provider, string> = { browserbase: 'browser provider account', e2b: 'machine provider account', modal: 'GPU provider account' }
+
+export function outage(provider: Provider, spent: boolean) {
+  const said = spent ? 'is over its spend limit' : 'keeps failing'
+  return `Waiting on ${providers[provider]}: the gateway's ${accounts[provider]} ${said}. It tries again by itself.`
+}
+
+export function on(waiting: Waiting) {
+  return waiting === 'tempo' ? 'Tempo' : providers[waiting]
+}
 
 const before = {
   sponsor:
@@ -64,6 +77,7 @@ export function sponsorless(message: string | null | undefined) {
 }
 
 export function waiting(swarm: Stood): Waiting | null {
+  if (swarm.why === 'provider') return swarm.waiting ?? null
   if (swarm.why !== 'money' && swarm.why !== 'stuck') return null
   if (swarm.waiting) return swarm.waiting
   return sponsorless(swarm.failure?.message) || swarm.reason === reasons.sponsor || swarm.reason === before.sponsor ? 'tempo' : null
@@ -105,7 +119,8 @@ export function tag(word: Word) {
 }
 
 export function tagged(swarm: Stood, word = standing(swarm).word) {
-  return word === 'Stuck' && waiting(swarm) ? 'waiting on Tempo' : tag(word)
+  const held = word === 'Stuck' ? waiting(swarm) : null
+  return held ? 'waiting on ' + on(held) : tag(word)
 }
 
 export function pill(word: Word) {
@@ -132,19 +147,23 @@ export function standing(swarm: Stood): Standing {
   if (swarm.status === 'funding' && Number(swarm.balance) <= 0) return { action: 'Ride it to start it', mood: 'new', word: 'Not started' }
   if (!fueled(swarm) || swarm.why === 'unfunded' || (swarm.status === 'paused' && swarm.why === 'money' && starved(swarm.reason)))
     return { action: 'Ride it to keep it going', mood: 'money', word: 'Needs money' }
-  if (swarm.why === 'money' || (swarm.status === 'running' && swarm.why === 'stuck')) return { action: null, mood: 'stuck', word: 'Stuck' }
+  if (swarm.why === 'money' || swarm.why === 'provider' || (swarm.status === 'running' && swarm.why === 'stuck'))
+    return { action: null, mood: 'stuck', word: 'Stuck' }
   if (swarm.status === 'running') return { action: null, mood: 'live', word: 'Working' }
   return { action: null, mood: 'live', word: 'Starting' }
 }
 
 export function told(swarm: Stood) {
   const word = standing(swarm).word
-  if (word === 'Stuck' && waiting(swarm)) return reasons.sponsor
+  const held = word === 'Stuck' ? waiting(swarm) : null
+  if (held && held !== 'tempo') return swarm.reason ?? outage(held, false)
+  if (held) return reasons.sponsor
   return (word === 'Needs money' || word === 'Stuck') && swarm.reason ? swarm.reason : line(word)
 }
 
 export function badge(swarm: Stood, word = standing(swarm).word) {
-  return word === 'Stuck' && waiting(swarm) ? 'Waiting on Tempo' : pill(word)
+  const held = word === 'Stuck' ? waiting(swarm) : null
+  return held ? 'Waiting on ' + on(held) : pill(word)
 }
 
 export function word(swarm: Stood): Word {

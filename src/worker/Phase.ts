@@ -1,9 +1,11 @@
 import { z } from 'zod'
-import type { Failure, Lifecycle, Waiting, Why } from '../shared/Api.ts'
+import type { Failure, Halt, Lifecycle, Provider, Waiting, Why } from '../shared/Api.ts'
 import * as Assert from '../shared/Assert.ts'
 import * as Memo from '../shared/Memo.ts'
-import { failing, reasons, short } from '../shared/Status.ts'
+import { failing, outage, reasons, short } from '../shared/Status.ts'
 import * as Limits from '../shared/Limits.ts'
+
+export type Outage = { message: string; name: Provider; spent: boolean; tries: number }
 
 export type Pause =
   | { why: 'unfunded' }
@@ -11,6 +13,7 @@ export type Pause =
       balance?: string | undefined
       left: string
       needs?: string | undefined
+      provider?: Outage | undefined
       remaining?: string | undefined
       sponsor?: true | undefined
       wake: number | null
@@ -83,6 +86,10 @@ const pause = z.discriminatedUnion('why', [
       balance: z.string().optional(),
       left: z.string(),
       needs: z.string().optional(),
+      provider: z
+        .object({ message: z.string(), name: z.enum(['browserbase', 'e2b', 'modal']), spent: z.boolean(), tries: z.number() })
+        .loose()
+        .optional(),
       remaining: z.string().optional(),
       sponsor: z.literal(true).optional(),
       wake: z.number().nullable().default(null),
@@ -136,7 +143,16 @@ export function parse(raw: unknown): Run | undefined {
   return parsed.data as Run
 }
 
+export function outaged(pause: Pause | undefined): Outage | undefined {
+  return pause?.why === 'money' && guards.provider ? pause.provider : undefined
+}
+
+export function halt(pause: Pause): Halt {
+  return outaged(pause) ? 'provider' : pause.why
+}
+
 export function wakes(pause: Pause, reason: Reason) {
+  if (outaged(pause)) return reason === 'note'
   return reason === 'money' || pause.why === 'rest' || pause.why === 'costly' || pause.why === 'idle'
 }
 
@@ -154,6 +170,7 @@ export function refused(pause: Pause) {
 
 export function resumes(pause: Pause, money: { balance: bigint; due?: boolean | undefined; left: bigint; reserve: bigint }) {
   if (money.left < money.reserve) return false
+  if (outaged(pause)) return false
   if (!refused(pause) || money.due) return true
   return pause.why === 'money' && pause.balance !== undefined && money.balance > BigInt(pause.balance)
 }
@@ -164,6 +181,7 @@ export function due(run: Run, now: number) {
 
 function woken(run: Run) {
   if (run.state !== 'paused' || run.pause.why !== 'money') return Infinity
+  if (outaged(run.pause) && run.pause.wake !== null) return run.pause.wake
   if (run.pause.wake !== null) return guards.patience ? Math.min(run.pause.wake, run.at + maxPatienceMs) : run.pause.wake
   return refused(run.pause) ? run.at + rereadMs : Infinity
 }
@@ -175,26 +193,28 @@ export function waking(run: Run, now: number) {
 
 export function project(run: Run, n: number, stuck = false): Lifecycle {
   const pause = paused(run)
-  if (pause) return n && guards.listed ? { status: 'paused', why: pause.why } : { status: 'funding', why: pause.why }
+  if (pause) return n && guards.listed ? { status: 'paused', why: halt(pause) } : { status: 'funding', why: halt(pause) }
   if (run.state === 'new' || (run.state === 'waiting' && n === 0)) return { status: 'funding', why: null }
   return { status: 'running', why: stuck ? 'stuck' : null }
 }
 
 export function waiting(run: Run, stuck: boolean, sponsor: boolean): Waiting | null {
   const pause = paused(run)
-  if (pause) return pause.why === 'money' && pause.sponsor ? 'tempo' : null
+  if (pause) return outaged(pause)?.name ?? (pause.why === 'money' && pause.sponsor ? 'tempo' : null)
   return stuck && sponsor ? 'tempo' : null
 }
 
 export function reason(pause: Pause) {
   if (pause.why === 'unfunded') return reasons.unfunded
+  const down = outaged(pause)
+  if (down) return outage(down.name, down.spent)
   if (refused(pause) && pause.why === 'money' && pause.sponsor) return reasons.sponsor
   if (refused(pause)) return reasons.refused
   if (pause.why !== 'money' || !guards.exact) return reasons.broke
   return short(pause)
 }
 
-export const guards = { exact: true, listed: true, patience: true }
+export const guards = { exact: true, listed: true, patience: true, provider: true }
 
 export function stuck(failure: Failure | null, sponsor: boolean) {
   if (sponsor) return reasons.sponsor
@@ -203,7 +223,7 @@ export function stuck(failure: Failure | null, sponsor: boolean) {
 }
 
 export function same(a: Pause, b: Pause) {
-  return a.why === b.why && (a.why !== 'money' || b.why !== 'money' || !a.sponsor === !b.sponsor)
+  return a.why === b.why && (a.why !== 'money' || b.why !== 'money' || (!a.sponsor === !b.sponsor && outaged(a)?.name === outaged(b)?.name))
 }
 
 export function stale(why: Why | null | undefined) {

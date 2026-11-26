@@ -444,13 +444,14 @@ const reasons = {
   idle: 'Resting: the agent found nothing worth spending on, so the swarm stopped asking it and spends nothing. $0.052 is kept for later; a note or new money wakes it.',
   costly: "Waiting for money: the agent's next model call holds $0.2147, more than the $0.2083 any one contribution can pay at once. A contribution that can cover it starts it again.",
   money: Standing.reasons.broke,
+  provider: Standing.outage('modal', true),
   rest: 'The agent hit 3 errors in a row, so the swarm stopped to rest. New money restarts it.',
 } as const
 
 function why(swarm: Live): Why | null {
   if (swarm.status === 'funding') return 'unfunded'
   if (swarm.status !== 'paused') return swarm.status === 'running' && scene.has('retrying') ? 'stuck' : null
-  return (['costly', 'rest'] as const).find((key) => scene.has(key)) ?? (swarm.resting ? 'idle' : 'money')
+  return (['costly', 'rest', 'provider'] as const).find((key) => scene.has(key)) ?? (swarm.resting ? 'idle' : 'money')
 }
 
 function reason(swarm: Live) {
@@ -492,6 +493,7 @@ function summary(swarm: Live): Summary {
     steering: swarm.steering,
     title: swarm.title,
     updatedAt: swarm.updatedAt,
+    waiting: !swarm.archivedAt && why(swarm) === 'provider' ? 'modal' : null,
     why: !swarm.archivedAt && (why(swarm) === 'stuck' || reason(swarm)) ? why(swarm) : null,
   }
 }

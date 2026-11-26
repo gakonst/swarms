@@ -1,13 +1,14 @@
 import * as Turns from './Turns.ts'
 import * as Repo from './Repo.ts'
 import type { Failure, Hand, Live } from '../shared/Api.ts'
-import { type Buffers, type Crew, type Thinking, appended, clip, crew, narrate, placed, redact, spoken, subagent, thought, tool } from '../shared/Trail.ts'
+import { type Buffers, type Crew, type Thinking, appended, clip, crew, narrate, output, placed, redact, spoken, subagent, thought, tool } from '../shared/Trail.ts'
 import * as Gateway from './Gateway.ts'
 import * as Store from './Store.ts'
 import * as Relay from './Relay.ts'
 import * as Clock from './Clock.ts'
 import * as Money from './Money.ts'
 import * as Cursor from './machines/Cursor.ts'
+import * as Provider from './Provider.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
 import * as Limits from '../shared/Limits.ts'
 
@@ -258,6 +259,7 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
     }
     if (update.type === 'event') {
       advanced(self, update.event?.type, at)
+      provided(self, update.event?.type, update.event?.payload ?? {})
       if (update.event?.type === 'tool.call') for (const found of cues(update.event.payload ?? {})) self.cue(found)
       for (const delta of streamed(found.who, update.event?.type, update.event?.payload ?? {})) Relay.relay(self, delta)
     }
@@ -268,6 +270,7 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
   const inner = outer.event
   advanced(self, inner?.type, at)
   refused(self, inner?.type, inner?.payload ?? {}, at)
+  provided(self, inner?.type, inner?.payload ?? {})
   if (inner?.type === 'tool.call') for (const found of cues(inner.payload ?? {})) self.cue(found)
   for (const delta of streamed(null, inner?.type, inner?.payload ?? {})) Relay.relay(self, delta)
   record(self, null, inner?.type, inner?.payload ?? {}, event.seq, at)
@@ -315,9 +318,22 @@ export function refused(self: Swarm, type: string | undefined, payload: Record<s
   else if (type !== undefined && progress.has(type) && self.kv.get('unpaid') !== undefined) self.kv.delete('unpaid')
 }
 
+export function provided(self: Swarm, type: string | undefined, payload: Record<string, unknown>) {
+  if (type !== 'tool.result') return
+  const name = tool(payload)
+  if (!Provider.machine(name)) return
+  const failed = payload['status'] !== 'completed'
+  const seen = Provider.found(name, output(payload['result']), failed)
+  const held = self.kv.get<Provider.Seen>('provider')
+  if (seen) self.kv.put('provider', Provider.next(held, name, seen))
+  else if (!failed && held !== undefined) self.kv.delete('provider')
+}
+
 export function starved(self: Swarm) {
   const held = self.kv.get<{ count: number; error: string }>('unpaid')
-  return held && (held.count >= unpaidMost || Turns.sponsorless(held.error)) ? held.error : undefined
+  if (held && (held.count >= unpaidMost || Turns.sponsorless(held.error))) return held.error
+  const down = self.kv.get<Provider.Seen>('provider')
+  return Provider.decisive(down) ? down.message : undefined
 }
 
 export function stalled(self: Swarm, now: number) {
