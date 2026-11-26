@@ -9,13 +9,14 @@ import * as Store from './Store.ts'
 
 export const path = '/feedback'
 
-export function feedback(env: Cloudflare.Env) {
+export async function feedback(env: Cloudflare.Env) {
+  const key = await Gateway.key(env)
   return Handler.feedback({
     accept: (context) => [new URL(context.request.url).origin, new URL(Site.url(env, context.request.url)).origin].includes(context.request.headers.get('origin') ?? ''),
     app: 'swarms-site',
     fetch: (request) => send(env, request),
     gateway: env.GATEWAY_URL,
-    key: env.SWARMS_GATEWAY_KEY,
+    key,
     path,
     repo: 'swarms',
   })
@@ -59,7 +60,7 @@ export async function file(env: Cloudflare.Env, input: unknown): Promise<Problem
   if (report.swarm && !(await Store.exists(env, report.swarm))) return Problem.fail(404, 'not_found', 'No swarm has this id.')
 
   const origin = new URL(env.SWARMS_URL).origin
-  const response = await feedback(env).fetch(
+  const response = await (await feedback(env)).fetch(
     new Request(origin + path, {
       body: JSON.stringify({
         comments: [{ note: report.context ? `${report.message}\n\n${report.context}` : report.message, rect: { height: 0, width: 0, x: 0, y: 0 }, selector: 'api', tag: report.kind, text: '' }],

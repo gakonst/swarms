@@ -1,4 +1,3 @@
-import * as Filled from './Filled.ts'
 import { Hono } from 'hono'
 import * as Artifacts from './Artifacts.ts'
 import * as Code from './Code.ts'
@@ -120,9 +119,9 @@ app.on(['GET', 'HEAD'], '/a/:id/:slug/*', (c) => {
   return Artifacts.serve(c.env, c.req.raw, id, slug, path)
 })
 
-app.all(Feedback.path, (c) => Feedback.feedback(c.env).fetch(c.req.raw))
+app.all(Feedback.path, async (c) => (await Feedback.feedback(c.env)).fetch(c.req.raw))
 
-app.all(`${Feedback.path}/*`, (c) => Feedback.feedback(c.env).fetch(c.req.raw))
+app.all(`${Feedback.path}/*`, async (c) => (await Feedback.feedback(c.env)).fetch(c.req.raw))
 
 app.get('/api/config', async (c) => c.json(await Operations.config(c.env)))
 
@@ -350,8 +349,7 @@ function paged(path: string) {
 }
 
 export default {
-  async fetch(request: Request, given: Cloudflare.Env, context: ExecutionContext) {
-    const env = await Filled.filled(given, given.VAULT)
+  async fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext) {
     const url = new URL(request.url)
     const www = Site.www(url)
     if (www) return new Response(null, { headers: { location: www }, status: 301 })

@@ -9,6 +9,8 @@ type Current = { context: Telemetry.Context; spans: Spans; start: number }
 
 const store = new AsyncLocalStorage<Current>()
 
+let warm = false
+
 export function run<T>(work: () => T, parent?: string | null) {
   return store.run({ context: Telemetry.start(parent), spans: new Map(), start: Date.now() }, work)
 }
@@ -66,7 +68,9 @@ export function header() {
   const current = store.getStore()
   if (!current) return undefined
   const parts = [...current.spans].map(([name, spent]) => `${name};dur=${spent.ms};desc="${spent.count}"`)
-  return [...parts, `total;dur=${Date.now() - current.start}`, `trace;desc="${current.context.trace}"`].join(', ')
+  const isolate = warm ? [] : ['isolate;desc="cold"']
+  warm = true
+  return [...parts, ...isolate, `total;dur=${Date.now() - current.start}`, `trace;desc="${current.context.trace}"`].join(', ')
 }
 
 type Served = { meta?: { served_by_primary?: boolean; served_by_region?: string } }

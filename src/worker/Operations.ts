@@ -74,6 +74,7 @@ import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
 import * as Clock from './Clock.ts'
 import * as Edge from './Edge.ts'
+import * as Filled from './Filled.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Lobby from './Lobby.ts'
@@ -2042,8 +2043,9 @@ async function digest(text: string) {
 }
 
 export async function keyed(env: Cloudflare.Env, bearer: string | undefined) {
-  if (!bearer || !env.SWARMS_GATEWAY_KEY) return false
-  const [given, held] = await Promise.all([digest(bearer), digest(env.SWARMS_GATEWAY_KEY)])
+  const operator = bearer && (await Filled.secret(env, 'SWARMS_GATEWAY_KEY'))
+  if (!bearer || !operator) return false
+  const [given, held] = await Promise.all([digest(bearer), digest(operator)])
   return given.every((byte, index) => byte === held[index])
 }
 

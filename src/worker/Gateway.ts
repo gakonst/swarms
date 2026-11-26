@@ -4,6 +4,7 @@ import * as Setup from '../shared/Setup.ts'
 import { redact } from '../shared/Trail.ts'
 import * as Clock from './Clock.ts'
 import * as Edge from './Edge.ts'
+import * as Filled from './Filled.ts'
 import * as Timing from './Timing.ts'
 import * as Limits from '../shared/Limits.ts'
 import * as Key from './machines/Key.ts'
@@ -81,7 +82,7 @@ export function app(swarm: string) {
 }
 
 async function send<value>(env: Cloudflare.Env, path: string, init: Init = {}): Promise<Result<value>> {
-  const headers = new Headers({ accept: 'application/json', ...(init.open ? {} : { authorization: 'Bearer ' + (init.key ?? env.SWARMS_GATEWAY_KEY) }) })
+  const headers = new Headers({ accept: 'application/json', ...(init.open ? {} : { authorization: 'Bearer ' + (init.key ?? (await key(env))) }) })
   if (init.body !== undefined) headers.set('content-type', 'application/json')
   if (init.app) headers.set('gateway-app', init.app)
 
@@ -113,6 +114,10 @@ async function send<value>(env: Cloudflare.Env, path: string, init: Init = {}): 
   return { ok: true, value: parsed as value }
 }
 
+export async function key(env: Cloudflare.Env) {
+  return (await Filled.secret(env, 'SWARMS_GATEWAY_KEY')) ?? ''
+}
+
 export function me(env: Cloudflare.Env) {
   return send<{ wallet: `0x${string}` }>(env, '/api/keys/me')
 }
@@ -128,7 +133,7 @@ async function fingerprint(secret: string) {
 
 export async function wallet(env: Cloudflare.Env) {
   if (operator) return operator
-  const known = await fingerprint(env.SWARMS_GATEWAY_KEY)
+  const known = await fingerprint(await key(env))
     .then((key) =>
       Edge.cached(
         env,
@@ -413,10 +418,10 @@ export function output(env: Cloudflare.Env, swarm: string, sandboxId: string, in
   return send<Logged>(env, '/v1/compute/output', { app: app(swarm), body: { limit: input.limit, sandboxId, stream: 'all', ...(input.before ? { before: input.before } : {}) } })
 }
 
-export function tail(env: Cloudflare.Env, swarm: string, sandboxId: string, logPath: string, offset: number, signal: AbortSignal) {
+export async function tail(env: Cloudflare.Env, swarm: string, sandboxId: string, logPath: string, offset: number, signal: AbortSignal) {
   return call(env, '/v1/compute/logs', {
     body: JSON.stringify({ logPath, offset, sandboxId }),
-    headers: { accept: 'application/x-ndjson', authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY, 'content-type': 'application/json', 'gateway-app': app(swarm) },
+    headers: { accept: 'application/x-ndjson', authorization: 'Bearer ' + (await key(env)), 'content-type': 'application/json', 'gateway-app': app(swarm) },
     method: 'POST',
     signal,
   })
@@ -430,9 +435,9 @@ export function terminate(env: Cloudflare.Env, swarm: string, sandboxId: string)
   return send<unknown>(env, '/v1/compute/terminate', { app: app(swarm), body: { sandboxId } })
 }
 
-export function stream(env: Cloudflare.Env, swarm: string, agent: string, after: number, signal: AbortSignal) {
+export async function stream(env: Cloudflare.Env, swarm: string, agent: string, after: number, signal: AbortSignal) {
   return call(env, `/v1/agents/${agent}/events?after=${after}&live=1`, {
-    headers: { accept: 'text/event-stream', authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY, 'gateway-app': app(swarm) },
+    headers: { accept: 'text/event-stream', authorization: 'Bearer ' + (await key(env)), 'gateway-app': app(swarm) },
     signal,
   })
 }

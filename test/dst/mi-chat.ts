@@ -8,16 +8,16 @@ import { recorder, rng, type Outcome, type Rng } from './mi.ts'
 export const limits = { beatMs: 25_000, cases: 200, handles: 40, requests: 12, words: 8 }
 
 const impl = {
-  filled: Filled.filled,
+  secret: Filled.secret,
   steers: Mention.steers,
   beat: Relay.beat,
   hooked: null as null | ((hook: typeof Telegram.hook) => typeof Telegram.hook),
 }
 
 const mutants: { [K in keyof typeof impl]: (typeof impl)[K] } = {
-  filled: (env, vault, need) => {
+  secret: (env, name) => {
     Filled.reset()
-    return Filled.filled(env, vault, need)
+    return Filled.secret(env, name)
   },
   steers: (text) => /@swarm/i.test(text),
   beat: (self) => {
@@ -48,7 +48,6 @@ async function vault(seed: string): Promise<Outcome> {
     let calls = 0
     let failing = random.int(0, 2)
     const own = random.chance(0.3)
-    const env = (own ? Object.fromEntries(Filled.names.map((name) => [name, 'own'])) : { DB: 'db' }) as Record<string, unknown>
     const source = {
       secrets: () => {
         calls++
@@ -59,14 +58,24 @@ async function vault(seed: string): Promise<Outcome> {
         return { SWARMS_GATEWAY_KEY: 'k', TELEGRAM_BOT_TOKEN: 't' }
       },
     }
+    const env = (own ? Object.fromEntries(Filled.names.map((name) => [name, 'own'])) : { DB: 'db', VAULT: source }) as Record<string, unknown>
     let failed = 0
     for (let at = 0; at < limits.requests; at++) {
-      const out = (await impl.filled(env, source, Filled.names).catch(() => undefined)) as Record<string, unknown> | undefined
+      const name = random.pick(Filled.names)
+      const out = await impl.secret(env, name).then(
+        (value) => ({ value }),
+        () => undefined,
+      )
       if (!out) {
         failed++
         continue
       }
-      same('filled', [out['SWARMS_GATEWAY_KEY'], out['DB'] ?? null], own ? ['own', null] : ['k', 'db'], 'request ' + at)
+      same(
+        'filled',
+        out.value ?? null,
+        own ? 'own' : (({ SWARMS_GATEWAY_KEY: 'k', TELEGRAM_BOT_TOKEN: 't' } as Record<string, string>)[name] ?? null),
+        'request ' + at + ' ' + name,
+      )
     }
     same('once per isolate', calls, own ? 0 : failed + 1, (own ? 'own secrets' : failed + ' failed reads') + ' then ' + limits.requests + ' requests')
     holds('env untouched', own || env['SWARMS_GATEWAY_KEY'] === undefined, 'the shared env got the vault secret')
@@ -359,7 +368,7 @@ async function telegram(seed: string): Promise<Outcome> {
 export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = { relay, room, telegram, vault }
 
 export const canaries: { flip: () => () => void; invariant: string; name: string; scenario: string; seeds: string[] }[] = [
-  { flip: mutant('filled'), invariant: 'once per isolate', name: 'vault.once', scenario: 'vault', seeds: ['1', '2', '3'] },
+  { flip: mutant('secret'), invariant: 'once per isolate', name: 'vault.once', scenario: 'vault', seeds: ['1', '2', '3'] },
   { flip: mutant('steers'), invariant: 'standalone steers', name: 'room.steers', scenario: 'room', seeds: ['1', '2', '3'] },
   { flip: mutant('beat'), invariant: 'superseded closed', name: 'relay.superseded', scenario: 'relay', seeds: ['1', '2', '3'] },
   { flip: mutant('hooked'), invariant: 'secret required', name: 'telegram.secret', scenario: 'telegram', seeds: ['1', '2', '3'] },

@@ -2,6 +2,7 @@ import * as Credit from '../shared/Credit.ts'
 import * as Site from '../shared/Site.ts'
 import type { Check } from '../shared/Tree.ts'
 import * as Limits from '../shared/Limits.ts'
+import * as Filled from './Filled.ts'
 
 export type Env = Cloudflare.Env & {
   GITHUB?: { fetch: (request: Request) => Promise<Response> }
@@ -186,7 +187,8 @@ function ours(env: Env, run: Run) {
 
 export async function read(env: Env, incoming: Request): Promise<Read | null> {
   const body = await incoming.text()
-  if (!env.SWARMS_GITHUB_WEBHOOK_SECRET || !(await signed(env.SWARMS_GITHUB_WEBHOOK_SECRET, body, incoming.headers.get('x-hub-signature-256')))) return null
+  const secret = await Filled.secret(env, 'SWARMS_GITHUB_WEBHOOK_SECRET')
+  if (!secret || !(await signed(secret, body, incoming.headers.get('x-hub-signature-256')))) return null
   if (incoming.headers.get('x-github-event') !== 'workflow_run') return null
   const event = (() => {
     try {
@@ -301,8 +303,8 @@ export function app(swarm: string) {
   return Credit.app(swarm) + '-verify'
 }
 
-function gateway(env: Cloudflare.Env, path: string, body: unknown, app?: string) {
-  const headers = new Headers({ accept: 'application/json', authorization: 'Bearer ' + env.SWARMS_GATEWAY_KEY })
+async function gateway(env: Cloudflare.Env, path: string, body: unknown, app?: string) {
+  const headers = new Headers({ accept: 'application/json', authorization: 'Bearer ' + ((await Filled.secret(env, 'SWARMS_GATEWAY_KEY')) ?? '') })
   if (body !== null) headers.set('content-type', 'application/json')
   if (app) headers.set('gateway-app', app)
   const request = new Request(env.GATEWAY_URL + path, { body: body === null ? null : JSON.stringify(body), headers, method: body === null ? 'GET' : 'POST' })

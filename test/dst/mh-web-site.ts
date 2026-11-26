@@ -72,6 +72,7 @@ async function site(seed: string): Promise<Outcome> {
     db['withSession'] = () => db
     const assets: string[] = []
     const opened: { at: string; url: string }[] = []
+    const vaulted: string[] = []
     const answer = (at: string) => ({ fetch: async (request: Request) => (opened.push({ at, url: request.url }), { at, upgraded: true }) })
     const env = {
       ...d1.env,
@@ -91,9 +92,17 @@ async function site(seed: string): Promise<Outcome> {
       LOBBY: { getByName: (name: string) => answer(name) },
       SWARMS: { get: (id: string) => answer(id), idFromName: (name: string) => 'room:' + name },
       SWARMS_URL: paradigm,
+      VAULT: { secrets: () => (vaulted.push('secrets'), Promise.reject(new Error('the vault is down'))) },
     } as never
     const context = { passThroughOnException() {}, props: {}, waitUntil() {} } as never
-    const get = (url: string, headers: Record<string, string>) => worker.fetch(new Request(url, { headers }), env, context) as unknown as Promise<unknown>
+    const fetched = (url: string, headers: Record<string, string>) =>
+      (worker.fetch(new Request(url, { headers }), env, context) as unknown as Promise<unknown>).catch((error: unknown) => String(error))
+    const get = async (url: string, headers: Record<string, string>) => {
+      const before = vaulted.length
+      const got = await fetched(url, headers)
+      check.same('reads skip the vault', url + ' ' + JSON.stringify(headers), vaulted.length, before)
+      return got
+    }
     const html = () => random.pick(['text/html', 'text/html,application/xhtml+xml', '*/*', ''])
     const query = () =>
       random.chance(limits.chance)
@@ -116,7 +125,7 @@ async function site(seed: string): Promise<Outcome> {
       check.same(invariant, url + ' ' + JSON.stringify(headers), [status(got), got instanceof Response ? got.headers.get('location') : null], [301, location])
     }
     const page = (url: string, headers: Record<string, string>, base: string, home: string, path: string) => async () => {
-      const got = await get(url, headers)
+      const got = await fetched(url, headers)
       const invariant = base === '' ? 'root pages' : 'proxied pages'
       if (!(got instanceof Response) || got.status !== 200) return check.fail(invariant, url + ' answered ' + status(got))
       const text = await got.text()
@@ -148,7 +157,13 @@ async function site(seed: string): Promise<Outcome> {
       const got = await get(url, random.chance(limits.chance) ? {} : { accept: '*/*' })
       check.same('plain socket route', url, status(got), 400)
     }
+    const read = (url: string) => async () => {
+      const got = await get(url, random.chance(limits.chance) ? {} : { accept: 'application/json' })
+      check.same('api reads', url, status(got), 200)
+    }
     cases.push(
+      read('https://swarms.new/v1/health'),
+      read('https://' + workers + '/swarms/v1/swarms'),
       page('https://swarms.new/faq', { accept: 'text/html' }, '', 'https://swarms.new', '/faq'),
       page('https://' + workers + '/swarms/faq', { accept: 'text/html', 'cf-worker': 'paradigm.xyz' }, '/swarms', paradigm, '/faq'),
       moved('www moved', 'https://www.swarms.new/faq?x=1', { accept: 'text/html' }, 'https://swarms.new/faq?x=1'),
@@ -287,6 +302,14 @@ export const canaries: Canary[] = [
     'web_site',
   ),
   canary('web.site.assets', 'src/worker/site.ts', '  url.pathname = path\n', '', 'assets', 'web_site'),
+  canary(
+    'web.site.vault',
+    'src/worker/site.ts',
+    'async fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext) {',
+    'async fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext) {\n    await env.VAULT?.secrets()',
+    'reads skip the vault',
+    'web_site',
+  ),
   canary('web.site.socket', 'src/worker/site.ts', 'if (socket) return socket', 'if (socket && !socket) return socket', 'socket untouched', 'web_site'),
   canary('web.site.listen', 'src/worker/Operations.ts', "asked.get('listen') === '1' ? '&listen=1' : ''", "''", 'room opened', 'web_site'),
   canary(
