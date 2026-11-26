@@ -194,7 +194,6 @@ test/edge.test.ts 1 pre-existing hand formatting
 test/edit.test.ts 1 pre-existing hand formatting
 test/endpoints-entry.test.ts 1 pre-existing hand formatting
 test/fleet.test.ts 1 pre-existing hand formatting
-test/flow.test.ts 1 pre-existing hand formatting
 test/fold.test.ts 1 pre-existing hand formatting
 test/follow.test.ts 1 pre-existing hand formatting
 test/funding.test.ts 1 pre-existing hand formatting
@@ -227,7 +226,6 @@ test/outbox.test.ts 1 pre-existing hand formatting
 test/page-server.test.ts 1 pre-existing hand formatting
 test/pages.test.ts 1 pre-existing hand formatting
 test/pay.test.ts 1 pre-existing hand formatting
-test/payment.test.ts 1 pre-existing hand formatting
 test/phase.test.ts 1 pre-existing hand formatting
 test/progress.test.ts 1 pre-existing hand formatting
 test/prose.test.ts 1 pre-existing hand formatting

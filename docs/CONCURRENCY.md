@@ -132,7 +132,7 @@ The gateway pays a swarm's calls from its approvals and credit itself; there is 
 - A contribution is never lowered under what the swarm spent (`Store.lower`, one statement).
 - A tree run reserves its money (`commit`) before its subagent is spawned, its budgets come from that reservation, and settling returns the rest; reservations and spends are rows in one balance-checked insert, so concurrent runs see each other's.
 
-`test/payment.test.ts` checks spent ≤ raised and spent + reserved ≤ raised after every write (mutant: `Flow.guards.covered` off), and the load simulation checks it per swarm at every gateway spend, spawn and budget (`overspent`).
+The `flow_pay` scenario in `test/dst/mb.ts` checks spent ≤ raised and spent + reserved ≤ raised after every write (canary `mb.pay.covered`), and the load simulation checks it per swarm at every gateway spend, spawn and budget (`overspent`).
 
 ### Version skew
 
@@ -219,7 +219,7 @@ Landed in `machines/Lease.ts` and `Work.holding`: the lease is that machine, wit
 
 ### Payment and ride
 
-Built in `src/worker/machines/Payment.ts` (`step` and `transfer`, the only transitions; `settle`, `once`, `audit`) and simulated in `test/payment.test.ts`. Every write is one D1 statement that is its own compare-and-set (a balance-checked insert, or an update on the value read), keyed by the transaction hash or the request's key, and each attempt has a deadline (`within`, 30 s, answering `Busy`). `Paying` is written to kv before the write; the effects (room lines, deltas) run in the same synchronous step that writes `paid:<id>`, so a restart resumes and finds its write by id, a duplicate or stale delivery finds `paid:<id>` and changes nothing, and `Payment.audit` checks every bucket non-negative and held = pledged - spent exactly, in micro-dollars (`Riding.health`'s `ok`). Records carry `v` and are read leniently, so an object on either side of a rollback finishes what the other started.
+Built in `src/worker/machines/Payment.ts` (`step` and `transfer`, the only transitions; `settle`, `once`, `audit`) and simulated in `test/dst/mb.ts` (`flow_pay`, `pay_steps`, `transfer_once`, `backing_lower`). Every write is one D1 statement that is its own compare-and-set (a balance-checked insert, or an update on the value read), keyed by the transaction hash or the request's key, and each attempt has a deadline (`within`, 30 s, answering `Busy`). `Paying` is written to kv before the write; the effects (room lines, deltas) run in the same synchronous step that writes `paid:<id>`, so a restart resumes and finds its write by id, a duplicate or stale delivery finds `paid:<id>` and changes nothing, and `Payment.audit` checks every bucket non-negative and held = pledged - spent exactly, in micro-dollars (`Riding.health`'s `ok`). Records carry `v` and are read leniently, so an object on either side of a rollback finishes what the other started.
 
 ```text
 Transfer: Seen { hash } → Credited { amount } → Counted { contribution } → Announced
