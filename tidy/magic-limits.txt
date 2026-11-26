@@ -1,5 +1,5 @@
 # No numeric literal outside src/shared/Limits.ts but 0, 1, 2 and the unit conversions 24, 60, 1000, 1024 and 3600.
-# path count why; 2121 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 2118 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 cli/src/auth.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/account.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/ai.ts 2 pre-existing; move it into src/shared/Limits.ts
@@ -105,9 +105,9 @@ src/worker/Swarm.ts 26 pre-existing; move it into src/shared/Limits.ts
 src/worker/Team.ts 4 pre-existing; move it into src/shared/Limits.ts
 src/worker/Telegram.ts 2 pre-existing; move it into src/shared/Limits.ts
 src/worker/Triage.ts 15 pre-existing; move it into src/shared/Limits.ts
-src/worker/Turns.ts 19 pre-existing; move it into src/shared/Limits.ts
+src/worker/Turns.ts 17 pre-existing; move it into src/shared/Limits.ts
 src/worker/Verify.ts 33 pre-existing; move it into src/shared/Limits.ts
 src/worker/Watch.ts 12 pre-existing; move it into src/shared/Limits.ts
 src/worker/Words.ts 5 pre-existing; move it into src/shared/Limits.ts
-src/worker/Work.ts 2 pre-existing; move it into src/shared/Limits.ts
+src/worker/Work.ts 1 pre-existing; move it into src/shared/Limits.ts
 src/worker/XFrames.ts 17 pre-existing; move it into src/shared/Limits.ts

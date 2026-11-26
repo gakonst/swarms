@@ -665,11 +665,12 @@ export const heldMs = Limits.Nodes.heldMs
 
 async function claimNode(self: Swarm, nid: string) {
   const until = Date.now() + heldMs
-  for (let tries = 1; ; tries++) {
-    const held = await self.board.claim(nodeId(nid), { leaseMs: lockMs })
-    if (held.ok || held.rejection.kind !== 'Held' || Date.now() >= until || tries >= Limits.Nodes.claimTries) return held
+  let held = await self.board.claim(nodeId(nid), { leaseMs: lockMs })
+  for (let tries = 1; !held.ok && held.rejection.kind === 'Held' && Date.now() < until && tries < Limits.Nodes.claimTries; tries++) {
     await new Promise((resolve) => setTimeout(resolve, Limits.Nodes.claimPollMs))
+    held = await self.board.claim(nodeId(nid), { leaseMs: lockMs })
   }
+  return held
 }
 
 export async function heedNode(self: Swarm, nid: string, upto: number) {

@@ -121,16 +121,19 @@ export async function holding<T>(board: Board, id: string, leaseMs: number, work
 
 export const serialWaitMs = Limits.Work.serialWaitMs
 
-export async function serial<T>(board: Board, id: string, leaseMs: number, work: (held: Held) => Promise<T>, waitMs = 50, deadlineMs = serialWaitMs): Promise<T> {
+export const serialPollMs = Limits.Work.serialPollMs
+
+export async function serial<T>(board: Board, id: string, leaseMs: number, work: (held: Held) => Promise<T>, waitMs: number = serialPollMs, deadlineMs: number = serialWaitMs): Promise<T> {
   const deadline = Date.now() + deadlineMs
-  for (;;) {
-    const ran = await holding(board, id, leaseMs, work)
-    if ('value' in ran) return ran.value
-    if ('lost' in ran) throw new Lost(id, ran.lost)
-    if (ran.rejection.kind !== 'Held') throw new Error(`The lock ${id} was refused: ${ran.rejection.kind}`)
-    if (guards.deadline && Date.now() + waitMs > deadline) throw new Busy(id, deadlineMs)
-    await new Promise((resolve) => setTimeout(resolve, waitMs))
+  let ran = await holding(board, id, leaseMs, work)
+  while ('rejection' in ran && ran.rejection.kind === 'Held' && !(guards.deadline && Date.now() + waitMs > deadline)) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(waitMs, serialWaitMs)))
+    ran = await holding(board, id, leaseMs, work)
   }
+  if ('value' in ran) return ran.value
+  if ('lost' in ran) throw new Lost(id, ran.lost)
+  if (ran.rejection.kind !== 'Held') throw new Error(`The lock ${id} was refused: ${ran.rejection.kind}`)
+  throw new Busy(id, deadlineMs)
 }
 
 

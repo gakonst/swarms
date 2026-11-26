@@ -86,9 +86,9 @@ export const leaseMs = Limits.Turns.leaseMs
 
 const sendingMs = Limits.Turns.sendingMs
 
-export const retry: Work.Retry = { backoffMs: 15_000, maxAttempts: 8 }
+export const retry: Work.Retry = { ...Limits.Turns.retry }
 
-export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: retry.maxAttempts }
+export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: Limits.Turns.retry.maxAttempts }
 
 export const guards = { fresh: true, gone: true, known: true, ordered: true }
 
@@ -146,13 +146,14 @@ export async function step(self: Swarm) {
 async function posted(self: Swarm, n: number) {
   const live = (await self.board.tasks()).find((found) => found.labels['kind'] === 'turn' && !Work.terminal(found.phase))
   if (live) return live.id
-  for (let k = 0; ; k++) {
+  for (let k = 0; k < Limits.Turns.tasksPerTurn; k++) {
     const id = k ? `turn:${n}.${k}` : `turn:${n}`
     const found = await self.board.task(id)
     if (guards.fresh && found && Work.terminal(found.phase)) continue
     if (!found) await Work.ensure(self.board, { id, labels: { kind: 'turn' }, spec: `turn ${n}`, terms: { retry } })
     return id
   }
+  throw new Error('Turn ' + n + ' already ended ' + Limits.Turns.tasksPerTurn + ' tasks, so it posts no more.')
 }
 
 async function adopted(self: Swarm, run: Turning): Promise<Turning> {

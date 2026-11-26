@@ -580,6 +580,8 @@ export const Turns = {
   settleMs: 15_000,
   calmMs: 10 * 60_000,
   failsToStick: 2,
+  retry: { backoffMs: 15_000, maxAttempts: 8 },
+  tasksPerTurn: 1024,
 } as const
 
 export const Verify = {
@@ -601,6 +603,7 @@ export const Wire = {
 } as const
 
 export const Work = {
+  serialPollMs: 50,
   serialWaitMs: 30_000,
 } as const
 
