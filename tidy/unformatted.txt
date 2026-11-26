@@ -208,7 +208,6 @@ test/launch.test.ts 1 pre-existing hand formatting
 test/ledger.test.ts 1 pre-existing hand formatting
 test/lending.test.ts 1 pre-existing hand formatting
 test/lent.test.ts 1 pre-existing hand formatting
-test/lifecycle.test.ts 1 pre-existing hand formatting
 test/load/hook.ts 1 pre-existing hand formatting
 test/load/sim.ts 1 pre-existing hand formatting
 test/local.test.ts 1 pre-existing hand formatting
@@ -221,11 +220,9 @@ test/nickname-page.test.ts 1 pre-existing hand formatting
 test/nickname.test.ts 1 pre-existing hand formatting
 test/nodes.test.ts 1 pre-existing hand formatting
 test/og.test.ts 1 pre-existing hand formatting
-test/outbox.test.ts 1 pre-existing hand formatting
 test/page-server.test.ts 1 pre-existing hand formatting
 test/pages.test.ts 1 pre-existing hand formatting
 test/pay.test.ts 1 pre-existing hand formatting
-test/phase.test.ts 1 pre-existing hand formatting
 test/progress.test.ts 1 pre-existing hand formatting
 test/prose.test.ts 1 pre-existing hand formatting
 test/relay.test.ts 1 pre-existing hand formatting
@@ -257,6 +254,5 @@ test/unhand.test.ts 1 pre-existing hand formatting
 test/verify.test.ts 1 pre-existing hand formatting
 test/watch.test.ts 1 pre-existing hand formatting
 test/wire.test.ts 1 pre-existing hand formatting
-test/work.test.ts 1 pre-existing hand formatting
 test/workerd-board.test.ts 1 pre-existing hand formatting
 test/xframes.test.ts 1 pre-existing hand formatting
