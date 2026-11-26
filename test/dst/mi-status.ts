@@ -1,6 +1,6 @@
 import type * as StatusModule from '../../src/shared/Status.ts'
 import { applied, load, mutant } from './mh-kit.ts'
-import { checker, recorder, rng, type Outcome } from './mi.ts'
+import { checker, recorder, rng, type Checker, type Outcome } from './mi.ts'
 
 export const limits = { cases: 300 }
 
@@ -10,7 +10,7 @@ async function status(seed: string): Promise<Outcome> {
   const random = rng('status', seed)
   const { fail, holds, steps, violations } = recorder()
   let checked = 0
-  const a = checker(fail, () => void checked++)
+  const a: Checker = checker(fail, () => void checked++)
   const Status = await load<typeof StatusModule>('src/shared/Status.ts')
   applied()
   a.as('a running swarm with money is working, and one out of money needs money even while a turn ends')

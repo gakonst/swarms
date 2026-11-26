@@ -27,7 +27,7 @@ export const id = 'abc123abc123'
 
 export const rider = ('0x' + 'a'.repeat(40)) as `0x${string}`
 
-export type Route = (request: Request, url: URL) => Response | Promise<Response> | undefined
+export type Route = (request: Request, url: URL) => Response | Promise<Response | undefined> | undefined
 
 export function storage() {
   const db = new DatabaseSync(':memory:')

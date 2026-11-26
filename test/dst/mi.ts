@@ -617,7 +617,34 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
   { flip: mutant('seen'), invariant: 'leaves', name: 'showing.seen', scenario: 'showing', seeds: ['1', '2', '3'] },
 ]
 
-export function checker(fail: (invariant: string, detail: string) => void, count: () => void) {
+type Matcher = RegExp | ((error: unknown) => unknown) | (abstract new (...args: never[]) => unknown)
+
+function matches(error: unknown, matcher?: Matcher) {
+  if (!matcher) return true
+  if (matcher instanceof RegExp) return matcher.test(String((error as Error)?.message ?? error))
+  if (typeof matcher === 'function' && matcher.prototype && error instanceof (matcher as abstract new (...args: never[]) => unknown)) return true
+  try {
+    return !!(matcher as (error: unknown) => unknown)(error)
+  } catch {
+    return false
+  }
+}
+
+export type Checker = {
+  as(name: string): void
+  deepEqual<T>(got: unknown, want: T, note?: unknown): asserts got is T
+  doesNotMatch(got: string, pattern: RegExp, note?: unknown): void
+  doesNotThrow(run: () => unknown, note?: unknown): void
+  equal<T>(got: unknown, want: T, note?: unknown): asserts got is T
+  match(got: string, pattern: RegExp, note?: unknown): void
+  notEqual(got: unknown, want: unknown, note?: unknown): void
+  ok(value: unknown, note?: unknown): asserts value
+  rejects(promise: Promise<unknown> | (() => Promise<unknown>), matcher?: Matcher, note?: unknown): Promise<void>
+  throws(run: () => unknown, matcher?: Matcher, note?: unknown): void
+  fail(note?: unknown): void
+}
+
+export function checker(fail: (invariant: string, detail: string) => void, count: () => void): Checker {
   let at = 'check'
   const show = (value: unknown) => JSON.stringify(value, (_, one: unknown) => (typeof one === 'bigint' ? one + 'n' : one))?.slice(0, 300)
   const check = (ok: boolean, detail: string, note?: unknown) => {
@@ -628,21 +655,39 @@ export function checker(fail: (invariant: string, detail: string) => void, count
     as: (name: string) => void (at = name),
     deepEqual: (got: unknown, want: unknown, note?: unknown) => check(isDeepStrictEqual(got, want), show(got) + ' is not ' + show(want), note),
     doesNotMatch: (got: string, pattern: RegExp, note?: unknown) => check(!pattern.test(got), show(got) + ' matches ' + pattern, note),
+    doesNotThrow: (run: () => unknown, note?: unknown) => {
+      let thrown: unknown
+      try {
+        run()
+      } catch (error) {
+        thrown = error ?? 'thrown'
+      }
+      check(thrown === undefined, 'threw ' + String((thrown as Error)?.message ?? thrown), note)
+    },
     equal: (got: unknown, want: unknown, note?: unknown) => check(Object.is(got, want), show(got) + ' is not ' + show(want), note),
+    fail: (note?: unknown) => check(false, 'failed', note),
     match: (got: string, pattern: RegExp, note?: unknown) => check(pattern.test(got), show(got) + ' does not match ' + pattern, note),
     notEqual: (got: unknown, want: unknown, note?: unknown) => check(!Object.is(got, want), show(got) + ' equals ' + show(want), note),
     ok: (value: unknown, note?: unknown) => check(!!value, 'not true', note),
-    rejects: async (promise: Promise<unknown>, pattern?: RegExp) => {
-      const error = await promise.then(
-        () => undefined,
-        (thrown: unknown) => thrown,
+    rejects: async (promise: Promise<unknown> | (() => Promise<unknown>), matcher?: Matcher, note?: unknown) => {
+      const thrown = await (typeof promise === 'function' ? promise() : promise).then(
+        () => ({ none: true as const }),
+        (error: unknown) => ({ error, none: false as const }),
       )
       check(
-        error !== undefined && (!pattern || pattern.test(String((error as Error)?.message ?? error))),
-        'did not reject' + (pattern ? ' with ' + pattern : ''),
+        !thrown.none && matches(thrown.error, matcher),
+        thrown.none ? 'did not reject' : 'rejected with ' + String((thrown.error as Error)?.message ?? thrown.error),
+        note,
       )
+    },
+    throws: (run: () => unknown, matcher?: Matcher, note?: unknown) => {
+      let thrown: { error: unknown } | undefined
+      try {
+        run()
+      } catch (error) {
+        thrown = { error }
+      }
+      check(!!thrown && matches(thrown.error, matcher), thrown ? 'threw ' + String((thrown.error as Error)?.message ?? thrown.error) : 'did not throw', note)
     },
   }
 }
-
-export type Checker = ReturnType<typeof checker>
