@@ -20,7 +20,6 @@ src/web/Search.tsx 2 pre-existing; bound it in Limits or move it into the reques
 src/web/Share.tsx 2 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/Shell.tsx 2 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/Steering.tsx 4 pre-existing; bound it in Limits or move it into the request or Durable Object
-src/web/Switcher.tsx 2 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/wallet.ts 1 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/web/wire.ts 2 pre-existing; bound it in Limits or move it into the request or Durable Object
 src/worker/Posters.ts 1 pre-existing; bound it in Limits or move it into the request or Durable Object

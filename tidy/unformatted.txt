@@ -73,7 +73,6 @@ src/web/Steering.tsx 1 pre-existing hand formatting
 src/web/Strip.tsx 1 pre-existing hand formatting
 src/web/Surface.tsx 1 pre-existing hand formatting
 src/web/Swarm.tsx 1 pre-existing hand formatting
-src/web/Switcher.tsx 1 pre-existing hand formatting
 src/web/Thread.tsx 1 pre-existing hand formatting
 src/web/Traces.tsx 1 pre-existing hand formatting
 src/web/Tree.tsx 1 pre-existing hand formatting

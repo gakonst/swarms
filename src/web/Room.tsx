@@ -49,7 +49,7 @@ export function typist() {
 }
 
 function idle(element: Element | null) {
-  return !element || element === document.body || !!element.closest('.servers, .switcher, .tabs')
+  return !element || element === document.body || !!element.closest('.servers, .tabs')
 }
 
 function say(draft: Outbox.Draft) {

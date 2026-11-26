@@ -5,13 +5,12 @@ import * as Rail from '../shared/Rail.ts'
 import * as Site from '../shared/Site.ts'
 import { boot } from './boot.ts'
 import { cash } from './Branches.tsx'
-import { Switcher } from './Switcher.tsx'
 import * as Status from '../shared/Status.ts'
 import { board, live, stood } from './Home.tsx'
 import { Inline } from './Markdown.tsx'
 import { Badge } from './Picture.tsx'
 import { Link, navigate } from './router.tsx'
-import { Opener, Palette, useShortcut } from './Search.tsx'
+import { Opener, Palette, remember, useShortcut } from './Search.tsx'
 import * as Wire from './wire.ts'
 
 const seenKey = 'swarms_seen'
@@ -234,6 +233,9 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
   const list = Wire.useSwarms()
   const items = channels(list.data)
   const unread = useUnread(items, props.channel)
+  useEffect(() => {
+    if (props.channel && props.channel !== 'general') remember(props.channel)
+  }, [props.channel])
   useChannelKeys(items, props.channel, unread)
   const rail = useSyncExternalStore(watchRail, readRail, servedRail)
   useShortcut()
@@ -245,7 +247,6 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
       <div className="hub-main" inert={props.listing || undefined}>
         {props.children}
       </div>
-      <Switcher current={props.channel} items={items} listing={list.data} unread={unread} />
       <Palette />
     </div>
   )

@@ -13,7 +13,6 @@ import { stood } from './Home.tsx'
 import { Badge } from './Picture.tsx'
 import { Link, navigate, prefetch, usePath } from './router.tsx'
 import { channels } from './Shell.tsx'
-import { recentIds } from './Switcher.tsx'
 import { Mark, word as said } from './Tree.tsx'
 import * as Wire from './wire.ts'
 
@@ -207,6 +206,25 @@ function Fragmented(props: { children: ReactNode; first: boolean }) {
       {props.children}
     </>
   )
+}
+
+const recentKey = 'swarms_recent'
+
+export function recentIds(): readonly string[] {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(recentKey) ?? '[]')
+    return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function remember(id: string) {
+  const known = recentIds()
+  if (known[0] === id) return
+  try {
+    localStorage.setItem(recentKey, JSON.stringify([id, ...known.filter((each) => each !== id)]))
+  } catch {}
 }
 
 let opened = false

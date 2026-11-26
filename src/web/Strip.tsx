@@ -6,6 +6,7 @@ import { usd } from './format.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import { Avatar } from './Room.tsx'
 import { href, Link } from './router.tsx'
+import { Opener } from './Search.tsx'
 import { stamp } from './format.ts'
 
 export type Tab = 'chat' | 'board' | 'results' | 'code' | 'about'
@@ -73,7 +74,13 @@ export function Strip(props: { backers: readonly Backer[]; children?: ReactNode;
   return (
     <header aria-label="The channel" className="strip">
       <div className="strip-head">
-        <h1 className="strip-title"><i aria-hidden="true">#</i><Inline text={props.title} /></h1>
+        <h1 className="strip-title">
+          <Opener className="strip-switch">
+            <i aria-hidden="true">#</i>
+            <Inline text={props.title} />
+            <svg aria-hidden="true" className="strip-switch-mark" viewBox="0 0 16 16"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" /></svg>
+          </Opener>
+        </h1>
         {props.edit}
         <p className="strip-stats">
           <span className="strip-big strip-riders"><b>{props.riders.toLocaleString('en-US')}</b> rider{props.riders === 1 ? '' : 's'}</span>

@@ -15,7 +15,6 @@ import './reins.css'
 import './tree.css'
 import './swarm.css'
 import './shell.css'
-import './switcher.css'
 import './search.css'
 import './phone.css'
 
