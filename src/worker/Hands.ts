@@ -156,10 +156,12 @@ export async function issue(self: Swarm, swarm: string, label: string, contribut
       await retire(self, swarm, name, 'evicted', false)
     })
 
+  const taken = new Set((await board.tasks()).map((found) => found.id))
   for (let attempt = 0; attempt < Limits.Hands.nameTries; attempt++) {
     if ((await slots(board)).filter((found) => holds(found, Date.now())).length >= limit) return { ok: false, reason: 'full' }
     const name = `${slug(label)}-${suffix()}`
-    if (all.some((row) => row.name === name)) continue
+    if (all.some((row) => row.name === name) || taken.has(task(name))) continue
+    taken.add(task(name))
     const tried = await guarded(self, name, () => mint(self, swarm, name, label, contributor))
     if (tried !== 'again') return tried
   }

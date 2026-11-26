@@ -366,8 +366,7 @@ async function evict(seed: string, wide: boolean): Promise<Outcome> {
               fail('evicts only idle', what + ' detached ' + name + ', which was not lent')
           }
           if (result.ok && holding.length > Hands.limit) fail('cap', what + ' issued a hand with ' + holding.length + ' slots held')
-          const ghosts = tasks.filter((task) => task.phase === 'done' && !after.some((row) => 'hand:' + row.name === task.id))
-          if (!result.ok && result.status === 409 && !(plan.random && ghosts.length)) {
+          if (!result.ok && result.status === 409) {
             const held = call.down ? holding.length : holding.filter((task) => connected.has(task.id.slice('hand:'.length))).length
             if (held < Hands.limit) fail('cap', what + ' refused as full with ' + held + ' slots held by machines in use')
           }
@@ -768,11 +767,28 @@ export const canaries: Canary[] = [
     seeds: all,
   },
   {
-    flip: mutant('world.evict.names', 'src/worker/Hands.ts', 'if (all.some((row) => row.name === name)) continue', 'if (all.length < 0) continue'),
+    flip: mutant(
+      'world.evict.names',
+      'src/worker/Hands.ts',
+      'if (all.some((row) => row.name === name) || taken.has(task(name))) continue',
+      'if (all.length < 0) continue',
+    ),
     invariant: 'name never reissued',
     name: 'world.evict.names',
     scenario: 'world_evict',
     seeds: all,
+  },
+  {
+    flip: mutant(
+      'world.evict.leftover',
+      'src/worker/Hands.ts',
+      'if (all.some((row) => row.name === name) || taken.has(task(name))) continue',
+      'if (all.some((row) => row.name === name)) continue',
+    ),
+    invariant: 'cap',
+    name: 'world.evict.leftover',
+    scenario: 'world_evict',
+    seeds: ['12', '13', '16'],
   },
   {
     flip: mutant('world.cap.adopt', 'src/worker/Hands.ts', 'await board.renew(found.id, found.claim, unseenMs)', 'undefined'),

@@ -110,5 +110,12 @@
     "invariant": "top-up step",
     "found": "2026-11-26 by mf-nodes.topup: a run topped up once could not be topped up again, since the commit key counted commit rows that Flow.rows sums per contributor, so the second top-up reused the first key and was dropped",
     "fix": "fix(tree): a run's bound tops up again after its first top-up"
+  },
+  {
+    "job": "world_evict",
+    "seed": "12",
+    "invariant": "cap",
+    "found": "2026-11-26 by pnpm dst --seeds: with colliding name suffixes, a reissued hand name hit the done board task of a freed, never-seen hand, so the claim failed and issue answered full with 3 of the slots held",
+    "fix": "fix(hands): skip hand names that still have a board task"
   }
 ]
