@@ -21,7 +21,7 @@ logs=output/check
 rm -rf "$logs" && mkdir -p "$logs"
 node=(node --experimental-strip-types --no-warnings)
 bin=node_modules/.bin
-[ -x "$bin/prettier" ] || pnpm install --frozen-lockfile >"$logs/install.log" 2>&1 || { echo "FAIL install     (output/check/install.log)"; echo "RED   swarms"; exit 1; }
+pnpm install --frozen-lockfile >"$logs/install.log" 2>&1 || { echo "FAIL install     (output/check/install.log)"; echo "RED   swarms"; exit 1; }
 
 fmt() {
   local listed unformatted new gone
@@ -56,8 +56,14 @@ sim() {
   pnpm -s dst --canaries
 }
 build() { pnpm -s build >/dev/null && "${node[@]}" scripts/size.ts; }
+unit() {
+  local files
+  files=$(ls test/*.test.ts 2>/dev/null | wc -l)
+  [ "$files" -gt 0 ] || { echo "no unit tests left: test/dst is the only test"; return 0; }
+  node --test --experimental-strip-types --test-reporter=dot test/*.test.ts && echo "$files unit test files still to port to test/dst"
+}
 
-checks=(fmt lint typecheck tidy build)
+checks=(fmt lint typecheck tidy build unit)
 [ "$dst" = 1 ] && checks+=(sim)
 now() { date +%s%3N; }
 start=$(now)
