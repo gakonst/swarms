@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Problem } from '../shared/Api.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Code =
   | 'access_denied'
@@ -15,7 +16,7 @@ export type Code =
   | 'upstream_failed'
   | 'username_required'
 
-export type Status = 400 | 401 | 403 | 404 | 405 | 409 | 410 | 429 | 502 | 503
+export type Status = (typeof Limits.Http)['invalid' | 'unauthorized' | 'forbidden' | 'missing' | 'notAllowed' | 'conflict' | 'gone' | 'tooMany' | 'upstream' | 'unavailable']
 
 export type Failure = { code: Code; detail: string; status: Status }
 
@@ -45,7 +46,7 @@ export function fail(status: Status, code: Code, detail: string): Result<never> 
 }
 
 export function invalid(error: z.ZodError): Result<never> {
-  return fail(400, 'invalid_request', z.prettifyError(error))
+  return fail(Limits.Http.invalid, 'invalid_request', z.prettifyError(error))
 }
 
 export function json(failure: Failure) {
@@ -55,6 +56,6 @@ export function json(failure: Failure) {
   })
 }
 
-export function respond<value>(result: Result<value>, status = 200) {
+export function respond<value>(result: Result<value>, status: number = Limits.Http.ok) {
   return result.ok ? Response.json(result.value, { status }) : json(result)
 }

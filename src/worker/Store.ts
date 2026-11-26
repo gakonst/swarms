@@ -10,6 +10,7 @@ import { Held, limits } from './Held.ts'
 import * as Payment from './machines/Payment.ts'
 import * as Replica from './Replica.ts'
 import * as Search from './Search.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const ways = ['transfer', 'machine'] as const satisfies readonly Way[]
 
@@ -66,7 +67,7 @@ export type Fields = Partial<
   Pick<Row, 'answer' | 'machines' | 'pool_left' | 'pool_spent' | 'repo' | 'rounds' | 'setup' | 'sponsor_left' | 'sponsor_spent' | 'status' | 'steering' | 'waiting' | 'why'>
 >
 
-export const reserve = 50_000n
+export const reserve = Limits.Store.reserve
 
 export function reasoned(row: Pick<Row, 'balance' | 'setup' | 'spent'>, reason: string | null) {
   return Standing.restated(reason, { needs: reserveOf(row), remaining: BigInt(row.balance) - BigInt(row.spent) })
@@ -504,7 +505,7 @@ function weighed(results: Weighed[], balance: bigint, steered: ReadonlySet<strin
     backers: row.backers,
     id: row.id,
     note: row.note,
-    share: balance > 0n ? Number((BigInt(row.weight) * 10_000n) / balance) / 10_000 : 0,
+    share: balance > 0n ? Number((BigInt(row.weight) * BigInt(Limits.Store.shareBasis)) / balance) / Limits.Store.shareBasis : 0,
     steered: steered.has(row.id),
     weight: Memo.decimal(BigInt(row.weight)),
   }))
@@ -823,7 +824,7 @@ export async function note(env: Cloudflare.Env, swarm: string, id: string, balan
 export async function noteId(note: string) {
   const normalized = note.trim().toLowerCase().replace(/\s+/g, ' ')
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized))
-  return Array.from(new Uint8Array(digest).slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return Array.from(new Uint8Array(digest).slice(0, Limits.Store.idBytes), (byte) => byte.toString(Limits.Hex.radix).padStart(2, '0')).join('')
 }
 
 export type Settlement = { agent: string; branch: number; left: bigint | null; swarm: string }

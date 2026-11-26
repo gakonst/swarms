@@ -7,6 +7,7 @@ import * as Site from '../shared/Site.ts'
 import * as Store from './Store.ts'
 import * as XFrames from './XFrames.ts'
 import * as Timing from './Timing.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Name = 'card.png' | 'poster.png' | 'video.mp4'
 
@@ -19,7 +20,7 @@ export function parse(path: string): { key: string; name: Name } | undefined {
 }
 
 export async function grove(env: Cloudflare.Env, swarm: string) {
-  const found = await Operations.tree(env, { depth: 64, swarm }).catch(() => undefined)
+  const found = await Operations.tree(env, { depth: Limits.WorkerOg.treeDepth, swarm }).catch(() => undefined)
   return found?.ok ? found.value : undefined
 }
 
@@ -46,14 +47,14 @@ export async function keyed(env: Cloudflare.Env, url: URL) {
   const named = Nickname.parse(url.pathname)
   if (!named) return undefined
   const found = await Store.called(env, named.name).catch(() => undefined)
-  if (found) return `s/${found.swarm}${/^\/[nt]\//.test(named.tail) ? `/n/${named.tail.slice(3)}` : ''}`
+  if (found) return `s/${found.swarm}${/^\/[nt]\//.test(named.tail) ? `/n/${named.tail.slice('/n/'.length)}` : ''}`
   return found === null && !named.tail ? (Share.problem(named.name) ? `new/${named.name}` : 'new') : undefined
 }
 
 export async function subject(env: Cloudflare.Env, key: string): Promise<Share.Subject | undefined> {
   if (key === 'about' || key === 'docs') return Share.plain(key)
   if (key.startsWith('new/')) {
-    const problem = Share.problem(key.slice(4))
+    const problem = Share.problem(key.slice('new/'.length))
     return problem && Share.idea(problem)
   }
   if (key.startsWith('s/')) {
@@ -87,14 +88,14 @@ export async function embed(env: Cloudflare.Env, given: string, origin: string, 
   try {
     url = new URL(given)
   } catch {
-    return Problem.fail(400, 'invalid_request', 'url must be a link to a Swarms page.')
+    return Problem.fail(Limits.Http.invalid, 'invalid_request', 'url must be a link to a Swarms page.')
   }
-  if (url.origin !== new URL(origin).origin && url.origin !== self && url.origin !== new URL(env.SWARMS_URL).origin && url.hostname !== Site.domain) return Problem.fail(404, 'not_found', 'url is not a Swarms page.')
+  if (url.origin !== new URL(origin).origin && url.origin !== self && url.origin !== new URL(env.SWARMS_URL).origin && url.hostname !== Site.domain) return Problem.fail(Limits.Http.missing, 'not_found', 'url is not a Swarms page.')
   const key = await keyed(env, new URL(`${Site.strip(url.pathname, Site.prefix(url)).replace(/^\/(x|tg)(?=\/|$)/, '') || '/'}${url.search}`, self))
   const found = key && (await subject(env, key))
-  if (!found) return Problem.fail(404, 'not_found', 'url is not a Swarms page or no longer exists.')
+  if (!found) return Problem.fail(Limits.Http.missing, 'not_found', 'url is not a Swarms page or no longer exists.')
   const title = Share.title(found)
-  const base = { cache_age: 300, provider_name: 'Swarms', provider_url: origin, thumbnail_height: Share.card.height, thumbnail_url: Share.asset(origin, found, 'card.png'), thumbnail_width: Share.card.width, title, version: '1.0' as const }
+  const base = { cache_age: Limits.WorkerOg.cacheSeconds, provider_name: 'Swarms', provider_url: origin, thumbnail_height: Share.card.height, thumbnail_url: Share.asset(origin, found, 'card.png'), thumbnail_width: Share.card.width, title, version: '1.0' as const }
   const card = Share.playing(origin, found)
   if (!card) return Problem.ok({ ...base, type: 'link' })
   const fit = Math.min(1, Number(maxwidth) / Share.player.width || 1, Number(maxheight) / Share.player.height || 1)
@@ -126,7 +127,7 @@ export function frame(env: Cloudflare.Env, id: string | undefined, nid?: string)
     const grown = await grove(env, id)
     if (grown) return { response: XFrames.tree(site, id, grown, url, env.TELEGRAM_BOT), whole: Promise.resolve(true) }
     const result = await Operations.get(env, { swarm: id })
-    return { response: result.ok ? XFrames.swarm(site, result.value, url, env.TELEGRAM_BOT) : result.status === 404 ? XFrames.lost(site, url, env.TELEGRAM_BOT) : Problem.json(result), whole: Promise.resolve(result.ok) }
+    return { response: result.ok ? XFrames.swarm(site, result.value, url, env.TELEGRAM_BOT) : result.status === Limits.Http.missing ? XFrames.lost(site, url, env.TELEGRAM_BOT) : Problem.json(result), whole: Promise.resolve(result.ok) }
   }
 }
 

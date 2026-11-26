@@ -242,7 +242,12 @@ export function migrated(kv: Old, n: number, now: number): Run {
   const why = kv.get<string>('why')
   if (paused || kv.get<boolean>('refunded') || kv.get<number>('refundAt') !== undefined) {
     if (why === 'unfunded') return { at: now, pause: { why: 'unfunded' }, state: 'paused' }
-    if (why === 'rest') return { at: now, pause: { failures: Number(/after (\d+) errors/.exec(paused ?? '')?.[1] ?? 3), why: 'rest' }, state: 'paused' }
+    if (why === 'rest')
+      return {
+        at: now,
+        pause: { failures: Number(/after (\d+) errors/.exec(paused ?? '')?.[1] ?? Limits.WorkerPhase.restFailures), why: 'rest' },
+        state: 'paused',
+      }
     if (why === 'costly') return { at: now, pause: { wanted: wanted ?? units(/about \$([\d.]+)/.exec(paused ?? '')?.[1]), why: 'costly' }, state: 'paused' }
     return { from: { left: units(kv.get<string>('left')), wake: null, why: 'money' }, since: null, state: 'waiting', until: now }
   }

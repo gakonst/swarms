@@ -1,4 +1,5 @@
 import * as Memo from '../shared/Memo.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Kind = 'pledge' | 'grant' | 'commit' | 'spend' | 'settle' | 'return' | 'move'
 
@@ -142,11 +143,11 @@ export function usd(amount: bigint) {
 }
 
 export function number(amount: bigint) {
-  return Number(amount) / 1_000_000
+  return Number(amount) / Limits.SharedSetup.microsPerDollar
 }
 
 export function micro(usd: number | undefined) {
-  return usd === undefined ? 0n : Memo.units(usd.toFixed(6))
+  return usd === undefined ? 0n : Memo.units(usd.toFixed(Limits.SharedMemo.decimals))
 }
 
 export function totals(rows: readonly Row[]) {

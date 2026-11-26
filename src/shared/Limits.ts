@@ -138,6 +138,14 @@ export const Gateway = {
   operatorSeconds: 86_400,
   credentialedSeconds: 300,
   credentialedStaleSeconds: 86_400,
+  operatorStaleSeconds: 30 * 86_400,
+  pricingMs: 10 * 60_000,
+  pricesFreshSeconds: 600,
+  pricesWaitMs: 3_000,
+  pricesStaleSeconds: 86_400,
+  detailChars: 300,
+  keyBytes: 8,
+  listPage: 100,
 } as const
 
 export const Hands = {
@@ -152,6 +160,8 @@ export const Land = { attempts: 3 } as const
 export const Lobby = {
   socketsMost: 10_000,
   quietMs: 30_000,
+  noStatusClose: 1005,
+  abnormalClose: 1006,
 } as const
 
 export const Machines = {
@@ -256,6 +266,8 @@ export const Storage = {
 }
 
 export const Repo = {
+  slugChars: 48,
+  historyMost: 50,
   snapshotMs: 60_000,
   snapshotFiles: 2_000,
   snapshotText: 64_000,
@@ -315,6 +327,7 @@ export const Runs = {
 
 export const Search = {
   recent: 40,
+  termsMost: 12,
 } as const
 
 export const Sessions = {
@@ -330,6 +343,18 @@ export const Signin = {
 
 export const Share = {
   look: 3,
+  card: { height: 630, width: 1200 },
+  poster: { height: 675, width: 1200 },
+  video: { height: 720, width: 1280 },
+  player: { height: 450, width: 800 },
+  listed: 12,
+  fillSteps: 20,
+  fnvOffset: 0x811c9dc5,
+  fnvPrime: 0x01000193,
+  hashRadix: 36,
+  named: 3,
+  descriptionChars: 300,
+  textChars: 240,
 } as const
 
 export const SharedAnswer = {
@@ -547,6 +572,9 @@ export const SharedResearchBrief = {
 export const Store = {
   absentMs: 30_000,
   recency: 30_000,
+  reserve: 50_000n,
+  shareBasis: 10_000,
+  idBytes: 8,
 } as const
 
 export const Swarm = {
@@ -727,6 +755,67 @@ export const Telemetry = {
   spanBytes: 8,
   spans: 64,
   traceBytes: 16,
+} as const
+
+export const Hex = {
+  radix: 16,
+} as const
+
+export const Http = {
+  switching: 101,
+  ok: 200,
+  created: 201,
+  moved: 301,
+  notModified: 304,
+  invalid: 400,
+  unauthorized: 401,
+  forbidden: 403,
+  missing: 404,
+  notAllowed: 405,
+  conflict: 409,
+  gone: 410,
+  upgrade: 426,
+  tooMany: 429,
+  failed: 500,
+  upstream: 502,
+  unavailable: 503,
+} as const
+
+export const WorkerCode = {
+  bucketMs: 5_000,
+} as const
+
+export const WorkerOg = {
+  treeDepth: 64,
+  cacheSeconds: 300,
+} as const
+
+export const WorkerPersona = {
+  specChars: 2000,
+} as const
+
+export const WorkerPhase = {
+  restFailures: 3,
+} as const
+
+export const WorkerSite = {
+  etagBytes: 12,
+} as const
+
+export const WorkerWords = {
+  isoTimeFrom: 11,
+  isoTimeTo: 16,
+  percentTenths: 10,
+} as const
+
+export const WorkerXFrames = {
+  peek: 4,
+  joins: 6,
+  notes: 3,
+  settled: 12,
+  cells: 1200,
+  commitChars: 12,
+  titleChars: 64,
 } as const
 
 export const Held = {

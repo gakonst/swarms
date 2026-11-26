@@ -32,13 +32,13 @@ export type Share = {
   video: string | null
 }
 
-export const card = { height: 630, width: 1200 }
+export const card = Limits.Share.card
 
-export const poster = { height: 675, width: 1200 }
+export const poster = Limits.Share.poster
 
-export const video = { height: 720, width: 1280 }
+export const video = Limits.Share.video
 
-export const player = { height: 450, width: 800 }
+export const player = Limits.Share.player
 
 const blurb = 'Make a breakthrough. Ride a swarm: put a few dollars on a lemma, a program or a whole hard problem, and AI agents work on it in public. Lean decides what is proven.'
 
@@ -53,7 +53,7 @@ export function field(given: readonly Summary[], now = Date.now()): Cards.Field 
     balance: live.reduce((sum, swarm) => sum + Math.max(0, Number(swarm.remaining)), 0),
     ideas: open(swarms).map((problem) => ({ id: problem.id, title: problem.title })),
     open: live.length,
-    swarms: live.slice(0, 12).map((swarm) => ({ ...Cards.item(swarm), left: 0, pitch: '' })),
+    swarms: live.slice(0, Limits.Share.listed).map((swarm) => ({ ...Cards.item(swarm), left: 0, pitch: '' })),
     working: swarms.filter((swarm) => swarm.status === 'running').length,
   }
 }
@@ -118,14 +118,14 @@ function steady(subject: Subject) {
   if (subject.kind === 'node') return { ...subject, item: { ...subject.item, ridden: Math.round(subject.item.ridden), spent: Math.round(subject.item.spent) } }
   if (subject.kind !== 'swarm') return subject
   const item = subject.item
-  const fill = item.balance > 0 ? Math.round(Math.min(1, Math.max(0, item.left / item.balance)) * 20) : 0
+  const fill = item.balance > 0 ? Math.round(Math.min(1, Math.max(0, item.left / item.balance)) * Limits.Share.fillSteps) : 0
   return { ...subject, item: { ...item, left: fill } }
 }
 
 export function version(subject: Subject) {
-  let hash = 0x811c9dc5
-  for (const char of `${look}|${JSON.stringify(steady(subject))}`) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193)
-  return (hash >>> 0).toString(36)
+  let hash: number = Limits.Share.fnvOffset
+  for (const char of `${look}|${JSON.stringify(steady(subject))}`) hash = Math.imul(hash ^ char.charCodeAt(0), Limits.Share.fnvPrime)
+  return (hash >>> 0).toString(Limits.Share.hashRadix)
 }
 
 export function asset(origin: string, subject: Subject, name: 'card.png' | 'poster.png' | 'video.mp4') {
@@ -142,7 +142,7 @@ function alt(subject: Subject) {
   }
   if (subject.kind === 'about') return 'How it works: ride a lemma, a program or the whole swarm; dollars flow down to work that can start now; Lean decides what is proven; every dead end is kept.'
   if (subject.kind === 'docs') return 'Use swarms from code: a public REST API and an MCP server.'
-  if (subject.kind === 'ideas') return `All ideas on Swarms: ${subject.field.swarms.slice(0, 3).map((item) => item.title).join(', ')}.`
+  if (subject.kind === 'ideas') return `All ideas on Swarms: ${subject.field.swarms.slice(0, Limits.Share.named).map((item) => item.title).join(', ')}.`
   if (subject.kind === 'new') return 'What breakthrough are you after? Start a swarm.'
   return `Swarms: back an idea, AI builds it. ${subject.field.working} working now, ${subject.field.open + subject.field.ideas.length} ideas.`
 }
@@ -218,12 +218,12 @@ export function describe(subject: Subject) {
   if (subject.kind === 'node') {
     const item = subject.item
     const money = item.ridden > 0 ? `${Answer.cash(item.ridden)} ridden, ${Answer.cash(item.spent)} spent.` : 'No riders yet.'
-    return `${Cards.words[item.status]}. ${item.why} ${money}`.slice(0, 300)
+    return `${Cards.words[item.status]}. ${item.why} ${money}`.slice(0, Limits.Share.descriptionChars)
   }
   if (subject.kind === 'swarm') {
     const item = subject.item
     const money = item.balance > 0 ? `${Answer.cash(item.balance)} balance from ${backers(item.backers)}` : 'No riders yet'
-    return `${Status.pill(item.word)} · ${money}. ${item.pitch || Status.line(item.word)}`.slice(0, 300)
+    return `${Status.pill(item.word)} · ${money}. ${item.pitch || Status.line(item.word)}`.slice(0, Limits.Share.descriptionChars)
   }
   if (subject.kind === 'idea') return `${subject.item.pitch} Ride it with a few dollars and AI agents start on it, in public.`
   if (subject.kind === 'new') return 'Ask AI to figure out or build anything. Chip in a few dollars and AI agents work on it, in public.'
@@ -248,7 +248,7 @@ export function notice(origin: string, swarm: string, title: string, value: Tree
   const subject = node(swarm, title, value)
   if (subject.kind !== 'node') return undefined
   const said = value.status === 'proven' ? `Proven, checked by Lean${subject.item.checked ? ` at ${subject.item.checked}` : ''}: ${value.title}` : `Dead end, kept in the tree: ${value.title}. ${subject.item.why}`
-  const text = clip(`${title}\n${said}`, 240)
+  const text = clip(`${title}\n${said}`, Limits.Share.textChars)
   const frame = playing(origin, subject) ?? `${origin}${path(subject)}`
   return { frame, intent: `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(frame)}`, text, url: `${origin}${path(subject)}` }
 }

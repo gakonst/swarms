@@ -14,7 +14,7 @@ function slug(title: string) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+/, '')
-      .slice(0, 48)
+      .slice(0, Limits.Repo.slugChars)
       .replace(/-+$/, '') || 'swarm'
   )
 }
@@ -75,7 +75,7 @@ export async function watch(self: Swarm, row: Store.Row) {
   saw(self, fresh[0].sha)
   await snapshot(self, row.id, repo.name).catch((error: unknown) => console.error('Reading the repository failed', error))
   self.changed('code')
-  for (const commit of fresh.reverse()) self.log('status', `Pushed ${commit.sha.slice(0, 7)} to ${repo.name}: ${redact(commit.message.split('\n')[0] ?? '')}`)
+  for (const commit of fresh.reverse()) self.log('status', `Pushed ${commit.sha.slice(0, Limits.SharedTree.shortSha)} to ${repo.name}: ${redact(commit.message.split('\n')[0] ?? '')}`)
 }
 
 export async function snapshot(self: Swarm, swarm: string, name: string, snapping?: string) {
@@ -186,7 +186,7 @@ export async function head(self: Swarm, swarm: string, name: string) {
 }
 
 export async function pushed(self: Swarm, swarm: string, name: string, base: string | null) {
-  const commits = await history(self, swarm, name, 50)
+  const commits = await history(self, swarm, name, Limits.Repo.historyMost)
   const at = base ? commits.findIndex((commit) => commit.sha === base) : -1
   return at >= 0 ? commits.slice(0, at) : commits
 }

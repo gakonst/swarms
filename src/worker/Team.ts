@@ -86,7 +86,7 @@ export async function roster(env: Cloudflare.Env, row: Store.Row, loaded?: reado
 }
 
 export function unlisted(error: unknown) {
-  return Problem.fail(502, 'upstream_failed', error instanceof Error ? error.message : String(error))
+  return Problem.fail(Limits.Http.upstream, 'upstream_failed', error instanceof Error ? error.message : String(error))
 }
 
 export async function steerers(env: Cloudflare.Env, row: Store.Row, loaded?: readonly Member[]): Promise<Problem.Result<(address: Address) => Seat | undefined>> {
@@ -111,7 +111,7 @@ async function led(env: Cloudflare.Env, team: string, admin: Address): Promise<P
   if (chair) await Gateway.dismiss(env, team, address)
   const added = await Gateway.enlist(env, team, { member: address, role: 'admin' })
   if (added.ok || (await leads())?.role === 'admin') return Problem.ok(null)
-  return Problem.fail(502, 'upstream_failed', `The gateway did not add the swarm's admin to its team: ${added.detail}`)
+  return Problem.fail(Limits.Http.upstream, 'upstream_failed', `The gateway did not add the swarm's admin to its team: ${added.detail}`)
 }
 
 export function named(row: { id: string; title: string }) {
@@ -121,12 +121,12 @@ export function named(row: { id: string; title: string }) {
 
 async function founded(env: Cloudflare.Env, row: Store.Row): Promise<Problem.Result<Address>> {
   const made = await Gateway.team(env, named(row))
-  if (!made.ok) return Problem.fail(502, 'upstream_failed', `The gateway did not create the swarm's team: ${made.detail}`)
+  if (!made.ok) return Problem.fail(Limits.Http.upstream, 'upstream_failed', `The gateway did not create the swarm's team: ${made.detail}`)
   const mine = made.value.address.toLowerCase() as Address
   const held = await Store.teamed(env, row.id, mine)
   assert(!held || held === held.toLowerCase(), "a swarm's team address is lowercased", held)
   if (held !== mine) await Gateway.disband(env, mine).catch(() => undefined)
-  return held ? Problem.ok(held) : Problem.fail(404, 'not_found', 'No swarm has this id.')
+  return held ? Problem.ok(held) : Problem.fail(Limits.Http.missing, 'not_found', 'No swarm has this id.')
 }
 
 export async function ensure(env: Cloudflare.Env, row: Store.Row, admin: Address): Promise<Problem.Result<Store.Row>> {

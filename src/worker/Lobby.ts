@@ -38,12 +38,12 @@ export class Lobby extends DurableObject<Cloudflare.Env> {
   }
 
   override async fetch(request: Request) {
-    if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('Open the lobby as a WebSocket.', { status: 426 })
-    if (this.ctx.getWebSockets().length >= socketsMost) return new Response('The lobby is full right now; read the list over HTTP.', { status: 503 })
+    if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('Open the lobby as a WebSocket.', { status: Limits.Http.upgrade })
+    if (this.ctx.getWebSockets().length >= socketsMost) return new Response('The lobby is full right now; read the list over HTTP.', { status: Limits.Http.unavailable })
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket]
     this.ctx.acceptWebSocket(server)
     server.send(JSON.stringify({ type: 'welcome' } satisfies Message))
-    return new Response(null, { status: 101, webSocket: client })
+    return new Response(null, { status: Limits.Http.switching, webSocket: client })
   }
 
   async changed(summary: Summary) {
@@ -119,13 +119,13 @@ export class Lobby extends DurableObject<Cloudflare.Env> {
 
   override async webSocketClose(socket: WebSocket, code: number) {
     try {
-      socket.close(code === 1005 || code === 1006 ? 1000 : code, 'Closed')
+      socket.close(code === Limits.Lobby.noStatusClose || code === Limits.Lobby.abnormalClose ? 1000 : code, 'Closed')
     } catch {}
   }
 }
 
 export function enter(env: Cloudflare.Env, request: Request) {
-  if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return Problem.json({ code: 'invalid_request', detail: 'Open this route as a WebSocket.', status: 400 })
+  if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return Problem.json({ code: 'invalid_request', detail: 'Open this route as a WebSocket.', status: Limits.Http.invalid })
   return env.LOBBY.getByName('lobby').fetch(request)
 }
 
@@ -138,6 +138,6 @@ export function hall(env: Cloudflare.Env) {
 }
 
 export function listen(env: Cloudflare.Env, request: Request) {
-  if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return Problem.json({ code: 'invalid_request', detail: 'Open this route as a WebSocket.', status: 400 })
+  if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return Problem.json({ code: 'invalid_request', detail: 'Open this route as a WebSocket.', status: Limits.Http.invalid })
   return hall(env).fetch(request)
 }

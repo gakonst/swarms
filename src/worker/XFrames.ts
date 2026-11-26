@@ -5,6 +5,7 @@ import * as Status from '../shared/Status.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Cards from './Cards.ts'
 import * as Share from './Share.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const headers = {
   'cache-control': 'public, max-age=15',
@@ -63,7 +64,7 @@ function backers(count: number) {
   return `${count} rider${count === 1 ? '' : 's'}`
 }
 
-function document(origin: string, path: string, subject: Share.Subject, title: string, description: string, content: string, context: object, status = 200, request?: URL, bot?: string) {
+function document(origin: string, path: string, subject: Share.Subject, title: string, description: string, content: string, context: object, status: number = Limits.Http.ok, request?: URL, bot?: string) {
   const root = rooted(origin)
   const base = shell(request)
   const url = `${origin}${base}${path}`
@@ -139,17 +140,17 @@ export function start(origin: string, swarms: readonly Summary[] = [], request?:
   const title = 'Start a breakthrough, or be part of one'
   const description = 'Ride AI agents that research and build in the open. Start one, or join one already running.'
   const free = open(swarms)
-  const ideas = free.slice(0, 4)
+  const ideas = free.slice(0, Limits.WorkerXFrames.peek)
   const latest = Math.max(0, ...swarms.map((item) => item.updatedAt))
   const live = Status.ranked(swarms, latest)
   const counted = Status.count(swarms)
-  const peekIdeas = ideas.slice(0, 4).map((item) => `<span class="chip"><i class="mark-idea"></i><b>${attribute(item.label)}</b></span>`).join('')
-  const peekSwarms = live.slice(0, 4).map((item) => `<span class="chip"><i class="dot" data-status="${item.status}"></i><b>${attribute(item.title)}</b><em>${dollars(item.balance)}</em></span>`).join('')
+  const peekIdeas = ideas.slice(0, Limits.WorkerXFrames.peek).map((item) => `<span class="chip"><i class="mark-idea"></i><b>${attribute(item.label)}</b></span>`).join('')
+  const peekSwarms = live.slice(0, Limits.WorkerXFrames.peek).map((item) => `<span class="chip"><i class="dot" data-status="${item.status}"></i><b>${attribute(item.title)}</b><em>${dollars(item.balance)}</em></span>`).join('')
   const rows = ideas
     .map((item, index) => `<li><button class="row-item idea" data-idea="${index}" type="button"><i class="mark-idea"></i><span>${attribute(item.label)}</span></button></li>`)
     .join('')
   const joins = live
-    .slice(0, 6)
+    .slice(0, Limits.WorkerXFrames.joins)
     .map((item) => `<li><a class="row-item" href="${base}/s/${encodeURIComponent(item.id)}"><i class="dot" data-status="${item.status}"></i><span>${attribute(item.title)}<small>${Status.word(item)} · ${backers(item.contributors)}</small></span><em>${dollars(item.balance)}</em></a></li>`)
     .join('')
   const content = `<section class="view doors" data-view="home">
@@ -176,7 +177,7 @@ export function start(origin: string, swarms: readonly Summary[] = [], request?:
     ${joins ? `<ol class="list scroll">${joins}</ol>` : '<button class="empty" data-open="start" type="button">No swarms yet. <b>Start a swarm →</b></button>'}
   </section>
   ${wallet}`
-  return document(origin, '', Share.listing('home', swarms), title, description, content, { briefInstruction, ideas, kind: 'home' }, 200, request, bot)
+  return document(origin, '', Share.listing('home', swarms), title, description, content, { briefInstruction, ideas, kind: 'home' }, Limits.Http.ok, request, bot)
 }
 
 export function swarm(origin: string, value: Overview, request?: URL, bot?: string) {
@@ -214,7 +215,7 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
       <p class="fund-name"><i class="dot" data-status="${value.status}"></i>${attribute(value.title)}</p>
       <p class="hint">${dollars(value.balance)} balance · ${backers(value.contributors)}</p>
       <p class="goal">${attribute(latest ?? value.goal)}</p>
-      ${value.notes.length ? `<ol class="list notes">${value.notes.slice(0, 3).map((note) => `<li class="row-item"><span>${attribute(note.note)}</span><em>${dollars(note.weight)}</em></li>`).join('')}</ol>` : ''}
+      ${value.notes.length ? `<ol class="list notes">${value.notes.slice(0, Limits.WorkerXFrames.notes).map((note) => `<li class="row-item"><span>${attribute(note.note)}</span><em>${dollars(note.weight)}</em></li>`).join('')}</ol>` : ''}
       <p class="behind" id="behind" hidden></p>
     </div>
     ${amounts('Ride')}
@@ -225,7 +226,7 @@ export function swarm(origin: string, value: Overview, request?: URL, bot?: stri
     live: working ? { since: working.since } : null,
     page,
     swarm: { id: value.id, title: value.title },
-  }, 200, request, bot)
+  }, Limits.Http.ok, request, bot)
 }
 
 type View = { headline: Tree.Headline; nodes: readonly Tree.Node[] }
@@ -233,7 +234,7 @@ type View = { headline: Tree.Headline; nodes: readonly Tree.Node[] }
 const states: Record<Tree.Status, string> = { 'dead end': 'dead', funded: 'funded', 'in flight': 'flight', proposed: 'open', proven: 'proven' }
 
 function said(node: Tree.Node) {
-  if (node.status === 'proven') return node.proof ? `Proven · checked by Lean at ${node.proof.commit.slice(0, 7)}` : 'Proven · checked by Lean'
+  if (node.status === 'proven') return node.proof ? `Proven · checked by Lean at ${node.proof.commit.slice(0, Limits.SharedTree.shortSha)}` : 'Proven · checked by Lean'
   if (node.status === 'dead end') return `Dead end · ${Cards.why(node)}`
   return Cards.words[node.status]
 }
@@ -259,8 +260,8 @@ export function tree(origin: string, swarm: string, view: View, request?: URL, b
   const latest = view.nodes
     .filter((node) => node.status === 'proven' || node.status === 'dead end')
     .sort((a, b) => settled(b) - settled(a))
-    .slice(0, 12)
-  const shown = item.cells.slice(0, 1200)
+    .slice(0, Limits.WorkerXFrames.settled)
+  const shown = item.cells.slice(0, Limits.WorkerXFrames.cells)
   const content = `<section class="view room tree" data-view="room">
     <header class="head">
       <i class="mark-node" data-state="${item.inFlight ? 'flight' : 'open'}"></i>
@@ -290,7 +291,7 @@ export function tree(origin: string, swarm: string, view: View, request?: URL, b
     ride: `/s/${id}`,
     start: swarm,
     swarm: { id: swarm, title: item.title },
-  }, 200, request, bot)
+  }, Limits.Http.ok, request, bot)
 }
 
 export function node(origin: string, swarm: string, title: string, value: Tree.Node & { review?: boolean }, request?: URL, bot?: string, view?: { nodes: readonly Tree.Node[] }) {
@@ -305,7 +306,7 @@ export function node(origin: string, swarm: string, title: string, value: Tree.N
   const money = item.ridden > 0 ? `${Answer.cash(item.ridden)} ridden${item.riders ? ` by ${backers(item.riders)}` : ''} · ${Answer.cash(item.spent)} spent` : `No riders yet · ${Answer.cash(item.spent)} spent`
   const proof = value.proof
   const record = proof
-    ? `<dl class="record"><dt>Theorem</dt><dd>${attribute(proof.theorem)}</dd><dt>Commit</dt><dd>${attribute(proof.commit.slice(0, 12))}</dd><dt>Lean</dt><dd>${attribute(proof.toolchain)}</dd><dt>Mathlib</dt><dd>${attribute(proof.mathlib.slice(0, 12))}</dd><dt>Axioms</dt><dd>${attribute(proof.axioms.join(', ') || 'none')}</dd></dl><a class="ghost" href="${attribute(proof.url)}" target="_blank" rel="noreferrer">See the checked run ↗</a>`
+    ? `<dl class="record"><dt>Theorem</dt><dd>${attribute(proof.theorem)}</dd><dt>Commit</dt><dd>${attribute(proof.commit.slice(0, Limits.WorkerXFrames.commitChars))}</dd><dt>Lean</dt><dd>${attribute(proof.toolchain)}</dd><dt>Mathlib</dt><dd>${attribute(proof.mathlib.slice(0, Limits.WorkerXFrames.commitChars))}</dd><dt>Axioms</dt><dd>${attribute(proof.axioms.join(', ') || 'none')}</dd></dl><a class="ghost" href="${attribute(proof.url)}" target="_blank" rel="noreferrer">See the checked run ↗</a>`
     : ''
   const action = open ? '<button class="go small" data-open="fund" type="button">Ride</button>' : notice ? `<a class="go small" href="${attribute(notice.intent)}" target="_blank" rel="noreferrer">Share</a>` : ''
   const content = `<section class="view room node" data-view="room">
@@ -344,7 +345,7 @@ export function node(origin: string, swarm: string, title: string, value: Tree.N
     swarm: { id: swarm, title },
     up: `${base}/s/${id}`,
     what: value.title,
-  }, 200, request, bot)
+  }, Limits.Http.ok, request, bot)
 }
 
 export function lost(origin: string, request?: URL, bot?: string) {
@@ -353,11 +354,11 @@ export function lost(origin: string, request?: URL, bot?: string) {
     <h2>This swarm drifted off.</h2>
     <div class="row"><a class="go" href="${base}?view=start">Start a swarm</a><a class="ghost" href="${base}?view=join">Join a swarm</a></div>
   </section>`
-  return document(origin, '', Share.listing('home', []), 'Swarms', 'Ride AI agents that research and build in the open.', content, { kind: 'lost' }, 404, request, bot)
+  return document(origin, '', Share.listing('home', []), 'Swarms', 'Ride AI agents that research and build in the open.', content, { kind: 'lost' }, Limits.Http.missing, request, bot)
 }
 
 export function card(title: string) {
-  const safe = attribute(title.trim().slice(0, 64) || 'Start a breakthrough')
+  const safe = attribute(title.trim().slice(0, Limits.WorkerXFrames.titleChars) || 'Start a breakthrough')
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><rect width="1200" height="630" fill="#f6f8f2"/><rect x="60" y="60" width="1080" height="510" rx="40" fill="#1a3d2c"/><text x="120" y="160" fill="#b8d3a6" font-family="ui-monospace,monospace" font-size="26">Swarms</text><text x="118" y="300" fill="#fff" font-family="Georgia,serif" font-size="64">${safe}</text><rect x="120" y="400" width="240" height="76" rx="20" fill="#fff"/><text x="240" y="449" fill="#1a3d2c" font-family="ui-sans-serif,sans-serif" font-size="28" text-anchor="middle">Ride it →</text></svg>`
   return new Response(svg, { headers: { 'cache-control': 'public, max-age=86400', 'content-type': 'image/svg+xml; charset=utf-8', 'x-content-type-options': 'nosniff' } })
 }

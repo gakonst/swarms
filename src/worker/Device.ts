@@ -39,7 +39,7 @@ function user() {
 }
 
 function device() {
-  return [...crypto.getRandomValues(new Uint8Array(Limits.Device.deviceBytes))].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  return [...crypto.getRandomValues(new Uint8Array(Limits.Device.deviceBytes))].map((byte) => byte.toString(Limits.Hex.radix).padStart(2, '0')).join('')
 }
 
 async function read(env: Cloudflare.Env, key: string): Promise<Machine.Code> {
@@ -47,7 +47,7 @@ async function read(env: Cloudflare.Env, key: string): Promise<Machine.Code> {
   return Machine.parse(row, Date.now())
 }
 
-const expired = (): Problem.Result<never> => Problem.fail(410, 'gone', 'This sign-in code expired or was already used. Run swarms login again.')
+const expired = (): Problem.Result<never> => Problem.fail(Limits.Http.gone, 'gone', 'This sign-in code expired or was already used. Run swarms login again.')
 
 export async function start(env: Cloudflare.Env, url: string): Promise<Problem.Result<Started>> {
   const [made, shown] = [device(), user()]
@@ -82,9 +82,9 @@ export async function approve(env: Cloudflare.Env, input: Record<string, unknown
   if (!parsed.success) return Problem.invalid(parsed.error)
   const token = Sessions.bearer(request)
   const address = token ? await Sessions.holder(env, token) : undefined
-  if (!token || !address) return Problem.fail(401, 'unauthorized', 'Sign in with Tempo ID on this page, then approve the code again.')
+  if (!token || !address) return Problem.fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID on this page, then approve the code again.')
   const shown = normal(parsed.data.code)
-  if (!shown) return Problem.fail(400, 'invalid_request', 'The code is 8 letters, such as BCDF-GHJK, as swarms login shows it.')
+  if (!shown) return Problem.fail(Limits.Http.invalid, 'invalid_request', 'The code is 8 letters, such as BCDF-GHJK, as swarms login shows it.')
   const pointed = Machine.point(await db(env).prepare('delete from sessions where key = ? and expires_at > ? returning value').bind(`cli:user:${shown}`, Date.now()).first<{ value: string }>())
   if (!pointed) return expired()
   const key = `cli:device:${pointed.device}`

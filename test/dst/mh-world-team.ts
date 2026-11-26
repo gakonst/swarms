@@ -615,8 +615,8 @@ export const canaries: Canary[] = [
   canary(
     'world.team.unlisted',
     'src/worker/Team.ts',
-    "return Problem.fail(502, 'upstream_failed', error instanceof Error",
-    "return Problem.fail(403, 'access_denied', error instanceof Error",
+    "return Problem.fail(Limits.Http.upstream, 'upstream_failed', error instanceof Error",
+    "return Problem.fail(Limits.Http.forbidden, 'access_denied', error instanceof Error",
     'unlisted is 502',
   ),
   canary('world.team.left', 'src/worker/Team.ts', 'left: Memo.decimal(most > spent ? most - spent : 0n),', 'left: Memo.decimal(most),', 'roster left'),

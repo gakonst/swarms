@@ -3,6 +3,7 @@ import * as Gateway from './Gateway.ts'
 import * as Storage from './Storage.ts'
 import * as Store from './Store.ts'
 import * as Timing from './Timing.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const sha = /^[0-9a-f]{40}$/
 
@@ -31,10 +32,10 @@ export async function proxy(env: Cloudflare.Env, context: Pick<ExecutionContext,
   if (hit) return hit
 
   const [repo, owner] = await Promise.all([Store.repo(env, swarm), Gateway.wallet(env)])
-  if (!repo || !owner) return Response.json({ code: 'not_found', detail: 'This swarm has no repository yet.', status: 404 }, { status: 404 })
+  if (!repo || !owner) return Response.json({ code: 'not_found', detail: 'This swarm has no repository yet.', status: Limits.Http.missing }, { status: Limits.Http.missing })
   const [upstream, body] = await Timing.span(
     'gw.p.git',
-    Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/git/${encodeURIComponent(repo)}/${read}?${query}${forever ? '' : `&at=${Math.floor(Date.now() / 5000)}`}`, { headers: { accept: 'application/json', ...(request.headers.get('cf-connecting-ip') ? { 'cf-connecting-ip': request.headers.get('cf-connecting-ip') ?? '' } : {}) } }).then(async (response) => [response, await response.arrayBuffer()] as const),
+    Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/git/${encodeURIComponent(repo)}/${read}?${query}${forever ? '' : `&at=${Math.floor(Date.now() / Limits.WorkerCode.bucketMs)}`}`, { headers: { accept: 'application/json', ...(request.headers.get('cf-connecting-ip') ? { 'cf-connecting-ip': request.headers.get('cf-connecting-ip') ?? '' } : {}) } }).then(async (response) => [response, await response.arrayBuffer()] as const),
   )
   if (upstream.status === Storage.status) {
     const text = new TextDecoder().decode(body)

@@ -29,7 +29,7 @@ const stop = new Set(
 export function terms(query: string) {
   const words = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])]
   const kept = words.filter((word) => !stop.has(word))
-  return (kept.length ? kept : words).slice(0, 12)
+  return (kept.length ? kept : words).slice(0, Limits.Search.termsMost)
 }
 
 export async function query(

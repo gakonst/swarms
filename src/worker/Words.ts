@@ -1,7 +1,8 @@
 import * as Memo from '../shared/Memo.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export function short(address: string) {
-  return `${address.slice(0, 6)}…${address.slice(-4)}`
+  return `${address.slice(0, Limits.SharedMention.headChars)}…${address.slice(-Limits.SharedMention.tailChars)}`
 }
 
 export function trim(amount: string) {
@@ -17,11 +18,11 @@ export function capital(text: string) {
 }
 
 export function clock(at: number) {
-  return new Date(at).toISOString().slice(11, 16)
+  return new Date(at).toISOString().slice(Limits.WorkerWords.isoTimeFrom, Limits.WorkerWords.isoTimeTo)
 }
 
 export function percent(share: number) {
-  return `${Math.round(share * 1000) / 10}%`
+  return `${Math.round(share * 1000) / Limits.WorkerWords.percentTenths}%`
 }
 
 export function same(a: string, b: string) {

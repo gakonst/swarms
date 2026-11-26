@@ -4,6 +4,7 @@ import type * as Tree from '../shared/Tree.ts'
 import * as Filled from './Filled.ts'
 import * as Share from './Share.ts'
 import * as Words from './Words.ts'
+import * as Limits from '../shared/Limits.ts'
 
 type Hooked = Cloudflare.Env & { TELEGRAM_WEBHOOK_SECRET?: string }
 
@@ -76,7 +77,7 @@ export async function announce(env: Posting, swarm: string, title: string, delta
 
 export async function hook(env: Hooked, request: Request) {
   const secret = await Filled.secret(env, 'TELEGRAM_WEBHOOK_SECRET')
-  if (!secret || !Words.same(request.headers.get('x-telegram-bot-api-secret-token') ?? '', secret)) return new Response('Forbidden', { status: 403 })
+  if (!secret || !Words.same(request.headers.get('x-telegram-bot-api-secret-token') ?? '', secret)) return new Response('Forbidden', { status: Limits.Http.forbidden })
   const reply = answer(await request.json().catch(() => null), Site.home(env))
-  return reply ? Response.json(reply) : new Response(null, { status: 200 })
+  return reply ? Response.json(reply) : new Response(null, { status: Limits.Http.ok })
 }

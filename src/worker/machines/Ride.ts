@@ -2,10 +2,11 @@ import type { Address } from 'viem'
 import { z } from 'zod'
 import { assert, never } from '../../shared/Assert.ts'
 import type * as Tree from '../../shared/Tree.ts'
+import * as Limits from '../../shared/Limits.ts'
 
 export const version = 1
 
-export type Fault = { detail: string; status: 400 | 403 | 404 | 409 | 410 }
+export type Fault = { detail: string; status: (typeof Limits.Http)['invalid' | 'forbidden' | 'missing' | 'conflict' | 'gone'] }
 
 export type Task = 'open' | 'closed' | 'missing'
 
@@ -88,17 +89,17 @@ export function land(route: Route, task: Task, triage: string): Target {
 }
 
 export function proposable(parent: Task, parentId: string, triage: string): Fault | null {
-  if (parent !== 'open') return { detail: 'The parent node is not open.', status: 409 }
-  if (parentId === triage) return { detail: 'Nodes go under the tree, not under triage.', status: 400 }
+  if (parent !== 'open') return { detail: 'The parent node is not open.', status: Limits.Http.conflict }
+  if (parentId === triage) return { detail: 'Nodes go under the tree, not under triage.', status: Limits.Http.invalid }
   return null
 }
 
 export function steerable(task: Task, triage: boolean): Fault | null {
-  return task !== 'open' || triage ? { detail: 'This node is not open.', status: 409 } : null
+  return task !== 'open' || triage ? { detail: 'This node is not open.', status: Limits.Http.conflict } : null
 }
 
 export function backed(behind: bigint): Fault | null {
-  return behind <= 0n ? { detail: 'Only a rider with money on this node can steer it.', status: 403 } : null
+  return behind <= 0n ? { detail: 'Only a rider with money on this node can steer it.', status: Limits.Http.forbidden } : null
 }
 
 function same(from: Spot, to: Spot) {
@@ -112,20 +113,20 @@ export function movable(from: Spot, to: Spot): Fault | null {
       case 'free':
         continue
       case 'node':
-        if (spot.task === 'missing' || spot.triage) return { detail: 'No node has this id.', status: 404 }
-        if (to.at === 'node' && spot.nid === to.nid && spot.task === 'closed') return { detail: 'Money moves only onto an open node.', status: 409 }
+        if (spot.task === 'missing' || spot.triage) return { detail: 'No node has this id.', status: Limits.Http.missing }
+        if (to.at === 'node' && spot.nid === to.nid && spot.task === 'closed') return { detail: 'Money moves only onto an open node.', status: Limits.Http.conflict }
         continue
       default:
         return never(spot, 'money spot')
     }
   }
-  if (same(from, to)) return { detail: 'Move money between two different places.', status: 400 }
+  if (same(from, to)) return { detail: 'Move money between two different places.', status: Limits.Http.invalid }
   return null
 }
 
 export function endable(input: { admin: boolean; fixed: boolean; mine: bigint; task: Task; total: bigint }): Fault | null {
-  if (input.task === 'missing' || input.fixed) return { detail: 'No node you can end has this id.', status: 404 }
-  if (input.task === 'closed') return { detail: 'This node has ended already.', status: 409 }
-  if (!input.admin && (input.total === 0n || input.mine * 2n <= input.total)) return { detail: 'Only whoever holds more than half of what is behind a node, or an admin, can end it.', status: 403 }
+  if (input.task === 'missing' || input.fixed) return { detail: 'No node you can end has this id.', status: Limits.Http.missing }
+  if (input.task === 'closed') return { detail: 'This node has ended already.', status: Limits.Http.conflict }
+  if (!input.admin && (input.total === 0n || input.mine * 2n <= input.total)) return { detail: 'Only whoever holds more than half of what is behind a node, or an admin, can end it.', status: Limits.Http.forbidden }
   return null
 }

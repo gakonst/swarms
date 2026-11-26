@@ -1,5 +1,5 @@
 # No numeric literal outside src/shared/Limits.ts but 0, 1, 2 and the unit conversions 24, 60, 1000, 1024 and 3600.
-# path count why; 1701 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 1530 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 cli/src/auth.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/account.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/ai.ts 2 pre-existing; move it into src/shared/Limits.ts
@@ -61,49 +61,26 @@ src/web/wire.ts 1 pre-existing; move it into src/shared/Limits.ts
 src/worker/Artifacts.ts 17 pre-existing; move it into src/shared/Limits.ts
 src/worker/Branching.ts 6 pre-existing; move it into src/shared/Limits.ts
 src/worker/Cards.ts 86 pre-existing; move it into src/shared/Limits.ts
-src/worker/Code.ts 3 pre-existing; move it into src/shared/Limits.ts
-src/worker/Device.ts 4 pre-existing; move it into src/shared/Limits.ts
 src/worker/Edge.ts 10 pre-existing; move it into src/shared/Limits.ts
-src/worker/Feedback.ts 2 pre-existing; move it into src/shared/Limits.ts
 src/worker/Film.ts 15 pre-existing; move it into src/shared/Limits.ts
-src/worker/Flow.ts 2 pre-existing; move it into src/shared/Limits.ts
 src/worker/Follow.ts 13 pre-existing; move it into src/shared/Limits.ts
-src/worker/Gateway.ts 13 pre-existing; move it into src/shared/Limits.ts
 src/worker/Hands.ts 9 pre-existing; move it into src/shared/Limits.ts
-src/worker/Lobby.ts 7 pre-existing; move it into src/shared/Limits.ts
 src/worker/Machines.ts 13 pre-existing; move it into src/shared/Limits.ts
-src/worker/machines/Key.ts 3 pre-existing; move it into src/shared/Limits.ts
 src/worker/machines/Payment.ts 1 pre-existing; move it into src/shared/Limits.ts
-src/worker/machines/Ride.ts 15 pre-existing; move it into src/shared/Limits.ts
 src/worker/machines/Tree.ts 2 pre-existing; move it into src/shared/Limits.ts
 src/worker/Mcp.ts 17 pre-existing; move it into src/shared/Limits.ts
 src/worker/Money.ts 1 pre-existing; move it into src/shared/Limits.ts
 src/worker/Nodes.ts 12 pre-existing; move it into src/shared/Limits.ts
-src/worker/OAuth.ts 18 pre-existing; move it into src/shared/Limits.ts
-src/worker/Og.ts 8 pre-existing; move it into src/shared/Limits.ts
 src/worker/Operations.ts 239 pre-existing; move it into src/shared/Limits.ts
 src/worker/Page.ts 65 pre-existing; move it into src/shared/Limits.ts
-src/worker/Persona.ts 4 pre-existing; move it into src/shared/Limits.ts
-src/worker/Phase.ts 1 pre-existing; move it into src/shared/Limits.ts
 src/worker/Posters.ts 8 pre-existing; move it into src/shared/Limits.ts
-src/worker/Problem.ts 12 pre-existing; move it into src/shared/Limits.ts
-src/worker/Repo.ts 3 pre-existing; move it into src/shared/Limits.ts
 src/worker/Rest.ts 14 pre-existing; move it into src/shared/Limits.ts
 src/worker/Riding.ts 7 pre-existing; move it into src/shared/Limits.ts
 src/worker/Runner.ts 32 pre-existing; move it into src/shared/Limits.ts (three are HTTP statuses, protocol values: 404 on a subagent close, 409 and 500 on a spawn)
 src/worker/Runs.ts 7 pre-existing; move it into src/shared/Limits.ts
-src/worker/Search.ts 1 pre-existing; move it into src/shared/Limits.ts
-src/worker/Share.ts 17 pre-existing; move it into src/shared/Limits.ts
-src/worker/Signin.ts 3 pre-existing; move it into src/shared/Limits.ts
-src/worker/site.ts 22 pre-existing; move it into src/shared/Limits.ts
-src/worker/Store.ts 5 pre-existing; move it into src/shared/Limits.ts
 src/worker/Swarm.ts 26 pre-existing; move it into src/shared/Limits.ts
-src/worker/Team.ts 4 pre-existing; move it into src/shared/Limits.ts
-src/worker/Telegram.ts 2 pre-existing; move it into src/shared/Limits.ts
 src/worker/Triage.ts 15 pre-existing; move it into src/shared/Limits.ts
 src/worker/Turns.ts 17 pre-existing; move it into src/shared/Limits.ts
 src/worker/Verify.ts 33 pre-existing; move it into src/shared/Limits.ts
 src/worker/Watch.ts 12 pre-existing; move it into src/shared/Limits.ts
-src/worker/Words.ts 5 pre-existing; move it into src/shared/Limits.ts
 src/worker/Work.ts 1 pre-existing; move it into src/shared/Limits.ts
-src/worker/XFrames.ts 17 pre-existing; move it into src/shared/Limits.ts

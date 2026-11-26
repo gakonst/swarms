@@ -1,4 +1,5 @@
 import * as Setup from '../shared/Setup.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const artifacts = [
   '# Artifacts',
@@ -275,7 +276,7 @@ export function pick(input: { budget: string; models: { id: string; step: string
   return [
     'Pick the model for the next run of node ' + input.nid + ': ' + input.title,
     '',
-    input.spec.length > 2000 ? input.spec.slice(0, 1999) + '…' : input.spec,
+    input.spec.length > Limits.WorkerPersona.specChars ? input.spec.slice(0, Limits.WorkerPersona.specChars - 1) + '…' : input.spec,
     ...section("# Riders' notes, heed these first", input.notes),
     '',
     'Budget: $' + input.budget + '.',
@@ -292,7 +293,7 @@ export function about(goal: string) {
     'Not a model pick. Explain this swarm to someone who just found it.',
     '',
     'Its goal:',
-    goal.length > 2000 ? goal.slice(0, 1999) + '…' : goal,
+    goal.length > Limits.WorkerPersona.specChars ? goal.slice(0, Limits.WorkerPersona.specChars - 1) + '…' : goal,
     '',
     'Answer with one plain paragraph of at most 80 words: what the swarm is trying to do, why it would matter if it worked, and how anyone would know it did. Everyday words, a short gloss for any term of art, no hype, no headings, lists, links or JSON, and nothing about money, models or tokens.',
   ].join('\n')

@@ -57,7 +57,7 @@ export async function file(env: Cloudflare.Env, input: unknown): Promise<Problem
   const parsed = schema.safeParse(input)
   if (!parsed.success) return Problem.invalid(parsed.error)
   const report = parsed.data
-  if (report.swarm && !(await Store.exists(env, report.swarm))) return Problem.fail(404, 'not_found', 'No swarm has this id.')
+  if (report.swarm && !(await Store.exists(env, report.swarm))) return Problem.fail(Limits.Http.missing, 'not_found', 'No swarm has this id.')
 
   const origin = new URL(env.SWARMS_URL).origin
   const response = await (await feedback(env)).fetch(
@@ -75,7 +75,7 @@ export async function file(env: Cloudflare.Env, input: unknown): Promise<Problem
   const filed = filing(response.ok, response.status, await response.json().catch(() => ({})))
   switch (filed.at) {
     case 'failed':
-      return Problem.fail(502, 'upstream_failed', `The report was not filed: ${filed.why}`)
+      return Problem.fail(Limits.Http.upstream, 'upstream_failed', `The report was not filed: ${filed.why}`)
     case 'filed':
       return Problem.ok({ id: filed.id, link: new URL(filed.link, origin).href })
     default:

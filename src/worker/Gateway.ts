@@ -94,7 +94,7 @@ async function send<value>(env: Cloudflare.Env, path: string, init: Init = {}): 
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
       signal: AbortSignal.timeout(Clock.gatewayMs),
     }).then(async (response) => [response, await response.text()] as const),
-  ).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
+  ).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: Limits.Http.unavailable }))
   if ('ok' in answered) return answered
   const [response, text] = answered
   const parsed = (() => {
@@ -106,7 +106,7 @@ async function send<value>(env: Cloudflare.Env, path: string, init: Init = {}): 
   })()
   if (!response.ok)
     return {
-      detail: String(parsed?.['detail'] ?? parsed?.['error'] ?? text.slice(0, 300)),
+      detail: String(parsed?.['detail'] ?? parsed?.['error'] ?? text.slice(0, Limits.Gateway.detailChars)),
       ok: false,
       status: response.status,
     }
@@ -128,7 +128,7 @@ const operatorSeconds = Limits.Gateway.operatorSeconds
 
 async function fingerprint(secret: string) {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)))
-  return Array.from(digest.subarray(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return Array.from(digest.subarray(0, Limits.Gateway.keyBytes), (byte) => byte.toString(Limits.Hex.radix).padStart(2, '0')).join('')
 }
 
 export async function wallet(env: Cloudflare.Env) {
@@ -144,7 +144,7 @@ export async function wallet(env: Cloudflare.Env) {
           if (!result.ok) throw new Error(result.detail)
           return result.value.wallet.toLowerCase()
         },
-        operatorSeconds * 30,
+        Limits.Gateway.operatorStaleSeconds,
       ),
     )
     .catch(() => me(env).then((result) => (result.ok ? result.value.wallet.toLowerCase() : undefined)))
@@ -157,17 +157,17 @@ let pricing: { at: number; value: Map<string, Setup.Price> } | undefined
 export const guards = { direct: true }
 
 export async function prices(env: Cloudflare.Env) {
-  if (pricing && Date.now() - pricing.at < 600_000) return pricing.value
+  if (pricing && Date.now() - pricing.at < Limits.Gateway.pricingMs) return pricing.value
   const listed = await Edge.cached(
     env,
     `prices/${encodeURIComponent(env.GATEWAY_URL)}`,
-    600,
+    Limits.Gateway.pricesFreshSeconds,
     async () => {
-      const found = await Clock.within(models(env), 3000)
+      const found = await Clock.within(models(env), Limits.Gateway.pricesWaitMs)
       if (!found?.length) throw new Error('The gateway listed no model prices')
       return found
     },
-    86_400,
+    Limits.Gateway.pricesStaleSeconds,
   ).catch(() => undefined)
   if (listed?.length) pricing = { at: Date.now(), value: new Map(listed.map((price) => [price.id, price])) }
   return pricing?.value
@@ -282,8 +282,8 @@ export function credentialed(env: Cloudflare.Env) {
     Limits.Gateway.credentialedSeconds,
     async () => {
       const answered = await send<unknown>(env, credentials('0x0000000000000000000000000000000000000000'), { open: true })
-      if (!answered.ok && answered.status >= 500) throw new Error(answered.detail)
-      return answered.ok || answered.status !== 404 || !/^No route/.test(answered.detail)
+      if (!answered.ok && answered.status >= Limits.Http.failed) throw new Error(answered.detail)
+      return answered.ok || answered.status !== Limits.Http.missing || !/^No route/.test(answered.detail)
     },
     Limits.Gateway.credentialedStaleSeconds,
   ).catch(() => false)
@@ -390,11 +390,11 @@ export function events(env: Cloudflare.Env, swarm: string, agent: string, after:
 type Stored = { key: string; public: boolean }
 
 export function values(env: Cloudflare.Env, swarm: string, cursor: string | null) {
-  return send<{ cursor: string | null; entries: Stored[] }>(env, '/v1/kv/list', { app: app(swarm), body: { limit: 100, prefix: '', ...(cursor ? { cursor } : {}) } })
+  return send<{ cursor: string | null; entries: Stored[] }>(env, '/v1/kv/list', { app: app(swarm), body: { limit: Limits.Gateway.listPage, prefix: '', ...(cursor ? { cursor } : {}) } })
 }
 
 export function objects(env: Cloudflare.Env, swarm: string, cursor: string | null) {
-  return send<{ cursor: string | null; objects: Stored[] }>(env, '/v1/bucket/list', { app: app(swarm), body: { limit: 100, prefix: '', ...(cursor ? { cursor } : {}) } })
+  return send<{ cursor: string | null; objects: Stored[] }>(env, '/v1/bucket/list', { app: app(swarm), body: { limit: Limits.Gateway.listPage, prefix: '', ...(cursor ? { cursor } : {}) } })
 }
 
 export function repos(env: Cloudflare.Env, swarm: string) {

@@ -185,9 +185,9 @@ const registration = z
 
 export async function register(env: Cloudflare.Env, input: Record<string, unknown>): Promise<Outcome<Client & Record<string, unknown>>> {
   const parsed = registration.safeParse(input)
-  if (!parsed.success) return fail(400, 'invalid_client_metadata', parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '))
+  if (!parsed.success) return fail(Limits.Http.invalid, 'invalid_client_metadata', parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '))
   const refused = parsed.data.redirect_uris.find((uri) => !redirectable(uri))
-  if (refused) return fail(400, 'invalid_redirect_uri', `${refused} is not a redirect URI Swarms sends codes to: use https, a loopback http address or an app's own scheme, without a fragment.`)
+  if (refused) return fail(Limits.Http.invalid, 'invalid_redirect_uri', `${refused} is not a redirect URI Swarms sends codes to: use https, a loopback http address or an app's own scheme, without a fragment.`)
   const client: Client = { client_id: `swc_${random(Limits.OAuth.clientBytes)}`, client_id_issued_at: Math.floor(Date.now() / 1000), client_name: parsed.data.client_name || 'An MCP client', redirect_uris: parsed.data.redirect_uris }
   await put(env, Machine.prefixes.client + client.client_id, { client, kind: 'client' }, clientMs)
   return { ok: true, value: { ...client, grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], scope: scopes.join(' '), token_endpoint_auth_method: 'none' } }
@@ -200,15 +200,15 @@ export async function request(env: Cloudflare.Env, params: Record<string, unknow
   const id = text('client_id')
   const found = id && id.startsWith('swc_') ? await read(env, Machine.prefixes.client + id) : undefined
   const client = found && found.kind === 'client' ? found.client : undefined
-  if (!client) return fail(400, 'invalid_client', 'This app is not registered with Swarms. Add the server to it again so it registers.')
+  if (!client) return fail(Limits.Http.invalid, 'invalid_client', 'This app is not registered with Swarms. Add the server to it again so it registers.')
   const redirect = text('redirect_uri') ?? (client.redirect_uris.length === 1 ? client.redirect_uris[0] : undefined)
-  if (!redirect || !matches(client.redirect_uris, redirect)) return fail(400, 'invalid_request', 'The redirect URI is not one this app registered.')
-  if (text('response_type') !== 'code') return fail(400, 'unsupported_response_type', 'Swarms answers response_type=code only.')
+  if (!redirect || !matches(client.redirect_uris, redirect)) return fail(Limits.Http.invalid, 'invalid_request', 'The redirect URI is not one this app registered.')
+  if (text('response_type') !== 'code') return fail(Limits.Http.invalid, 'unsupported_response_type', 'Swarms answers response_type=code only.')
   const challenged = text('code_challenge')
-  if (!challenged || !challengeShape.test(challenged) || text('code_challenge_method') !== 'S256') return fail(400, 'invalid_request', 'Send a PKCE code_challenge with code_challenge_method=S256.')
+  if (!challenged || !challengeShape.test(challenged) || text('code_challenge_method') !== 'S256') return fail(Limits.Http.invalid, 'invalid_request', 'Send a PKCE code_challenge with code_challenge_method=S256.')
   const asked = text('resource') ?? null
   const target = asked?.replace(/\/+$/, '')
-  if (target !== undefined && target !== resource(site) && target !== site) return fail(400, 'invalid_target', `Swarms grants tokens for ${resource(site)} only.`)
+  if (target !== undefined && target !== resource(site) && target !== site) return fail(Limits.Http.invalid, 'invalid_target', `Swarms grants tokens for ${resource(site)} only.`)
   const url = new URL(redirect)
   return {
     ok: true,
@@ -233,7 +233,7 @@ function back(redirect: string, params: Record<string, string | null>) {
 
 export async function approve(env: Cloudflare.Env, input: Record<string, unknown>, token: string | undefined, site: string): Promise<Outcome<{ redirect: string }>> {
   const address = token ? await Sessions.holder(env, token).catch(() => undefined) : undefined
-  if (!address) return fail(401, 'login_required', 'Sign in with Tempo ID to connect an app.')
+  if (!address) return fail(Limits.Http.unauthorized, 'login_required', 'Sign in with Tempo ID to connect an app.')
   const asked = await request(env, input, site)
   if (!asked.ok) return asked
   if (input['allow'] !== true) return { ok: true, value: { redirect: back(asked.value.redirect_uri, { error: 'access_denied', error_description: 'You did not allow it.', iss: site, state: asked.value.state }) } }
@@ -259,17 +259,17 @@ async function issue(env: Cloudflare.Env, grant: Grant): Promise<Tokens> {
 function refused(refusal: Machine.Refusal): Outcome<never> {
   switch (refusal) {
     case 'code_spent':
-      return fail(400, 'invalid_grant', 'This code expired or was already used.')
+      return fail(Limits.Http.invalid, 'invalid_grant', 'This code expired or was already used.')
     case 'code_client':
-      return fail(400, 'invalid_grant', 'This code was issued to another app.')
+      return fail(Limits.Http.invalid, 'invalid_grant', 'This code was issued to another app.')
     case 'code_redirect':
-      return fail(400, 'invalid_grant', 'The redirect URI differs from the one the code was issued for.')
+      return fail(Limits.Http.invalid, 'invalid_grant', 'The redirect URI differs from the one the code was issued for.')
     case 'code_verifier':
-      return fail(400, 'invalid_grant', 'The code_verifier does not match the code_challenge.')
+      return fail(Limits.Http.invalid, 'invalid_grant', 'The code_verifier does not match the code_challenge.')
     case 'refresh_spent':
-      return fail(400, 'invalid_grant', 'This refresh token expired, was revoked or was already used.')
+      return fail(Limits.Http.invalid, 'invalid_grant', 'This refresh token expired, was revoked or was already used.')
     case 'refresh_client':
-      return fail(400, 'invalid_grant', 'This refresh token was issued to another app.')
+      return fail(Limits.Http.invalid, 'invalid_grant', 'This refresh token was issued to another app.')
     default:
       return never(refusal, 'OAuth refusal')
   }
@@ -287,19 +287,19 @@ export async function token(env: Cloudflare.Env, input: Record<string, unknown>)
   if (grant === 'authorization_code') {
     const code = text('code')
     const verifier = text('code_verifier')
-    if (!code || !verifier) return fail(400, 'invalid_request', 'Send code and code_verifier.')
+    if (!code || !verifier) return fail(Limits.Http.invalid, 'invalid_request', 'Send code and code_verifier.')
     const found = await take(env, Machine.prefixes.code + (await digest(code)))
     const state: Machine.State = found?.kind === 'code' ? { at: 'issued', code: found.code } : { at: 'spent' }
     return exchanged(env, Machine.step(state, { client, redirect: text('redirect_uri'), type: 'exchange', verified: await digest(verifier) }))
   }
   if (grant === 'refresh_token') {
     const refresh = text('refresh_token')
-    if (!refresh) return fail(400, 'invalid_request', 'Send refresh_token.')
+    if (!refresh) return fail(Limits.Http.invalid, 'invalid_request', 'Send refresh_token.')
     const kept = granted(await take(env, Machine.prefixes.refresh + (await digest(refresh))), 'refresh')
     const state: Machine.State = kept ? { at: 'rotating', grant: kept } : { at: 'spent' }
     return exchanged(env, Machine.step(state, { client, narrowed: text('scope') ? parse(text('scope')) : undefined, type: 'refresh' }))
   }
-  return fail(400, 'unsupported_grant_type', 'Swarms answers authorization_code and refresh_token grants.')
+  return fail(Limits.Http.invalid, 'unsupported_grant_type', 'Swarms answers authorization_code and refresh_token grants.')
 }
 
 export async function revoke(env: Cloudflare.Env, input: Record<string, unknown>) {
@@ -331,7 +331,7 @@ export async function form(request: Request): Promise<Record<string, unknown>> {
   return Object.fromEntries(new URLSearchParams(await request.text().catch(() => '')))
 }
 
-export function respond<value>(outcome: Outcome<value>, status = 200) {
+export function respond<value>(outcome: Outcome<value>, status: number = Limits.Http.ok) {
   const headers = { 'cache-control': 'no-store', pragma: 'no-cache' }
   return outcome.ok ? Response.json(outcome.value, { headers, status }) : Response.json(outcome.failure, { headers, status: outcome.status })
 }

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { OwnAi } from '../../shared/Api.ts'
 import { never } from '../../shared/Assert.ts'
 import type * as Setup from '../../shared/Setup.ts'
+import * as Limits from '../../shared/Limits.ts'
 
 export const providers = ['anthropic', 'openai'] as const
 
@@ -16,7 +17,7 @@ export type Access = { keys: ReadonlySet<Provider>; plan: Plan }
 
 export type Host = { at: 'swarm' } | { at: 'rider'; rider: Address }
 
-export type Parsed<value> = { ok: true; value: value } | { detail: string; ok: false; status: 502 }
+export type Parsed<value> = { ok: true; value: value } | { detail: string; ok: false; status: typeof Limits.Http.upstream }
 
 const key = z.looseObject({ added_at: z.number(), hint: z.string(), provider: z.string() })
 
@@ -36,7 +37,7 @@ export function ownAi(raw: unknown): Parsed<OwnAi> {
   const parsed = answer.safeParse(raw)
   if (!parsed.success) {
     console.error('The gateway answered own AI with an unreadable record', parsed.error.issues)
-    return { detail: 'The gateway answered with an unreadable own AI record.', ok: false, status: 502 }
+    return { detail: 'The gateway answered with an unreadable own AI record.', ok: false, status: Limits.Http.upstream }
   }
   const keys = parsed.data.keys.flatMap((one) => {
     const provider = one.provider
@@ -53,7 +54,7 @@ export function signIn(raw: unknown): Parsed<{ authorization_url: string; expire
   const parsed = started.safeParse(raw)
   if (parsed.success) return { ok: true, value: parsed.data }
   console.error('The gateway answered a Claude sign-in with an unreadable record', parsed.error.issues)
-  return { detail: 'The gateway answered with an unreadable Claude sign-in.', ok: false, status: 502 }
+  return { detail: 'The gateway answered with an unreadable Claude sign-in.', ok: false, status: Limits.Http.upstream }
 }
 
 export function gate(address: Address | undefined, credentialed: boolean): Gate {

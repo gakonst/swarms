@@ -15,6 +15,7 @@ import * as Sessions from './Sessions.ts'
 import * as Telegram from './Telegram.ts'
 import * as Timing from './Timing.ts'
 import * as XFrames from './XFrames.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const app = new Hono<{ Bindings: Cloudflare.Env }>()
 
@@ -37,17 +38,17 @@ app.use('*', (c, next) =>
 app.use('*', async (c, next) => {
   await next()
   const path = new URL(c.req.url).pathname
-  if (c.req.method !== 'GET' || c.res.status !== 200 || !(path.startsWith('/api/') || path.startsWith('/v1/'))) return
+  if (c.req.method !== 'GET' || c.res.status !== Limits.Http.ok || !(path.startsWith('/api/') || path.startsWith('/v1/'))) return
   if (!(c.res.headers.get('content-type') ?? '').startsWith('application/json') || c.res.headers.has('etag')) return
   const body = await c.res.arrayBuffer()
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', body))
-  const etag = `W/"${Array.from(digest.subarray(0, 12), (byte) => byte.toString(16).padStart(2, '0')).join('')}"`
+  const etag = `W/"${Array.from(digest.subarray(0, Limits.WorkerSite.etagBytes), (byte) => byte.toString(Limits.Hex.radix).padStart(2, '0')).join('')}"`
   const headers = new Headers(c.res.headers)
   headers.set('etag', etag)
   if (!headers.has('cache-control')) headers.set('cache-control', 'no-cache')
   const match = (c.req.header('if-none-match') ?? '').split(',').some((tag) => tag.trim() === etag)
   c.res = undefined
-  c.res = match ? new Response(null, { headers, status: 304 }) : new Response(body, { headers, status: 200 })
+  c.res = match ? new Response(null, { headers, status: Limits.Http.notModified }) : new Response(body, { headers, status: Limits.Http.ok })
 })
 
 app.use('*', async (c, next) => {
@@ -67,7 +68,7 @@ app.get('*', async (c, next) => {
   const url = new URL(c.req.url)
   const path = url.pathname
   const moved = Page.moved(url) ?? (await Page.renamed(c.env, c.req.raw))
-  if (moved) return c.redirect(Site.at(moved, Site.prefix(url)), 301)
+  if (moved) return c.redirect(Site.at(moved, Site.prefix(url)), Limits.Http.moved)
   const accept = c.req.header('accept') ?? ''
   if (!Page.rendered(path) || (accept !== '' && !/text\/html|\*\/\*/.test(accept))) return next()
   return Page.page(c.req.raw, c.env)
@@ -104,17 +105,17 @@ app.post('/telegram', (c) => Telegram.hook(c.env, c.req.raw))
 
 app.get('/a/:id/:slug', (c) => {
   const url = new URL(c.req.url)
-  return c.redirect(Site.at(`${url.pathname}/`, Site.prefix(url)), 301)
+  return c.redirect(Site.at(`${url.pathname}/`, Site.prefix(url)), Limits.Http.moved)
 })
 
 app.on(['GET', 'HEAD'], '/a/:id/:slug/*', (c) => {
   const [, , id = '', slug = '', ...rest] = new URL(c.req.url).pathname.split('/')
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return new Response('No such swarm.', { status: 404 })
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return new Response('No such swarm.', { status: Limits.Http.missing })
   let path: string
   try {
     path = rest.map(decodeURIComponent).join('/')
   } catch {
-    return new Response('No such artifact file.', { status: 404 })
+    return new Response('No such artifact file.', { status: Limits.Http.missing })
   }
   return Artifacts.serve(c.env, c.req.raw, id, slug, path)
 })
@@ -154,7 +155,7 @@ app.get('/api/swarms/live', (c) => Lobby.enter(c.env, c.req.raw))
 
 app.get('/api/general/chat', async (c) => Problem.respond(await Operations.general(c.env, c.req.query())))
 
-app.post('/api/general/chat', async (c) => Problem.respond(await Operations.shout(c.env, await Rest.body(c.req.raw), await Sessions.who(c.env, c.req.raw)), 201))
+app.post('/api/general/chat', async (c) => Problem.respond(await Operations.shout(c.env, await Rest.body(c.req.raw), await Sessions.who(c.env, c.req.raw)), Limits.Http.created))
 
 app.get('/api/general/chat/live', (c) => Lobby.listen(c.env, c.req.raw))
 
@@ -162,7 +163,7 @@ app.get('/v1/general/chat/live', (c) => Lobby.listen(c.env, c.req.raw))
 
 app.get('/v1/swarms/live', (c) => Lobby.enter(c.env, c.req.raw))
 
-app.post('/api/swarms', async (c) => Problem.respond(await Operations.create(c.env, await Rest.body(c.req.raw), await Sessions.who(c.env, c.req.raw)), 201))
+app.post('/api/swarms', async (c) => Problem.respond(await Operations.create(c.env, await Rest.body(c.req.raw), await Sessions.who(c.env, c.req.raw)), Limits.Http.created))
 
 app.get('/api/swarms/:id', async (c) => {
   const id = c.req.param('id')
@@ -185,7 +186,7 @@ app.get('/api/names/:name', async (c) => Problem.respond(await Operations.named(
 
 app.get('/api/swarms/:id/git/:read', async (c) => {
   const read = c.req.param('read')
-  if (!Code.readable(read)) return Problem.json({ code: 'not_found', detail: 'No such route.', status: 404 })
+  if (!Code.readable(read)) return Problem.json({ code: 'not_found', detail: 'No such route.', status: Limits.Http.missing })
   return Code.proxy(c.env, c.executionCtx, c.req.raw, c.req.param('id'), read)
 })
 app.get('/api/swarms/:id/code', async (c) => Problem.respond(await Operations.code(c.env, { swarm: c.req.param('id') })))
@@ -230,7 +231,7 @@ app.get('/api/swarms/:id/chat', async (c) => {
 app.post('/api/swarms/:id/chat', async (c) =>
   Problem.respond(
     await Operations.say(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)),
-    201,
+    Limits.Http.created,
   ),
 )
 
@@ -249,7 +250,7 @@ app.post('/api/swarms/:id/team', async (c) =>
 )
 
 app.post('/api/swarms/:id/team/members', async (c) =>
-  Problem.respond(await Operations.seat(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), 201),
+  Problem.respond(await Operations.seat(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), Limits.Http.created),
 )
 
 app.delete('/api/swarms/:id/team/members/:member', async (c) =>
@@ -283,7 +284,7 @@ app.get('/api/swarms/:id/hands', async (c) => Problem.respond(await Operations.h
 app.post('/api/swarms/:id/hands', async (c) =>
   Problem.respond(
     await Operations.hand(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, ''))),
-    201,
+    Limits.Http.created,
   ),
 )
 
@@ -296,9 +297,9 @@ app.get('/api/swarms/:id/nodes/:nid', async (c) => Problem.respond(await Operati
 app.get('/api/swarms/:id/nodes/:nid/updates', async (c) => Problem.respond(await Operations.nodeUpdates(c.env, { ...c.req.query(), node: c.req.param('nid'), swarm: c.req.param('id') })))
 app.get('/api/swarms/:id/proofs', async (c) => Problem.respond(await Operations.proofs(c.env, { swarm: c.req.param('id') })))
 app.post('/api/swarms/:id/nodes', async (c) =>
-  Problem.respond(await Operations.propose(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, Site.url(c.env, c.req.url), await Sessions.who(c.env, c.req.raw)), 201),
+  Problem.respond(await Operations.propose(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, Site.url(c.env, c.req.url), await Sessions.who(c.env, c.req.raw)), Limits.Http.created),
 )
-app.post('/api/swarms/:id/ideas', async (c) => Problem.respond(await Operations.suggest(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), 201))
+app.post('/api/swarms/:id/ideas', async (c) => Problem.respond(await Operations.suggest(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), Limits.Http.created))
 app.post('/api/swarms/:id/transfer', async (c) => Problem.respond(await Operations.transfer(c.env, { ...(await Rest.body(c.req.raw)), swarm: c.req.param('id') }, Site.url(c.env, c.req.url))))
 app.post('/api/swarms/:id/nodes/:nid/steer', async (c) =>
   Problem.respond(await Operations.nodeSteer(c.env, { ...(await Rest.body(c.req.raw)), node: c.req.param('nid'), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
@@ -315,13 +316,13 @@ app.post('/api/swarms/:id/archive', async (c) => Problem.respond(await Operation
 app.get('/api/riders/:who', async (c) => Problem.respond(await Operations.rider(c.env, { who: c.req.param('who') })))
 app.get('/api/me/swarms/:id', async (c) => Problem.respond(await Operations.standing(c.env, { swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))))
 
-app.all('/api/*', () => Problem.json({ code: 'not_found', detail: 'No such route.', status: 404 }))
+app.all('/api/*', () => Problem.json({ code: 'not_found', detail: 'No such route.', status: Limits.Http.missing }))
 
 app.route('/', Rest.app)
 
 app.get('*', async (c) => {
   const asset = await c.env.ASSETS.fetch(c.req.raw).catch(() => undefined)
-  if (asset && asset.status !== 404) return asset
+  if (asset && asset.status !== Limits.Http.missing) return asset
   const accept = c.req.header('accept') ?? ''
   if (accept !== '' && !/text\/html|\*\/\*/.test(accept)) return c.notFound()
   return Page.lost(c.req.raw, c.env)
@@ -352,15 +353,15 @@ export default {
   async fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext) {
     const url = new URL(request.url)
     const www = Site.www(url)
-    if (www) return new Response(null, { headers: { location: www }, status: 301 })
+    if (www) return new Response(null, { headers: { location: www }, status: Limits.Http.moved })
     const { path, stray } = Site.place(url)
     const socket = upgraded(request, env, path)
     if (socket) return socket
     const accept = request.headers.get('accept') ?? ''
     const page = (request.method === 'GET' || request.method === 'HEAD') && paged(path) && (accept === '' || /text\/html|\*\/\*/.test(accept))
     const site = Site.url(env, url)
-    if (page && new URL(site).origin !== url.origin && !request.headers.has('cf-worker')) return new Response(null, { headers: { location: site + path + url.search }, status: 301 })
-    if (page && stray) return new Response(null, { headers: { location: Site.prefix(url) + path + url.search }, status: 301 })
+    if (page && new URL(site).origin !== url.origin && !request.headers.has('cf-worker')) return new Response(null, { headers: { location: site + path + url.search }, status: Limits.Http.moved })
+    if (page && stray) return new Response(null, { headers: { location: Site.prefix(url) + path + url.search }, status: Limits.Http.moved })
     if (path === url.pathname) return app.fetch(request, env, context)
     url.pathname = path
     return app.fetch(new Request(url, request), env, context)

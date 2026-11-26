@@ -18,7 +18,7 @@ function create(env: Cloudflare.Env, origin: string) {
     clientId: origin,
     plugins: [
       backend({ store: store(Replica.primary(env).DB) }),
-      siwe({ lifetime: days * 86_400_000, origin, statement: 'Sign in to Swarms to chat in the rooms of the swarms you back.' }),
+      siwe({ lifetime: days * Limits.Clock.dayMs, origin, statement: 'Sign in to Swarms to chat in the rooms of the swarms you back.' }),
       viem({ transport: http(env.TEMPO_RPC) }),
     ],
   })
@@ -38,8 +38,8 @@ const verifying = z.object({
 })
 
 function refused(error: unknown): Problem.Result<never> {
-  if (error instanceof Error && error.name === 'Plugins.siwe.InvalidError') return Problem.fail(401, 'unauthorized', error.message)
-  return Problem.fail(502, 'upstream_failed', `Tempo did not answer while checking the signature: ${error instanceof Error ? error.message : String(error)}`)
+  if (error instanceof Error && error.name === 'Plugins.siwe.InvalidError') return Problem.fail(Limits.Http.unauthorized, 'unauthorized', error.message)
+  return Problem.fail(Limits.Http.upstream, 'upstream_failed', `Tempo did not answer while checking the signature: ${error instanceof Error ? error.message : String(error)}`)
 }
 
 export async function challenge(env: Cloudflare.Env, request: Request): Promise<Problem.Result<{ id: string; message: string }>> {
