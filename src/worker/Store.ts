@@ -3,6 +3,7 @@ import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Pictures from '../shared/Picture.ts'
 import * as Setup from '../shared/Setup.ts'
+import * as Standing from '../shared/Status.ts'
 import type * as Tree from '../shared/Tree.ts'
 import { assert } from '../shared/Assert.ts'
 import { Held, limits } from './Held.ts'
@@ -66,6 +67,10 @@ export type Fields = Partial<
 >
 
 export const reserve = 50_000n
+
+export function reasoned(row: Pick<Row, 'balance' | 'setup' | 'spent'>, reason: string | null) {
+  return Standing.restated(reason, { needs: reserveOf(row), remaining: BigInt(row.balance) - BigInt(row.spent) })
+}
 
 export function reserveOf(row: Pick<Row, 'setup'>) {
   return Setup.reserve(setup(row))

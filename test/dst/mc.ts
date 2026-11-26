@@ -241,6 +241,28 @@ async function phase(seed: string): Promise<Outcome> {
             ? shortSpec(one)
             : sentences.broke
     if (Phase.reason(one) !== sentence) fail('reason', canon(one) + ' said ' + JSON.stringify(Phase.reason(one)))
+    if (one.why === 'money') {
+      const { remaining: _dropped, ...older } = one
+      const needs = BigInt(random.int(1, L.moneyMost))
+      const spent = BigInt(random.int(0, L.moneyMost))
+      const has = random.pick([0n, BigInt(random.int(1, Number(needs))), needs + BigInt(random.int(0, L.moneyMost)), -BigInt(random.int(1, 9))])
+      const row = { balance: Number(spent + has), setup: random.chance(0.2) ? null : JSON.stringify({ most: String(needs) }), spent: Number(spent) }
+      const live = row.setup === null ? Store.reserveOf(row) : needs
+      const before = Phase.reason(older)
+      const told = Store.reasoned(row, before)
+      const expected =
+        before !== sentences.broke || has <= 0n
+          ? before
+          : has < live
+            ? shortSpec({ left: String(has), needs: String(live), remaining: String(has), wake: null, why: 'money' })
+            : 'Capped by approvals: it still has ' +
+              dollarsSpec(has) +
+              ", but its riders' approvals at the gateway let it spend less than its next step can cost, up to " +
+              dollarsSpec(live) +
+              '. A rider raising their approval or a new ride wakes it.'
+      if (told !== expected) fail('older pause', canon(older) + ' with ' + has + ' left of ' + live + ' said ' + JSON.stringify(told))
+      if (has > 0n && Standing.starved(before) && told === sentences.broke) fail('older pause', canon(older) + ' still said out of money with ' + has + ' left')
+    }
     const money = {
       balance: BigInt(amount()),
       left: BigInt(amount()),
@@ -1092,5 +1114,6 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
   { flip: reworded, invariant: 'reason', name: 'phase.reason', scenario: 'phase', seeds: ['1', '2', '3'] },
   { flip: flag(Store.guards, 'archived'), invariant: 'archived status', name: 'store.archived', scenario: 'archived', seeds: ['1', '2', '3'] },
   { flip: flag(Phase.guards, 'exact'), invariant: 'reason', name: 'phase.short', scenario: 'phase', seeds: ['1', '2', '3'] },
+  { flip: flag(Standing.guards, 'live'), invariant: 'older pause', name: 'phase.older', scenario: 'phase', seeds: ['1', '2', '3'] },
   { flip: flag(Work.guards, 'deadline'), invariant: 'deadline', name: 'work.serial.deadline', scenario: 'work', seeds: ['1', '2', '3'] },
 ]

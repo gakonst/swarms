@@ -426,7 +426,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   pulsed(row: Store.Row): Pulse {
-    return { hands: this.kv.get<Hand[]>('hands') ?? [], reason: this.reason(), swarm: Store.summary(row), why: this.why(), working: this.working() }
+    return { hands: this.kv.get<Hand[]>('hands') ?? [], reason: Store.reasoned(row, this.reason()), swarm: Store.summary(row), why: this.why(), working: this.working() }
   }
 
   reason(): string | null {

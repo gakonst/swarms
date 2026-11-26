@@ -46,6 +46,14 @@ export function short(money: Short) {
   return `Capped by approvals: it still has ${usd(has)}, but its riders' approvals at the gateway let it spend only ${usd(left > 0n ? left : 0n)} now, and its next step can cost up to ${needs}. A rider raising their approval or a new ride wakes it.`
 }
 
+export const guards = { live: true }
+
+export function restated(reason: string | null, live: { needs: bigint; remaining: bigint }) {
+  if (reason !== reasons.broke || !guards.live || live.remaining <= 0n) return reason
+  if (live.remaining < live.needs) return short({ left: String(live.remaining), needs: String(live.needs), remaining: String(live.remaining) })
+  return `Capped by approvals: it still has ${usd(live.remaining)}, but its riders' approvals at the gateway let it spend less than its next step can cost, up to ${usd(live.needs)}. A rider raising their approval or a new ride wakes it.`
+}
+
 export function starved(reason: string | null | undefined) {
   return !!reason && (reason === reasons.broke || /^(Needs more money|Capped by approvals): /.test(reason))
 }
