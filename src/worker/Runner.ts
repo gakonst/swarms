@@ -274,10 +274,11 @@ async function strays(self: Swarm, swarm: string, agent: string) {
 async function refusal(self: Swarm, task: Work.Task, lease: Board.PoolLease, failure: { detail: string; status: number }): Promise<never> {
   const transient = failure.status === 409 || failure.status >= 500
   if (failure.status !== 402 && !transient) throw new Error(failure.detail)
-  const tries = (self.kv.get<number>('paid:' + task.id) ?? 0) + 1
+  const counter = (transient ? 'unready:' : 'paid:') + task.id
+  const tries = (self.kv.get<number>(counter) ?? 0) + 1
   const wait = transient ? Math.min(Limits.Runner.followBackoffMostMs, Limits.Runner.followBackoffMs * 2 ** Math.min(tries, Limits.Runner.followBackoffDoublings)) : Work.delay(paying, tries)
   const until = Date.now() + (guards.rest ? wait : 0)
-  self.kv.put('paid:' + task.id, tries)
+  self.kv.put(counter, tries)
   self.kv.put('rest:' + task.id, until)
   await self.board.release(task.id, lease.claim, (transient ? 'The gateway did not take the run yet: ' : 'The gateway refused payment: ') + failure.detail)
   await arm(self, until)
@@ -383,6 +384,7 @@ async function running(self: Swarm, task: Work.Task, lease: Board.PoolLease): Pr
       Nodes.emit(self, nid, 'started', 'Run ' + k + ' started' + (spawned.pick ? ' on ' + Setup.name(spawned.pick.model) : ''))
     }
     self.kv.delete('paid:' + task.id)
+    self.kv.delete('unready:' + task.id)
     self.kv.delete('rest:' + task.id)
     track(self, spawned, task)
     return await watch(self, swarm, task, lease, spawned, abort.signal)
