@@ -329,6 +329,7 @@ export const Triage = {
 
 export const Turns = {
   endSettleMs: 3_000,
+  heldMs: 5 * 60_000,
   leaseMs: 30 * 60_000,
   sendingMs: 5 * 60_000,
   sponsorWaitMs: 15 * 60_000,

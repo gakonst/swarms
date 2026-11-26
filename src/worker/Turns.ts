@@ -101,6 +101,13 @@ const settleMs = Limits.Turns.settleMs
 
 const calmMs = Limits.Turns.calmMs
 
+const heldMs = Limits.Turns.heldMs
+
+export function holding(env: Cloudflare.Env, swarm: string) {
+  const list = (env as unknown as { SWARMS_HELD?: string }).SWARMS_HELD ?? ''
+  return list.split(',').map((id) => id.trim()).includes(swarm)
+}
+
 export async function step(self: Swarm) {
   const id = self.kv.get<string>('id')
   const row = id ? await self.found(id) : null
@@ -108,6 +115,15 @@ export async function step(self: Swarm) {
 
   if (await self.project(row)) self.beacon(row)
   const run = self.run()
+  if (holding(self.env, row.id)) {
+    if (run.state === 'working') {
+      const agent = self.agent()
+      if (agent && run.turn) await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
+      return Follow.follow(self, row, await adopted(self, run))
+    }
+    if (run.state !== 'paused') await pause(self, row, { why: 'idle' })
+    return Date.now() + heldMs
+  }
   if (run.state === 'paused') {
     const settling = await settle(self, row, run)
     if (self.run().state === 'paused') return settling

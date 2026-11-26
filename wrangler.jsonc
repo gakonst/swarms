@@ -11,6 +11,7 @@
   "vars": {
     "GATEWAY_URL": "https://gateway.tempo-dev.workers.dev",
     "GITHUB_API": "https://api.github.com",
+    "SWARMS_HELD": "f3a42cf87339",
     "SWARMS_PROOFS_REPO": "gakonst/swarms-proofs",
     "SWARMS_URL": "https://paradigm.xyz/swarms",
     "TELEGRAM_BOT": "TempoSwarmsBot",
