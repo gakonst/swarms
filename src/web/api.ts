@@ -6,6 +6,7 @@ import type { Job, Listed, Logged, Machine, Shown } from '../shared/Fleet.ts'
 import type { Color } from '../shared/Picture.ts'
 import * as Site from '../shared/Site.ts'
 import * as Connect from '../shared/Connect.ts'
+import * as Limits from '../shared/Limits.ts'
 import { boot, seeded } from './boot.ts'
 import { visitor } from './stage.ts'
 
@@ -156,7 +157,7 @@ export function live(id: string, after: () => number, listener: (event: Live | {
     source.onerror = () => {
       source?.close()
       listener({ type: 'lost' })
-      if (alive) timer = setTimeout(open, fed || Date.now() - opened > 30_000 ? 0 : 3000)
+      if (alive) timer = setTimeout(open, fed || Date.now() - opened > Limits.Client.eventsSteadyMs ? 0 : Limits.Client.eventsRetryMs)
     }
   }
   open()
@@ -431,9 +432,7 @@ export function moveNode(id: string, node: string, input: { amount: string; to: 
 
 export type Line = { close: () => void; hello: () => void; typing: () => void }
 
-const pingMs = 30_000
 
-const pongMs = 10_000
 
 function socket(url: string, listener: (event: { data: string } | { type: 'open' | 'closed' }) => void, opened?: (send: (data: string) => void) => void) {
   let alive = true
@@ -451,14 +450,14 @@ function socket(url: string, listener: (event: { data: string } | { type: 'open'
     clearTimeout(quiet)
     from.close()
     listener({ type: 'closed' })
-    if (alive) timer = setTimeout(open, 3000)
+    if (alive) timer = setTimeout(open, Limits.Client.socketRetryMs)
   }
   const probe = () => {
     const probed = line
     if (probed?.readyState !== WebSocket.OPEN) return
     probed.send('ping')
     clearTimeout(quiet)
-    quiet = setTimeout(() => lost(probed), pongMs)
+    quiet = setTimeout(() => lost(probed), Limits.Client.pongMs)
   }
   const open = () => {
     const made = new WebSocket(`${boot()?.socket ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${Site.root()}`}${url}`)
@@ -466,7 +465,7 @@ function socket(url: string, listener: (event: { data: string } | { type: 'open'
     made.onopen = () => {
       opened?.(send)
       listener({ type: 'open' })
-      ping = setInterval(probe, pingMs)
+      ping = setInterval(probe, Limits.Client.pingMs)
     }
     made.onmessage = (message) => {
       if (line !== made) return

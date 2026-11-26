@@ -1,6 +1,7 @@
 import { site } from './boot.ts'
 import { type ReactNode, useState } from 'react'
 import * as Site from '../shared/Site.ts'
+import * as Limits from '../shared/Limits.ts'
 
 
 const tools = [
@@ -125,7 +126,7 @@ export function Code(props: { children: string; label?: string }) {
           onClick={() => {
             void navigator.clipboard.writeText(props.children).then(() => {
               setCopied(true)
-              setTimeout(() => setCopied(false), 1500)
+              setTimeout(() => setCopied(false), Limits.Client.copiedMs)
             })
           }}
           type="button"

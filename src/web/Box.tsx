@@ -2,6 +2,7 @@ import { forwardRef, type ReactNode, useState } from 'react'
 import type { Config, Member, Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Status from '../shared/Status.ts'
+import * as Limits from '../shared/Limits.ts'
 import { site } from './boot.ts'
 import { Gauge } from './Card.tsx'
 import { Fuel, type Prefill, type Target } from './Contribute.tsx'
@@ -47,7 +48,7 @@ export const Box = forwardRef<HTMLElement, {
       else {
         await navigator.clipboard.writeText(url)
         setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
+        setTimeout(() => setCopied(false), Limits.Client.sharedCopiedMs)
       }
     } catch {}
   }

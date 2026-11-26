@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Config, Entry } from '../shared/Api.ts'
+import * as Limits from '../shared/Limits.ts'
 import * as Api from './api.ts'
 import * as Attempt from './attempt.ts'
 import { boot, seeded } from './boot.ts'
@@ -27,7 +28,7 @@ export function useConfig() {
           void Wallet.restore(value).catch(() => {})
         },
         () => {
-          if (alive) setTimeout(load, 3000)
+          if (alive) setTimeout(load, Limits.Client.configRetryMs)
         },
       )
     }

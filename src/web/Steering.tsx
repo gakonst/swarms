@@ -3,6 +3,7 @@ import type { Detail, Me, Roster, Seat, Steering as Policy, Summary } from '../s
 import * as Door from '../shared/Door.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Nickname from '../shared/Nickname.ts'
+import * as Limits from '../shared/Limits.ts'
 import { Alert, explain } from './Alert.tsx'
 import * as Api from './api.ts'
 import * as Attempt from './attempt.ts'
@@ -29,7 +30,6 @@ function watch(listener: () => void) {
 const loops = new Map<string, { count: number; leave: () => void; timer: ReturnType<typeof setInterval> | undefined }>()
 const flights = new Map<string, Promise<void>>()
 
-const rosterMs = 60_000
 
 function fetched(id: string) {
   const flying = flights.get(id)
@@ -72,7 +72,7 @@ export function useRoster(id: string, steering: Policy) {
     const loop = loops.get(id)
     if (!loop) return
     clearInterval(loop.timer)
-    loop.timer = wired === 'down' ? setInterval(() => void fetched(id), rosterMs) : undefined
+    loop.timer = wired === 'down' ? setInterval(() => void fetched(id), Limits.Client.rosterMs) : undefined
   }, [id, wired, steering])
   return roster
 }

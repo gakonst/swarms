@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type * as Tree from '../shared/Tree.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type State = 'fresh' | 'stale' | 'stored'
 
@@ -15,7 +16,6 @@ type Table = (typeof tables)[number]
 
 const keep = 300
 
-const flushMs = 250
 
 const refetched = new Set<Tree.Delta['event']>(['proven', 'ended', 'started', 'progress', 'checking', 'funded', 'moved', 'steered'])
 
@@ -418,7 +418,7 @@ function soon() {
   timer = setTimeout(() => {
     timer = undefined
     void flush()
-  }, flushMs)
+  }, Limits.Client.flushMs)
 }
 
 function done(request: IDBTransaction) {

@@ -2,6 +2,7 @@ import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, us
 import type { Config, Hall, Said } from '../shared/Api.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Nickname from '../shared/Nickname.ts'
+import * as Limits from '../shared/Limits.ts'
 import * as Api from './api.ts'
 import * as Outbox from './outbox.ts'
 import { seeded } from './boot.ts'
@@ -22,7 +23,6 @@ import * as Wire from './wire.ts'
 
 const topic = 'Swarms are AI agents that research and build in the open, paid for by the people who ride them. Every problem is a swarm with its own channels and threads: ride one from $1, or start your own.'
 
-const pollMs = 20_000
 
 const named = new Map<string, string>()
 
@@ -115,7 +115,7 @@ export function General(props: { config: Config | undefined }) {
 
   useEffect(() => {
     if (wired) return
-    const timer = setInterval(() => void load(last.current), pollMs)
+    const timer = setInterval(() => void load(last.current), Limits.Client.generalPollMs)
     return () => clearInterval(timer)
   }, [wired, load])
 

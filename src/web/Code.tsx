@@ -4,6 +4,7 @@ import { FileTree, useFileTree } from '@pierre/trees/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Code as Repo, Snapshot, Unavailable } from '../shared/Api.ts'
 import * as Site from '../shared/Site.ts'
+import * as Limits from '../shared/Limits.ts'
 import * as Api from './api.ts'
 import { ago } from './format.ts'
 import { message, useMedia, useNow } from './hooks.ts'
@@ -22,7 +23,6 @@ const kept = new Map<string, Promise<{ size: number; text?: string }>>()
 
 const prose = /\.(md|markdown)$/i
 
-const readMs = 20_000
 
 let preload: Preload | undefined
 
@@ -64,7 +64,7 @@ function readme(paths: readonly string[]) {
 function Copy(props: { text: string }) {
   const [done, setDone] = useState(false)
   return (
-    <button className="repo-copy" onClick={() => void navigator.clipboard?.writeText(props.text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500) })} type="button">
+    <button className="repo-copy" onClick={() => void navigator.clipboard?.writeText(props.text).then(() => { setDone(true); setTimeout(() => setDone(false), Limits.Client.copiedMs) })} type="button">
       {done ? 'Copied' : 'Copy'}
     </button>
   )
@@ -160,7 +160,7 @@ export function Code(props: { repo: Repo | null; swarm: string }) {
     }
     let timer: ReturnType<typeof setTimeout> | undefined
     const late = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("The code can't be read right now. Try again in a minute.")), readMs)
+      timer = setTimeout(() => reject(new Error("The code can't be read right now. Try again in a minute.")), Limits.Client.codeReadMs)
     })
     const read = Api.code(swarm, stirs > 0)
       .catch(() => null)

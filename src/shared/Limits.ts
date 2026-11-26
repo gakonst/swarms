@@ -43,6 +43,29 @@ export const Cli = {
   reconnectMs: 1000,
 } as const
 
+export const Client = {
+  codeReadMs: 20_000,
+  configRetryMs: 3000,
+  copiedMs: 1500,
+  eventsRetryMs: 3000,
+  eventsSteadyMs: 30_000,
+  flushMs: 250,
+  generalPollMs: 20_000,
+  idleMs: 1500,
+  idleSoonMs: 1,
+  pingMs: 30_000,
+  pongMs: 10_000,
+  roomBackoffMostMs: 30_000,
+  roomBackoffMs: 2000,
+  roomClosedMs: 15_000,
+  roomOpenMs: 60_000,
+  rosterMs: 60_000,
+  sharedCopiedMs: 2000,
+  socketRetryMs: 3000,
+  walletApproveMs: 1200,
+  walletDenyMs: 900,
+} as const
+
 export const Clock = {
   quietMs: 600_000,
   hourMs: 3_600_000,

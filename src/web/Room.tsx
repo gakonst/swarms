@@ -5,6 +5,7 @@ import * as Chatter from '../shared/Chatter.ts'
 import { maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import type * as Tree from '../shared/Tree.ts'
+import * as Limits from '../shared/Limits.ts'
 import * as Api from './api.ts'
 import { seeded } from './boot.ts'
 import * as Local from './local.ts'
@@ -21,7 +22,6 @@ import { Username } from './Username.tsx'
 import * as Wallet from './wallet.ts'
 import * as Wire from './wire.ts'
 
-const roomMs = { closed: 15_000, open: 60_000 }
 
 const seatSteer = '1'
 
@@ -303,7 +303,7 @@ export const Room = memo(function Room(props: {
 
   useEffect(() => {
     if (!misses || !token) return
-    const timer = setTimeout(() => void load(last.current), Math.min(30_000, 2000 * 2 ** (misses - 1)))
+    const timer = setTimeout(() => void load(last.current), Math.min(Limits.Client.roomBackoffMostMs, Limits.Client.roomBackoffMs * 2 ** (misses - 1)))
     return () => clearTimeout(timer)
   }, [misses, load, token])
 
@@ -340,7 +340,7 @@ export const Room = memo(function Room(props: {
       return
     }
     if (wired !== 'down') return
-    const every = connected ? roomMs.open : roomMs.closed
+    const every = connected ? Limits.Client.roomOpenMs : Limits.Client.roomClosedMs
     if (away.current || Date.now() - fetched.current > every) void load(last.current)
     away.current = false
     const timer = setInterval(() => void load(last.current), every)

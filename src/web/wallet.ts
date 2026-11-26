@@ -2,6 +2,7 @@ import type { Address, Hex } from 'viem'
 import type { Account, Config, Currency } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import * as Site from '../shared/Site.ts'
+import * as Limits from '../shared/Limits.ts'
 import * as Api from './api.ts'
 import { fixture } from './api.ts'
 import { boot, type Face, faceCookie, server } from './boot.ts'
@@ -204,8 +205,8 @@ export function snapshot() {
 
 function asked() {
   if (scene.has('hang')) return new Promise<never>(() => {})
-  if (scene.has('deny')) return new Promise<never>((_, reject) => setTimeout(() => reject(new Error('You declined the request in Tempo ID.')), 900 * pace))
-  return new Promise((resolve) => setTimeout(resolve, 1200 * pace))
+  if (scene.has('deny')) return new Promise<never>((_, reject) => setTimeout(() => reject(new Error('You declined the request in Tempo ID.')), Limits.Client.walletDenyMs * pace))
+  return new Promise((resolve) => setTimeout(resolve, Limits.Client.walletApproveMs * pace))
 }
 
 export async function restore(config: Config) {

@@ -3,6 +3,7 @@ import type { Config } from '../shared/Api.ts'
 import { decimal } from '../shared/Memo.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Site from '../shared/Site.ts'
+import * as Limits from '../shared/Limits.ts'
 import { explain } from './Alert.tsx'
 import { signed, usd } from './format.ts'
 import { message, useConfig, usePoll, useSolo, useWallet } from './hooks.ts'
@@ -63,7 +64,7 @@ if (typeof window !== 'undefined') {
     void warmSwarm()
     warmDetail(decodeURIComponent(id), tail)
   })
-  const idle = (window as { requestIdleCallback?: (run: () => void) => void }).requestIdleCallback ?? ((run: () => void) => setTimeout(run, 1500))
+  const idle = (window as { requestIdleCallback?: (run: () => void) => void }).requestIdleCallback ?? ((run: () => void) => setTimeout(run, Limits.Client.idleMs))
   idle(() => void Promise.all([warmSwarm(), import('./New.tsx').then((module) => preload('new', module.New))]))
 }
 
@@ -86,7 +87,7 @@ function WalletButton(props: { config: Config | undefined }) {
   useEffect(() => {
     if (!props.config || !out) return
     const config = props.config
-    const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 1))
+    const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, Limits.Client.idleSoonMs))
     const cancel = window.cancelIdleCallback ?? window.clearTimeout
     const id = idle(() => Wallet.warm(config), { timeout: 1500 })
     return () => cancel(id)
