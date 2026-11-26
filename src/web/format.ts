@@ -1,5 +1,6 @@
 import { boot } from './boot.ts'
 import type { Currency } from '../shared/Api.ts'
+import { Money } from '../shared/Limits.ts'
 import { decimal, units } from '../shared/Memo.ts'
 
 export const symbols = { mach: 'MACH', ousd: 'OUSD', pathusd: 'pathUSD', usdce: 'USDC.e' } as const satisfies Record<Currency, string>
@@ -21,6 +22,11 @@ export function mach(value: string) {
 
 export function usd(value: string) {
   return `$${mach(value)}`
+}
+
+export function spent(value: string) {
+  const amount = Number(value)
+  return amount > 0 && amount < Money.cent ? '<$0.01' : usd(value)
 }
 
 export function money(value: string, token: Currency) {

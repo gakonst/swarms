@@ -305,7 +305,7 @@ export function trouble(entry: Pick<Entry, 'detail' | 'text'>): Trouble {
 }
 
 function spentCash(value: number) {
-  return value >= clipAt.centsShownFrom ? `$${value.toFixed(2)}` : `$${Number(value.toPrecision(2))}`
+  return value >= clipAt.centsShownFrom ? `$${value.toFixed(2)}` : value > 0 && value < Limits.Money.cent ? '<$0.01' : `$${Number(value.toPrecision(2))}`
 }
 
 export function key(entry: Pick<Entry, 'event' | 'kind' | 'seq'>) {

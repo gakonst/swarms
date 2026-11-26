@@ -2,7 +2,7 @@ import { type MouseEvent, type ReactNode, useEffect, useState } from 'react'
 import type { Contribution, Detail } from '../shared/Api.ts'
 import { decimal, units } from '../shared/Memo.ts'
 import * as Prose from '../shared/Prose.ts'
-import { usd } from './format.ts'
+import { spent, usd } from './format.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import { Avatar } from './Room.tsx'
 import { href, Link } from './router.tsx'
@@ -174,7 +174,7 @@ export function Explainer(props: { swarm: Detail; spec?: string | undefined }) {
       <dl className="explainer-facts">
         <dt>Started</dt><dd>{stamp(swarm.createdAt)}</dd>
         <dt>Raised</dt><dd>{dollars(swarm.balance)} from {swarm.contributors} rider{swarm.contributors === 1 ? '' : 's'}</dd>
-        <dt>Spent</dt><dd>{dollars(swarm.spent)}</dd>
+        <dt>Spent</dt><dd>{spent(swarm.spent)}</dd>
         <dt>Left</dt><dd>{dollars(swarm.remaining)}</dd>
       </dl>
     </section>

@@ -180,6 +180,7 @@ export const JsonRpc = {
 } as const
 
 export const Money = {
+  cent: 0.01,
   unbackedMs: 10 * 60_000,
 } as const
 

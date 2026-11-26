@@ -7,7 +7,7 @@ cli/src/commands/fund.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/hands.ts 2 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/swarms.ts 11 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/watch.ts 7 pre-existing; move it into src/shared/Limits.ts
-cli/src/context.ts 14 pre-existing; move it into src/shared/Limits.ts
+cli/src/context.ts 13 pre-existing; move it into src/shared/Limits.ts
 cli/src/mcp.ts 3 pre-existing; move it into src/shared/Limits.ts
 src/web/api.ts 4 pre-existing; move it into src/shared/Limits.ts
 src/web/App.tsx 2 pre-existing; move it into src/shared/Limits.ts

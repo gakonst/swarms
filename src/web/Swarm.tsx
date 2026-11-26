@@ -25,7 +25,7 @@ import { useShown } from './Share.tsx'
 import { Reins, steerer, useRoster } from './Steering.tsx'
 import { at, backers, dollars, useZoom, Explainer, Strip, type Tab, Tabs } from './Strip.tsx'
 import { back, Link, navigate, useBase, useQuery, useThread } from './router.tsx'
-import { stamp } from './format.ts'
+import { spent, stamp } from './format.ts'
 import { ChatThread } from './Thread.tsx'
 import * as Wire from './wire.ts'
 import { Edit } from './Edit.tsx'
@@ -136,7 +136,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   return (
     <article className="swarm-shell" data-view={view} data-zoom={zoomed || undefined} data-replying={replying !== undefined ? '' : undefined}>
       <Strip backers={backers(swarm.contributions, names)} edit={<Edit swarm={swarm} />} onRide={archived ? undefined : (anchor) => steer('', anchor)} raised={swarm.balance} riders={swarm.contributors} title={swarm.title} topic={swarm.goal}>
-        <span><b>{dollars(swarm.spent)}</b> spent</span>
+        <span><b>{spent(swarm.spent)}</b> spent</span>
         <span className="strip-left"><b>{dollars(swarm.remaining)}</b> left</span>
         <span className="strip-mood" data-mood={stood.mood} title={Status.told(swarm)}><i />{Status.badge(swarm)}</span>
         {swarm.ai && <span className="strip-ai">on <span className="strip-ai-who">@{swarm.ai.handle}'s </span>own AI</span>}

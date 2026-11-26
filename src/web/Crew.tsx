@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { Branch } from '../shared/Api.ts'
 import * as Crew from '../shared/Crew.ts'
 import type * as Tree from '../shared/Tree.ts'
-import { cash, Faces } from './Branches.tsx'
+import { Faces } from './Branches.tsx'
+import { spent as outlay } from './format.ts'
 import { Inline } from './Markdown.tsx'
 
 const first = 6
@@ -33,7 +34,7 @@ export function Board(props: { branches: readonly Branch[] }) {
     <section aria-labelledby="crew-title" className="crew">
       <h2 id="crew-title">
         Who is on what
-        <small>{working ? `${working} working · ` : ''}{list.length} part{list.length === 1 ? '' : 's'} · {cash(String(spent))} spent</small>
+        <small>{working ? `${working} working · ` : ''}{list.length} part{list.length === 1 ? '' : 's'} · {outlay(String(spent))} spent</small>
       </h2>
       <ol className="crew-list">
         {shown.map((member) => {
@@ -50,7 +51,7 @@ export function Board(props: { branches: readonly Branch[] }) {
                 <span className="crew-meta">
                   {member.metric && <b className="crew-metric">{member.metric}</b>}
                   <Faces funders={funders(branch)} riders={branch?.funders.length ?? 0} />
-                  <span className="bud-money">{cash(String(member.spent))}</span>
+                  <span className="bud-money">{outlay(String(member.spent))}</span>
                 </span>
                 <Inline className="crew-line" text={opened && more ? more : (member.summary ?? word)} />
               </Bud>
@@ -61,7 +62,7 @@ export function Board(props: { branches: readonly Branch[] }) {
         {hidden.length > 0 && (
           <li className="crew-row crew-rest">
             <button onClick={() => setLimit(limit + first)} type="button">
-              See {hidden.length} more<span>{cash(String(hidden.reduce((sum, member) => sum + member.spent, 0)))}</span>
+              See {hidden.length} more<span>{outlay(String(hidden.reduce((sum, member) => sum + member.spent, 0)))}</span>
             </button>
           </li>
         )}

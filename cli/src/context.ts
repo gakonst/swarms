@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http'
+import { Money } from '../../src/shared/Limits.ts'
 
 export type Flags = Record<string, string | boolean>
 
@@ -177,7 +178,12 @@ export function page(host: string, summary: { id: string; nickname?: string | nu
 
 export function usd(value: string | number | null | undefined) {
   const amount = Number(value ?? 0)
-  return `$${amount.toFixed(amount !== 0 && Math.abs(amount) < 0.01 ? 4 : 2)}`
+  return `$${amount.toFixed(amount !== 0 && Math.abs(amount) < Money.cent ? 4 : 2)}`
+}
+
+export function spent(value: string | number | null | undefined) {
+  const amount = Number(value ?? 0)
+  return amount > 0 && amount < Money.cent ? '<$0.01' : usd(amount)
 }
 
 export function table(rows: string[][]) {

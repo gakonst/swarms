@@ -2,7 +2,7 @@ import { type CSSProperties, type MouseEvent, useState } from 'react'
 import type { Config } from '../shared/Api.ts'
 import * as Tree from '../shared/Tree.ts'
 import { Compose, Pending } from './Compose.tsx'
-import { ago, usd } from './format.ts'
+import { ago, spent, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { Inline } from './Markdown.tsx'
 import { Overlay } from './Overlay.tsx'
@@ -58,7 +58,7 @@ export function Tally(props: { node: Tree.Node }) {
 
 function Line(props: { line: Tree.Line; now: number; spent: string }) {
   const line = props.line
-  const cost = line.spent !== null && line.budget !== null ? usd(line.spent) + ' of ' + usd(line.budget) : Number(props.spent) > 0 ? usd(props.spent) + ' spent' : ''
+  const cost = line.spent !== null && line.budget !== null ? spent(line.spent) + ' of ' + usd(line.budget) : Number(props.spent) > 0 ? spent(props.spent) + ' spent' : ''
   const who = line.run !== null ? 'Run ' + line.run + (line.agent !== null ? ' · agent ' + line.agent : '') : ''
   return (
     <span className="bud-line" data-state={line.state}>

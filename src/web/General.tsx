@@ -7,7 +7,7 @@ import * as Api from './api.ts'
 import * as Outbox from './outbox.ts'
 import { seeded } from './boot.ts'
 import { cash, Faces } from './Branches.tsx'
-import { day, minute } from './format.ts'
+import { day, minute, spent as outlay } from './format.ts'
 import { live } from './Home.tsx'
 import { message as reason, useNow, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
@@ -287,7 +287,7 @@ export function General(props: { config: Config | undefined }) {
           <dl className="general-facts" data-ready={!!list.data}>
             <div><dt>Open problems</dt><dd>{count(open.length)}</dd></div>
             <div><dt>Results proven</dt><dd>{count(proven)}</dd></div>
-            <div><dt>Spent by agents</dt><dd>{cash(String(spent))}</dd></div>
+            <div><dt>Spent by agents</dt><dd>{outlay(String(spent))}</dd></div>
             <div><dt>Left to spend</dt><dd>{cash(String(left))}</dd></div>
           </dl>
           <ol className="general-how">

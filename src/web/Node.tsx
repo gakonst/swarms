@@ -7,7 +7,7 @@ import { here } from './boot.ts'
 import { Add, lines, Talk } from './Channel.tsx'
 import { Pendings } from './Compose.tsx'
 import { asked, Fuel, valid } from './Contribute.tsx'
-import { duration, short, stamp, usd } from './format.ts'
+import { duration, short, spent, stamp, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { message, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
@@ -22,7 +22,7 @@ export function why(node: Tree.Node, nodes: Readonly<Record<string, Tree.Node>>)
   if (node.status === 'proven') return node.proof ? `Checked by Lean ${stamp(node.proof.at)}` : 'Checked by Lean'
   if (node.status === 'dead end') return node.end ? `${ends[node.end.kind]}: ${node.end.why}` : 'Ended'
   if (node.paused !== null && node.status !== 'in flight') return `Paused: ${node.paused} runs without a result`
-  if (node.status === 'in flight') return node.run?.checking ? 'A worker says proved. The verifier is building it; proven only once it checks.' : node.run ? `Run ${node.run.k} is working: ${usd(node.run.spent)} of ${usd(node.run.budget)} spent` : 'Working'
+  if (node.status === 'in flight') return node.run?.checking ? 'A worker says proved. The verifier is building it; proven only once it checks.' : node.run ? `Run ${node.run.k} is working: ${spent(node.run.spent)} of ${usd(node.run.budget)} spent` : 'Working'
   const waits = node.needs.map((need) => nodes[need]).filter((need): need is Tree.Node => !!need && need.status !== 'proven')
   if (waits.length) return `Waits on ${waits.map((need) => need.title).join(', ')}`
   if (node.status === 'funded') return 'Money is committed. It starts when a worker is free.'
@@ -173,8 +173,8 @@ export function NodePanel(props: {
       <h2 className="node-title"><Inline text={node.title} /></h2>
       <p className="node-status" data-status={node.status}><Mark checking={node.run?.checking} status={node.status} /><b>{node.run?.checking ? 'Checking' : word(node.status)}</b> {why(node, props.nodes)}</p>
       <p className="node-money">
-        <b>{usd(node.money.pledged)}</b> ridden by {node.riders} rider{node.riders === 1 ? '' : 's'} · {usd(node.money.spent)} spent · {usd(node.money.left)} left
-        {node.children.length > 0 && <> · subtree {usd(node.money.subtree.spent)} spent</>}
+        <b>{usd(node.money.pledged)}</b> ridden by {node.riders} rider{node.riders === 1 ? '' : 's'} · {spent(node.money.spent)} spent · {usd(node.money.left)} left
+        {node.children.length > 0 && <> · subtree {spent(node.money.subtree.spent)} spent</>}
       </p>
       {open && node.form !== 'triage' && (
         <div className="node-acts">
@@ -221,7 +221,7 @@ export function NodePanel(props: {
           <ol className="node-runs">
             {view.runs.map((run) => (
               <li key={run.task}>
-                <span className="node-run-head">Run {run.k} · {usd(run.spent)} of {usd(run.budget)}{run.outcome ? ` · ${run.outcome}` : ' · working'}{run.commit && <> · <code>{run.commit.slice(0, 7)}</code></>}</span>
+                <span className="node-run-head">Run {run.k} · {spent(run.spent)} of {usd(run.budget)}{run.outcome ? ` · ${run.outcome}` : ' · working'}{run.commit && <> · <code>{run.commit.slice(0, 7)}</code></>}</span>
                 <Inline text={run.summary} />
               </li>
             ))}

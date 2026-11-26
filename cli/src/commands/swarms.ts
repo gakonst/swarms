@@ -1,6 +1,6 @@
 import type { Failure as Failed, Summary as Shared, Waiting, Why } from '../../../src/shared/Api.ts'
 import * as Status from '../../../src/shared/Status.ts'
-import { ask, browse, confirm, type Context, Failure, line, page, swarm, table, usd } from '../context.ts'
+import { ask, browse, confirm, type Context, Failure, line, page, spent, swarm, table, usd } from '../context.ts'
 
 export type Summary = {
   archivedAt: number | null
@@ -118,7 +118,7 @@ export async function status(ctx: Context) {
       [
         ['swarm', `${read.title}  ${page(ctx.host, read)}`],
         ['status', told.status],
-        ['money', `${usd(read.remaining)} left of ${usd(read.balance)} · ${usd(read.spent)} spent · ${read.contributors} rider${read.contributors === 1 ? '' : 's'}`],
+        ['money', `${usd(read.remaining)} left of ${usd(read.balance)} · ${spent(read.spent)} spent · ${read.contributors} rider${read.contributors === 1 ? '' : 's'}`],
         ['goal', line(read.goal, 200)],
         ...(told.why ? [['why', line(told.why, 200)]] : []),
         ...(latest ? [['latest', `${ago(latest.at)} ago: ${line(latest.excerpt ?? '', 200)}`]] : []),
@@ -160,7 +160,7 @@ export async function tree(ctx: Context) {
   ctx.out(read, () => {
     const nodes = new Map(read.nodes.map((node) => [node.id, node]))
     const top = read.nodes.find((node) => node.id === (ctx.flag('root') ?? 'root')) ?? read.nodes.find((node) => !node.parent || !nodes.has(node.parent))
-    const lines = [`${read.headline.proven} proven · ${read.headline.frontier} on the frontier · ${read.headline.inFlight} in flight · ${read.headline.deadEnds} dead ends · ${usd(read.headline.spent)} spent`]
+    const lines = [`${read.headline.proven} proven · ${read.headline.frontier} on the frontier · ${read.headline.inFlight} in flight · ${read.headline.deadEnds} dead ends · ${spent(read.headline.spent)} spent`]
     const draw = (node: Node, lead: string, last: boolean, first: boolean) => {
       lines.push(`${first ? '' : `${lead}${last ? '└─ ' : '├─ '}`}[${node.status}] ${line(node.title, 80)}  ${usd(node.money?.pledged)}  ${node.id}`)
       const next = first ? '' : lead + (last ? '   ' : '│  ')

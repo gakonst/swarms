@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type * as Tree from '../shared/Tree.ts'
 import { scene } from './stage.ts'
 import { fixture } from './api.ts'
-import { ago, usd } from './format.ts'
+import { ago, spent, usd } from './format.ts'
 import * as Grove from './grove.ts'
 import { Inline } from './Markdown.tsx'
 import { Link, useBase } from './router.tsx'
@@ -52,7 +52,7 @@ export function Headline(props: { burn: Tree.Burn | undefined; headline: Tree.He
           <span><b>{count(head.frontier)}</b> on the frontier</span>
           <span data-live={head.inFlight > 0 || undefined}><b>{count(head.inFlight)}</b> in flight</span>
           <span><b>{count(head.deadEnds)}</b> dead ends</span>
-          <span><b>{dollars(head.spent)}</b> spent{head.perProven && <>, {dollars(head.perProven)} a proof</>}</span>
+          <span><b>{spent(head.spent)}</b> spent{head.perProven && <>, {dollars(head.perProven)} a proof</>}</span>
         </p>
         <Growth burn={props.burn} headline={head} now={props.now} />
       </div>

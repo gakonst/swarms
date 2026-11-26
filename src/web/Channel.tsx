@@ -3,7 +3,7 @@ import type { Config, NodeView } from '../shared/Api.ts'
 import { maxNote } from '../shared/Memo.ts'
 import * as Tree from '../shared/Tree.ts'
 import { Compose } from './Compose.tsx'
-import { ago, day, minute, usd } from './format.ts'
+import { ago, day, minute, spent, usd } from './format.ts'
 import { message, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import { Overlay } from './Overlay.tsx'
@@ -34,7 +34,7 @@ export function lines(node: Tree.Node, view: NodeView | undefined, updates: read
     if (!run.outcome) continue
     const fold = folds.find((delta) => !used.has(delta.seq) && delta.text.trim() === run.summary.trim())
     if (fold) used.add(fold.seq)
-    out.push({ at: fold?.at ?? run.until ?? run.since, id: `r${run.k}`, tag: `Run ${run.k} ${outcomes[run.outcome]} · ${usd(run.spent)} of ${usd(run.budget)}${run.commit ? ` · ${run.commit.slice(0, 7)}` : ''}`, text: Tree.plain(run.summary), who: { address: null, bot: true, name: 'AI' } })
+    out.push({ at: fold?.at ?? run.until ?? run.since, id: `r${run.k}`, tag: `Run ${run.k} ${outcomes[run.outcome]} · ${spent(run.spent)} of ${usd(run.budget)}${run.commit ? ` · ${run.commit.slice(0, 7)}` : ''}`, text: Tree.plain(run.summary), who: { address: null, bot: true, name: 'AI' } })
   }
   for (const steer of view?.steers ?? []) out.push({ at: steer.at, id: `s${steer.at}:${steer.who.handle}`, tag: Number(steer.amount) > 0 ? `Steered, ${usd(steer.amount)} behind it` : 'Steered', text: steer.note, who: rider(steer.who) })
   for (const idea of view?.suggestions ?? []) out.push({ at: idea.at, id: `i${idea.id}`, text: idea.text, who: rider(idea.who) })
