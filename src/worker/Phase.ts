@@ -1,4 +1,6 @@
-import type { Failure, Status, Waiting, Why } from '../shared/Api.ts'
+import { z } from 'zod'
+import type { Failure, Lifecycle, Waiting, Why } from '../shared/Api.ts'
+import * as Assert from '../shared/Assert.ts'
 import * as Memo from '../shared/Memo.ts'
 import { failing, reasons } from '../shared/Status.ts'
 import * as Limits from '../shared/Limits.ts'
@@ -40,7 +42,34 @@ export function can(from: State, to: State) {
 }
 
 export function check(from: State, to: State) {
-  if (!can(from, to)) throw new Error(`A swarm cannot go from ${from} to ${to}.`)
+  Assert.assert(can(from, to), `A swarm cannot go from ${from} to ${to}.`, { from, to })
+}
+
+const told = z.tuple([z.string(), z.string()])
+
+const pause = z.discriminatedUnion('why', [
+  z.object({ why: z.literal('unfunded') }).loose(),
+  z.object({ balance: z.string().optional(), left: z.string(), needs: z.string().optional(), sponsor: z.literal(true).optional(), wake: z.number().nullable().default(null), why: z.literal('money') }).loose(),
+  z.object({ wanted: z.string(), why: z.literal('costly') }).loose(),
+  z.object({ failures: z.number(), why: z.literal('rest') }).loose(),
+  z.object({ why: z.literal('idle') }).loose(),
+])
+
+const sentSchema = z.object({ id: z.string(), prompt: z.string(), told: z.array(told) }).loose()
+
+export const schema = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('new') }).loose(),
+  z.object({ from: pause.optional(), sent: sentSchema.optional(), since: z.number().nullable(), state: z.literal('waiting'), until: z.number() }).loose(),
+  z.object({ again: z.boolean().optional(), balance: z.string().optional(), id: z.string(), n: z.number(), prompt: z.string().optional(), since: z.number().nullable(), state: z.literal('starting'), told: z.array(told) }).loose(),
+  z.object({ again: z.boolean().optional(), balance: z.string().optional(), claim: z.string().optional(), from: z.number(), n: z.number(), since: z.number(), started: z.number(), state: z.literal('working'), task: z.string().optional(), turn: z.string(), wanted: z.string().optional() }).loose(),
+  z.object({ at: z.number(), pause, settled: z.number().optional(), state: z.literal('paused') }).loose(),
+])
+
+export function parse(raw: unknown): Run | undefined {
+  if (raw === undefined) return undefined
+  const parsed = schema.safeParse(raw)
+  if (!parsed.success) return Assert.fail('A stored swarm run does not parse.', parsed.error.issues)
+  return parsed.data as Run
 }
 
 export function wakes(pause: Pause, reason: Reason) {
@@ -80,9 +109,9 @@ export function waking(run: Run, now: number) {
   return wake !== Infinity && wake > now ? wake : null
 }
 
-export function project(run: Run, n: number, stuck = false): { status: Status; why: Why | null } {
+export function project(run: Run, n: number, stuck = false): Lifecycle {
   const pause = paused(run)
-  if (pause) return { status: n ? 'paused' : 'funding', why: pause.why }
+  if (pause) return n ? { status: 'paused', why: pause.why } : { status: 'funding', why: pause.why }
   if (run.state === 'new' || (run.state === 'waiting' && n === 0)) return { status: 'funding', why: null }
   return { status: 'running', why: stuck ? 'stuck' : null }
 }

@@ -1,3 +1,5 @@
+import * as Assert from '../../shared/Assert.ts'
+
 export type Refused = { ok: false; why: 'illegal' | 'replayed' | 'stale' }
 
 export type Stepped<S> = Refused | { ok: true; state: S }
@@ -28,6 +30,12 @@ export function readFold(raw: unknown): Fold | undefined {
 }
 
 export function fold(at: Fold | undefined, event: FoldEvent): Stepped<Fold> {
+  const next = folding(at, event)
+  Assert.assert(!next.ok || at === undefined || rank[next.state.state] > rank[at.state], 'A fold only moves forward.', { at, event })
+  return next
+}
+
+function folding(at: Fold | undefined, event: FoldEvent): Stepped<Fold> {
   const to = reaches[event.kind]
   if (at && rank[at.state] >= rank[to]) return { ok: false, why: 'replayed' }
   if (!at && event.kind !== 'tell') return { ok: false, why: 'illegal' }

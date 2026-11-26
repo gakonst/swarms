@@ -327,3 +327,7 @@ export const Held = {
   unconditional: { entries: 1024, ms: Operations.unconditionalMs },
   writes: { entries: 8192, ms: 3_600_000 },
 } as const
+
+export const MachinePayment = {
+  payingMs: 30_000,
+} as const

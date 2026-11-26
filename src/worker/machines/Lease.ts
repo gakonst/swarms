@@ -1,3 +1,5 @@
+import * as Assert from '../../shared/Assert.ts'
+
 // A lease on one board task, held by one holder: the nanocode lease.
 //
 //   Unowned -> Claiming -> Owned { claim, epoch, until } -> Draining -> Released
@@ -38,6 +40,13 @@ export const guards = { expiry: true, lost: true }
 export class Illegal extends Error {}
 
 export function step(state: State, event: Event): State {
+  const next = move(state, event)
+  Assert.assert(next.kind !== 'Owned' || next.claim.length > 0, 'An owned lease holds a claim.', next)
+  Assert.assert(state.kind !== 'Owned' || next.kind !== 'Owned' || next.until >= state.until, 'A lease never shortens.', { event, next, state })
+  return next
+}
+
+function move(state: State, event: Event): State {
   switch (event.type) {
     case 'claim':
       if (state.kind === 'Unowned' || state.kind === 'Released' || state.kind === 'Lost') return { epoch: state.epoch, kind: 'Claiming' }

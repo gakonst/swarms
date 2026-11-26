@@ -1,3 +1,5 @@
+import * as Assert from '../../shared/Assert.ts'
+
 // An event stream's cursor: the highest event seq whose effects landed.
 //
 // Events are folded in seq order and each at most once: an event at or below
@@ -20,6 +22,7 @@ export function fresh<T extends Seqd>(events: readonly T[], cursor: number): { c
     kept.push(event)
     at = Math.max(at, event.seq)
   }
+  Assert.assert(at >= cursor, 'A cursor never goes back.', { at, cursor })
   return { cursor: at, events: kept }
 }
 

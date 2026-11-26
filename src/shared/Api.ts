@@ -203,6 +203,10 @@ export type Waiting = 'tempo'
 
 export type Why = 'unfunded' | 'money' | 'costly' | 'rest' | 'idle' | 'stuck'
 
+export type Halt = Exclude<Why, 'stuck'>
+
+export type Lifecycle = { status: 'funding'; why: Halt | null } | { status: 'paused'; why: Halt } | { status: 'running'; why: 'stuck' | null }
+
 export type Overview = Summary & {
   about: string | null
   code: Code | null

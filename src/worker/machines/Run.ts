@@ -16,7 +16,8 @@
 // here: older than any rev this code holds, so a fenced write refuses rather
 // than overwrite it.
 
-import type * as Phase from '../Phase.ts'
+import * as Assert from '../../shared/Assert.ts'
+import * as Phase from '../Phase.ts'
 
 export const version = 2
 
@@ -84,7 +85,8 @@ export function can(from: Kind, to: Kind) {
 }
 
 export function read(store: Store): Stored {
-  return store.get() ?? { state: 'new' }
+  const kept = store.get()
+  return kept === undefined ? { state: 'new' } : (Phase.parse(kept) as Stored)
 }
 
 export function rev(run: Stored) {
@@ -98,6 +100,7 @@ export function write(store: Store, run: Phase.Run | Stored, expect?: number): S
   if (guards.fence && expect !== undefined && rev(now) !== expect) throw new Refused('Stale', 'rev ' + rev(now) + ', expected ' + expect)
   const { rev: _rev, v: _v, ...rest } = run as Stored
   const stored: Stored = { ...(rest as Stored), rev: rev(now) + 1, v: version }
+  Assert.assert(stored.rev === rev(now) + 1 && stored.v === version, 'A run write moves its rev by one.', { from: rev(now), to: stored.rev })
   store.put(stored)
   return stored
 }
@@ -116,6 +119,7 @@ export type Ended = Extract<Phase.Run, { state: 'working' }> & { ending: Ending;
 export function ending(store: Store, n: number): Ended {
   const now = read(store)
   if (kind(now) !== 'ending' || now.state !== 'working' || now.n !== n) throw new Refused('Stale', 'turn ' + n + ' is not ending (' + kind(now) + ')')
+  Assert.assert(now.ending !== undefined, 'An ending run holds its ending.', { n })
   return now as Ended
 }
 

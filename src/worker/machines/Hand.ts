@@ -1,3 +1,5 @@
+import * as Assert from '../../shared/Assert.ts'
+
 export type Refused = { ok: false; why: 'illegal' | 'replayed' | 'stale' }
 
 export type Stepped<S> = Refused | { ok: true; state: S }
@@ -16,6 +18,13 @@ export type HandEvent =
   | { at: number; by: 'evicted' | 'failed' | 'owner'; kind: 'revoke'; life: string }
 
 export function hand(at: Hand | undefined, event: HandEvent): Stepped<Hand> {
+  const next = handStep(at, event)
+  Assert.assert(!next.ok || (next.state.v === version && next.state.life.length > 0), 'A hand record is versioned and names its life.', next)
+  Assert.assert(!next.ok || at === undefined || at.state !== 'returned', 'A returned hand never moves.', { at, event })
+  return next
+}
+
+function handStep(at: Hand | undefined, event: HandEvent): Stepped<Hand> {
   if (event.kind === 'issue') return at ? { ok: false, why: 'replayed' } : { ok: true, state: { at: event.at, life: event.life, state: 'issued', v: version } }
   if (!at) return { ok: false, why: 'illegal' }
   if (at.state === 'returned') return { ok: false, why: event.kind === 'return' || event.kind === 'revoke' ? 'replayed' : 'stale' }

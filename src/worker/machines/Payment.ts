@@ -1,3 +1,6 @@
+import * as Assert from '../../shared/Assert.ts'
+import * as Limits from '../../shared/Limits.ts'
+
 export type Kind = 'fund' | 'move' | 'pledge' | 'steer'
 
 export type Payment =
@@ -32,7 +35,7 @@ export type Kv = { delete(key: string): unknown; get<T>(key: string): T | undefi
 
 export const version = 1
 
-export const limits = { payingMs: 30_000 }
+export const limits = { payingMs: Limits.MachinePayment.payingMs }
 
 export const guards = { closed: true, fenced: true, keyed: true, told: true }
 
@@ -41,6 +44,13 @@ export class Busy extends Error {
 }
 
 export function step(payment: Payment, event: Event): Payment | null {
+  const next = advance(payment, event)
+  Assert.assert(next === null || next.id === payment.id, 'A payment keeps its id.', { from: payment.id, to: next?.id })
+  Assert.assert(next?.at !== 'paying' || next.tries >= 1, 'A paying payment counts its tries.', next)
+  return next
+}
+
+function advance(payment: Payment, event: Event): Payment | null {
   switch (event.type) {
     case 'pay':
       if (payment.at === 'owed') return { at: 'paying', id: payment.id, resumed: payment.tries > 0, tries: payment.tries + 1, until: event.now + limits.payingMs }
@@ -60,6 +70,13 @@ export function step(payment: Payment, event: Event): Payment | null {
 }
 
 export function transfer(state: Transfer, delivery: Delivery): Transfer | null {
+  const next = deliver(state, delivery)
+  Assert.assert(next === null || next.hash === state.hash, 'A transfer keeps its hash.', { from: state.hash, to: next?.hash })
+  Assert.assert(next?.at !== 'credited' || next.amount >= 0n, 'A credited transfer is never negative.', next)
+  return next
+}
+
+function deliver(state: Transfer, delivery: Delivery): Transfer | null {
   switch (delivery.type) {
     case 'credited':
       return state.at === 'seen' ? { amount: delivery.amount, at: 'credited', from: delivery.from.toLowerCase(), hash: state.hash } : null
@@ -133,7 +150,8 @@ export async function settle(kv: Kv, payment: string, io: Io, effects: () => voi
     throw error
   }
   const found = wrote ? false : await within(io.written(), limits.payingMs, 'A ledger read')
-  const done = step(paying, wrote ? { type: 'landed' } : found ? { type: 'found' } : { type: 'short', why: 'not covered' }) as Payment & { at: 'paid' | 'refused' }
+  const done = step(paying, wrote ? { type: 'landed' } : found ? { type: 'found' } : { type: 'short', why: 'not covered' })
+  Assert.assert(done?.at === 'paid' || done?.at === 'refused', 'A paying payment ends paid or refused.', done)
   if (done.at === 'refused') {
     kv.delete(slot(payment))
     return done

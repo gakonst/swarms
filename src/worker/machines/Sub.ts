@@ -11,6 +11,7 @@ import * as Memo from '../../shared/Memo.ts'
 import * as Flow from '../Flow.ts'
 import type * as Gateway from '../Gateway.ts'
 import type { Kv } from './Tree.ts'
+import * as Assert from '../../shared/Assert.ts'
 
 export const version = 1
 
@@ -45,7 +46,9 @@ export function step(at: Seen | undefined, read: Gateway.Subagent): Seen {
   const before = rank(at.sub.status.state)
   const now = rank(read.status.state)
   const newer = now > before || (now === before && before < 2 && spent >= was)
-  return { spent: Memo.decimal(spent > was ? spent : was), sub: newer ? read : at.sub, v: version }
+  const next: Seen = { spent: Memo.decimal(spent > was ? spent : was), sub: newer ? read : at.sub, v: version }
+  Assert.assert(rank(next.sub.status.state) >= before && Memo.units(next.spent) >= was, 'A subagent never goes back.', { at, next })
+  return next
 }
 
 export function get(kv: Kv, agent: string, sub: number) {
