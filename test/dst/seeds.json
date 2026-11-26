@@ -201,5 +201,12 @@
     "invariant": "a transfer the server could not count yet stays owed, a retry counts it, and one already counted is counted",
     "found": "2026-11-26 by pnpm dst --hunt: every pay seed failed once counted acts carried started: undefined (f8ccd6a) while the scenario expected no such key; the checker printed both sides alike since JSON drops undefined (harness assumption, not a Swarms bug)",
     "fix": "test(dst): pay expects the started key on counted acts"
+  },
+  {
+    "job": "swarm_wide",
+    "seed": "h32d97cf77f04",
+    "invariant": "overspent",
+    "found": "2026-11-26 by pnpm dst --hunt: a stale subagent list hid a run seconds after its spawn, so it settled at 0 and was never tracked for a late charge; the 0.091769 the gateway charged was never booked and that money was budgeted again, past what was raised",
+    "fix": "fix(runner): track a late charge for a run the gateway no longer lists"
   }
 ]

@@ -499,11 +499,12 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
     sub = await observed(self, swarm, spawned, await list(self, swarm, spawned.agent, true), sub)
   }
   const final = sub?.status.state ?? 'gone'
-  const used = (sub ? Flow.micro(sub.spent_usd) : Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')) + (await dispatched(self, swarm, spawned))
+  const ran = sub ? Flow.micro(sub.spent_usd) : Memo.units(self.kv.get<Nodes.Live>('live:' + task.id)?.spent ?? '0')
+  const used = ran + (await dispatched(self, swarm, spawned))
   for (const steer of await lease.steers().catch(() => [])) if (steer.seq > relayed) await self.board.steer(Nodes.nodeId(nid), steer.body, { key: 'relay:' + task.id + ':' + steer.seq })
   const why = !sub ? 'The run is gone from the gateway.' : !ended ? 'The run stalled and was stopped.' : (sub.status.error ?? 'The run ' + final + '.')
   await Nodes.settleRun(self, task.id, used)
-  if (sub) charged(self, task.id, spawned, Flow.micro(sub.spent_usd))
+  charged(self, task.id, spawned, ran)
   if (nid === Nodes.triage) {
     const actions = Triage.parse(sub?.result)
     const applied = await Triage.apply(self, actions, 'agent:n:triage', task.id, halt)
