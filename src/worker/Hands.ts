@@ -121,8 +121,8 @@ function retired(self: Swarm, name: string, by: 'evicted' | 'failed' | 'owner') 
 
 async function retire(self: Swarm, swarm: string, name: string, by: 'evicted' | 'failed' | 'owner', resumed: boolean) {
   const revoked = await Gateway.detach(self.env, swarm, name).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
-  if ((by === 'owner' || resumed) && !revoked.ok && revoked.status !== 404) {
-    if (!resumed) step(self, name, { at: Date.now(), kind: 'kept' })
+  if (!revoked.ok && revoked.status !== 404) {
+    if (by === 'owner' && !resumed) step(self, name, { at: Date.now(), kind: 'kept' })
     return revoked
   }
   await free(self, swarm, name)

@@ -516,7 +516,7 @@ async function refusal(seed: string): Promise<Outcome> {
 
 type Swarm = InstanceType<typeof SwarmModule.Swarm>
 
-async function lent(seed: string): Promise<Outcome> {
+async function lent(seed: string, d1 = true): Promise<Outcome> {
   const random = rng(seed, 'lent')
   const { fail, violations } = recorder()
   const L = limits.lent
@@ -564,9 +564,9 @@ async function lent(seed: string): Promise<Outcome> {
     const wrap = (inner: D1PreparedStatement, query: string): D1PreparedStatement => {
       const writes = /^\s*(insert|update|delete)/i.test(query)
       const call = async <T>(work: () => Promise<T>) => {
-        if (fault()) return hang
+        if (d1 && fault()) return hang
         const answer = await work()
-        if (writes && fault()) return hang
+        if (writes && d1 && fault()) return hang
         return answer
       }
       return {
@@ -581,9 +581,9 @@ async function lent(seed: string): Promise<Outcome> {
     ;(w.env as unknown as { DB: D1Database }).DB = {
       ...db,
       batch: async (statements: D1PreparedStatement[]) => {
-        if (fault()) return hang
+        if (d1 && fault()) return hang
         const answer = await db.batch(statements.map((one) => (one as unknown as { inner?: D1PreparedStatement }).inner ?? one))
-        if (fault()) return hang
+        if (d1 && fault()) return hang
         return answer
       },
       prepare: (query: string) => wrap(db.prepare(query), query),
@@ -844,7 +844,17 @@ async function turnend(seed: string): Promise<Outcome> {
   return { steps: hung, violations }
 }
 
-export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = { check, foldrun, lent, node, refold, refusal, seen, turnend }
+export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = {
+  check,
+  foldrun,
+  lent: (seed) => lent(seed),
+  lent_gateway: (seed) => lent(seed, false),
+  node,
+  refold,
+  refusal,
+  seen,
+  turnend,
+}
 
 function patch<T extends object, K extends keyof T>(target: T, key: K, make: (was: T[K]) => T[K]) {
   return () => {
