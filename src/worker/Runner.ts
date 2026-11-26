@@ -271,12 +271,14 @@ async function strays(self: Swarm, swarm: string, agent: string) {
 }
 
 async function refusal(self: Swarm, task: Work.Task, lease: Board.PoolLease, failure: { detail: string; status: number }): Promise<never> {
-  if (failure.status !== 402) throw new Error(failure.detail)
+  const transient = failure.status === 409 || failure.status >= 500
+  if (failure.status !== 402 && !transient) throw new Error(failure.detail)
   const tries = (self.kv.get<number>('paid:' + task.id) ?? 0) + 1
-  const until = Date.now() + Work.delay(paying, tries)
+  const wait = transient ? Math.min(Limits.Runner.followBackoffMostMs, Limits.Runner.followBackoffMs * 2 ** Math.min(tries, Limits.Runner.followBackoffDoublings)) : Work.delay(paying, tries)
+  const until = Date.now() + wait
   self.kv.put('paid:' + task.id, tries)
   self.kv.put('rest:' + task.id, until)
-  await self.board.release(task.id, lease.claim, 'The gateway refused payment: ' + failure.detail)
+  await self.board.release(task.id, lease.claim, (transient ? 'The gateway did not take the run yet: ' : 'The gateway refused payment: ') + failure.detail)
   await arm(self, until)
   throw new Board.LeaseLost(task.id)
 }
