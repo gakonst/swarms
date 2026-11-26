@@ -1,5 +1,7 @@
 import type { Store } from 'accounts'
 import type { Address } from 'viem'
+import { z } from 'zod'
+import { assert } from '../shared/Assert.ts'
 import { Held, limits } from './Held.ts'
 import * as Replica from './Replica.ts'
 import * as Limits from '../shared/Limits.ts'
@@ -10,8 +12,26 @@ export const days = Limits.Sessions.days
 
 type Stored = { expires_at: number | null; value: string }
 
+export type Session = { address: Address; expiresAt: number; method: 'siwe' }
+
+const session = z
+  .object({ address: z.string().min(1), expiresAt: z.number(), method: z.literal('siwe') })
+  .loose()
+  .transform((value): Session => ({ address: value.address.toLowerCase() as Address, expiresAt: value.expiresAt, method: value.method }))
+
+const tokenShape = new RegExp(`^[\\w-]{1,${Limits.Sessions.tokenMost}}$`)
+
+function decode(value: string): unknown {
+  try {
+    return JSON.parse(value)
+  } catch {
+    console.error('Unreadable session record, treated as absent')
+    return undefined
+  }
+}
+
 function live(row: Stored | null): unknown {
-  return row && (row.expires_at === null || row.expires_at > Date.now()) ? JSON.parse(row.value) : undefined
+  return row && (row.expires_at === null || row.expires_at > Date.now()) ? decode(row.value) : undefined
 }
 
 const held = new Held<Stored>(limits.sessions)
@@ -52,10 +72,23 @@ export function bearer(request: Request) {
   return /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') ?? '')?.[1]
 }
 
+export function parse(value: unknown, now: number): Session | undefined {
+  if (value === null || value === undefined) return undefined
+  const parsed = session.safeParse(value)
+  if (!parsed.success) {
+    console.error('Unreadable Tempo ID session, treated as absent', parsed.error.issues)
+    return undefined
+  }
+  return parsed.data.expiresAt > now ? parsed.data : undefined
+}
+
 export async function holder(env: Cloudflare.Env, token: string): Promise<Address | undefined> {
-  if (!/^[\w-]{1,128}$/.test(token)) return undefined
-  const session = (await store(Replica.primary(env).DB).getItem('tempo-id:session:' + token)) as { address?: unknown; expiresAt?: unknown; method?: unknown } | null | undefined
-  return session?.method === 'siwe' && typeof session.address === 'string' && typeof session.expiresAt === 'number' && session.expiresAt > Date.now() ? (session.address.toLowerCase() as Address) : undefined
+  if (!tokenShape.test(token)) return undefined
+  const now = Date.now()
+  const found = parse(await store(Replica.primary(env).DB).getItem('tempo-id:session:' + token), now)
+  if (!found) return undefined
+  assert(found.expiresAt > now, 'a held session has not expired', found.expiresAt)
+  return found.address
 }
 
 export async function who(env: Cloudflare.Env, request: Request) {

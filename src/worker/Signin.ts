@@ -3,12 +3,14 @@ import { backend, siwe, viem } from 'accounts/plugins'
 import type { Address } from 'viem'
 import { http } from 'viem'
 import { z } from 'zod'
+import { assert } from '../shared/Assert.ts'
 import * as Site from '../shared/Site.ts'
 import * as Chain from './Chain.ts'
 import { Held, limits } from './Held.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
 import { bearer, days, path, store } from './Sessions.ts'
+import * as Limits from '../shared/Limits.ts'
 
 function create(env: Cloudflare.Env, origin: string) {
   return Accounts.create({
@@ -24,17 +26,14 @@ function create(env: Cloudflare.Env, origin: string) {
 
 const instances = new Held<ReturnType<typeof create>>(limits.origins)
 
-// Sign-in is for the site the Worker serves: SWARMS_URL, or the local host a dev server answers on
-// (Site.url), so a page on localhost signs in without a tunnel. A challenge's stored message names
-// its origin, so completing and reading sessions works with any instance.
 function accounts(env: Cloudflare.Env, origin = new URL(env.SWARMS_URL).origin) {
   return instances.get(origin) ?? instances.set(origin, create(env, origin))
 }
 
 const verifying = z.object({
-  address: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
-  id: z.string().min(1).max(128),
-  message: z.string().min(1).max(4096),
+  address: z.string().regex(new RegExp(`^0x[0-9a-fA-F]{${Limits.Signin.addressDigits}}$`)),
+  id: z.string().min(1).max(Limits.Signin.idMost),
+  message: z.string().min(1).max(Limits.Signin.messageMost),
   signature: z.string().regex(/^0x[0-9a-fA-F]+$/),
 })
 
@@ -58,6 +57,7 @@ export async function verify(env: Cloudflare.Env, input: Record<string, unknown>
 
   try {
     const session = await accounts(env).siwe.complete({ ...parsed.data, address: parsed.data.address as Address, signature: parsed.data.signature as `0x${string}` })
+    assert(typeof session.id === 'string' && session.id.length > 0, 'a completed sign-in answers a session token', typeof session.id)
     return Problem.ok({ token: session.id })
   } catch (error) {
     return refused(error)

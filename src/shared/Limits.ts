@@ -207,7 +207,6 @@ export const Search = {
 export const Sessions = {
   days: 30,
   heldMs: 30_000,
-  heldMost: 500,
   tokenMost: 128,
 } as const
 
