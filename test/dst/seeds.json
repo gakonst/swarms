@@ -12,5 +12,33 @@
     "invariant": "lost pledge",
     "found": "2026-11-26: a 5-minute partition outlasted the simulated rider's retries (harness bound, not a Swarms bug)",
     "fix": "test(dst): riders retry past the longest partition"
+  },
+  {
+    "job": "swarm_wide",
+    "seed": "hfc256a819aab",
+    "invariant": "overspent",
+    "found": "2026-11-26 by pnpm dst --hunt: a spawn whose answer was lost left a subagent the run never recorded; the run failed, was settled with no spend while its subagent kept running, and the next run committed the same money (ledger short by what that subagent spent)",
+    "fix": "fix(tree): settling a finished run closes and counts a subagent it never recorded"
+  },
+  {
+    "job": "swarm_wide",
+    "seed": "hf0cac86c3343",
+    "invariant": "overspent",
+    "found": "2026-11-26 by pnpm dst --hunt: same as hfc256a819aab in another swarm",
+    "fix": "fix(tree): settling a finished run closes and counts a subagent it never recorded"
+  },
+  {
+    "job": "swarm_money",
+    "seed": "he3098237dbba",
+    "invariant": "leaked subagent",
+    "found": "2026-11-26 by pnpm dst --hunt: a run still working when the simulation ends was read as leaked and its spend as drift (harness, not Swarms)",
+    "fix": "test(dst): a run still working at the end is in flight, not leaked"
+  },
+  {
+    "job": "swarm_list",
+    "seed": "hb6a7ca449a95",
+    "invariant": "ledger drift",
+    "found": "2026-11-26 by pnpm dst --hunt: spend of runs still working at the end counted as drift (harness, not Swarms)",
+    "fix": "test(dst): a run still working at the end is in flight, not leaked"
   }
 ]

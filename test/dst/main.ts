@@ -70,7 +70,7 @@ export function seeds(): Seed[] {
   return JSON.parse(readFileSync(seedsFile, 'utf8')) as Seed[]
 }
 
-async function one(job: Job, seed: string, canary: string | null): Promise<Outcome> {
+async function one(job: Job, seed: string, canary: string | null, log = false): Promise<Outcome> {
   const began = performance.now()
   if (job.scenario) {
     const all = await modules()
@@ -94,7 +94,7 @@ async function one(job: Job, seed: string, canary: string | null): Promise<Outco
   if (guards && flipped) guards[flipped.flag] = false
   try {
     const { simulate } = await import('../load/sim.ts')
-    const report = await simulate({ ...(job.options ?? {}), seed } as never)
+    const report = await simulate({ ...(job.options ?? {}), ...(log ? { log } : {}), seed } as never)
     return {
       ms: Math.round(performance.now() - began),
       steps: report.counts.steps,
@@ -238,11 +238,11 @@ async function main() {
     },
   })
   if (values.one) {
-    const asked = JSON.parse(values.one) as { canary: string | null; job: string; seed: string }
+    const asked = JSON.parse(values.one) as { canary: string | null; job: string; log?: boolean; seed: string }
     const known = await allJobs()
     const job = known.find((one) => one.name === asked.job)
     if (!job) throw new Error('No job ' + asked.job + '; pick from ' + known.map((one) => one.name).join(','))
-    process.stdout.write(JSON.stringify(await one(job, asked.seed, asked.canary)) + '\n')
+    process.stdout.write(JSON.stringify(await one(job, asked.seed, asked.canary, asked.log === true)) + '\n')
     process.exit(0)
   }
   const width = values.width ? Number(values.width) : Math.max(1, Math.floor(availableParallelism() / 2))

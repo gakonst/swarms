@@ -43,7 +43,7 @@ export const rates: Record<Fault, number> = { chainLag: 0.3, crash: 0.004, dup: 
 
 export const limits = { attempts: 120, chainLagMs: 60_000, partitionMostMs: 5 * 60_000, partitionLeastMs: 20_000, retryMostMs: 10_000, retryLeastMs: 500 }
 
-export type Options = { activeMs: number; children: number; deadlineMs: number; faults: readonly Fault[]; offset: number; pledges: number; seed: string; swarms: number; tailMs: number }
+export type Options = { log?: boolean; activeMs: number; children: number; deadlineMs: number; faults: readonly Fault[]; offset: number; pledges: number; seed: string; swarms: number; tailMs: number }
 
 export const defaults: Options = { activeMs: 45 * 60_000, children: 6, deadlineMs: 15 * 60_000, faults: faultNames, offset: 0, pledges: 6, seed: '1', swarms: 4, tailMs: 4 * 60 * 60_000 }
 
@@ -449,6 +449,7 @@ function evict(sim: Sim, sw: SimSwarm, why: string) {
   inc.alive = false
   inc.die()
   sw.evictions.push({ at: sim.clock.now, why })
+  note(sim, sw, 'evicted ' + why)
   sim.trace.update(`${sim.clock.now} ${sw.index} evict ${why}\n`)
   for (const stream of [...sw.streams])
     if (stream.inc === inc) {
@@ -743,6 +744,7 @@ function raised(sim: Sim, sw: SimSwarm, at: string) {
   if (BigInt(row.spent) > pledged) sw.overspent = 'the ledger spent ' + decimal(BigInt(row.spent)) + ' of ' + decimal(pledged) + ' raised ' + when
   else if (charged > pledged) sw.overspent = 'the gateway charged ' + decimal(charged) + ' of ' + decimal(pledged) + ' raised ' + when
   else if (allowed > pledged) sw.overspent = 'the gateway was allowed ' + decimal(allowed) + ' of ' + decimal(pledged) + ' raised ' + when
+  if (sw.overspent && sim.options.log) for (const sub of sw.subs) note(sim, sw, 'at overspend ' + sub.summary + ' ' + sub.role + ' ' + sub.state + ' budget ' + decimal(sub.budget) + ' spent ' + decimal(sub.spent))
 }
 
 function life(sim: Sim, sw: SimSwarm, sub: Sub) {
@@ -801,6 +803,7 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation | null, request:
   const method = request.method
   sim.calls += 1
   sim.trace.update(`${sim.clock.now} ${sw.index} ${inc ? 'do' : 'worker'} ${method} ${path}${url.search}\n`)
+  note(sim, sw, (inc ? 'do' + inc.gen : 'worker') + ' ' + method + ' ' + path + url.search)
   const faults = sim.faulty ? sim.options.faults : []
   if (faults.includes('partition') && sim.clock.now < sw.partitioned) throw new TypeError('Network connection lost.')
   const body = method === 'POST' ? ((await request.json().catch(() => ({}))) as Record<string, unknown>) : {}
@@ -842,6 +845,7 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation | null, request:
       task: String(body['task'] ?? ''),
     }
     sw.subs.push(sub)
+    note(sim, sw, 'spawned ' + sub.summary + ' ' + sub.role + ' budget ' + decimal(sub.budget))
     if (key) sw.keyed.set(key, sub)
     raised(sim, sw, sub.summary + ' spawned')
     changed(sim, sw, sub)
@@ -898,6 +902,10 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation | null, request:
   if (path === '/api/keys/backings') return Response.json({ backings: [], left: '0', spent: '0' })
   if (path === '/v1/hands') return Response.json({ hands: [] })
   return Response.json({ code: 'not_found', detail: 'The simulated gateway has no ' + method + ' ' + path }, { status: 404 })
+}
+
+function note(sim: Sim, sw: SimSwarm, line: string) {
+  if (sim.options.log) process.stderr.write('+' + Math.round((sim.clock.now - start) / 1000) + 's ' + sw.index + ' ' + line + '\n')
 }
 
 const reset = 'Durable Object reset because its code was updated.'
@@ -1072,6 +1080,7 @@ async function check(sim: Sim, sw: SimSwarm, violations: Violation[]) {
   const board = sw.inc.swarm.board
   let folds = 0
   let slowest = 0
+  const flying = new Set<string>()
   for (const sub of sw.subs) {
     const marks = progress.filter((row) => row.text === sub.summary || row.text === sub.error)
     folds += marks.length
@@ -1079,10 +1088,11 @@ async function check(sim: Sim, sw: SimSwarm, violations: Violation[]) {
       const between = sw.evictions.filter((one) => one.at >= (marks[0]?.at ?? 0) && one.at <= (marks.at(-1)?.at ?? 0)).map((one) => one.why)
       add('duplicate fold', `${sub.summary} (${sub.role}) folded ${marks.length} times, at ${marks.map((mark) => '+' + Math.round((mark.at - start) / 1000) + 's').join(' and ')}; evicted in between: ${between.join(', ') || 'never'}`)
     }
-    if (sub.state === 'running') add('leaked subagent', `${sub.summary} (${sub.role}) still running at the end`)
     const match = sub.role.match(/^n:(.+)#(\d+)$/)
     const run = match ? Nodes.runId(match[1] ?? '', Number(match[2])) : null
     const task = run ? await board.task(run) : null
+    if (sub.state === 'running' && (!task || ended.includes(task.phase))) add('leaked subagent', `${sub.summary} (${sub.role}) still running at the end; its run is ${task?.phase ?? 'missing'}`)
+    if (sub.state === 'running' && run) flying.add(run)
     if ((sub.state === 'completed' || sub.state === 'failed') && marks.length === 0 && task?.phase !== 'cancelled')
       add('lost result', `${sub.summary} (${sub.role}) ${sub.state} at +${Math.round(((sub.completed ?? start) - start) / 1000)}s but never folded; its run is ${task?.phase ?? 'missing'}`)
     const first = marks[0]
@@ -1093,7 +1103,7 @@ async function check(sim: Sim, sw: SimSwarm, violations: Violation[]) {
     }
   }
   const tasks = await board.tasks()
-  const open = tasks.filter((task) => (task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && !ended.includes(task.phase))
+  const open = tasks.filter((task) => (task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && !ended.includes(task.phase) && !flying.has(task.id))
   for (const task of tasks)
     if (task.untilMs && task.untilMs < now - 60_000 && !ended.includes(task.phase) && task.claim) add('missed deadline', `${task.id} is still held; its lease ran out ${Math.round((now - task.untilMs) / 1000)}s ago`)
   const alarm = sw.store.alarm()
@@ -1123,10 +1133,11 @@ async function check(sim: Sim, sw: SimSwarm, violations: Violation[]) {
   for (const [key, amount] of buckets) if (amount < 0n) add('negative balance', `${key} holds ${decimal(amount)}`)
   const contributed = sw.pledges.reduce((sum, pledge) => sum + (pledge.stranded ? 0n : pledge.amount), 0n)
   const spentGateway = sw.subs.reduce((sum, sub) => sum + sub.spent, 0n)
+  const inFlight = sw.subs.reduce((sum, sub) => sum + (sub.state === 'running' ? sub.spent : 0n), 0n)
   const drift = contributed - spentGateway - totals.held
   if (totals.pledged !== contributed) add('ledger drift', `the ledger holds ${decimal(totals.pledged)} pledged; riders sent ${decimal(contributed)}`)
-  if (totals.spent !== spentGateway) add('ledger drift', `the ledger spent ${decimal(totals.spent)}; the gateway charged ${decimal(spentGateway)}`)
-  if (drift !== 0n) add('ledger drift', `contributed ${decimal(contributed)} − charged ${decimal(spentGateway)} − held ${decimal(totals.held)} = ${decimal(drift)}`)
+  if (totals.spent !== spentGateway - inFlight) add('ledger drift', `the ledger spent ${decimal(totals.spent)}; the gateway charged ${decimal(spentGateway)}, ${decimal(inFlight)} of it by runs still working`)
+  if (drift !== -inFlight) add('ledger drift', `contributed ${decimal(contributed)} − charged ${decimal(spentGateway)} − held ${decimal(totals.held)} = ${decimal(drift)}`)
   return { contributed, drift, folds, held: totals.held, slowest, spentGateway, spentLedger: totals.spent }
 }
 
