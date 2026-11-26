@@ -10,7 +10,7 @@ import * as Status from '../shared/Status.ts'
 import { board, live, stood } from './Home.tsx'
 import { Inline } from './Markdown.tsx'
 import { Badge } from './Picture.tsx'
-import { Link } from './router.tsx'
+import { Link, navigate } from './router.tsx'
 import { Opener, Palette, useShortcut } from './Search.tsx'
 import * as Wire from './wire.ts'
 
@@ -92,6 +92,34 @@ function useUnread(items: readonly Summary[], current: string | undefined) {
     if (now) visit(now.id, now.updatedAt)
   }, [now?.id, now?.updatedAt])
   return (swarm: Summary) => swarm.id !== current && known[swarm.id] !== undefined && swarm.updatedAt > known[swarm.id]!
+}
+
+export function step(order: readonly string[], current: string | undefined, by: 1 | -1, unread?: (id: string) => boolean) {
+  const at = order.indexOf(current ?? 'general')
+  for (let turn = 1; turn < order.length; turn++) {
+    const next = order[(((at < 0 ? (by > 0 ? -1 : 0) : at) + by * turn) % order.length + order.length) % order.length]
+    if (next !== undefined && (!unread || unread(next))) return next
+  }
+  return undefined
+}
+
+function useChannelKeys(items: readonly Summary[], current: string | undefined, unread: (swarm: Summary) => boolean) {
+  const latest = useRef({ current, items, unread })
+  latest.current = { current, items, unread }
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => {
+      if (!event.altKey || event.metaKey || event.ctrlKey || event.defaultPrevented || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+      const { current, items, unread } = latest.current
+      const byId = new Map(items.map((swarm) => [swarm.id, swarm]))
+      const next = step(['general', ...items.map((swarm) => swarm.id)], current, event.key === 'ArrowDown' ? 1 : -1, event.shiftKey ? (id) => { const swarm = byId.get(id); return !!swarm && unread(swarm) } : undefined)
+      if (next === undefined) return
+      event.preventDefault()
+      const swarm = byId.get(next)
+      navigate(swarm ? Nickname.path(swarm) : '/')
+    }
+    addEventListener('keydown', listener)
+    return () => removeEventListener('keydown', listener)
+  }, [])
 }
 
 function Servers(props: { current: string | undefined; items: readonly Summary[]; listing: Listing | undefined; rail: Rail.Rail; unread: (swarm: Summary) => boolean }) {
@@ -206,6 +234,7 @@ export function Shell(props: { channel: string | undefined; children: ReactNode;
   const list = Wire.useSwarms()
   const items = channels(list.data)
   const unread = useUnread(items, props.channel)
+  useChannelKeys(items, props.channel, unread)
   const rail = useSyncExternalStore(watchRail, readRail, servedRail)
   useShortcut()
   return (

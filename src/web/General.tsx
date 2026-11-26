@@ -13,7 +13,7 @@ import { Inline, Markdown } from './Markdown.tsx'
 import { code } from './pay.ts'
 import { Divider } from './Divider.tsx'
 import { useHello, Welcome } from './Hello.tsx'
-import { Avatar, tint, Unsent } from './Room.tsx'
+import { Avatar, draft, keepDraft, tint, Unsent } from './Room.tsx'
 import { Link } from './router.tsx'
 import { channels } from './Shell.tsx'
 import { Username } from './Username.tsx'
@@ -69,6 +69,15 @@ export function General(props: { config: Config | undefined }) {
   const [failed, setFailed] = useState(false)
   const [wired, setWired] = useState(false)
   const [text, setText] = useState('')
+  const restored = useRef(false)
+  useLayoutEffect(() => {
+    if (!restored.current) {
+      restored.current = true
+      const kept = draft('general')
+      if (kept) return setText(kept)
+    }
+    keepDraft('general', text)
+  }, [text])
   const [signing, setSigning] = useState(false)
   const [problem, setProblem] = useState<string>()
   const scroller = useRef<HTMLDivElement>(null)

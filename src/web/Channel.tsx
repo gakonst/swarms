@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useLayoutEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Config, NodeView } from '../shared/Api.ts'
 import { maxNote } from '../shared/Memo.ts'
 import type * as Tree from '../shared/Tree.ts'
@@ -7,7 +7,7 @@ import { ago, day, minute, usd } from './format.ts'
 import { message, useWallet } from './hooks.ts'
 import { Inline, Markdown } from './Markdown.tsx'
 import { Overlay } from './Overlay.tsx'
-import { Avatar, tint } from './Room.tsx'
+import { Avatar, tint, typist } from './Room.tsx'
 import * as Wallet from './wallet.ts'
 
 export type Line = { at: number; id: string; text: string; who: { address: string | null; bot: boolean; name: string }; tag?: string | undefined }
@@ -80,7 +80,7 @@ export function Talk(props: { doing?: Tree.Doing | null | undefined; empty: stri
   )
 }
 
-export function Composer(props: { config: Config | undefined; disabled?: string | undefined; fine?: string | undefined; label: string; onPost: (text: string) => Promise<void>; placeholder: string }) {
+export function Composer(props: { autoFocus?: boolean; config: Config | undefined; disabled?: string | undefined; fine?: string | undefined; label: string; onPost: (text: string) => Promise<void>; placeholder: string }) {
   const wallet = useWallet()
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
@@ -95,6 +95,11 @@ export function Composer(props: { config: Config | undefined; disabled?: string 
     element.style.height = 'auto'
     element.style.height = `${Math.min(element.scrollHeight, 132)}px`
   }, [text])
+
+  const open = !props.disabled && !!wallet.session
+  useEffect(() => {
+    if (props.autoFocus && open && typist()) area.current?.focus({ preventScroll: true })
+  }, [props.autoFocus, open])
 
   const post = async () => {
     const body = text.trim()

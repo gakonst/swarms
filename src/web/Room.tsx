@@ -27,6 +27,31 @@ const seatSteer = '1'
 
 const kept = new Map<string, { members: readonly Member[]; messages: readonly Said[] }>()
 
+const draftKey = (id: string) => `swarms_draft:${id}`
+
+export function draft(id: string) {
+  try {
+    return localStorage.getItem(draftKey(id)) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function keepDraft(id: string, text: string) {
+  try {
+    if (text.trim()) localStorage.setItem(draftKey(id), text)
+    else localStorage.removeItem(draftKey(id))
+  } catch {}
+}
+
+export function typist() {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches
+}
+
+function idle(element: Element | null) {
+  return !element || element === document.body || !!element.closest('.servers, .switcher, .tabs')
+}
+
 function say(draft: Outbox.Draft) {
   const swarm = draft.place.split(':')[1] ?? ''
   return Api.say(swarm, { text: draft.text.trim(), ...(draft.parent !== undefined ? { parent: draft.parent } : {}), ...(draft.steer ? { steer: draft.steer.amount } : {}) }).then(
@@ -371,6 +396,28 @@ export const Room = memo(function Room(props: {
     element.style.height = `${Math.min(element.scrollHeight, 132)}px`
   }, [text])
 
+  const restored = useRef(false)
+  useLayoutEffect(() => {
+    if (!restored.current) {
+      restored.current = true
+      const kept = draft(id)
+      if (kept) return setText(kept)
+    }
+    keepDraft(id, text)
+  }, [id, text])
+
+  const [ready, setReady] = useState(false)
+  const placed = useCallback((element: HTMLTextAreaElement | null) => {
+    area.current = element
+    setReady(!!element)
+  }, [])
+  useEffect(() => {
+    const element = area.current
+    if (!element || !props.visible || !typist() || !idle(document.activeElement)) return
+    element.focus({ preventScroll: true })
+    element.setSelectionRange(element.value.length, element.value.length)
+  }, [id, props.visible, ready])
+
   const roster = useRoster(id, props.swarm.steering)
   const called = new Map([...(roster?.seats ?? []).map((seat) => [seat.address, seat.handle] as const), ...members.map((member) => [member.address, member.handle] as const)])
   const handleOf = (address: string) => called.get(address as `0x${string}`) ?? Mention.short(address)
@@ -625,8 +672,8 @@ export const Room = memo(function Room(props: {
           }}
           onKeyDown={keys}
           onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-          placeholder={ai ? (asks ? 'What should the swarm do? It becomes a board item' : 'What should the AI try?') : 'Message'}
-          ref={area}
+          placeholder={ai ? (asks ? 'What should the swarm do? It becomes a board item' : 'What should the AI try?') : 'Message #general'}
+          ref={placed}
           rows={1}
           value={text}
         />

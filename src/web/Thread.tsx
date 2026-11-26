@@ -142,7 +142,16 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
   const picked = picking && thread ? [thread.parent, ...thread.replies].find((item) => item.id === picking.id) : undefined
 
   return (
-    <aside aria-label="Thread" className="chat-thread">
+    <aside
+      aria-label="Thread"
+      className="chat-thread"
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || picking || event.defaultPrevented) return
+        event.preventDefault()
+        props.onClose()
+        requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.chat .chat-bar textarea')?.focus({ preventScroll: true }))
+      }}
+    >
       <header className="thread-head">
         <button aria-label="Close the thread" className="thread-close" onClick={props.onClose} type="button"><span aria-hidden="true">×</span></button>
         <p><b>Thread</b><span>{count} {count === 1 ? 'reply' : 'replies'}{thread?.parent.node ? ' · board item' : ''}</span></p>
@@ -168,6 +177,7 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
       </div>
       {problem && <p className="chat-error chat-thread-error" role="alert">{problem}</p>}
       <Composer
+        autoFocus
         config={props.config}
         disabled={thread?.me && !member ? 'Ride this swarm to reply.' : undefined}
         label="Reply in thread"
