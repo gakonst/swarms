@@ -116,11 +116,7 @@ app.post(`${Device.path}/token`, async (c) => Problem.respond(await Device.poll(
 
 app.post(`${Device.path}/approve`, async (c) => Problem.respond(await Device.approve(c.env, await body(c.req.raw), c.req.raw)))
 
-app.post(`${Sessions.path}/logout`, (c) => {
-  const token = Sessions.bearer(c.req.raw)
-  if (token) Sessions.forget(token)
-  return c.env.OBJECTS.fetch(Timing.traced(c.req.raw))
-})
+app.post(`${Sessions.path}/logout`, (c) => c.env.OBJECTS.fetch(Timing.traced(c.req.raw)))
 
 app.post('/v1/feedback', async (c) => Problem.respond(await Feedback.file(c.env, await body(c.req.raw)), 201))
 

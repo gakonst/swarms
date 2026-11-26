@@ -131,7 +131,6 @@ src/worker/Riding.ts 1 pre-existing hand formatting
 src/worker/Runner.ts 1 pre-existing hand formatting
 src/worker/Runs.ts 1 pre-existing hand formatting
 src/worker/Search.ts 1 pre-existing hand formatting
-src/worker/Sessions.ts 1 pre-existing hand formatting
 src/worker/Share.ts 1 pre-existing hand formatting
 src/worker/Signin.ts 1 pre-existing hand formatting
 src/worker/Store.ts 1 pre-existing hand formatting

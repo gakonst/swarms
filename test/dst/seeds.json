@@ -96,5 +96,12 @@
     "invariant": "lost result",
     "found": "2026-11-26 by pnpm dst --hunt: spawns that met a network error (503) or a 409 while a keyed spawn was starting counted as failed attempts; after three the run failed for good and the result of the subagent the first spawn had started was never folded",
     "fix": "fix(tree): a spawn the gateway did not take yet rests the run instead of failing it"
+  },
+  {
+    "job": "sessions",
+    "seed": "1",
+    "invariant": "revoked everywhere",
+    "found": "2026-11-26: a token ended through one isolate still answered on another isolate from its session cache, and a replica read could still return the deleted row",
+    "fix": "fix(sessions): an ended token is refused on every isolate at the next request"
   }
 ]

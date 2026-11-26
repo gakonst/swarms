@@ -235,7 +235,6 @@ export const Search = {
 
 export const Sessions = {
   days: 30,
-  heldMs: 30_000,
   tokenMost: 128,
 } as const
 
@@ -383,7 +382,6 @@ export const Held = {
   refreshes: { entries: 512, ms: 60_000 },
   repos: { entries: 1024, ms: 60_000 },
   rosters: { entries: 512, ms: Team.freshMs },
-  sessions: { entries: 500, ms: Sessions.heldMs },
   unconditional: { entries: 1024, ms: Operations.unconditionalMs },
   writes: { entries: 8192, ms: 3_600_000 },
 } as const
