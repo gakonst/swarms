@@ -26,6 +26,23 @@ export const limits = {
     windowMs: 30 * 24 * 60 * 60 * 1000,
   },
   backing: { floors: 8, racers: 4, reach: [9_000_000n, 7_000_000n, 6_000_000n, 4_000_000n], refreshes: 2 },
+  gateway: {
+    based: 0.6,
+    branches: 3,
+    counted: 0.3,
+    deposit: 0.4,
+    end: 0.08,
+    keys: 4,
+    known: 0.6,
+    over: 3,
+    pool: 2_000_000n,
+    rounds: 24,
+    split: 0.3,
+    spend: 0.5,
+    steer: 0.6,
+    unit: 1_000_000n,
+    units: 12,
+  },
   flow: { contributors: 3, ops: 60, parts: 3 },
   overdraw: { after: 3, before: 2, ended: 0.5, limitLeast: 2, limitMost: 40, overMost: 10, slackMost: 3 },
   pay: { commits: 4, crash: 0.15, duplicate: 0.25, moves: 10, pledges: 6, spends: 2, stale: 0.5, tries: 40 },
@@ -1156,7 +1173,283 @@ async function branchMoney(seed: string): Promise<Outcome> {
   return { steps, violations }
 }
 
+async function gatewayMoney(seed: string): Promise<Outcome> {
+  const random = rng(seed, 'gateway_money')
+  const { fail, violations } = recorder()
+  const G = limits.gateway
+  registerHooks({
+    resolve: (specifier, context, next) =>
+      specifier === 'cloudflare:workers'
+        ? { shortCircuit: true, url: 'data:text/javascript,export const waitUntil = () => {}; export class DurableObject {}' }
+        : next(specifier, context),
+  })
+  const Money = (await import('../../src/worker/Money.ts')) as typeof MoneyModule
+  const { fresh } = await import('../board.ts')
+  const d1 = world()
+  const env = d1.env
+  const keys = Array.from({ length: G.keys }, (_, n) => ({
+    backer: random.pick(riders),
+    ended: false,
+    key: ('0x' + 'd'.repeat(39) + n) as Address,
+    limit: BigInt(random.int(1, G.units)) * G.unit,
+    spent: 0n,
+    stale: false,
+  }))
+  for (const each of keys)
+    if (random.chance(G.known))
+      await Store.give(env, {
+        amount: String(each.limit),
+        channel: each.key,
+        contributor: each.backer,
+        id: 'backing:' + each.key,
+        note: null,
+        note_id: null,
+        swarm: 's1',
+        token: 'mach',
+      })
+  const deposits: { amount: string; created_at: number; from: string; hash: string; log: number; tag: string; token: string }[] = []
+  const asked = { deposits: 0, deposited: 0n }
+  const budgets: string[] = []
+  const others: string[] = []
+  const told: string[] = []
+  const logged: string[] = []
+  const stored = new Map<string, unknown>()
+  const lefts = () => keys.map((each) => (each.ended && !each.stale ? 0n : each.limit - each.spent))
+  const self = {
+    agent: () => ({ id: agent }),
+    beacon: () => undefined,
+    board: fresh('swarm:mb'),
+    changed: () => undefined,
+    contributed: async (input: { hash: string }) => void told.push(input.hash),
+    env: {
+      ...env,
+      GATEWAY: {
+        fetch: async (request: Request) => {
+          const path = new URL(request.url).pathname
+          if (path === '/api/keys/credit') return Response.json({ deposited: Flow.usd(asked.deposited), left: Flow.usd(G.pool), spent: Flow.usd(0n) })
+          if (path === '/api/keys/credit/deposits') {
+            asked.deposits += 1
+            return Response.json({ deposits })
+          }
+          if (path === '/api/keys/backings')
+            return Response.json({
+              backings: keys.map((each, n) => ({
+                backer: each.backer,
+                createdAt: 1,
+                ended: each.ended,
+                expiresAt: null,
+                key: each.key,
+                left: Flow.usd(lefts()[n] ?? 0n),
+                limit: Flow.usd(each.limit),
+                spent: Flow.usd(each.spent),
+                tag: null,
+                token: 'mach',
+              })),
+              left: Flow.usd(Flow.sum(lefts().map((left) => (left > 0n ? left : 0n)))),
+              spent: Flow.usd(Flow.sum(keys.map((each) => each.spent))),
+            })
+          const budget = /^\/v1\/agents\/([^/]+)\/subagents\/(\d+)\/budget$/.exec(path)
+          if (budget) {
+            const body = (await request.json()) as { budget_usd: number }
+            if (budget[1] === agent) budgets.push(budget[2] + '=' + body.budget_usd)
+            else others.push(path)
+            return Response.json({ agent: {} })
+          }
+          return Response.json({ error: 'not here' }, { status: 404 })
+        },
+      },
+      GATEWAY_URL: 'https://gateway.test',
+      SWARMS_GATEWAY_KEY: 'test',
+    },
+    kv: { get: (name: string) => stored.get(name), put: (name: string, value: unknown) => void stored.set(name, value) },
+    log: (_kind: string, text: string) => void logged.push(text),
+    remember: () => undefined,
+    turn: () => false,
+  }
+  const bases = new Map<number, bigint>()
+  for (let branch = 1; branch <= G.branches; branch++)
+    if (random.chance(G.based)) {
+      const base = BigInt(random.int(1, G.units)) * G.unit
+      await Store.base(env, 's1', agent, branch, base)
+      bases.set(branch, base)
+    }
+  const behind = async () => {
+    const money = await Store.funds(env, 's1', agent)
+    return new Map([...money.shares].map(([branch, each]) => [branch, Flow.sum(each.values())]))
+  }
+  let steps = 0
+  for (; steps < G.rounds; steps++) {
+    const lhs = BigInt(random.int(0, G.units)) * G.unit
+    const balance = random.int(0, G.units) * Number(G.unit)
+    const used = random.int(0, G.units) * Number(G.unit)
+    const room = Money.room(lhs, { balance, spent: used })
+    if (room !== (lhs < BigInt(balance - used) ? lhs : BigInt(balance - used)))
+      fail('room', lhs + ' with ' + balance + ' raised and ' + used + ' spent gave ' + room)
+    const mover = random.pick(keys)
+    if (steps && steps < G.rounds - 1)
+      for (const each of keys) {
+        if (each === mover && !each.ended && random.chance(G.spend)) {
+          const next = each.spent + BigInt(random.int(1, G.units)) * (G.unit / 2n)
+          const most = each.limit + BigInt(G.over) * G.unit
+          each.spent = next < most ? next : most
+        }
+        if (each === mover && each !== keys[0] && random.chance(G.end)) {
+          each.ended = true
+          each.stale = random.chance(0.5)
+        }
+      }
+    if (steps === G.rounds - 1) {
+      const rider = random.pick(riders)
+      const probe = { backer: rider, ended: false, key: ('0x' + 'e'.repeat(40)) as Address, limit: 3n * G.unit, spent: 0n, stale: false }
+      await Store.give(env, {
+        amount: String(probe.limit),
+        channel: probe.key,
+        contributor: rider,
+        id: 'backing:' + probe.key,
+        note: null,
+        note_id: null,
+        swarm: 's1',
+        token: 'mach',
+      })
+      await Store.base(env, 's1', agent, G.branches + 1, G.unit)
+      bases.set(G.branches + 1, G.unit)
+      const targets = [
+        [agent, G.branches + 1],
+        [agent, G.branches + 2],
+        ['old', G.branches + 1],
+      ] as const
+      for (const [n, [who, branch]] of targets.entries())
+        await Store.steer(env, {
+          amount: G.unit,
+          branch: { agent: who, id: branch },
+          contributor: rider,
+          id: 'probe' + n,
+          note: 'branch',
+          note_id: 'branch:' + branch,
+          swarm: 's1',
+        })
+      probe.ended = true
+      keys.push(probe)
+    }
+    if (random.chance(G.deposit)) {
+      const hash = '0x' + seed + 'e' + steps
+      const from = random.pick(riders)
+      const amount = BigInt(random.int(1, G.units)) * (G.unit / 4n)
+      const logs = random.chance(G.split) ? 2 : 1
+      for (let log = 0; log < logs; log++)
+        deposits.push({
+          amount: Flow.usd(amount),
+          created_at: steps,
+          from: random.chance(0.5) ? shout(from) : from,
+          hash: log ? shout(hash) : hash,
+          log,
+          tag: '0x' + '00'.repeat(16),
+          token: random.pick(['ousd', 'pathusd']),
+        })
+      asked.deposited += amount * BigInt(logs)
+      if (random.chance(G.counted))
+        await Store.give(env, { amount: String(amount), channel: null, contributor: from, id: hash, note: null, note_id: null, swarm: 's1', token: 'ousd' })
+    }
+    if (random.chance(G.steer)) {
+      const rider = random.pick(riders)
+      const branch = random.int(1, G.branches)
+      const where = random.pick(['idea', 'branch', 'branch', 'old'] as const)
+      await Store.steer(env, {
+        amount: BigInt(random.int(1, G.units)) * (G.unit / 2n),
+        ...(where === 'idea' ? {} : { branch: { agent: where === 'old' ? 'old' : agent, id: branch } }),
+        contributor: rider,
+        id: 'g' + steps,
+        note: 'idea',
+        note_id: where === 'idea' ? 'n1' : 'branch:' + branch,
+        swarm: 's1',
+      })
+    }
+    const held = new Map((await Store.backings(env, 's1')).map((gift) => [gift.id, BigInt(gift.amount)]))
+    const was = await behind()
+    const hashes = [...new Set(deposits.map((each) => each.hash.toLowerCase()))]
+    const counted = await Store.counted(env, hashes)
+    const last = stored.get('deposited')
+    const askedBefore = asked.deposits
+    budgets.length = 0
+    others.length = 0
+    told.length = 0
+    logged.length = 0
+    const row = await Store.find(env, 's1')
+    if (!row) return { steps, violations: [{ detail: 'no swarm', invariant: 'pool' }] }
+    const money = await Money.refresh(self as never, row, { credit: true, hands: false })
+    const lines: string[] = []
+    for (const [n, each] of keys.entries()) {
+      const id = 'backing:' + each.key
+      const had = held.get(id)
+      let want: bigint | undefined
+      if (had === undefined) {
+        want = each.spent > 0n ? each.spent : undefined
+        if (want !== undefined)
+          lines.push('A key ' + Words.short(each.backer) + ' approved at the gateway paid $' + Words.trim(Flow.usd(each.spent)) + ' for the swarm')
+      } else {
+        const left = lefts()[n] ?? 0n
+        const worth = each.ended ? each.spent : each.spent + (left > 0n ? left : 0n)
+        want = had > worth ? worth : had < each.spent ? each.spent : had
+        if (want < had)
+          lines.push(
+            each.ended
+              ? Words.short(each.backer) + "'s backing ended after paying $" + Words.trim(Flow.usd(want)) + '; the rest never left their wallet'
+              : Words.short(each.backer) +
+                  "'s approval of $" +
+                  Words.trim(Flow.usd(each.limit)) +
+                  ' can pay $' +
+                  Words.trim(Flow.usd(want)) +
+                  " in all; the rest is out of the swarm's reach and stays theirs",
+          )
+      }
+      const now = (await Store.gift(env, id))?.amount
+      if ((now === undefined ? undefined : BigInt(now)) !== want)
+        fail('backing counted', 'round ' + steps + ' ' + show({ ended: each.ended, had, limit: each.limit, now, spent: each.spent, want }))
+    }
+    const said = logged.filter((text) => /approved at the gateway paid|backing ended after paying|can pay \$/.test(text)).sort()
+    if (show(said) !== show(lines.sort())) fail('logged', 'round ' + steps + ' ' + show(said) + ' expected ' + show(lines))
+    for (const member of await Store.members(env, 's1'))
+      if (Number(member.steered) > Number(member.backed))
+        fail('overcommitted', 'round ' + steps + ' ' + member.address + ' steers ' + member.steered + ' of ' + member.backed)
+    const is = await behind()
+    const wantBudgets = [...bases]
+      .filter(([branch]) => (is.get(branch) ?? 0n) < (was.get(branch) ?? 0n))
+      .map(([branch, base]) => {
+        const total = base + (is.get(branch) ?? 0n)
+        return branch + '=' + Number(total > 0n ? total : 1n) / 1_000_000
+      })
+      .sort()
+    if (show([...budgets].sort()) !== show(wantBudgets) || others.length)
+      fail('budget', 'round ' + steps + ' ' + show(budgets) + ' expected ' + show(wantBudgets) + ' and to others ' + show(others))
+    const fetch = asked.deposited > 0n && last !== Flow.usd(asked.deposited)
+    if (asked.deposits - askedBefore !== (fetch ? 1 : 0))
+      fail(
+        'asked',
+        'round ' + steps + ' deposits asked ' + (asked.deposits - askedBefore) + ' times, deposited ' + Flow.usd(asked.deposited) + ' after ' + last,
+      )
+    const fresh = fetch ? hashes.filter((hash) => !counted.has(hash)) : []
+    if (show([...told].sort()) !== show(fresh.sort())) fail('recovered', 'round ' + steps + ' told ' + show(told) + ' expected ' + show(fresh))
+    for (const hash of fresh) {
+      const logs = deposits.filter((each) => each.hash.toLowerCase() === hash)
+      const gift = await Store.gift(env, hash)
+      const first = logs[0]
+      const amount = String(Flow.sum(logs.map((each) => BigInt(Math.round(Number(each.amount) * 1_000_000)))))
+      if (!first || gift?.amount !== amount || gift.contributor !== first.from.toLowerCase() || gift.token !== first.token)
+        fail('recovered', 'round ' + steps + ' ' + hash + ' counted as ' + show(gift) + ' from ' + show(logs))
+    }
+    const after = await Store.find(env, 's1')
+    const pool = [after?.pool_left, after?.pool_spent, after?.sponsor_left, after?.sponsor_spent].map(Number)
+    const wantPool = [G.pool, 0n, Flow.sum(lefts().map((left) => (left > 0n ? left : 0n))), Flow.sum(keys.map((each) => each.spent))].map(Number)
+    if (show(pool) !== show(wantPool)) fail('pool', 'round ' + steps + ' ' + show(pool) + ' expected ' + show(wantPool))
+    const reach = G.pool + Flow.sum(lefts().map((left) => (left > 0n ? left : 0n)))
+    if (after && money.left !== Money.room(reach, after))
+      fail('left', 'round ' + steps + ' left ' + money.left + ' for ' + reach + ' within reach and ' + after.balance + ' raised, ' + after.spent + ' spent')
+  }
+  return { steps, violations }
+}
+
 export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = {
+  gateway_money: gatewayMoney,
   gateway_overdraw: overdraw,
   backing_lower: backingLower,
   branch_money: branchMoney,

@@ -45,7 +45,6 @@ test/lending.test.ts 1 pre-existing unit test; port what it checks to a test/dst
 test/lent.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/local.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/math.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/money.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/nickname-page.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/nickname.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/nodes.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
