@@ -123,6 +123,7 @@ export function OwnAi(props: { config: Config | undefined }) {
         </div>
       </section>
       <p className="rider-none">Keys are checked with the provider, kept encrypted by the Tempo gateway and never shown again. Pick Run on my own AI when you ride a swarm: one on Claude needs the plan or an Anthropic key, one on Codex an OpenAI key.</p>
+      <Link className="own-back" to="/ideas">Ride a swarm <span aria-hidden="true">→</span></Link>
     </div>
   )
 }

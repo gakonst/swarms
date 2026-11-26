@@ -327,6 +327,8 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 @media (max-width:799px) { .rider { gap:20px; padding-top:20px; } .rider-name h1 { font-size:28px; } .rider-stats { gap:20px; } .rider-stats dd { font-size:26px; } }
 .node-who { color:inherit; font-weight:inherit; text-decoration:none; }
 .node-who:hover { text-decoration:underline; }
+.own { align-content:start; }
+.own-back { justify-self:start; font:14px var(--mono); color:var(--fg); }
 .own-row { grid-template-columns:minmax(0,1fr) auto; align-items:center; }
 .own-row .own-input { grid-column:1; }
 .own-act { grid-column:2; grid-row:1 / span 2; align-self:center; }
