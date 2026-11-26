@@ -47,5 +47,40 @@
     "invariant": "leaked subagent",
     "found": "2026-11-26 by pnpm dst --hunt: a run still working when the simulation ends (harness, not Swarms)",
     "fix": "test(dst): a run still working at the end is in flight, not leaked"
+  },
+  {
+    "job": "branch_money",
+    "seed": "127",
+    "invariant": "settle",
+    "found": "2026-11-26 by a test/dst scenario: a second settle of a branch that first refunded nothing paid the branch out again",
+    "fix": "fix(store): settle a settled branch once"
+  },
+  {
+    "job": "branch_money",
+    "seed": "146",
+    "invariant": "settle",
+    "found": "2026-11-26 by a test/dst scenario: same as branch_money 127 on another branch",
+    "fix": "fix(store): settle a settled branch once"
+  },
+  {
+    "job": "lent_gateway",
+    "seed": "4",
+    "invariant": "no leak",
+    "found": "2026-11-26 by a test/dst scenario: a failed gateway delete during repair still freed the slot and marked the hand returned, leaving it at the gateway",
+    "fix": "fix(hands): a failed gateway delete keeps the hand revoking (5837a01)"
+  },
+  {
+    "job": "gateway_money",
+    "seed": "6",
+    "invariant": "backing counted",
+    "found": "2026-11-26 by a test/dst scenario: two backings raised to what their keys paid in one refresh were both refused by the spent floor, permanently",
+    "fix": "fix(money): raise backings to what their keys paid before lowering others"
+  },
+  {
+    "job": "gateway_money",
+    "seed": "4",
+    "invariant": "backing counted",
+    "found": "2026-11-26 by a test/dst scenario: a lowering refused because a key adopted later in the same refresh was not counted yet",
+    "fix": "fix(money): raise backings to what their keys paid before lowering others"
   }
 ]
