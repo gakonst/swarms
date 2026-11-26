@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { appendFileSync, existsSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
-import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 
 export type Job = { name: string; options?: Record<string, unknown>; scenario?: string }
@@ -34,17 +35,17 @@ export const jobs: Job[] = [
 ]
 
 export const canaries: Canary[] = [
-  { flag: 'monotonic', invariant: 'illegal transition', job: 'swarm_list', module: 'machines/Sub', name: 'sub.monotonic', seeds: ['1', '2', '3'] },
-  { flag: 'covered', invariant: 'negative balance', job: 'swarm', module: 'Flow', name: 'flow.covered', seeds: ['2', '5', '6'] },
-  { flag: 'closed', invariant: 'duplicate payment', job: 'swarm', module: 'machines/Payment', name: 'payment.closed', seeds: ['1', '3', '6'] },
-  { flag: 'keyed', invariant: 'duplicate payment', job: 'swarm', module: 'machines/Payment', name: 'payment.keyed', seeds: ['3'] },
+  { flag: 'monotonic', invariant: 'illegal transition', job: 'swarm_list', module: 'machines/Sub', name: 'swarm.sub.monotonic', seeds: ['1', '2', '3'] },
+  { flag: 'covered', invariant: 'negative balance', job: 'swarm', module: 'Flow', name: 'swarm.flow.covered', seeds: ['2', '5', '6'] },
+  { flag: 'closed', invariant: 'duplicate payment', job: 'swarm', module: 'machines/Payment', name: 'swarm.payment.closed', seeds: ['1', '3', '6'] },
+  { flag: 'keyed', invariant: 'duplicate payment', job: 'swarm', module: 'machines/Payment', name: 'swarm.payment.keyed', seeds: ['3'] },
 ]
 
-const here = new URL('.', import.meta.url)
+const here = dirname(fileURLToPath(import.meta.url))
 
-const seedsFile = new URL('seeds.json', here)
+const seedsFile = join(here, 'seeds.json')
 
-const machinesFile = new URL('machines.ts', here)
+const machinesFile = join(here, 'machines.ts')
 
 export const limits = { canarySeeds: 8, huntMinutesMost: 24 * 60, outputBytes: 64 * 1024 * 1024, seedsMost: 100_000 }
 
@@ -55,7 +56,7 @@ type Machines = {
 
 async function machines(): Promise<Machines | null> {
   if (!existsSync(machinesFile)) return null
-  return (await import(machinesFile.href)) as Machines
+  return (await import(pathToFileURL(machinesFile).href)) as Machines
 }
 
 export async function allCanaries(): Promise<Canary[]> {
@@ -94,7 +95,7 @@ async function one(job: Job, seed: string, canary: string | null): Promise<Outco
   const flipped = canary ? canaries.find((one) => one.name === canary) : undefined
   if (canary && !flipped) throw new Error('No canary ' + canary)
   const guards = flipped
-    ? ((await import(new URL('../../src/worker/' + flipped.module + '.ts', here).href)) as { guards: Record<string, boolean> }).guards
+    ? ((await import(pathToFileURL(join(here, '..', '..', 'src', 'worker', flipped.module + '.ts')).href)) as { guards: Record<string, boolean> }).guards
     : undefined
   if (guards && flipped) guards[flipped.flag] = false
   try {
@@ -201,7 +202,8 @@ async function hunt(minutes: number, width: number, names: string[]) {
   const began = Date.now()
   let ran = 0
   let found = 0
-  const log = new URL('found.jsonl', here)
+  const log = join(here, '..', '..', 'output', 'dst', 'found.jsonl')
+  mkdirSync(dirname(log), { recursive: true })
   await Promise.all(
     Array.from({ length: width }, async (_, lane) => {
       for (let i = 0; Date.now() < until && i < limits.seedsMost; i++) {

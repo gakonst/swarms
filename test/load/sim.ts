@@ -16,6 +16,8 @@ import type * as HandModule from '../../src/worker/machines/Hand.ts'
 import type * as RunModule2 from '../../src/worker/machines/Run.ts'
 import type * as MemoModule from '../../src/shared/Memo.ts'
 import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const { Swarm }: typeof SwarmModule = await import('../../src/worker/Swarm.ts')
 const Store: typeof StoreModule = await import('../../src/worker/Store.ts')
@@ -31,7 +33,7 @@ const Tree: typeof TreeModule = await import('../../src/worker/machines/Tree.ts'
 const SubMachine: typeof SubModule = await import('../../src/worker/machines/Sub.ts')
 const HandMachine: typeof HandModule = await import('../../src/worker/machines/Hand.ts')
 const Run: typeof RunModule2 = await import('../../src/worker/machines/Run.ts')
-const older = JSON.parse(readFileSync(new URL('../rpc-older.json', import.meta.url), 'utf8')) as { methods: string[] }
+const older = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'rpc-older.json'), 'utf8')) as { methods: string[] }
 
 export const faultNames = ['evict', 'crash', 'dup', 'reorder', 'stale', 'staleList', 'retry', 'move', 'refuse', 'partition', 'lag', 'skew', 'stranded', 'chainLag'] as const
 
@@ -876,7 +878,8 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation | null, request:
     const stream = new ReadableStream<Uint8Array>({
       cancel: () => void (entry && sw.streams.delete(entry)),
       start: (controller) => {
-        if (inc) entry = { agent, controller, inc }
+        if (!inc) return
+        entry = { agent, controller, inc }
         sw.streams.add(entry)
       },
     })
