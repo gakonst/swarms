@@ -141,7 +141,7 @@ The rule (rule 8) and its record are in DECISIONS.md at da26e9a (git show da26e9
 - Every Worker to object RPC tolerates N-1 in both directions.
 - A new object method the Worker calls goes through `older(call, fallback, why)` (`src/worker/Operations.ts:489`), which falls back to the method it replaces, and is listed in `test/rpc-older.json`.
 - Object methods are not removed or renamed for one release.
-- `test/skew.test.ts` enforces both: it runs the Worker against a stub of the previous object and checks every swarm read route answers 200, and that no object method the previous Worker calls was removed.
+- The `skew` scenario in `test/dst/md.ts` enforces both: it runs the Worker against a stub of the previous object and checks every swarm read route answers 200, and that no object method the previous Worker calls was removed.
 
 Still open in the table below: an RPC whose arguments or answer change shape under the same name, and object storage shapes read across a rollback. Both need a version on the call or the record, not only on the method name.
 
@@ -149,7 +149,7 @@ Still open in the table below: an RPC whose arguments or answer change shape und
 
 | Entry | Location | Failure | Hazard |
 |---|---|---|---|
-| New RPC on an old object | `Operations.viewed` `src/worker/Operations.ts:498`, `test/skew.test.ts`, `test/rpc-older.json` | During a deploy the new Worker called `viewed` on objects still running the old class and every swarm page answered 500. Since 817a88a every new object method the Worker calls falls back to the one it replaces (Version skew above). What it does not cover: a method whose arguments or answer change shape under the same name | Medium |
+| New RPC on an old object | `Operations.viewed` `src/worker/Operations.ts:498`, `test/dst/md.ts` (`skew`), `test/rpc-older.json` | During a deploy the new Worker called `viewed` on objects still running the old class and every swarm page answered 500. Since 817a88a every new object method the Worker calls falls back to the one it replaces (Version skew above). What it does not cover: a method whose arguments or answer change shape under the same name | Medium |
 | Shapes in object storage | kv `run`, `agent`, `lease`, `folded:`, board labels | An old object reads what a new one wrote after a rollback, and the board's log format follows the nanocode-ts pin. **Fixed for kv `run`:** the record carries `v` and `rev`, which the previous code ignores, and `ending` is stored as `working` with an `ending` field, which the previous code reads as a turn still running (after a rollback it ends that turn again, as it did before); a record the previous code writes back drops `rev`, which reads as 0 and makes a fenced write refuse rather than overwrite it **Versioned for the tree and hands:** `ran:<task>` carries `v` and `state` beside the fields the previous object reads (`checking`, `fresh`, `quieted`), and a record without them reads as the state they imply; `check:<vid>`, `lent:<name>` and `seen:<agent>:<sub>` (`v: 1`; a record of another version reads as none) are new keys the previous object ignores (after a rollback it asks the verifier again for a waiting check, and keeps writing `removed`, which the new object still reads) | Medium |
 | D1 migrations | `migrations/`, AGENTS.md's deploy order | Correct only by the order AGENTS.md prescribes | Medium |
 

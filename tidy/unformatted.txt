@@ -169,7 +169,6 @@ test/channel.test.ts 1 pre-existing hand formatting
 test/chatter.test.ts 1 pre-existing hand formatting
 test/cli.test.ts 1 pre-existing hand formatting
 test/cold.test.ts 1 pre-existing hand formatting
-test/compat.test.ts 1 pre-existing hand formatting
 test/crew.test.ts 1 pre-existing hand formatting
 test/d1.ts 1 pre-existing hand formatting
 test/dispatch.ts 1 pre-existing hand formatting
@@ -240,7 +239,6 @@ test/runs.test.ts 1 pre-existing hand formatting
 test/seen.test.ts 1 pre-existing hand formatting
 test/setup.test.ts 1 pre-existing hand formatting
 test/site.test.ts 1 pre-existing hand formatting
-test/skew.test.ts 1 pre-existing hand formatting
 test/sockets.test.ts 1 pre-existing hand formatting
 test/status.test.ts 1 pre-existing hand formatting
 test/store.test.ts 1 pre-existing hand formatting
