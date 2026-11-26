@@ -297,8 +297,8 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipu
 .wallet-out:focus-visible { outline:2px solid var(--muted); outline-offset:2px; }
 @media (max-width:799px) { .wallet-out { min-height:44px; } }
 @media (pointer:coarse) {
-  .code-bar .btn-minimal,.wordmark { position:relative; }
-  .code-bar .btn-minimal::after,.wordmark::after { content:''; position:absolute; inset:-11px -6px; }
+  .code-bar .btn-minimal,.wordmark,.share-go,.hello-start { position:relative; }
+  .code-bar .btn-minimal::after,.wordmark::after,.share-go::after,.hello-start::after { content:''; position:absolute; inset:-11px -6px; }
 }
 @media (max-width:640px) {
   .docs-table,.docs-table tbody { display:block; }
