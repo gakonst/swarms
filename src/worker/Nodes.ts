@@ -19,7 +19,7 @@ export const triage = 'triage'
 
 export type Settings = { ideaMin: string; quietRuns: number; runCap: string; runMin: string; runStep: string; slots: number; triageShare: number }
 
-export const defaults: Settings = { ideaMin: '1.000000', quietRuns: 12, runCap: '25.000000', runMin: '0.500000', runStep: '5.000000', slots: 16, triageShare: 0.05 }
+export const defaults: Settings = { ideaMin: '1.000000', quietRuns: Limits.Nodes.quietRuns, runCap: '25.000000', runMin: '0.500000', runStep: '5.000000', slots: Limits.Nodes.slots, triageShare: Limits.Nodes.triageShare }
 
 export const retry: Work.Retry = { ...Limits.Nodes.retry }
 
@@ -61,7 +61,7 @@ export function runId(nid: string, k: number) {
 }
 
 export function verifyId(nid: string, sha: string) {
-  return 'v:' + nid + ':' + sha.slice(0, 12)
+  return 'v:' + nid + ':' + sha.slice(0, Limits.Nodes.verifyShaChars)
 }
 
 export function settleId(id: string) {
@@ -81,7 +81,7 @@ export function normalized(title: string) {
 }
 
 export async function nid(parent: string, title: string) {
-  return (await Store.noteId(parent + '\n' + normalized(title))).slice(0, 10)
+  return (await Store.noteId(parent + '\n' + normalized(title))).slice(0, Limits.Nodes.nidChars)
 }
 
 const childId = nid
@@ -89,7 +89,7 @@ const childId = nid
 export async function stmt(statement: string | null) {
   if (!statement?.trim()) return 'none'
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(statement.trim()))
-  return Array.from(new Uint8Array(digest).slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return Array.from(new Uint8Array(digest).slice(0, Limits.Nodes.statementBytes), (byte) => byte.toString(Limits.Hex.radix).padStart(2, '0')).join('')
 }
 
 const fence = '```'
@@ -205,7 +205,7 @@ function weights(self: Swarm) {
 }
 
 export function weigh(self: Swarm, nid: string, weight: number) {
-  self.ctx.storage.sql.exec('INSERT INTO tree_weights (node, weight, at) VALUES (?, ?, ?) ON CONFLICT (node) DO UPDATE SET weight = excluded.weight, at = excluded.at', nid, Math.max(0, Math.min(10, Math.round(weight))), Date.now())
+  self.ctx.storage.sql.exec('INSERT INTO tree_weights (node, weight, at) VALUES (?, ?, ?) ON CONFLICT (node) DO UPDATE SET weight = excluded.weight, at = excluded.at', nid, Math.max(0, Math.min(Limits.Nodes.weightMost, Math.round(weight))), Date.now())
   changed(self)
 }
 
@@ -657,7 +657,7 @@ export async function proven(self: Swarm, nid: string, check: Tree.Check, halt: 
     if (!terminal(found.nodes.get(child))) await end(self, child, { at: check.at, check: null, into: nid, kind: 'merged', why: 'Its parent was proven.' }, halt)
   for (const run of found.runs.get(nid) ?? []) if (!terminal(run)) await halt(self, run.id)
   await settleNode(self, nid)
-  emit(self, nid, 'proven', 'Checked by Lean at ' + check.commit.slice(0, 7))
+  emit(self, nid, 'proven', 'Checked by Lean at ' + check.commit.slice(0, Limits.SharedTree.shortSha))
   return true
 }
 
@@ -706,7 +706,7 @@ export async function ran(self: Swarm, run: string, result: Result, verify: (nid
   const commit = result.commit
   const theorem = result.theorem
   const proof = (result.outcome === 'proved' || result.outcome === 'refuted') && !!commit && /^[0-9a-f]{40}$/.test(commit) && !!theorem
-  const listed = result.outcome === 'split' ? result.children.slice(0, 20) : []
+  const listed = result.outcome === 'split' ? result.children.slice(0, Limits.Nodes.childrenMost) : []
   let read: Promise<{ found: State; titled: Map<string, string> }> | undefined
   const prepared = () =>
     (read ??= (async () => {
@@ -741,7 +741,7 @@ export async function ran(self: Swarm, run: string, result: Result, verify: (nid
       verify: async () => {
         if (!commit || !theorem) return null
         await verify(nid, commit, theorem, result.outcome === 'refuted')
-        return 'Checking ' + commit.slice(0, 7) + ' in Lean'
+        return 'Checking ' + commit.slice(0, Limits.SharedTree.shortSha) + ' in Lean'
       },
     },
     run,
@@ -918,7 +918,7 @@ function fold(self: Swarm, found: State, names: Map<string, string>): View {
     return node
   }
   for (const [nid, task] of found.nodes) if (parentOf(task) === null || !found.nodes.has(parentOf(task) ?? '')) build(nid, 0)
-  for (const node of nodes.values()) node.funders = node.funders.slice(0, 5)
+  for (const node of nodes.values()) node.funders = node.funders.slice(0, Limits.Nodes.fundersShown)
   return { nodes, seq: seq(self), state: found }
 }
 

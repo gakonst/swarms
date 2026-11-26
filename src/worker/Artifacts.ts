@@ -25,7 +25,7 @@ export async function list(env: Cloudflare.Env, swarm: string, cached = true): P
 
 export async function listed(env: Cloudflare.Env, swarm: string, cached = true): Promise<{ artifacts?: Artifact[]; unavailable?: Unavailable }> {
   const read = () => shelf(env, swarm)
-  return (cached ? Edge.cached(env, `artifacts/${swarm}`, fresh, read, 600) : read()).then(
+  return (cached ? Edge.cached(env, `artifacts/${swarm}`, fresh, read, Limits.Artifacts.staleSeconds) : read()).then(
     (artifacts) => ({ artifacts }),
     (error: unknown) => (error instanceof Storage.Unpaid ? { unavailable: Storage.unavailable() } : {}),
   )
@@ -36,7 +36,7 @@ async function shelf(env: Cloudflare.Env, swarm: string): Promise<Artifact[]> {
   if (!owner) throw new Error('The gateway did not name the operator.')
   const entries: Entry[] = []
   let cursor: string | null = null
-  for (let page = 0; page < 3; page++) {
+  for (let page = 0; page < Limits.Artifacts.pages; page++) {
     const query: URLSearchParams = new URLSearchParams({ prefix: Shelf.prefix, ...(cursor ? { cursor } : {}) })
     const [response, body, failed]: readonly [Response, { cursor: string | null; entries: Entry[] } | undefined, string] = await Timing.span(
       'gw.p.kv',
@@ -44,7 +44,7 @@ async function shelf(env: Cloudflare.Env, swarm: string): Promise<Artifact[]> {
         async (response) => [response, response.ok ? ((await response.json()) as { cursor: string | null; entries: Entry[] }) : undefined, response.ok ? '' : await response.text()] as const,
       ),
     )
-    if (response.status === 404) return []
+    if (response.status === Limits.Http.missing) return []
     if (Storage.unpaid(response.status, failed)) throw new Storage.Unpaid(failed)
     if (!response.ok || !body) throw new Error(`The gateway answered ${response.status} for the artifacts.`)
     entries.push(...body.entries)
@@ -86,9 +86,9 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
   const origins = [new URL(Site.url(env, request.url)).origin, new URL(request.url).origin]
   const file = Shelf.path(rest || 'index.html')
   const cover = new URL(request.url).searchParams.has('cover')
-  if (!Shelf.slug.test(name) || !file) return text(404, 'No such artifact file.')
+  if (!Shelf.slug.test(name) || !file) return text(Limits.Http.missing, 'No such artifact file.')
   const owner = await Gateway.wallet(env)
-  if (!owner) return text(502, 'The gateway did not say whose artifacts these are.')
+  if (!owner) return text(Limits.Http.upstream, 'The gateway did not say whose artifacts these are.')
 
   const headers = new Headers()
   for (const header of ['if-none-match', 'range', 'cf-connecting-ip']) {
@@ -97,14 +97,14 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
   }
   const key = [Shelf.prefix + name, ...file.split('/')].map(encodeURIComponent).join('/')
   const upstream = await Timing.span('gw.p.bucket', Gateway.call(env, `/p/${owner}/${Gateway.app(swarm)}/bucket/${key}`, { headers, method: request.method === 'HEAD' ? 'HEAD' : 'GET' }))
-  if (upstream.status === 404) return text(404, 'No such artifact file, or it is not public.')
-  if (upstream.status === 429) return text(429, 'Too many artifact reads right now. Try again in a minute.')
+  if (upstream.status === Limits.Http.missing) return text(Limits.Http.missing, 'No such artifact file, or it is not public.')
+  if (upstream.status === Limits.Http.tooMany) return text(Limits.Http.tooMany, 'Too many artifact reads right now. Try again in a minute.')
   if (upstream.status === Storage.status && Storage.unpaid(upstream.status, await upstream.clone().text())) {
     const told = text(Storage.status, "The gateway can't pay for storage right now, so this page can't be read. It comes back once the gateway can pay again.")
     told.headers.set(Storage.header, 'treasury')
     return told
   }
-  if (!upstream.ok && upstream.status !== 304 && upstream.status !== 206) return text(502, `The gateway answered ${upstream.status}.`)
+  if (!upstream.ok && upstream.status !== Limits.Http.notModified && upstream.status !== Limits.Http.partial) return text(Limits.Http.upstream, `The gateway answered ${upstream.status}.`)
 
   const answer = new Headers({
     'access-control-allow-origin': '*',
@@ -119,19 +119,19 @@ export async function serve(env: Cloudflare.Env, request: Request, swarm: string
   const typed = Shelf.scriptedType(file)
   if (typed && answer.get('content-type')?.startsWith('text/plain')) answer.set('content-type', typed)
   const html = !!answer.get('content-type')?.startsWith('text/html')
-  const readable = upstream.status === 200 && request.method !== 'HEAD' && /^(text\/|application\/json|image\/svg)/.test(answer.get('content-type') ?? '') && Number(upstream.headers.get('content-length') ?? 0) <= wrappedMost
+  const readable = upstream.status === Limits.Http.ok && request.method !== 'HEAD' && /^(text\/|application\/json|image\/svg)/.test(answer.get('content-type') ?? '') && Number(upstream.headers.get('content-length') ?? 0) <= wrappedMost
   if (!readable) {
-    if (upstream.status !== 200 || !html) return new Response(upstream.status === 304 ? null : upstream.body, { headers: answer, status: upstream.status })
+    if (upstream.status !== Limits.Http.ok || !html) return new Response(upstream.status === Limits.Http.notModified ? null : upstream.body, { headers: answer, status: upstream.status })
     answer.delete('content-length')
     answer.delete('accept-ranges')
-    return themed(new Response(upstream.body, { headers: answer, status: 200 }), cover)
+    return themed(new Response(upstream.body, { headers: answer, status: Limits.Http.ok }), cover)
   }
   const body = await upstream.text()
   const inner = Shelf.unwrapped(body, Shelf.prefix + name + '/' + file)
   if (inner !== body && answer.get('etag')) answer.set('etag', `W/"unwrapped-${(answer.get('etag') ?? '').replace(/[^A-Za-z0-9]/g, '')}"`)
   answer.delete('content-length')
   answer.delete('accept-ranges')
-  const response = new Response(inner, { headers: answer, status: 200 })
+  const response = new Response(inner, { headers: answer, status: Limits.Http.ok })
   return html ? themed(response, cover) : response
 }
 

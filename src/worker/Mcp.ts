@@ -93,8 +93,8 @@ function refuse(site: string, caller: OAuth.Caller, refused: { id: unknown; scop
     ? `${refused.tool} needs the ${refused.scope} scope, which this token was not granted. Sign in again and allow it.`
     : `${refused.tool} needs the ${refused.scope} scope: connect with OAuth (sign in with Tempo ID) first. Reading tools need no account.`
   return Response.json(
-    { error: { code: -32001, data: { scope: refused.scope, tool: refused.tool }, message }, id: refused.id, jsonrpc: '2.0' },
-    { headers: { 'www-authenticate': OAuth.challenge(site, { ...(signed ? { error: { code: 'insufficient_scope', description: message } } : {}), scope: wanted }) }, status: signed ? 403 : 401 },
+    { error: { code: Limits.JsonRpc.unauthorized, data: { scope: refused.scope, tool: refused.tool }, message }, id: refused.id, jsonrpc: '2.0' },
+    { headers: { 'www-authenticate': OAuth.challenge(site, { ...(signed ? { error: { code: 'insufficient_scope', description: message } } : {}), scope: wanted }) }, status: signed ? Limits.Http.forbidden : Limits.Http.unauthorized },
   )
 }
 
@@ -109,13 +109,13 @@ async function body(request: Request) {
 
 export async function handle(request: Request, env: Cloudflare.Env) {
   if (request.method !== 'POST')
-    return Problem.json({ code: 'invalid_request', detail: 'Use POST for MCP over streamable HTTP.', status: 405 })
+    return Problem.json({ code: 'invalid_request', detail: 'Use POST for MCP over streamable HTTP.', status: Limits.Http.notAllowed })
 
   const site = Site.url(env, request.url)
   const caller = await OAuth.caller(env, request)
   if (caller.bearer === 'invalid') {
     const description = 'The access token expired or was revoked: refresh it or sign in again.'
-    return Response.json({ error: { code: -32001, message: description }, id: null, jsonrpc: '2.0' }, { headers: { 'www-authenticate': OAuth.challenge(site, { error: { code: 'invalid_token', description } }) }, status: 401 })
+    return Response.json({ error: { code: Limits.JsonRpc.unauthorized, message: description }, id: null, jsonrpc: '2.0' }, { headers: { 'www-authenticate': OAuth.challenge(site, { error: { code: 'invalid_token', description } }) }, status: Limits.Http.unauthorized })
   }
   const parsed = await body(request)
   if (parsed instanceof Response) return parsed
@@ -217,12 +217,12 @@ function reply<value>(result: Problem.Result<value>, shape: (value: value) => un
 
 const reading = { openWorldHint: false, readOnlyHint: true } as const
 
-const confirming = z.string().trim().max(200).optional().describe('The exact confirmation phrase this call names when it refuses without one. Ask the user first: this moves money or cannot be undone.')
+const confirming = z.string().trim().max(Limits.Mcp.confirmMost).optional().describe('The exact confirmation phrase this call names when it refuses without one. Ask the user first: this moves money or cannot be undone.')
 
 function confirmed(given: unknown, phrase: string): Result | undefined {
   const tidy = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase()
   if (typeof given === 'string' && tidy(given) === tidy(phrase)) return undefined
-  return { ...text({ code: 'confirm_required', confirm: phrase, detail: `This moves money or cannot be undone. Ask the user, then call again with confirm: "${phrase}".`, status: 428 }), isError: true }
+  return { ...text({ code: 'confirm_required', confirm: phrase, detail: `This moves money or cannot be undone. Ask the user, then call again with confirm: "${phrase}".`, status: Limits.Http.preconditionRequired }), isError: true }
 }
 
 function dollars(amount: string | number) {
@@ -254,7 +254,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
     const label = labels[name] ?? scope({})
     const run = async (input: Record<string, unknown>, extra: Extra) => {
       const wanted = scope(input)
-      if (!caller.scopes.has(wanted)) return { ...text({ code: 'insufficient_scope', detail: `${name} needs the ${wanted} scope.`, scope: wanted, status: caller.bearer === 'none' ? 401 : 403 }), isError: true } as const
+      if (!caller.scopes.has(wanted)) return { ...text({ code: 'insufficient_scope', detail: `${name} needs the ${wanted} scope.`, scope: wanted, status: caller.bearer === 'none' ? Limits.Http.unauthorized : Limits.Http.forbidden }), isError: true } as const
       return handler(input as z.output<z.ZodObject<shape>>, extra)
     }
     tools.set(name, { annotations: config.annotations, description: `${config.description} Scope: ${label}.`, meta: { 'swarms/scope': label }, run, scope, shape: config.inputSchema })
@@ -433,7 +433,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
     },
     async (input) => {
       if (input.hash) {
-        const refused = confirmed(input.confirm, `back ${input.swarm} ${input.hash.slice(0, 10)}`)
+        const refused = confirmed(input.confirm, `back ${input.swarm} ${input.hash.slice(0, Limits.Mcp.hashShown)}`)
         if (refused) return refused
         return reply(await Operations.contribute(env, { hash: input.hash, node: input.node, note: input.note, swarm: input.swarm }), (value) => value.contributed)
       }
@@ -578,7 +578,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
 
   registerTool(
     'swarm_logs',
-    { annotations: reading, description: "A swarm's newest feed entries, as swarms logs prints them: the last limit entries of its transcript (messages, tool calls, commands, machines, money, status and errors), oldest of them first, with next to follow on with swarm_watch or swarm_feed. kind and who filter as in swarm_feed.", inputSchema: { kind: Operations.schema.feed.shape.kind, limit: z.coerce.number().int().min(1).max(200).default(50).describe('How many of the newest entries.'), swarm: Operations.schema.swarm.shape.swarm, who: Operations.schema.feed.shape.who } },
+    { annotations: reading, description: "A swarm's newest feed entries, as swarms logs prints them: the last limit entries of its transcript (messages, tool calls, commands, machines, money, status and errors), oldest of them first, with next to follow on with swarm_watch or swarm_feed. kind and who filter as in swarm_feed.", inputSchema: { kind: Operations.schema.feed.shape.kind, limit: z.coerce.number().int().min(1).max(Limits.Mcp.feedMost).default(Limits.Mcp.feedDefault).describe('How many of the newest entries.'), swarm: Operations.schema.swarm.shape.swarm, who: Operations.schema.feed.shape.who } },
     async (input) => reply(await Operations.feed(read, { ...input, before: Number.MAX_SAFE_INTEGER })),
   )
 
@@ -590,7 +590,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
       inputSchema: {
         after: z.coerce.number().int().min(0).optional().describe("Return the feed entries after this seq: the previous watch's next. Defaults to the newest entry, so only what happens from now is returned."),
         swarm: Operations.schema.swarm.shape.swarm,
-        timeout: z.coerce.number().int().min(0).max(watchMost).default(120).describe(`Seconds to wait at most, up to ${watchMost}.`),
+        timeout: z.coerce.number().int().min(0).max(watchMost).default(Limits.Mcp.watchDefault).describe(`Seconds to wait at most, up to ${watchMost}.`),
       },
     },
     async (input, extra) => {
@@ -607,7 +607,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
           break
         }
       }
-      const [page, status] = await Promise.all([Operations.feed(read, { after, limit: 100, swarm: input.swarm }), Operations.get(read, { swarm: input.swarm })])
+      const [page, status] = await Promise.all([Operations.feed(read, { after, limit: Limits.Mcp.watchPage, swarm: input.swarm }), Operations.get(read, { swarm: input.swarm })])
       if (!page.ok) return reply(page)
       const shown = brief(status, origin)
       return reply(shown, (value) => ({ entries: page.value.entries, next: page.value.next, reason, status: value }))
@@ -672,14 +672,14 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
 
   const templates: Template[] = [
     {
-      list: async () => (await listed()).map((swarm) => ({ description: swarm.goal.slice(0, 200), mimeType: 'application/json', name: `${swarm.title} status`, uri: `${scheme}${swarm.id}/status` })),
+      list: async () => (await listed()).map((swarm) => ({ description: swarm.goal.slice(0, Limits.Mcp.goalChars), mimeType: 'application/json', name: `${swarm.title} status`, uri: `${scheme}${swarm.id}/status` })),
       metadata: { description: "A swarm's status as swarm_status answers it: status, money, whether its agent is working, its latest update and its page.", mimeType: 'application/json', title: 'Swarm status' },
       name: 'swarm-status',
       read: async (uri, swarm) => contents(uri, brief(await Operations.get(read, { swarm }), origin)),
       suffix: '/status',
     },
     {
-      list: async () => (await listed()).filter((swarm) => swarm.form === 'tree').map((swarm) => ({ description: swarm.goal.slice(0, 200), mimeType: 'application/json', name: `${swarm.title} tree`, uri: `${scheme}${swarm.id}/tree` })),
+      list: async () => (await listed()).filter((swarm) => swarm.form === 'tree').map((swarm) => ({ description: swarm.goal.slice(0, Limits.Mcp.goalChars), mimeType: 'application/json', name: `${swarm.title} tree`, uri: `${scheme}${swarm.id}/tree` })),
       metadata: { description: "A tree swarm's tree as swarm_tree answers it: the headline and its nodes three levels down, each with its status, money and checked proof.", mimeType: 'application/json', title: 'Swarm tree' },
       name: 'swarm-tree',
       read: async (uri, swarm) => contents(uri, await Operations.tree(read, { swarm })),

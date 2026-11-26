@@ -141,7 +141,7 @@ function swarmTopic(swarm: string, rest: string[], search: URLSearchParams): Top
   if (head === 'branches') return document('branches', (signal) => signal.type === 'pulse' || changed(signal, 'branches'))
   if (head === 'hands') return document('hands', (signal) => changed(signal, 'hands'))
   if (head === 'code') return document('code', (signal) => changed(signal, 'code'))
-  if (head === 'machines') return document('machines', (signal) => signal.type === 'pulse' || signal.type === 'entry' || changed(signal, 'hands'), 5_000)
+  if (head === 'machines') return document('machines', (signal) => signal.type === 'pulse' || signal.type === 'entry' || changed(signal, 'hands'), Limits.Watch.gapMs)
   return document(head, anything)
 }
 
@@ -168,7 +168,7 @@ export function topic(path: string, search: URLSearchParams = new URLSearchParam
       stirs: () => false,
     }
   if (first === undefined || first === 'hooks' || first === 'auth' || first === 'feedback' || (first === 'general' && second === 'chat')) return undefined
-  return { events: ['snapshot'], gap: 5_000, name: first, scope: { kind: 'lobby' }, stirs: (signal) => signal.type === 'swarm' }
+  return { events: ['snapshot'], gap: Limits.Watch.gapMs, name: first, scope: { kind: 'lobby' }, stirs: (signal) => signal.type === 'swarm' }
 }
 
 export const about =
@@ -187,7 +187,7 @@ export function frame(event: string, data: string, id?: number | string) {
 
 export async function digest(text: string) {
   const bytes = new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text)))
-  return Array.from(bytes.subarray(0, 12), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return Array.from(bytes.subarray(0, Limits.Watch.digestBytes), (byte) => byte.toString(Limits.Hex.radix).padStart(2, '0')).join('')
 }
 
 type Begun = { cursor: number; frames: string[]; text: string | undefined }
@@ -197,7 +197,7 @@ async function backlog(topic: Topic & { log: Log }, read: (query: Query, path?: 
   const frames: string[] = []
   for (let page = 0; page < pagesMost; page += 1) {
     const found = await read(topic.log.after(cursor), topic.log.path).catch(() => undefined)
-    if (found?.status !== 200) return undefined
+    if (found?.status !== Limits.Http.ok) return undefined
     const items = topic.log.items(found.body).filter((item) => item.id === undefined || item.id > cursor)
     if (!items.length) return { cursor, frames, text: undefined }
     for (const item of items) {
@@ -214,7 +214,7 @@ async function begin(topic: Topic, read: (query: Query, path?: string) => Promis
     if (resumed) return resumed
   }
   const found = await read(topic.snapshot ?? {})
-  if (found.status !== 200) return found
+  if (found.status !== Limits.Http.ok) return found
   const text = JSON.stringify(found.body)
   if (topic.log) {
     const cursor = topic.log.cursor(found.body)
@@ -230,7 +230,7 @@ export async function open(input: { last: string | null; listen: (on: (signal: S
   let take: (signal: Signal) => void = (signal) => void queue.push(signal)
   const tapped = await input.listen((signal) => take(signal))
   if (tapped instanceof Response) return tapped
-  const begun = await begin(topic, input.read, input.last).catch((error: unknown) => ({ body: null, status: 502, text: JSON.stringify({ code: 'upstream_failed', detail: String(error), status: 502 }) }))
+  const begun = await begin(topic, input.read, input.last).catch((error: unknown) => ({ body: null, status: Limits.Http.upstream, text: JSON.stringify({ code: 'upstream_failed', detail: String(error), status: Limits.Http.upstream }) }))
   if ('status' in begun) {
     tapped.close()
     return new Response(begun.text, { headers: { 'content-type': 'application/problem+json' }, status: begun.status })
@@ -275,7 +275,7 @@ export async function open(input: { last: string | null; listen: (on: (signal: S
     readAt = Date.now()
     const found = await input.read(topic.snapshot ?? {}).catch(() => undefined)
     reading = false
-    if (found?.status === 200) {
+    if (found?.status === Limits.Http.ok) {
       const text = JSON.stringify(found.body)
       if (text !== sent) {
         sent = text
@@ -312,7 +312,7 @@ export async function open(input: { last: string | null; listen: (on: (signal: S
 
 export function tap(response: Response, on: (signal: Signal) => void): Tap | Response {
   const socket = response.webSocket
-  if (response.status !== 101 || !socket) return response.status === 101 ? new Response('The stream could not open.', { status: 503 }) : response
+  if (response.status !== Limits.Http.switching || !socket) return response.status === Limits.Http.switching ? new Response('The stream could not open.', { status: Limits.Http.unavailable }) : response
   socket.accept()
   let quiet: ReturnType<typeof setTimeout> | undefined
   let closed = false

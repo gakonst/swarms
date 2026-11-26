@@ -1,5 +1,5 @@
 # No numeric literal outside src/shared/Limits.ts but 0, 1, 2 and the unit conversions 24, 60, 1000, 1024 and 3600.
-# path count why; 1088 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 942 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 src/web/api.ts 4 pre-existing; move it into src/shared/Limits.ts
 src/web/App.tsx 2 pre-existing; move it into src/shared/Limits.ts
 src/web/Art.tsx 33 pre-existing; move it into src/shared/Limits.ts
@@ -49,18 +49,7 @@ src/web/TreePage.tsx 7 pre-existing; move it into src/shared/Limits.ts
 src/web/Username.tsx 3 pre-existing; move it into src/shared/Limits.ts
 src/web/wallet.ts 7 pre-existing; move it into src/shared/Limits.ts
 src/web/wire.ts 1 pre-existing; move it into src/shared/Limits.ts
-src/worker/Artifacts.ts 17 pre-existing; move it into src/shared/Limits.ts
-src/worker/Edge.ts 10 pre-existing; move it into src/shared/Limits.ts
-src/worker/Film.ts 15 pre-existing; move it into src/shared/Limits.ts
-src/worker/Follow.ts 13 pre-existing; move it into src/shared/Limits.ts
-src/worker/Machines.ts 13 pre-existing; move it into src/shared/Limits.ts
-src/worker/Mcp.ts 17 pre-existing; move it into src/shared/Limits.ts
-src/worker/Nodes.ts 12 pre-existing; move it into src/shared/Limits.ts
 src/worker/Page.ts 65 pre-existing; move it into src/shared/Limits.ts
-src/worker/Posters.ts 8 pre-existing; move it into src/shared/Limits.ts
-src/worker/Rest.ts 14 pre-existing; move it into src/shared/Limits.ts
 src/worker/Runner.ts 32 pre-existing; move it into src/shared/Limits.ts (three are HTTP statuses, protocol values: 404 on a subagent close, 409 and 500 on a spawn)
 src/worker/Swarm.ts 26 pre-existing; move it into src/shared/Limits.ts
-src/worker/Triage.ts 15 pre-existing; move it into src/shared/Limits.ts
 src/worker/Turns.ts 17 pre-existing; move it into src/shared/Limits.ts
-src/worker/Watch.ts 12 pre-existing; move it into src/shared/Limits.ts

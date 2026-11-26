@@ -1,3 +1,4 @@
+import * as Limits from '../shared/Limits.ts'
 import type { Mark, Scene } from './Cards.ts'
 import * as Mp4 from './Mp4.ts'
 import type { Canvas } from './Paint.ts'
@@ -11,31 +12,31 @@ export type Kit = { encoder: (width: number, height: number, gop: number) => Enc
 
 export const fps = 24
 
-export const seconds = 6
+export const seconds = Limits.WorkerFilm.seconds
 
 export function svg(scene: Scene) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}">${scene.parts}</svg>`
 }
 
 export function where(scene: Scene, mark: Mark, t: number) {
-  if (!t || !mark.sway) return { x: Math.floor(mark.x) + 0.5, y: Math.floor(mark.y) + 0.5 }
+  if (!t || !mark.sway) return { x: Math.floor(mark.x) + Limits.WorkerPaint.halfPixel, y: Math.floor(mark.y) + Limits.WorkerPaint.halfPixel }
   const dx = mark.x - scene.hub.x
   const dy = mark.y - scene.hub.y
   const r = Math.hypot(dx, dy)
   const near = 1 - Math.min(1, r / Math.max(1, scene.hub.r))
-  const turn = mark.sway * Math.sin((Math.PI * 2 * t) / seconds) * (0.035 + 0.09 * near)
+  const turn = mark.sway * Math.sin((Math.PI * 2 * t) / seconds) * (Limits.WorkerFilm.swayBase + Limits.WorkerFilm.swayNear * near)
   const angle = Math.atan2(dy, dx) + turn
-  const breathe = 1 + mark.sway * 0.025 * Math.sin((Math.PI * 4 * t) / seconds + r / 40)
+  const breathe = 1 + mark.sway * Limits.WorkerFilm.breathe * Math.sin((Math.PI * Limits.WorkerFilm.breatheTurns * t) / seconds + r / Limits.WorkerFilm.breatheSpread)
   return { x: scene.hub.x + Math.cos(angle) * r * breathe, y: scene.hub.y + Math.sin(angle) * r * breathe }
 }
 
 export function paint(scene: Scene, canvas: Canvas, t: number) {
-  const unit = Math.min(scene.width / 1200, scene.height / 630)
+  const unit = Math.min(scene.width / Limits.Share.card.width, scene.height / Limits.Share.card.height)
   for (const mark of scene.marks) {
     const at = where(scene, mark, t)
     const color = Paint.hex(mark.color)
     Paint.plus(canvas, at.x, at.y, mark.size, unit, color)
-    if (mark.ring) Paint.ring(canvas, at.x, at.y, 11 * unit, unit, Paint.hex('#000000'))
+    if (mark.ring) Paint.ring(canvas, at.x, at.y, Limits.WorkerFilm.ringRadius * unit, unit, Paint.hex('#000000'))
   }
 }
 
@@ -54,8 +55,8 @@ export async function film(kit: Kit, scene: Scene) {
     const data = encoder.pixels()
     data.set(bare)
     paint(scene, { data, height: scene.height, width: scene.width }, index / fps)
-    frames.push(encoder.encode(25, index % (fps * 2) === 0))
-    if (index % 8 === 7) await new Promise((resolve) => setTimeout(resolve, 0))
+    frames.push(encoder.encode(Limits.WorkerFilm.quality, index % (fps * 2) === 0))
+    if (index % Limits.WorkerFilm.yieldEvery === Limits.WorkerFilm.yieldEvery - 1) await new Promise((resolve) => setTimeout(resolve, 0))
   }
   return Mp4.mux(frames, { fps, height: scene.height, width: scene.width })
 }
@@ -72,7 +73,7 @@ export function encoder(module: WebAssembly.Module) {
         if (size < 0) throw new Error(`The video encoder failed (${size})`)
         return new Uint8Array(exports.memory.buffer, exports.output(), size).slice()
       },
-      pixels: () => new Uint8Array(exports.memory.buffer, exports.pixels(), width * height * 4),
+      pixels: () => new Uint8Array(exports.memory.buffer, exports.pixels(), width * height * Limits.WorkerPaint.rgbaBytes),
     }
   }
 }

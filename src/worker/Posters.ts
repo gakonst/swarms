@@ -69,7 +69,7 @@ function served(request: Request, item: Made) {
     etag: `"${item.version}"`,
     'x-content-type-options': 'nosniff',
   })
-  if ((request.headers.get('if-none-match') ?? '').includes(`"${item.version}"`)) return new Response(null, { headers, status: 304 })
+  if ((request.headers.get('if-none-match') ?? '').includes(`"${item.version}"`)) return new Response(null, { headers, status: Limits.Http.notModified })
   const size = item.body.length
   const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('range') ?? '')
   if (range && (range[1] || range[2])) {
@@ -77,14 +77,14 @@ function served(request: Request, item: Made) {
     const end = range[1] && range[2] ? Math.min(size - 1, Number(range[2])) : size - 1
     if (start >= size || start > end) {
       headers.set('content-range', `bytes */${size}`)
-      return new Response(null, { headers, status: 416 })
+      return new Response(null, { headers, status: Limits.Http.rangeUnsatisfiable })
     }
     headers.set('content-range', `bytes ${start}-${end}/${size}`)
     headers.set('content-length', String(end - start + 1))
-    return new Response(item.body.slice(start, end + 1), { headers, status: 206 })
+    return new Response(item.body.slice(start, end + 1), { headers, status: Limits.Http.partial })
   }
   headers.set('content-length', String(size))
-  return new Response(item.body, { headers, status: 200 })
+  return new Response(item.body, { headers, status: Limits.Http.ok })
 }
 
 function remember(url: string, item: Made) {
@@ -93,7 +93,7 @@ function remember(url: string, item: Made) {
   let total = 0
   for (const kept of made.values()) total += kept.body.length
   for (const [old, kept] of made) {
-    if (total <= 12_000_000 && made.size <= 48) break
+    if (total <= Limits.Posters.keptBytes && made.size <= Limits.Posters.keptMost) break
     made.delete(old)
     total -= kept.body.length
   }
@@ -125,7 +125,7 @@ async function produce(url: string, work: () => Promise<Made | undefined>) {
 export async function serve(env: Cloudflare.Env, request: Request) {
   const url = new URL(request.url)
   const asked = Og.parse(url.pathname)
-  if (!asked) return new Response('Not found', { status: 404 })
+  if (!asked) return new Response('Not found', { status: Limits.Http.missing })
   const wanted = url.searchParams.get('v') ?? ''
   const where = address(url.origin, asked.key, asked.name, wanted)
   const item =
@@ -135,6 +135,6 @@ export async function serve(env: Cloudflare.Env, request: Request) {
       const drawn = found && (await render(found, asked.name))
       return drawn && { ...drawn, lasting: drawn.version === wanted }
     }))
-  if (!item) return new Response('Not found', { headers: { 'cache-control': 'public, max-age=60' }, status: 404 })
+  if (!item) return new Response('Not found', { headers: { 'cache-control': 'public, max-age=60' }, status: Limits.Http.missing })
   return served(request, item)
 }

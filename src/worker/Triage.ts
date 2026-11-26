@@ -49,30 +49,30 @@ export const output = {
   type: 'object',
 }
 
-function word(value: unknown, most = 4000) {
+function word(value: unknown, most: number = Limits.Triage.wordMost) {
   return typeof value === 'string' && value.trim() ? clip(value.trim(), most) : null
 }
 
 export function action(value: unknown): Action | null {
   if (!value || typeof value !== 'object') return null
   const one = value as Record<string, unknown>
-  const node = word(one['node'], 64)
+  const node = word(one['node'], Limits.Triage.idChars)
   switch (one['kind']) {
     case 'approve':
-      return node && typeof one['weight'] === 'number' ? { kind: 'approve', node, weight: Math.max(0, Math.min(10, Math.round(one['weight']))) } : null
+      return node && typeof one['weight'] === 'number' ? { kind: 'approve', node, weight: Math.max(0, Math.min(Limits.Nodes.weightMost, Math.round(one['weight']))) } : null
     case 'adopt': {
-      const idea = word(one['idea'], 64)
-      const title = word(one['title'], 200)
+      const idea = word(one['idea'], Limits.Triage.idChars)
+      const title = word(one['title'], Limits.Triage.titleChars)
       return idea && title ? { idea, kind: 'adopt', spec: word(one['spec']) ?? '', statement: word(one['statement']), title } : null
     }
     case 'merge': {
-      const into = word(one['into'], 64)
+      const into = word(one['into'], Limits.Triage.idChars)
       return node && into && into !== node ? { into, kind: 'merge', node } : null
     }
     case 'reject':
-      return node ? { kind: 'reject', node, why: word(one['why'], 500) ?? 'Rejected by triage.' } : null
+      return node ? { kind: 'reject', node, why: word(one['why'], Limits.Triage.whyChars) ?? 'Rejected by triage.' } : null
     case 'grant': {
-      const amount = typeof one['amount'] === 'number' ? one['amount'].toFixed(6) : word(one['amount'], 32)
+      const amount = typeof one['amount'] === 'number' ? one['amount'].toFixed(Limits.SharedMemo.decimals) : word(one['amount'], Limits.Triage.amountChars)
       return node && amount && /^\d+(\.\d{1,6})?$/.test(amount) ? { amount, kind: 'grant', node } : null
     }
     case 'restate': {
@@ -89,7 +89,7 @@ export function parse(text: string | undefined): Action[] {
   for (const candidate of tries) {
     try {
       const value = JSON.parse(candidate) as { actions?: unknown }
-      if (Array.isArray(value.actions)) return value.actions.map(action).filter((one): one is Action => one !== null).slice(0, 50)
+      if (Array.isArray(value.actions)) return value.actions.map(action).filter((one): one is Action => one !== null).slice(0, Limits.Triage.actionsMost)
     } catch {}
   }
   return []
@@ -103,7 +103,7 @@ export async function apply(self: Swarm, actions: readonly Action[], by: string,
   const applied: Applied[] = []
   let granted = 0n
   const rootLeft = (await Nodes.state(self)).ledger.left.get(Nodes.root) ?? 0n
-  const most = by.startsWith('admin:') ? rootLeft : rootLeft / 4n
+  const most = by.startsWith('admin:') ? rootLeft : rootLeft / Limits.Triage.grantDivisor
   for (const [index, one] of actions.entries()) {
     const found = await Nodes.state(self)
     const done = (ok: boolean, why: string) => applied.push({ action: one, ok, why })
@@ -209,7 +209,7 @@ export async function schedule(self: Swarm) {
   return Nodes.budgeting(self, async () => {
     const state = await Nodes.state(self)
     const pledged = state.ledger.pledged.get(Nodes.root) ?? 0n
-    const share = (pledged * BigInt(Math.round(set.triageShare * 10_000))) / 10_000n
+    const share = (pledged * BigInt(Math.round(set.triageShare * Limits.Triage.shareScale))) / BigInt(Limits.Triage.shareScale)
     const had = (state.ledger.inherited.get(Nodes.triage) ?? 0n) + (state.ledger.pledged.get(Nodes.triage) ?? 0n)
     const room = share - had
     const want = set.runStep < room ? set.runStep : room
@@ -247,12 +247,12 @@ export async function task(self: Swarm, found: Nodes.State) {
       return '- ' + nid + ' under ' + (Nodes.parentOf(node) ?? '-') + ': ' + parsed.title + ' (' + riders + ' riders, $' + Flow.usd(found.ledger.pledged.get(nid) ?? 0n) + ')' + (parsed.statement ? '\n  statement: ' + parsed.statement.replace(/\n/g, ' ') : '')
     })
   const { results } = await self.env.DB.prepare('select id, parent, text from ideas where swarm = ? and node is null order by created_at desc limit ?').bind(Nodes.swarm(self), listed).all<{ id: string; parent: string; text: string }>()
-  const ideas = results.map((idea) => '- idea ' + idea.id + ' under ' + idea.parent + ': ' + clip(idea.text, 500))
+  const ideas = results.map((idea) => '- idea ' + idea.id + ' under ' + idea.parent + ': ' + clip(idea.text, Limits.Triage.ideaChars))
   const root = found.ledger.left.get(Nodes.root) ?? 0n
   return [
     Persona.triage(self.kv.get('treeSetup') ?? null),
     '',
-    'The root has $' + Flow.usd(root) + ' left; a grant is at most $' + Flow.usd(root / 4n) + ' in all this run.',
+    'The root has $' + Flow.usd(root) + ' left; a grant is at most $' + Flow.usd(root / Limits.Triage.grantDivisor) + ' in all this run.',
     'Since ' + new Date(since).toISOString() + ':',
     '',
     '# Proposals',

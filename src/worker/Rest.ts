@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { Contributed } from '../shared/Api.ts'
+import * as Limits from '../shared/Limits.ts'
 import * as Site from '../shared/Site.ts'
 import * as Device from './Device.ts'
 import * as Feedback from './Feedback.ts'
@@ -30,7 +31,7 @@ export function socket(result: Problem.Result<Response>) {
 }
 
 export function contributed(result: Problem.Result<{ contributed: Contributed; created: boolean }>) {
-  return result.ok ? Response.json(result.value.contributed, { status: result.value.created ? 201 : 200 }) : Problem.json(result)
+  return result.ok ? Response.json(result.value.contributed, { status: result.value.created ? Limits.Http.created : Limits.Http.ok }) : Problem.json(result)
 }
 
 app.use('/v1/*', cors({ exposeHeaders: [Replica.header] }))
@@ -91,7 +92,7 @@ for (const path of ['/.well-known/oauth-protected-resource', '/.well-known/oauth
 
 for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/*', '/.well-known/openid-configuration', '/.well-known/openid-configuration/*']) app.get(path, (c) => c.json(OAuth.server(Site.url(c.env, c.req.url))))
 
-app.post('/oauth/register', async (c) => OAuth.respond(await OAuth.register(c.env, await body(c.req.raw)), 201))
+app.post('/oauth/register', async (c) => OAuth.respond(await OAuth.register(c.env, await body(c.req.raw)), Limits.Http.created))
 
 app.get('/oauth/request', async (c) => OAuth.respond(await OAuth.request(c.env, c.req.query(), Site.url(c.env, c.req.url))))
 
@@ -101,7 +102,7 @@ app.post('/oauth/token', async (c) => OAuth.respond(await OAuth.token(c.env, awa
 
 app.post('/oauth/revoke', async (c) => {
   await OAuth.revoke(c.env, await OAuth.form(c.req.raw))
-  return new Response(null, { headers: { 'cache-control': 'no-store' }, status: 200 })
+  return new Response(null, { headers: { 'cache-control': 'no-store' }, status: Limits.Http.ok })
 })
 
 app.get('/v1/config', async (c) => c.json(await Operations.config(c.env)))
@@ -118,7 +119,7 @@ app.post(`${Device.path}/approve`, async (c) => Problem.respond(await Device.app
 
 app.post(`${Sessions.path}/logout`, (c) => c.env.OBJECTS.fetch(Timing.traced(c.req.raw)))
 
-app.post('/v1/feedback', async (c) => Problem.respond(await Feedback.file(c.env, await body(c.req.raw)), 201))
+app.post('/v1/feedback', async (c) => Problem.respond(await Feedback.file(c.env, await body(c.req.raw)), Limits.Http.created))
 
 app.get('/v1/me', async (c) => Problem.respond(await Operations.account(c.env, await Sessions.who(c.env, c.req.raw))))
 
@@ -142,7 +143,7 @@ app.post('/v1/swarms/:id/ai', async (c) => Problem.respond(await Operations.host
 
 app.get('/v1/swarms', async (c) => Problem.respond(await Operations.list(c.env, c.req.query())))
 
-app.post('/v1/swarms', async (c) => Problem.respond(await Operations.create(c.env, await body(c.req.raw), await Sessions.who(c.env, c.req.raw)), 201))
+app.post('/v1/swarms', async (c) => Problem.respond(await Operations.create(c.env, await body(c.req.raw), await Sessions.who(c.env, c.req.raw)), Limits.Http.created))
 
 app.get('/v1/search', async (c) =>
   Problem.respond(await Operations.search(c.env, { ...c.req.query(), query: c.req.query('q') ?? c.req.query('query') })),
@@ -165,7 +166,7 @@ app.delete('/v1/swarms/:id/picture', async (c) =>
 app.get('/v1/swarms/:id/picture', async (c) => {
   const found = await Operations.picture(c.env, { swarm: c.req.param('id') })
   if (!found.ok) return Problem.json(found)
-  const current = c.req.query('v') === found.value.at.toString(36)
+  const current = c.req.query('v') === found.value.at.toString(Limits.WorkerRest.versionRadix)
   return new Response(found.value.bytes, {
     headers: { 'cache-control': current ? 'public, max-age=31536000, immutable' : 'public, max-age=60', 'content-security-policy': "default-src 'none'", 'content-type': found.value.type, 'x-content-type-options': 'nosniff' },
   })
@@ -208,7 +209,7 @@ app.get('/v1/swarms/:id/hands', async (c) => Problem.respond(await Operations.ha
 app.post('/v1/swarms/:id/hands', async (c) =>
   Problem.respond(
     await Operations.hand(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw), await Operations.keyed(c.env, c.req.header('authorization')?.replace(/^Bearer\s+/i, ''))),
-    201,
+    Limits.Http.created,
   ),
 )
 
@@ -252,7 +253,7 @@ app.get('/v1/swarms/:id/artifacts', async (c) =>
 
 app.get('/v1/general/chat', async (c) => Problem.respond(await Operations.general(c.env, c.req.query())))
 
-app.post('/v1/general/chat', async (c) => Problem.respond(await Operations.shout(c.env, await body(c.req.raw), await Sessions.who(c.env, c.req.raw)), 201))
+app.post('/v1/general/chat', async (c) => Problem.respond(await Operations.shout(c.env, await body(c.req.raw), await Sessions.who(c.env, c.req.raw)), Limits.Http.created))
 
 app.get('/v1/swarms/:id/chat', async (c) =>
   Problem.respond(await Operations.room(c.env, { ...c.req.query(), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw))),
@@ -261,7 +262,7 @@ app.get('/v1/swarms/:id/chat', async (c) =>
 app.post('/v1/swarms/:id/chat', async (c) =>
   Problem.respond(
     await Operations.say(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)),
-    201,
+    Limits.Http.created,
   ),
 )
 
@@ -280,7 +281,7 @@ app.post('/v1/swarms/:id/team', async (c) =>
 )
 
 app.post('/v1/swarms/:id/team/members', async (c) =>
-  Problem.respond(await Operations.seat(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), 201),
+  Problem.respond(await Operations.seat(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), Limits.Http.created),
 )
 
 app.delete('/v1/swarms/:id/team/members/:member', async (c) =>
@@ -318,10 +319,10 @@ app.get('/v1/swarms/:id/nodes/:nid/updates', async (c) => Problem.respond(await 
 app.get('/v1/swarms/:id/proofs', async (c) => Problem.respond(await Operations.proofs(c.env, { swarm: c.req.param('id') })))
 
 app.post('/v1/swarms/:id/nodes', async (c) =>
-  Problem.respond(await Operations.propose(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, Site.url(c.env, c.req.url), await Sessions.who(c.env, c.req.raw)), 201),
+  Problem.respond(await Operations.propose(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, Site.url(c.env, c.req.url), await Sessions.who(c.env, c.req.raw)), Limits.Http.created),
 )
 
-app.post('/v1/swarms/:id/ideas', async (c) => Problem.respond(await Operations.suggest(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), 201))
+app.post('/v1/swarms/:id/ideas', async (c) => Problem.respond(await Operations.suggest(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, await Sessions.who(c.env, c.req.raw)), Limits.Http.created))
 
 app.post('/v1/swarms/:id/transfer', async (c) => Problem.respond(await Operations.transfer(c.env, { ...(await body(c.req.raw)), swarm: c.req.param('id') }, Site.url(c.env, c.req.url))))
 
@@ -353,4 +354,4 @@ app.get('/v1/me/swarms/:id', async (c) => Problem.respond(await Operations.stand
 
 app.post('/v1/hooks/github', async (c) => Problem.respond(await Operations.verified(c.env, c.req.raw)))
 
-app.all('/v1/*', () => Problem.json({ code: 'not_found', detail: 'No such route. See /openapi.json.', status: 404 }))
+app.all('/v1/*', () => Problem.json({ code: 'not_found', detail: 'No such route. See /openapi.json.', status: Limits.Http.missing }))

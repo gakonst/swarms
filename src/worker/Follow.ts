@@ -16,7 +16,7 @@ export function frame(block: string) {
   const lines = block.split('\n')
   const data = lines
     .filter((line) => line.startsWith('data:'))
-    .map((line) => line.slice(5).trimStart())
+    .map((line) => line.slice('data:'.length).trimStart())
     .join('\n')
   if (!data) return undefined
   return { data, live: lines.some((line) => /^event:\s*live$/.test(line)) }
@@ -73,10 +73,10 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   } else {
     if (tried) self.stream = stream.state === 'streaming' && guards.twice && stream.fails + 1 < streamFails ? { fails: stream.fails + 1, state: 'streaming' } : { retry: Date.now() + Clock.minuteMs, state: 'polling' }
     let cursor = agent.cursor
-    for (let page = 0; page < 5; page++) {
+    for (let page = 0; page < Limits.Follow.eventPages; page++) {
       const read = await Gateway.events(self.env, row.id, agent.id, cursor)
       if (!read.ok) {
-        down = read.status >= 500
+        down = read.status >= Limits.Http.failed
         break
       }
       const page = Cursor.fresh(read.value.events, cursor)
@@ -111,12 +111,12 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
     plan.artifacts ? self.publish(row.id) : undefined,
   ])
   if (report?.ok && !['queued', 'running'].includes(report.value.status)) return Turns.finish(self, row, run, report.value)
-  if (report && !report.ok && report.status !== 401 && report.status < 500)
+  if (report && !report.ok && report.status !== Limits.Http.unauthorized && report.status < Limits.Http.failed)
     return Turns.finish(self, row, run, { error: report.detail, request_id: run.turn, status: 'failed' })
   const until = await Turns.lease(self, run)
   if (guards.stall && until !== undefined && Date.now() >= until) {
-    const failing = down || (!!report && !report.ok && report.status >= 500)
-    const idle = Math.round((Date.now() - Turns.progress(self, run).progressed) / 60_000)
+    const failing = down || (!!report && !report.ok && report.status >= Limits.Http.failed)
+    const idle = Math.round((Date.now() - Turns.progress(self, run).progressed) / Limits.Clock.minuteMs)
     const detail = !failing ? '' : !report || report.ok ? ': its events did not load' : `: ${report.detail}`
     await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
     return Turns.finish(self, row, run, { error: `The agent made no model call or tool call for ${idle} minutes${detail}, so the swarm stopped the turn to start another.`, request_id: run.turn, status: 'failed' })
@@ -287,8 +287,8 @@ export function advanced(self: Swarm, type: string | undefined, at: number) {
 const unpaidMost = Limits.Follow.unpaidMost
 
 export function failure(error: string, at: number): Failure {
-  const said = /^(\w+) (?:HTTPS? request was rejected with )?(?:HTTP (\d{3})|stream error (\w+)):?\s*([\s\S]*)$/.exec(error)
-  const body = said?.[4] ?? error
+  const [, route, status, stream, detail] = /^(\w+) (?:HTTPS? request was rejected with )?(?:HTTP (\d{3})|stream error (\w+)):?\s*([\s\S]*)$/.exec(error) ?? []
+  const body = detail ?? error
   const parsed = (() => {
     try {
       return JSON.parse(body) as { code?: unknown; detail?: unknown; error?: { message?: unknown; type?: unknown }; message?: unknown }
@@ -297,8 +297,8 @@ export function failure(error: string, at: number): Failure {
     }
   })()
   const message = [parsed?.error?.message, parsed?.detail, parsed?.message].find((value): value is string => typeof value === 'string') ?? body
-  const code = [parsed?.error?.type, parsed?.code, said?.[3]].find((value): value is string => typeof value === 'string') ?? null
-  return { at, code, message: clip(redact(message), 600), route: said?.[1] ?? 'model', status: said?.[2] ? Number(said[2]) : null }
+  const code = [parsed?.error?.type, parsed?.code, stream].find((value): value is string => typeof value === 'string') ?? null
+  return { at, code, message: clip(redact(message), Limits.Follow.messageChars), route: route ?? 'model', status: status ? Number(status) : null }
 }
 
 export function recalled(self: Swarm): Failure | null {
@@ -314,7 +314,7 @@ export function recalled(self: Swarm): Failure | null {
 export function refused(self: Swarm, type: string | undefined, payload: Record<string, unknown>, at = Date.now()) {
   const error = payload['error']
   if (type === 'model.call.failed' && typeof error === 'string' && error !== 'the turn was cancelled') self.kv.put('failure', failure(error, at))
-  if (type === 'model.call.failed' && typeof error === 'string' && Turns.broke(error)) self.kv.put('unpaid', { count: (self.kv.get<{ count: number }>('unpaid')?.count ?? 0) + 1, error: error.slice(0, 400) })
+  if (type === 'model.call.failed' && typeof error === 'string' && Turns.broke(error)) self.kv.put('unpaid', { count: (self.kv.get<{ count: number }>('unpaid')?.count ?? 0) + 1, error: error.slice(0, Limits.Follow.unpaidChars) })
   else if (type !== undefined && progress.has(type) && self.kv.get('unpaid') !== undefined) self.kv.delete('unpaid')
 }
 
@@ -341,8 +341,8 @@ export function stalled(self: Swarm, now: number) {
   if (!working?.stalled || working.progressed === undefined) return
   if (self.kv.get<number>('stallNoted') === working.progressed) return
   self.kv.put('stallNoted', working.progressed)
-  const minutes = Math.round((now - working.progressed) / 60_000)
-  console.warn(JSON.stringify({ stalled: self.kv.get<string>('id'), minutes, restartsAfter: Math.round(Turns.leaseMs / 60_000) }))
+  const minutes = Math.round((now - working.progressed) / Limits.Clock.minuteMs)
+  console.warn(JSON.stringify({ stalled: self.kv.get<string>('id'), minutes, restartsAfter: Math.round(Turns.leaseMs / Limits.Clock.minuteMs) }))
 }
 
 export function record(self: Swarm, who: string | null, type: string | undefined, payload: Record<string, unknown>, event: number, at: number) {

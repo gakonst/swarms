@@ -7,7 +7,7 @@ const memory = new Held<unknown>(limits.edge)
 
 const refreshing = new Held<true>(limits.refreshes)
 
-export async function cached<T>(env: Cloudflare.Env, key: string, seconds: number, read: () => Promise<T>, stale = seconds * 3, patience = 0): Promise<T> {
+export async function cached<T>(env: Cloudflare.Env, key: string, seconds: number, read: () => Promise<T>, stale: number = seconds * Limits.Edge.staleFactor, patience = 0): Promise<T> {
   const now = Date.now()
   const local = memory.entry(key, now)
   if (local && now - local.at < seconds * 1000) return local.value as T
@@ -52,9 +52,9 @@ export function put<T>(env: Cloudflare.Env, key: string, value: T, stale: number
 
 export function tag(kind: string, request: Request, version: string, salt = '') {
   const url = new URL(request.url)
-  let hash = 0x811c9dc5
-  for (const char of `${url.pathname}${url.search}|${salt}`) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193)
-  return `W/"${kind}${(hash >>> 0).toString(36)}.${version}"`
+  let hash: number = Limits.Edge.fnvOffset
+  for (const char of `${url.pathname}${url.search}|${salt}`) hash = Math.imul(hash ^ char.charCodeAt(0), Limits.Edge.fnvPrime)
+  return `W/"${kind}${(hash >>> 0).toString(Limits.Edge.tagRadix)}.${version}"`
 }
 
 export function asked(request: Request, kind: string) {
@@ -66,18 +66,18 @@ export function matches(request: Request, tag: string) {
 }
 
 export function unchanged(tag: string) {
-  return new Response(null, { headers: { 'cache-control': 'no-cache', etag: tag }, status: 304 })
+  return new Response(null, { headers: { 'cache-control': 'no-cache', etag: tag }, status: Limits.Http.notModified })
 }
 
 export function tagged(response: Response, tag: string | undefined) {
-  if (!tag || response.status !== 200) return response
+  if (!tag || response.status !== Limits.Http.ok) return response
   response.headers.set('etag', tag)
   response.headers.set('cache-control', 'no-cache')
   return response
 }
 
 export function minute() {
-  return String(Math.floor(Date.now() / 60_000))
+  return String(Math.floor(Date.now() / Limits.Clock.minuteMs))
 }
 
 async function shared(request: Request) {
@@ -139,7 +139,7 @@ export async function page(request: Request, variant: string, draw: Draw): Promi
     return served(kept, now - kept.at < pageFresh ? 'hit' : 'stale')
   }
   const { response, whole } = await draw(request)
-  if (response.status !== 200 || !response.body) return response
+  if (response.status !== Limits.Http.ok || !response.body) return response
   const [mine, theirs] = response.body.tee()
   waitUntil(keepPage(key, new Response(theirs, response), whole).catch(() => undefined))
   const fresh = new Response(mine, response)
@@ -150,12 +150,12 @@ export async function page(request: Request, variant: string, draw: Draw): Promi
 function served(kept: Drawn, state: string) {
   const headers = new Headers(kept.headers)
   headers.set('x-page-cache', state)
-  return new Response(kept.body, { headers, status: 200 })
+  return new Response(kept.body, { headers, status: Limits.Http.ok })
 }
 
 async function keepPage(key: Request, response: Response, whole: Promise<boolean>) {
   const body = await response.arrayBuffer()
-  if (response.status !== 200 || !(await whole)) return
+  if (response.status !== Limits.Http.ok || !(await whole)) return
   const at = Date.now()
   const headers = [...response.headers].filter(([name]) => name !== 'set-cookie' && name !== 'x-page-cache')
   drawn.set(key.url, { at, body, headers }, at)

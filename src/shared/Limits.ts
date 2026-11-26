@@ -6,6 +6,8 @@ export const About = {
 export const Artifacts = {
   fresh: 15,
   wrappedMost: 2_000_000,
+  staleSeconds: 600,
+  pages: 3,
 } as const
 
 export const Board = {
@@ -109,6 +111,10 @@ export const Device = {
 export const Edge = {
   pageFresh: 5_000,
   pageStale: 600_000,
+  staleFactor: 3,
+  fnvOffset: 0x811c9dc5,
+  fnvPrime: 0x01000193,
+  tagRadix: 36,
 } as const
 
 export const Feed = {
@@ -151,6 +157,9 @@ export const Follow = {
   spacingMs: 30_000,
   lendingMs: 3_600_000,
   unpaidMost: 8,
+  eventPages: 5,
+  messageChars: 600,
+  unpaidChars: 400,
 } as const
 
 export const Gateway = {
@@ -191,6 +200,12 @@ export const Machines = {
   keptSeconds: 30 * 86_400,
   exportPage: 200,
   pool: 6,
+  swarmIdMost: 64,
+  nameMost: 160,
+  logLinesMost: 5_000,
+  sandboxMost: 64,
+  nsPerMs: 1e6,
+  eventSpan: 128,
 } as const
 
 export const Mcp = {
@@ -202,6 +217,13 @@ export const Mcp = {
   accepted: 202,
   malformed: 400,
   tooLarge: 413,
+  confirmMost: 200,
+  hashShown: 10,
+  feedMost: 200,
+  feedDefault: 50,
+  watchDefault: 120,
+  watchPage: 100,
+  goalChars: 200,
 } as const
 
 export const JsonRpc = {
@@ -210,6 +232,7 @@ export const JsonRpc = {
   params: -32602,
   parse: -32700,
   request: -32600,
+  unauthorized: -32001,
 } as const
 
 export const Money = {
@@ -225,6 +248,15 @@ export const Nodes = {
   lockMs: 60_000,
   heldMs: 10_000,
   retry: { backoffMs: 15_000, maxAttempts: 3 },
+  quietRuns: 12,
+  slots: 16,
+  triageShare: 0.05,
+  verifyShaChars: 12,
+  nidChars: 10,
+  statementBytes: 8,
+  weightMost: 10,
+  childrenMost: 20,
+  fundersShown: 5,
 } as const
 
 export const OAuth = {
@@ -325,6 +357,8 @@ export const Phase = {
 
 export const Posters = {
   fresh: 300_000,
+  keptBytes: 12_000_000,
+  keptMost: 48,
 } as const
 
 export const Provider = {
@@ -681,6 +715,15 @@ export const Team = {
 export const Triage = {
   everyMs: 30 * 60_000,
   listed: 50,
+  wordMost: 4000,
+  idChars: 64,
+  titleChars: 200,
+  whyChars: 500,
+  amountChars: 32,
+  actionsMost: 50,
+  grantDivisor: 4n,
+  shareScale: 10_000,
+  ideaChars: 500,
 } as const
 
 export const Turns = {
@@ -731,6 +774,8 @@ export const Watch = {
   pongMs: 10_000,
   retryMs: 3_000,
   pagesMost: 10,
+  gapMs: 5_000,
+  digestBytes: 12,
 } as const
 
 export const Wire = {
@@ -890,6 +935,9 @@ export const Http = {
   failed: 500,
   upstream: 502,
   unavailable: 503,
+  partial: 206,
+  rangeUnsatisfiable: 416,
+  preconditionRequired: 428,
 } as const
 
 export const WorkerCards = {
@@ -951,6 +999,18 @@ export const WorkerCode = {
   bucketMs: 5_000,
 } as const
 
+export const WorkerFilm = {
+  seconds: 6,
+  swayBase: 0.035,
+  swayNear: 0.09,
+  breathe: 0.025,
+  breatheTurns: 4,
+  breatheSpread: 40,
+  ringRadius: 11,
+  quality: 25,
+  yieldEvery: 8,
+} as const
+
 export const WorkerOg = {
   treeDepth: 64,
   cacheSeconds: 300,
@@ -962,6 +1022,10 @@ export const WorkerPersona = {
 
 export const WorkerPhase = {
   restFailures: 3,
+} as const
+
+export const WorkerRest = {
+  versionRadix: 36,
 } as const
 
 export const WorkerSite = {

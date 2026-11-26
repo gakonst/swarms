@@ -10,9 +10,9 @@ import type { Swarm } from './Swarm.ts'
 import * as Timing from './Timing.ts'
 import * as Limits from '../shared/Limits.ts'
 
-const id = z.string().trim().min(1).max(64).describe('The swarm id, the last part of its page URL /s/<id>.')
+const id = z.string().trim().min(1).max(Limits.Machines.swarmIdMost).describe('The swarm id, the last part of its page URL /s/<id>.')
 
-const machine = z.string().trim().min(1).max(160).describe("A machine's name, as GET /v1/swarms/:id/machines lists it (a sandbox's name or id, a browser or a lent hand).")
+const machine = z.string().trim().min(1).max(Limits.Machines.nameMost).describe("A machine's name, as GET /v1/swarms/:id/machines lists it (a sandbox's name or id, a browser or a lent hand).")
 
 const seq = z.coerce.number().int().min(1).describe("A command's seq, as the command listing gives it.")
 
@@ -33,9 +33,9 @@ export const schema = {
       .regex(/^\d{1,16}\.\d{1,16}$/)
       .optional()
       .describe("The previous page's next, to read the older lines."),
-    limit: z.coerce.number().int().min(1).max(5_000).default(1_000).describe('At most this many lines, newest last.'),
+    limit: z.coerce.number().int().min(1).max(Limits.Machines.logLinesMost).default(1_000).describe('At most this many lines, newest last.'),
     machine,
-    sandbox: z.string().trim().max(64).optional().describe('One of the sandbox ids the answer lists, when the name was reused by more than one sandbox; the newest by default.'),
+    sandbox: z.string().trim().max(Limits.Machines.sandboxMost).optional().describe('One of the sandbox ids the answer lists, when the name was reused by more than one sandbox; the newest by default.'),
     stream: z.enum(['system', 'stdout', 'stderr']).optional().describe('Only lines of this stream.'),
     swarm: id,
   }),
@@ -53,7 +53,7 @@ function stub(env: Cloudflare.Env, swarm: string): DurableObjectStub<Swarm> {
 }
 
 function missing() {
-  return Problem.fail(404, 'not_found', 'No swarm has this id.')
+  return Problem.fail(Limits.Http.missing, 'not_found', 'No swarm has this id.')
 }
 
 export type Full = { ms: number | null; output: string }
@@ -79,7 +79,7 @@ function full(event: Gateway.Event | undefined, expected: string): Full | undefi
   if (expected && name !== expected) return undefined
   const text = output(payload['result']).trim()
   const body = payload['status'] === 'completed' ? result(name, text).body : text
-  return { ms: typeof payload['duration_ns'] === 'number' ? Math.round(payload['duration_ns'] / 1e6) : null, output: redact(body) }
+  return { ms: typeof payload['duration_ns'] === 'number' ? Math.round(payload['duration_ns'] / Limits.Machines.nsPerMs) : null, output: redact(body) }
 }
 
 async function fulls(env: Cloudflare.Env, swarm: string, agent: string, wanted: { event: number; tool: string }[]): Promise<Map<number, Full>> {
@@ -94,14 +94,14 @@ async function fulls(env: Cloudflare.Env, swarm: string, agent: string, wanted: 
   const groups: (typeof missed)[] = []
   for (const item of missed) {
     const group = groups.at(-1)
-    if (group?.[0] && item.event - group[0].event < 128) group.push(item)
+    if (group?.[0] && item.event - group[0].event < Limits.Machines.eventSpan) group.push(item)
     else groups.push([item])
   }
   await pooled(groups, async (group) => {
         const first = group[0]
         const last = group.at(-1)
         if (!first || !last) return
-        const read = await Gateway.event(env, swarm, agent, first.event, Math.min(128, last.event - first.event + 1)).catch(() => undefined)
+        const read = await Gateway.event(env, swarm, agent, first.event, Math.min(Limits.Machines.eventSpan, last.event - first.event + 1)).catch(() => undefined)
         if (!read?.ok) return
         await Promise.all(
           group.map(async (item) => {
@@ -153,7 +153,7 @@ export async function command(env: Cloudflare.Env, input: Input<'command'>): Pro
   const object = stub(env, query.swarm)
   const opened = await object.opened(query.machine, [query.seq])
   const [found] = await completed(env, query.swarm, opened as unknown as { agent: string | null; commands: Runs.Opened[] }, true)
-  if (!found) return Problem.fail(404, 'not_found', 'This machine has no command with this seq.')
+  if (!found) return Problem.fail(Limits.Http.missing, 'not_found', 'This machine has no command with this seq.')
   const before = opened.commands[0]?.ms ?? null
   if (found.ms !== null && found.ms !== before) await object.timed(found.seq, found.ms)
   return Problem.ok(found)
@@ -165,7 +165,7 @@ export async function logs(env: Cloudflare.Env, input: Input<'logs'>) {
   const query = parsed.value
   if (!(await Store.exists(env, query.swarm))) return missing()
   const logged = await stub(env, query.swarm).machineLogs(query.swarm, query.machine, { before: query.before, limit: query.limit, sandbox: query.sandbox, stream: query.stream })
-  if (!logged.sandbox) return Problem.fail(404, 'not_found', 'This machine is not a sandbox, so the gateway keeps no log of it; its commands are in its command listing.')
+  if (!logged.sandbox) return Problem.fail(Limits.Http.missing, 'not_found', 'This machine is not a sandbox, so the gateway keeps no log of it; its commands are in its command listing.')
   return Problem.ok({ ...logged, machine: query.machine })
 }
 
@@ -175,7 +175,7 @@ export async function job(env: Cloudflare.Env, input: Input<'job'>) {
   const query = parsed.value
   if (!(await Store.exists(env, query.swarm))) return missing()
   const found = await stub(env, query.swarm).job(query.swarm, query.machine, query.seq)
-  if (!found) return Problem.fail(404, 'not_found', 'This machine has no compute_spawn command with this seq and a log path.')
+  if (!found) return Problem.fail(Limits.Http.missing, 'not_found', 'This machine has no compute_spawn command with this seq and a log path.')
   return Problem.ok({ ...found, machine: query.machine })
 }
 
@@ -197,7 +197,7 @@ export async function exported(env: Cloudflare.Env, input: Input<'export'>): Pro
   const object = stub(env, query.swarm)
   const listed = (await object.fleet()) as unknown as Fleet.Machine[]
   const machines = query.machine ? listed.filter((item) => item.name === query.machine) : listed
-  if (query.machine && !machines.length) return Problem.fail(404, 'not_found', 'This swarm has no machine with this name.')
+  if (query.machine && !machines.length) return Problem.fail(Limits.Http.missing, 'not_found', 'This swarm has no machine with this name.')
   const encoder = new TextEncoder()
   const stream = new TransformStream<Uint8Array, Uint8Array>()
   const writer = stream.writable.getWriter()
@@ -222,7 +222,7 @@ export async function exported(env: Cloudflare.Env, input: Input<'export'>): Pro
         const chunks: Fleet.Logged[] = []
         let before: string | undefined
         for (;;) {
-          const found = await object.machineLogs(query.swarm, item.name, { before, limit: 5_000, sandbox })
+          const found = await object.machineLogs(query.swarm, item.name, { before, limit: Limits.Machines.logLinesMost, sandbox })
           chunks.push(found)
           if (!found.next) return chunks
           before = found.next
