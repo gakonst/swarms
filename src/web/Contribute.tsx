@@ -27,7 +27,7 @@ const preferred: readonly Currency[] = ['mach', 'ousd', 'usdce', 'pathusd']
 
 const smallest = '0.01'
 
-export type Target = { id: string; node?: string | undefined; parent?: string | undefined; title?: string | undefined }
+export type Target = { id: string; nickname?: string | undefined; node?: string | undefined; parent?: string | undefined; title?: string | undefined }
 
 export type Prefill = { amount: string; note: string; token: Currency | undefined }
 

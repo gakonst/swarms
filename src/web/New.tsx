@@ -23,8 +23,20 @@ function starter() {
   return asked === null ? undefined : problems.find((problem) => problem.id === asked)
 }
 
+async function named(input: Parameters<typeof Api.create>[0]) {
+  if (input.nickname) return Api.create(input)
+  const cut = Nickname.slug(input.title)
+  const name = cut.length < Nickname.most || !cut.includes('-') ? cut : cut.slice(0, cut.lastIndexOf('-'))
+  const free = Nickname.usable(name) && (await Names.warm(name).catch(() => undefined)) === null
+  if (!free) return Api.create(input)
+  return Api.create({ ...input, nickname: name }).catch((reason: unknown) => {
+    if (reason instanceof Api.Failure && reason.code === 'conflict') return Api.create(input)
+    throw reason
+  })
+}
+
 function useLaunch(slot: string, title: string, goal: string, problem: string | undefined, steering: Steering, nickname: string | undefined) {
-  const [launch] = useState(() => launcher((input: Parameters<typeof Api.create>[0]) => Api.create(input).then((swarm): Target => ({ id: swarm.id }))))
+  const [launch] = useState(() => launcher((input: Parameters<typeof Api.create>[0]) => named(input).then((swarm): Target => ({ id: swarm.id, ...(swarm.nickname ? { nickname: swarm.nickname } : {}) }))))
   const input = { steering, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}), ...(nickname ? { nickname } : {}) }
   return {
     busy: Pay.busy(Pay.useFlow(slot)),
@@ -35,6 +47,10 @@ function useLaunch(slot: string, title: string, goal: string, problem: string | 
 
 function landing(name: string | undefined) {
   return (swarm: Target) => {
+    if (!name && swarm.nickname) {
+      Names.keep(swarm.nickname, { name: swarm.nickname, nickname: swarm.nickname, swarm: swarm.id })
+      return navigate(`/${swarm.nickname}`, { replace: true })
+    }
     if (!name) return navigate(`/s/${encodeURIComponent(swarm.id)}`, { replace: true })
     void Api.swarm(swarm.id, false)
       .then((detail) => remember(swarm.id, detail), () => {})
