@@ -8,6 +8,7 @@ import * as Runs from './Runs.ts'
 import * as Store from './Store.ts'
 import type { Swarm } from './Swarm.ts'
 import * as Timing from './Timing.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const id = z.string().trim().min(1).max(64).describe('The swarm id, the last part of its page URL /s/<id>.')
 
@@ -59,7 +60,7 @@ export type Full = { ms: number | null; output: string }
 
 export type Command = Fleet.Shown
 
-const keptSeconds = 30 * 86_400
+const keptSeconds = Limits.Machines.keptSeconds
 
 function key(env: Cloudflare.Env, swarm: string, agent: string, event: number) {
   return new Request(new URL(`/__cache/full/${swarm}/${agent}/${event}`, env.SWARMS_URL))
@@ -176,9 +177,9 @@ export async function job(env: Cloudflare.Env, input: Input<'job'>) {
   return Problem.ok({ ...found, machine: query.machine })
 }
 
-const exportPage = 200
+const exportPage = Limits.Machines.exportPage
 
-const pool = 6
+const pool = Limits.Machines.pool
 
 async function pooled<item, value>(items: readonly item[], run: (item: item) => Promise<value>): Promise<value[]> {
   const results: value[] = []

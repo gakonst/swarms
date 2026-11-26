@@ -3,6 +3,7 @@ import { z } from 'zod'
 import * as Operations from './Operations.ts'
 import * as Replica from './Replica.ts'
 import * as Sessions from './Sessions.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export const scopes = ['swarms:read', 'swarms:write', 'swarms:money', 'swarms:admin'] as const
 
@@ -17,13 +18,13 @@ export const meanings: Record<Scope, string> = {
 
 export const fallback: Scope[] = ['swarms:read', 'swarms:write']
 
-export const accessSeconds = 3600
+export const accessSeconds = Limits.OAuth.accessSeconds
 
-const refreshMs = 30 * 86_400_000
+const refreshMs = Limits.OAuth.refreshMs
 
-const codeMs = 10 * 60_000
+const codeMs = Limits.OAuth.codeMs
 
-const clientMs = 365 * 86_400_000
+const clientMs = Limits.OAuth.clientMs
 
 export type Caller = { address?: Address | undefined; bearer: 'invalid' | 'none' | 'oauth' | 'operator' | 'session'; operated: boolean; scopes: ReadonlySet<Scope> }
 

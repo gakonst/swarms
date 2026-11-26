@@ -10,6 +10,7 @@
 
 import type { Board as Boards } from 'nanocode-ts'
 import * as Lease from './machines/Lease.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Board = Boards.Board
 export type Cap = Boards.Cap
@@ -160,7 +161,7 @@ export async function holding<T>(board: Board, id: string, leaseMs: number, work
 
 // Run 'work' once the lock 'id' is free: callers take turns, one at a time.
 // A caller waits at most 'deadlineMs' and then gets Busy; a lost lock is Lost.
-export const serialWaitMs = 30_000
+export const serialWaitMs = Limits.Work.serialWaitMs
 
 export async function serial<T>(board: Board, id: string, leaseMs: number, work: (held: Held) => Promise<T>, waitMs = 50, deadlineMs = serialWaitMs): Promise<T> {
   const deadline = Date.now() + deadlineMs

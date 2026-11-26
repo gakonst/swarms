@@ -3,14 +3,15 @@ import * as Site from '../shared/Site.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
 import * as Sessions from './Sessions.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export const path = `${Sessions.path}/device`
 
 export const page = '/cli/login'
 
-export const lifeSeconds = 600
+export const lifeSeconds = Limits.Device.lifeSeconds
 
-export const interval = 2
+export const interval = Limits.Device.interval
 
 const letters = 'BCDFGHJKLMNPQRSTVWXZ'
 

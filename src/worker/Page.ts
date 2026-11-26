@@ -14,12 +14,13 @@ import * as Og from './Og.ts'
 import * as Operations from './Operations.ts'
 import * as Share from './Share.ts'
 import * as Store from './Store.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const store = new AsyncLocalStorage<Boot>()
 
 globalThis.__swarmsServer = { boot: () => store.getStore() }
 
-const firstChat = 30
+const firstChat = Limits.Page.firstChat
 
 const listed = new Set(['/', '/ideas', '/new', '/about', '/docs', '/faq', '/board', '/oauth/authorize'])
 

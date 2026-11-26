@@ -24,6 +24,7 @@ import * as Chat from './Chat.ts'
 import * as Work from './Work.ts'
 import * as Run from './machines/Run.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const repoCost = 1_100_000n
 
@@ -63,15 +64,15 @@ export function weighed(note: Note) {
   return `[${Words.dollars(Memo.units(note.weight))} behind this, from ${backers}] ${Mention.claimed(note.note)}`
 }
 
-export const leaseMs = 30 * 60_000
+export const leaseMs = Limits.Turns.leaseMs
 
-const sendingMs = 5 * 60_000
+const sendingMs = Limits.Turns.sendingMs
 
 export const retry: Work.Retry = { backoffMs: 15_000, maxAttempts: 8 }
 
 export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: retry.maxAttempts }
 
-export const sponsorWaitMs = 15 * 60_000
+export const sponsorWaitMs = Limits.Turns.sponsorWaitMs
 
 export function wakeIn(attempts: number, sponsor: boolean) {
   const backoff = Work.delay(paying, attempts)
@@ -80,13 +81,13 @@ export function wakeIn(attempts: number, sponsor: boolean) {
 
 export const noteboard = 'notes'
 
-const resetsToRenew = 2
+const resetsToRenew = Limits.Turns.resetsToRenew
 
-const quickMs = 60_000
+const quickMs = Limits.Turns.quickMs
 
-const settleMs = 15_000
+const settleMs = Limits.Turns.settleMs
 
-const calmMs = 10 * 60_000
+const calmMs = Limits.Turns.calmMs
 
 export async function step(self: Swarm) {
   const id = self.kv.get<string>('id')
@@ -177,7 +178,7 @@ export function progress(self: Swarm, run: Turning) {
   return { progressed: Math.max(until === undefined ? 0 : until - leaseMs, run.started), stalled: until !== undefined && until - Date.now() <= leaseMs / 3 }
 }
 
-export const failsToStick = 2
+export const failsToStick = Limits.Turns.failsToStick
 
 export function stuck(self: Swarm) {
   const run = self.run()
@@ -463,7 +464,7 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
   Follow.flush(self)
   let fresh = (await self.found(row.id)) ?? row
   if (!Run.done(run, 'turned')) {
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
+    await new Promise((resolve) => setTimeout(resolve, Limits.Turns.endSettleMs))
     const money = await Money.refresh(self, fresh, { credit: true, hands: Follow.handsDue(self, Date.now()) })
     fresh = money.row
     const found = self.ctx.storage.sql.exec<{ base: string | null; spent_before: string }>('SELECT spent_before, base FROM turns WHERE n = ?', n).toArray()[0]

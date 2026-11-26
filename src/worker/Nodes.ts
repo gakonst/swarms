@@ -10,6 +10,7 @@ import * as Telegram from './Telegram.ts'
 import * as Verify from './Verify.ts'
 import * as Machine from './machines/Tree.ts'
 import * as Work from './Work.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export const root = 'root'
 
@@ -21,9 +22,9 @@ export const defaults: Settings = { ideaMin: '1.000000', quietRuns: 12, runCap: 
 
 export const retry: Work.Retry = { backoffMs: 15_000, maxAttempts: 3 }
 
-export const stuckRuns = 3
+export const stuckRuns = Limits.Nodes.stuckRuns
 
-const lockMs = 60_000
+const lockMs = Limits.Nodes.lockMs
 
 export const schema = [
   'CREATE TABLE IF NOT EXISTS tree_deltas (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, node TEXT NOT NULL, event TEXT NOT NULL, text TEXT NOT NULL)',
@@ -658,14 +659,14 @@ export async function proven(self: Swarm, nid: string, check: Tree.Check, halt: 
   return true
 }
 
-export const heldMs = 10_000
+export const heldMs = Limits.Nodes.heldMs
 
 async function claimNode(self: Swarm, nid: string) {
   const until = Date.now() + heldMs
-  for (;;) {
+  for (let tries = 1; ; tries++) {
     const held = await self.board.claim(nodeId(nid), { leaseMs: lockMs })
-    if (held.ok || held.rejection.kind !== 'Held' || Date.now() >= until) return held
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    if (held.ok || held.rejection.kind !== 'Held' || Date.now() >= until || tries >= Limits.Nodes.claimTries) return held
+    await new Promise((resolve) => setTimeout(resolve, Limits.Nodes.claimPollMs))
   }
 }
 

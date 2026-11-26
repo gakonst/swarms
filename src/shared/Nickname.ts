@@ -1,6 +1,7 @@
-export const least = 3
+import * as Limits from './Limits.ts'
+export const least = Limits.SharedNickname.least
 
-export const most = 40
+export const most = Limits.SharedNickname.most
 
 export const reserved: ReadonlySet<string> = new Set([
   'a',

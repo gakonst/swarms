@@ -5,6 +5,7 @@ import * as Follow from './Follow.ts'
 import * as Gateway from './Gateway.ts'
 import * as Store from './Store.ts'
 import type { Swarm } from './Swarm.ts'
+import * as Limits from '../shared/Limits.ts'
 
 function slug(title: string) {
   return (
@@ -18,15 +19,15 @@ function slug(title: string) {
   )
 }
 
-export const snapshotMs = 60_000
+export const snapshotMs = Limits.Repo.snapshotMs
 
-const snapshotFiles = 2_000
+const snapshotFiles = Limits.Repo.snapshotFiles
 
-const snapshotText = 64_000
+const snapshotText = Limits.Repo.snapshotText
 
 type Repo = { name: string; state: 'none' | 'ready' }
 
-const lookMs = 30 * 60_000
+const lookMs = Limits.Repo.lookMs
 
 export function saw(self: Swarm, sha: string) {
   self.kv.put('seen', sha)
@@ -113,17 +114,17 @@ export type Graph = {
   trunk: string
 }
 
-export const graphMs = 60_000
+export const graphMs = Limits.Repo.graphMs
 
-const graphBranches = 40
+const graphBranches = Limits.Repo.graphBranches
 
-const trunkCommits = 100
+const trunkCommits = Limits.Repo.trunkCommits
 
-const branchCommits = 50
+const branchCommits = Limits.Repo.branchCommits
 
-const trunkText = 2_000
+const trunkText = Limits.Repo.trunkText
 
-const branchText = 600
+const branchText = Limits.Repo.branchText
 
 export function stale(self: Swarm, name: string) {
   const known = self.kv.get<Graph>('graph')

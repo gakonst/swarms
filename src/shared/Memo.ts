@@ -1,4 +1,5 @@
-export const maxNote = 280
+import * as Limits from './Limits.ts'
+export const maxNote = Limits.SharedMemo.maxNote
 
 export function units(amount: string) {
   const text = amount.trim()

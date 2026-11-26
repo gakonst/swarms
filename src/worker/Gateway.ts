@@ -5,6 +5,7 @@ import { redact } from '../shared/Trail.ts'
 import * as Clock from './Clock.ts'
 import * as Edge from './Edge.ts'
 import * as Timing from './Timing.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Result<value> = { ok: true; value: value } | { detail: string; ok: false; status: number }
 
@@ -117,7 +118,7 @@ export function me(env: Cloudflare.Env) {
 
 let operator: string | undefined
 
-const operatorSeconds = 86_400
+const operatorSeconds = Limits.Gateway.operatorSeconds
 
 async function fingerprint(secret: string) {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)))

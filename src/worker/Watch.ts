@@ -1,5 +1,6 @@
 import type { Chatter, Heard, Lobby, Part } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Signal = Chatter | Heard | Lobby | { type: 'closed' }
 
@@ -17,13 +18,13 @@ export type Read = { body: unknown; status: number; text: string }
 
 export type Tap = { close: () => void; ping: () => void }
 
-export const beatMs = 25_000
+export const beatMs = Limits.Watch.beatMs
 
-export const pongMs = 10_000
+export const pongMs = Limits.Watch.pongMs
 
-export const retryMs = 3_000
+export const retryMs = Limits.Watch.retryMs
 
-const pagesMost = 10
+const pagesMost = Limits.Watch.pagesMost
 
 const newest = '999999999999999'
 

@@ -93,6 +93,7 @@ import * as Fleet from '../shared/Fleet.ts'
 import * as Brief from '../shared/ResearchBrief.ts'
 import { clip } from '../shared/Trail.ts'
 import { ids } from '../shared/ResearchBrief.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export const statuses = ['funding', 'running', 'paused'] as const satisfies readonly Status[]
 
@@ -100,7 +101,7 @@ export const kinds = ['tool', 'output', 'message', 'thinking', 'steer', 'funds',
 
 export const sources = ['swarm', 'update', 'note', 'feed'] as const satisfies readonly Hit['kind'][]
 
-export const maxWait = 55
+export const maxWait = Limits.Operations.maxWait
 
 const id = z.string().trim().min(1).max(64).describe('The swarm id, the last part of its page URL /s/<id>.')
 
@@ -503,7 +504,7 @@ async function older<T>(call: () => T | Promise<T>, fallback: () => T | Promise<
 
 const unconditional = new Map<string, number>()
 
-export const unconditionalMs = 5 * 60_000
+export const unconditionalMs = Limits.Operations.unconditionalMs
 
 async function viewed(env: Cloudflare.Env, id: string, shape: Shape): Promise<View> {
   if ((unconditional.get(id) ?? 0) > Date.now()) return (await stub(env, id).view(shape)) as View
@@ -638,11 +639,11 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   return Problem.ok(Store.summary(row))
 }
 
-const firstFeed = 80
+const firstFeed = Limits.Operations.firstFeed
 
-const listSeconds = 3
+const listSeconds = Limits.Operations.listSeconds
 
-const idleSeconds = 3600
+const idleSeconds = Limits.Operations.idleSeconds
 
 export async function stamp(env: Cloudflare.Env, swarm: string): Promise<Stamp | undefined> {
   return Store.seen(swarm) ? stub(env, swarm).version() : undefined
@@ -863,7 +864,7 @@ async function exploring(env: Cloudflare.Env, swarm: string, names: readonly { n
     .flatMap((branch) => names.filter((found) => pattern(found.name).test(branch.role)).map((found) => found.name))
 }
 
-const progressSeconds = 30
+const progressSeconds = Limits.Operations.progressSeconds
 
 export async function room(env: Cloudflare.Env, input: Input<'room'>, address?: Address): Promise<Problem.Result<Room>> {
   const heard = await listened(env, input, address)
@@ -1246,11 +1247,11 @@ async function steerable(env: Cloudflare.Env, input: { address: Address | undefi
   return Problem.ok({ account, address: input.address, row, seat })
 }
 
-const shownSeconds = 5
+const shownSeconds = Limits.Operations.shownSeconds
 
-const shownStale = 600
+const shownStale = Limits.Operations.shownStale
 
-const shownPatience = 1500
+const shownPatience = Limits.Operations.shownPatience
 
 export async function branches(env: Cloudflare.Env, input: Input<'branches'>): Promise<Problem.Result<Branches>> {
   const parsed = parse(schema.branches, input)
@@ -1672,7 +1673,7 @@ export async function unhand(env: Cloudflare.Env, input: Input<'unhand'>, addres
 
 const lending = new Map<string, { at: number; hands: Lent[] }>()
 
-const lendingMs = 10_000
+const lendingMs = Limits.Operations.lendingMs
 
 export async function hands(env: Cloudflare.Env, input: Input<'swarm'>): Promise<Problem.Result<{ hands: Lent[] }>> {
   const parsed = parse(schema.swarm, input)
@@ -1935,7 +1936,7 @@ export async function propose(env: Cloudflare.Env, input: Input<'propose'>, orig
   return Problem.ok({ nid, transfer: prepared.value })
 }
 
-const ideasPerDay = 5
+const ideasPerDay = Limits.Operations.ideasPerDay
 
 export async function suggest(env: Cloudflare.Env, input: Input<'suggest'>, address?: Address): Promise<Problem.Result<Suggested>> {
   const parsed = parse(schema.suggest, input)
@@ -2196,7 +2197,7 @@ export async function ledger(env: Cloudflare.Env, input: Input<'swarm'>): Promis
   return Problem.ok(await stub(env, row.value.id).treeHealth(row.value.id))
 }
 
-const ledgerSeconds = 10
+const ledgerSeconds = Limits.Operations.ledgerSeconds
 
 export async function ledgers(env: Cloudflare.Env): Promise<Ledgered[]> {
   return Edge.cached(env, 'ledgers', ledgerSeconds, async () => {

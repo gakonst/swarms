@@ -7,6 +7,7 @@ import type * as Tree from '../shared/Tree.ts'
 import * as Payment from './machines/Payment.ts'
 import * as Replica from './Replica.ts'
 import * as Search from './Search.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const ways = ['transfer', 'machine'] as const satisfies readonly Way[]
 
@@ -190,7 +191,7 @@ export function know(ids: readonly string[]) {
 
 const absent = new Map<string, number>()
 
-export const absentMs = 30_000
+export const absentMs = Limits.Store.absentMs
 
 function missed(id: string) {
   return (absent.get(id) ?? 0) > Date.now()
@@ -284,7 +285,7 @@ export async function called(env: Cloudflare.Env, name: string) {
 
 const recent = new Map<string, { at: number; swarm: string; value: unknown }>()
 
-const recency = 30_000
+const recency = Limits.Store.recency
 
 async function recalled<T>(key: string, read: () => Promise<T>, swarm: (value: T) => string | undefined) {
   const held = recent.get(key)

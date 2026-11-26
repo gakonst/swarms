@@ -4,6 +4,7 @@ import { redact } from '../shared/Trail.ts'
 import * as Feed from './Feed.ts'
 import * as Gateway from './Gateway.ts'
 import type { Swarm } from './Swarm.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export const schema = [
   'CREATE TABLE IF NOT EXISTS runs (seq INTEGER PRIMARY KEY, machine TEXT NOT NULL, at INTEGER NOT NULL, who TEXT, text TEXT NOT NULL, output INTEGER, failed INTEGER NOT NULL DEFAULT 0, exit INTEGER, ms INTEGER, clipped INTEGER NOT NULL DEFAULT 0, log TEXT)',
@@ -26,27 +27,27 @@ type Tailed = { checked: number; done: boolean; exit: number | null; offset: num
 
 export const page = { most: 500, standard: 100 }
 
-const chunk = 2_000
+const chunk = Limits.Runs.chunk
 
-const pages = 10
+const pages = Limits.Runs.pages
 
-const lines = 1_000
+const lines = Limits.Runs.lines
 
-export const logMs = 30_000
+export const logMs = Limits.Runs.logMs
 
-const jobMs = 15_000
+const jobMs = Limits.Runs.jobMs
 
-const listenMs = 8_000
+const listenMs = Limits.Runs.listenMs
 
-const graceMs = 10 * 60_000
+const graceMs = Limits.Runs.graceMs
 
-const lifeMs = 24 * 60 * 60_000
+const lifeMs = Limits.Runs.lifeMs
 
-export const jobBytes = 4 * 1024 * 1024
+export const jobBytes = Limits.Runs.jobBytes
 
 const memory = new WeakMap<Swarm, Held>()
 
-const tracking = 2
+const tracking = Limits.Runs.tracking
 
 function loaded(self: Swarm): Held {
   const known = memory.get(self)

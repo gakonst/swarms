@@ -1,6 +1,7 @@
 import * as Credit from '../shared/Credit.ts'
 import * as Site from '../shared/Site.ts'
 import type { Check } from '../shared/Tree.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Env = Cloudflare.Env & {
   GITHUB?: { fetch: (request: Request) => Promise<Response> }
@@ -59,7 +60,7 @@ export const workflow = '.github/workflows/verify.yml'
 
 export const allowed = ['Classical.choice', 'Quot.sound', 'propext']
 
-export const tailBytes = 4096
+export const tailBytes = Limits.Verify.tailBytes
 
 const nidPattern = /^([0-9a-f]{10}|root)$/
 

@@ -9,6 +9,7 @@ import * as OAuth from './OAuth.ts'
 import * as Operations from './Operations.ts'
 import * as Problem from './Problem.ts'
 import * as Replica from './Replica.ts'
+import * as Limits from '../shared/Limits.ts'
 
 function instructions(origin: string) {
   return [
@@ -122,7 +123,7 @@ function brief(value: Awaited<ReturnType<typeof Operations.get>>, origin: string
   return Problem.ok({ ...rest, latest, page: `${origin}/${rest.nickname ?? `s/${rest.id}`}`, updates: updates.length })
 }
 
-const watchMost = 300
+const watchMost = Limits.Mcp.watchMost
 
 function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, caller: OAuth.Caller, registry: Registry) {
   const server = new McpServer({ name: 'swarms', version: '1.1.0' }, { capabilities: { resources: { listChanged: false, subscribe: false } }, instructions: instructions(origin) })

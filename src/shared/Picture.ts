@@ -1,3 +1,4 @@
+import * as Limits from './Limits.ts'
 export const colors = ['green', 'teal', 'blue', 'violet', 'pink', 'red', 'orange', 'yellow', 'gray'] as const
 
 export type Color = (typeof colors)[number]
@@ -6,9 +7,9 @@ export type Picture = { color: Color; emoji: string } | { url: string }
 
 export type Type = 'image/gif' | 'image/jpeg' | 'image/png' | 'image/webp'
 
-export const most = 65_536
+export const most = Limits.SharedPicture.most
 
-export const side = 128
+export const side = Limits.SharedPicture.side
 
 const pictograph = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u
 

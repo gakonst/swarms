@@ -7,12 +7,13 @@ import * as Persona from './Persona.ts'
 import type { Dispatcher } from './Runner.ts'
 import * as Store from './Store.ts'
 import type { Swarm } from './Swarm.ts'
+import * as Limits from '../shared/Limits.ts'
 
-export const retryMs = 10 * 60_000
+export const retryMs = Limits.About.retryMs
 
 export const least = Memo.units('0.25')
 
-export const most = 700
+export const most = Limits.About.most
 
 export function read(self: Swarm) {
   return self.kv.get<string>('about') ?? null

@@ -5,10 +5,11 @@ import * as Mention from '../shared/Mention.ts'
 import * as Gateway from './Gateway.ts'
 import * as Problem from './Problem.ts'
 import * as Store from './Store.ts'
+import * as Limits from '../shared/Limits.ts'
 
-export const period = 30 * 86_400_000
+export const period = Limits.Team.period
 
-const freshMs = 30_000
+const freshMs = Limits.Team.freshMs
 
 const held = new Map<string, { at: number; roster: Roster }>()
 

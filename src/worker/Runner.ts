@@ -15,12 +15,13 @@ import type { Swarm } from './Swarm.ts'
 import * as Triage from './Triage.ts'
 import * as Verify from './Verify.ts'
 import * as Work from './Work.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export const timing = { checkMs: 60 * 60_000, doingMs: 2_000, idleMs: 60_000, leaseMs: 30 * 60_000, listMs: 2_000, pollMs: 2_000, spawnMs: 120_000, streamDownMs: 20_000, streamUpMs: 120_000, verifyMs: 60_000 }
 
-export const rotateAfter = 200
+export const rotateAfter = Limits.Runner.rotateAfter
 
-export const verifiers = 4
+export const verifiers = Limits.Runner.verifiers
 
 export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: 8 }
 
@@ -641,7 +642,7 @@ export async function halt(self: Swarm, run: string) {
 
 export type Charged = { agent: string; at: number; spent: string; sub: number }
 
-export const lateMs = 10 * 60_000
+export const lateMs = Limits.Runner.lateMs
 
 function charged(self: Swarm, run: string, spawned: Nodes.Spawned, spent: bigint) {
   self.kv.put('charged:' + run, { agent: spawned.agent, at: Date.now(), spent: Memo.decimal(spent), sub: spawned.sub } satisfies Charged)
@@ -772,7 +773,7 @@ export function follow(self: Swarm, swarm: string, agent: string) {
       } catch {}
       following.up = false
       fails += 1
-      await new Promise((resolve) => setTimeout(resolve, Math.min(60_000, 1000 * 2 ** Math.min(fails, 6))))
+      await new Promise((resolve) => setTimeout(resolve, Math.min(Limits.Runner.followBackoffMostMs, Limits.Runner.followBackoffMs * 2 ** Math.min(fails, Limits.Runner.followBackoffDoublings))))
     }
     if (rt.follow === following) rt.follow = undefined
   })()

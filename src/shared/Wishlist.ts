@@ -1,4 +1,5 @@
 import type { Artifact } from './Api.ts'
+import * as Limits from './Limits.ts'
 
 export const slug = 'wishlist'
 
@@ -6,7 +7,7 @@ export type State = 'open' | 'found' | 'dropped'
 
 export type Wish = { found: string | null; state: State; use: string | null; want: string; why: string | null }
 
-const most = 50
+const most = Limits.SharedWishlist.most
 
 function text(value: unknown, limit: number) {
   return typeof value === 'string' && value.trim() ? value.trim().replace(/\s+/g, ' ').slice(0, limit) : null

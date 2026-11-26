@@ -1,10 +1,11 @@
 import type { Store } from 'accounts'
 import type { Address } from 'viem'
 import * as Replica from './Replica.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export const path = '/v1/auth'
 
-export const days = 30
+export const days = Limits.Sessions.days
 
 type Stored = { expires_at: number | null; value: string }
 
@@ -14,7 +15,7 @@ function live(row: Stored | null): unknown {
 
 const held = new Map<string, { at: number; row: Stored }>()
 
-const heldMs = 30_000
+const heldMs = Limits.Sessions.heldMs
 
 function hold(key: string, row: Stored | null) {
   if (!row) return row

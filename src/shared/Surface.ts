@@ -1,4 +1,5 @@
 import type { Artifact } from './Api.ts'
+import * as Limits from './Limits.ts'
 
 export const slug = 'surface'
 
@@ -30,7 +31,7 @@ export type Node = Base &
 
 export type Kind = Node['kind']
 
-const most = 12
+const most = Limits.SharedSurface.most
 
 function text(value: unknown, limit: number) {
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)

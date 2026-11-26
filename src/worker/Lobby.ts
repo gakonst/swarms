@@ -6,10 +6,11 @@ import { redact } from '../shared/Trail.ts'
 import { postsPerMinute } from './Chat.ts'
 import { minuteMs } from './Clock.ts'
 import * as Problem from './Problem.ts'
+import * as Limits from '../shared/Limits.ts'
 
-const socketsMost = 10_000
+const socketsMost = Limits.Lobby.socketsMost
 
-const quietMs = 30_000
+const quietMs = Limits.Lobby.quietMs
 
 const room = 'CREATE TABLE IF NOT EXISTS hall (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, author TEXT NOT NULL, name TEXT NOT NULL, text TEXT NOT NULL)'
 

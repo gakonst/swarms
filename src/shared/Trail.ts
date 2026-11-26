@@ -1,4 +1,5 @@
 import type { Entry, Kind } from './Api.ts'
+import * as Limits from './Limits.ts'
 
 export type Step = { detail: string | null; kind: Kind; ms?: number; text: string }
 
@@ -6,7 +7,7 @@ export type Buffers = { add(who: string | null, text: string): void; take(who: s
 
 const quiet = new Set(['write_stdin', 'wait', 'wait_agent', 'list_agents', 'spawn_agent'])
 
-export const thought = 1500
+export const thought = Limits.SharedTrail.thought
 
 export function appended(held: string, text: string) {
   return held.trim().length > thought ? held : held + text

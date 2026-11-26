@@ -10,10 +10,11 @@ import encoder from './h264/encoder.wasm'
 import * as Og from './Og.ts'
 import type { Name } from './Og.ts'
 import * as Share from './Share.ts'
+import * as Limits from '../shared/Limits.ts'
 
 type Made = { at: number; body: Uint8Array; lasting: boolean; type: string; version: string }
 
-const fresh = 300_000
+const fresh = Limits.Posters.fresh
 
 let kit: Promise<{ fonts: Cards.Fonts; kit: Film.Kit }> | undefined
 

@@ -1,17 +1,18 @@
 import type { Live } from '../shared/Api.ts'
 import type { Swarm } from './Swarm.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Watcher = { follow: boolean; relaying: boolean; until: number; writer: WritableStreamDefaultWriter<Uint8Array> }
 
 export type Ring = { bytes: number; frames: Uint8Array[] }
 
-const ringBytes = 2_000_000
+const ringBytes = Limits.Relay.ringBytes
 
-export const backlogSize = 500
+export const backlogSize = Limits.Relay.backlogSize
 
-export const followForMs = 15 * 60_000
+export const followForMs = Limits.Relay.followForMs
 
-const beatMs = 25_000
+const beatMs = Limits.Relay.beatMs
 
 const keepalive = new TextEncoder().encode(': keepalive\n\n')
 

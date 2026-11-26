@@ -1,4 +1,5 @@
 import type { Hit, Status } from '../shared/Api.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Turn = {
   base: string | null
@@ -106,7 +107,7 @@ export async function sync(env: Cloudflare.Env, swarm: string, turns: readonly T
   if (missing.length) await env.DB.batch(missing.flatMap((turn) => statements(env, swarm, turn)))
 }
 
-export const recent = 40
+export const recent = Limits.Search.recent
 
 export function lags(turns: readonly { endedAt: number | null; n: number }[], reports: readonly { ended_at: number; round: number }[]) {
   const known = new Map(reports.map((row) => [row.round, row.ended_at]))

@@ -1,5 +1,6 @@
 import { waitUntil } from 'cloudflare:workers'
 import * as Timing from './Timing.ts'
+import * as Limits from '../shared/Limits.ts'
 
 const memory = new Map<string, { at: number; value: unknown }>()
 
@@ -100,9 +101,9 @@ const drawn = new Map<string, Drawn>()
 
 const drawing = new Map<string, Promise<void>>()
 
-const pageFresh = 5_000
+const pageFresh = Limits.Edge.pageFresh
 
-const pageStale = 600_000
+const pageStale = Limits.Edge.pageStale
 
 type Drawn = { at: number; body: ArrayBuffer; headers: [string, string][] }
 

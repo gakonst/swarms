@@ -15,6 +15,7 @@ import type { Swarm } from './Swarm.ts'
 import * as Triage from './Triage.ts'
 import * as Verify from './Verify.ts'
 import * as Work from './Work.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Plant = {
   dispatcher: string
@@ -135,7 +136,7 @@ export async function deltas(self: Swarm, input: { after: number; limit: number;
   return { ok: true, value: { deltas: found, next: Number(rows.at(-1)?.seq ?? input.after) } }
 }
 
-const hourMs = 3_600_000
+const hourMs = Limits.Riding.hourMs
 
 export async function burn(self: Swarm): Promise<Tree.Burn> {
   const events = self.ctx.storage.sql.exec<{ at: number; event: string; text: string }>("SELECT at, event, text FROM tree_deltas WHERE event IN ('proven', 'ended') ORDER BY seq").toArray()

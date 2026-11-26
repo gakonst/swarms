@@ -3,6 +3,7 @@ import * as Answer from '../shared/Answer.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Search from './Search.ts'
 import type { Swarm } from './Swarm.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export const pushedTurns = "WHERE n IN (SELECT n FROM turns WHERE commits != '[]' UNION ALL SELECT n FROM (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL ORDER BY n DESC LIMIT 3))"
 
@@ -10,15 +11,15 @@ export const newerTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'compl
 
 export const lastTurns = "WHERE n IN (SELECT n FROM turns WHERE status = 'completed' AND message IS NOT NULL AND ended_at IS NOT NULL ORDER BY n DESC LIMIT ?)"
 
-export const searched = 5_000
+export const searched = Limits.Feed.searched
 
 export const machined = "(kind = 'machine' OR (kind IN ('output', 'error') AND substr(text, 1, 14) = 'compute_create') OR (kind = 'tool' AND text = 'Called browser_create'))"
 
 export const searchable = "text || ' ' || substr(coalesce(detail, ''), 1, 4000)"
 
-const indexChunk = 1_000
+const indexChunk = Limits.Feed.indexChunk
 
-export const indexMs = 1_000
+export const indexMs = Limits.Feed.indexMs
 
 export function entry(row: Record<string, SqlStorageValue>): Entry {
   return {

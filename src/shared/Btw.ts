@@ -1,20 +1,21 @@
 import * as Memo from './Memo.ts'
+import * as Limits from './Limits.ts'
 
 export type Exchange = { answer: string; question: string }
 
-export const maxQuestion = 4_000
+export const maxQuestion = Limits.SharedBtw.maxQuestion
 
-export const maxAnswer = 20_000
+export const maxAnswer = Limits.SharedBtw.maxAnswer
 
-export const maxThread = 20
+export const maxThread = Limits.SharedBtw.maxThread
 
-export const perHour = 20
+export const perHour = Limits.SharedBtw.perHour
 
-export const perSwarmHour = 120
+export const perSwarmHour = Limits.SharedBtw.perSwarmHour
 
-export const maxThreadBytes = 32_768
+export const maxThreadBytes = Limits.SharedBtw.maxThreadBytes
 
-export const maxMessageBytes = 48_000
+export const maxMessageBytes = Limits.SharedBtw.maxMessageBytes
 
 export function bytes(text: string) {
   return new TextEncoder().encode(text).length

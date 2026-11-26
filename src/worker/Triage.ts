@@ -5,10 +5,11 @@ import * as Nodes from './Nodes.ts'
 import * as Persona from './Persona.ts'
 import type { Swarm } from './Swarm.ts'
 import * as Work from './Work.ts'
+import * as Limits from '../shared/Limits.ts'
 
-export const everyMs = 30 * 60_000
+export const everyMs = Limits.Triage.everyMs
 
-export const listed = 50
+export const listed = Limits.Triage.listed
 
 export type Action =
   | { kind: 'approve'; node: string; weight: number }

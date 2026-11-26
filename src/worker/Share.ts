@@ -6,8 +6,9 @@ import { open, problems } from '../shared/ResearchBrief.ts'
 import * as Status from '../shared/Status.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Cards from './Cards.ts'
+import * as Limits from '../shared/Limits.ts'
 
-export const look = 3
+export const look = Limits.Share.look
 
 export type Subject =
   | { field: Cards.Field; kind: 'home' }

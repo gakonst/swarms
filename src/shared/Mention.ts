@@ -1,6 +1,7 @@
-export const maxText = 1000
+import * as Limits from './Limits.ts'
+export const maxText = Limits.SharedMention.maxText
 
-export const maxName = 24
+export const maxName = Limits.SharedMention.maxName
 
 export const smallestSteer = 10_000n
 

@@ -1,3 +1,4 @@
+import * as Limits from './Limits.ts'
 export const harnesses = ['claude', 'codex'] as const
 
 export type Harness = (typeof harnesses)[number]
@@ -136,17 +137,17 @@ export function board(prices: ReadonlyMap<string, Price>): Omit<Setup, keyof Cos
   return { harness: 'claude', model: fable, subagents: { harnesses: [...harnesses], models }, template: 'board' }
 }
 
-export const context = 50_000
+export const context = Limits.SharedSetup.context
 
-export const fresh = 2_000
+export const fresh = Limits.SharedSetup.fresh
 
-export const written = 1_000
+export const written = Limits.SharedSetup.written
 
-export const longest = 1_024
+export const longest = Limits.SharedSetup.longest
 
 export const least = 50_000n
 
-export const budgetCalls = 20
+export const budgetCalls = Limits.SharedSetup.budgetCalls
 
 export function resolve(choice: Choice): Omit<Setup, keyof Costs> | string {
   if (choice.template !== 'custom') {

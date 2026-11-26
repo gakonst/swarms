@@ -9,6 +9,7 @@ import * as Clock from './Clock.ts'
 import * as Money from './Money.ts'
 import * as Cursor from './machines/Cursor.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export function frame(block: string) {
   const lines = block.split('\n')
@@ -44,15 +45,15 @@ export type Stream = { fails: number; state: 'streaming' } | { retry: number; st
 
 export const streaming: Stream = { fails: 0, state: 'streaming' }
 
-const streamFails = 2
+const streamFails = Limits.Follow.streamFails
 
-const fallbackMs = 5 * 60_000
+const fallbackMs = Limits.Follow.fallbackMs
 
-export const cueMs = 5_000
+export const cueMs = Limits.Follow.cueMs
 
-const spacingMs = 30_000
+const spacingMs = Limits.Follow.spacingMs
 
-const lendingMs = 3_600_000
+const lendingMs = Limits.Follow.lendingMs
 
 export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   const agent = self.agent()
@@ -280,7 +281,7 @@ export function advanced(self: Swarm, type: string | undefined, at: number) {
   if (at > (self.kv.get<number>('advanced') ?? 0)) self.kv.put('advanced', at)
 }
 
-const unpaidMost = 8
+const unpaidMost = Limits.Follow.unpaidMost
 
 export function failure(error: string, at: number): Failure {
   const said = /^(\w+) (?:HTTPS? request was rejected with )?(?:HTTP (\d{3})|stream error (\w+)):?\s*([\s\S]*)$/.exec(error)

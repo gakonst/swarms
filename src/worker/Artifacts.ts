@@ -4,10 +4,11 @@ import * as Site from '../shared/Site.ts'
 import * as Edge from './Edge.ts'
 import * as Gateway from './Gateway.ts'
 import * as Timing from './Timing.ts'
+import * as Limits from '../shared/Limits.ts'
 
-const fresh = 15
+const fresh = Limits.Artifacts.fresh
 
-const wrappedMost = 2_000_000
+const wrappedMost = Limits.Artifacts.wrappedMost
 
 const cdns = ['https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://cdnjs.cloudflare.com', 'https://esm.sh']
 

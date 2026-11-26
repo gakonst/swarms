@@ -3,14 +3,15 @@ import * as Gateway from './Gateway.ts'
 import * as Machine from './machines/Hand.ts'
 import type { Swarm } from './Swarm.ts'
 import type * as Work from './Work.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Row = { contributor: string | null; created_at: number; label: string; name: string; returned_at: number | null; seen_at: number | null; swarm: string }
 
-export const limit = 32
+export const limit = Limits.Hands.limit
 
-export const unseenMs = 86_400_000
+export const unseenMs = Limits.Hands.unseenMs
 
-const freshMs = 3_600_000
+const freshMs = Limits.Hands.freshMs
 
 export function slug(label: string) {
   const cleaned = label
@@ -166,7 +167,7 @@ export async function issue(self: Swarm, swarm: string, label: string, contribut
       await retire(self, swarm, name, 'evicted', false)
     })
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < Limits.Hands.nameTries; attempt++) {
     if ((await slots(board)).filter((found) => holds(found, Date.now())).length >= limit) return { ok: false, reason: 'full' }
     const name = `${slug(label)}-${suffix()}`
     // A name returned before hands moved onto the swarm's board has no task here, only its row.

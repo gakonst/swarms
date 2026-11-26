@@ -1,6 +1,7 @@
 import type { Failure, Status, Waiting, Why } from '../shared/Api.ts'
 import * as Memo from '../shared/Memo.ts'
 import { failing, reasons } from '../shared/Status.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Pause =
   | { why: 'unfunded' }
@@ -46,9 +47,9 @@ export function wakes(pause: Pause, reason: Reason) {
   return reason === 'money' || pause.why === 'rest' || pause.why === 'costly' || pause.why === 'idle'
 }
 
-export const rereadMs = 10 * 60_000
+export const rereadMs = Limits.Phase.rereadMs
 
-export const maxPatienceMs = 60 * 60_000
+export const maxPatienceMs = Limits.Phase.maxPatienceMs
 
 export function unread(run: Paused, now: number) {
   return run.settled === undefined || now - run.settled >= rereadMs || (due(run, now) && run.settled < woken(run))

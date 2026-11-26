@@ -8,6 +8,7 @@ import * as Store from './Store.ts'
 import * as Clock from './Clock.ts'
 import * as Words from './Words.ts'
 import type { Swarm } from './Swarm.ts'
+import * as Limits from '../shared/Limits.ts'
 
 type Money = { known: boolean; left: bigint; listed: Gateway.Listed[] | undefined; row: Store.Row }
 
@@ -15,7 +16,7 @@ type Plan = { credit: boolean; hands: boolean }
 
 export const everything: Plan = { credit: true, hands: true }
 
-const unbackedMs = 10 * 60_000
+const unbackedMs = Limits.Money.unbackedMs
 
 function earned(hand: Gateway.Listed) {
   const charges = hand['charges'] as { usd?: unknown } | null | undefined

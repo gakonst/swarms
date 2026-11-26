@@ -1,22 +1,23 @@
-export const quietMs = 600_000
+import * as Limits from '../shared/Limits.ts'
+export const quietMs = Limits.Clock.quietMs
 
-export const hourMs = 3_600_000
+export const hourMs = Limits.Clock.hourMs
 
-export const restMs = 10 * 60_000
+export const restMs = Limits.Clock.restMs
 
-export const retryMs = 30_000
+export const retryMs = Limits.Clock.retryMs
 
-export const minuteMs = 60_000
+export const minuteMs = Limits.Clock.minuteMs
 
-export const dayMs = 86_400_000
+export const dayMs = Limits.Clock.dayMs
 
-export const refreshMs = 10_000
+export const refreshMs = Limits.Clock.refreshMs
 
-export const followMs = 2_000
+export const followMs = Limits.Clock.followMs
 
-export const gatewayMs = 120_000
+export const gatewayMs = Limits.Clock.gatewayMs
 
-export const shelfMs = 30_000
+export const shelfMs = Limits.Clock.shelfMs
 
 export async function within<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
   let timer: Parameters<typeof clearTimeout>[0]

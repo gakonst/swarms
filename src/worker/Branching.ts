@@ -3,6 +3,7 @@ import * as Gateway from './Gateway.ts'
 import * as Store from './Store.ts'
 import type { Swarm } from './Swarm.ts'
 import * as Work from './Work.ts'
+import * as Limits from '../shared/Limits.ts'
 
 function unspent(branch: Gateway.Subagent) {
   if (branch.budget_usd === undefined) return null
@@ -10,13 +11,13 @@ function unspent(branch: Gateway.Subagent) {
   return left > 0n ? left : 0n
 }
 
-const keptBytes = 1_000_000
+const keptBytes = Limits.Branching.keptBytes
 
-export const keptMs = 10 * 60_000
+export const keptMs = Limits.Branching.keptMs
 
-export const listingMs = 2_000
+export const listingMs = Limits.Branching.listingMs
 
-export const patienceMs = 1_500
+export const patienceMs = Limits.Branching.patienceMs
 
 export async function list(self: Swarm, swarm: string, agent: string): Promise<Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }>> {
   const value = Gateway.subagents(self.env, swarm, agent).then((listed): Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }> => (listed.ok ? { ok: true, value: { agent, list: listed.value } } : listed))
@@ -29,7 +30,7 @@ export async function list(self: Swarm, swarm: string, agent: string): Promise<G
   return result
 }
 
-const budgetLeaseMs = 60_000
+const budgetLeaseMs = Limits.Branching.budgetLeaseMs
 
 // Budgets are set one at a time, each from the funds as they stand once its
 // turn comes, so a later write never lands under an earlier one.
@@ -42,7 +43,7 @@ export function rebudget(self: Swarm, swarm: string, agent: string, branch: numb
   })
 }
 
-const settleLeaseMs = 60_000
+const settleLeaseMs = Limits.Branching.settleLeaseMs
 
 export async function settle(self: Swarm, input: Store.Settlement) {
   const ran = await Work.once(self.board, Store.settling(input), settleLeaseMs, () => Store.settle(self.env, input))

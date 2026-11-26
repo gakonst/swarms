@@ -40,6 +40,7 @@ import * as Riding from './Riding.ts'
 import * as Runner from './Runner.ts'
 import type * as Triage from './Triage.ts'
 import type * as Tree from '../shared/Tree.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export type Contributed = {
   amount: string
@@ -153,13 +154,13 @@ const columns = [
 
 const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)', `CREATE INDEX IF NOT EXISTS feed_machines ON feed (seq) WHERE ${Feed.machined}`, ...Runs.indexes, ...Chat.indexes]
 
-const healMs = 5 * 60_000
+const healMs = Limits.Swarm.healMs
 
-const coverMs = 6 * 60 * 60_000
+const coverMs = Limits.Swarm.coverMs
 
-const rowMs = 10_000
+const rowMs = Limits.Swarm.rowMs
 
-const stillMs = 2_000
+const stillMs = Limits.Swarm.stillMs
 
 export class Swarm extends DurableObject<Cloudflare.Env> {
   declare ctx: DurableObjectState<{}>
@@ -1224,9 +1225,9 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
 type Pending = { at: number; parts: Set<Part>; pulse: Store.Row | undefined; timer: ReturnType<typeof setTimeout> | undefined }
 
-const maxWaitMs = 60_000
+const maxWaitMs = Limits.Swarm.maxWaitMs
 
-const coalesceMs = 2_000
+const coalesceMs = Limits.Swarm.coalesceMs
 
 const viewKeys = new Set(['about', 'failure', 'hands', 'id', 'owner', 'repo', 'run'])
 

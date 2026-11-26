@@ -2,6 +2,7 @@ import type { Address } from 'viem'
 import type { Chatter, Reaction, Replies, Said, Shown, Steer } from '../shared/Api.ts'
 import { redact } from '../shared/Trail.ts'
 import type { Swarm } from './Swarm.ts'
+import * as Limits from '../shared/Limits.ts'
 
 export const schema = ['CREATE TABLE IF NOT EXISTS chat_reactions (message INTEGER NOT NULL, emoji TEXT NOT NULL, author TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (message, emoji, author)) WITHOUT ROWID']
 
@@ -38,19 +39,19 @@ export function attached(socket: WebSocket) {
 
 export type Attached = { address?: Address | null; hello?: number; typing?: number }
 
-export const helloMs = 10_000
+export const helloMs = Limits.Chat.helloMs
 
-export const holderMs = 300_000
+export const holderMs = Limits.Chat.holderMs
 
-export const typingMs = 2_000
+export const typingMs = Limits.Chat.typingMs
 
-export const socketsMost = 500
+export const socketsMost = Limits.Chat.socketsMost
 
-export const streamsMost = 1000
+export const streamsMost = Limits.Chat.streamsMost
 
-export const postsPerMinute = 10
+export const postsPerMinute = Limits.Chat.postsPerMinute
 
-export const repliersShown = 3
+export const repliersShown = Limits.Chat.repliersShown
 
 export const threadedEvents: ReadonlySet<string> = new Set(['funded', 'started', 'progress', 'checking', 'proven', 'ended', 'steered', 'moved'])
 

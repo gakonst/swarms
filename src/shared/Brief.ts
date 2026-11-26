@@ -1,9 +1,10 @@
 import * as Answer from './Answer.ts'
 import * as Prose from './Prose.ts'
+import * as Limits from './Limits.ts'
 
 export type Brief = { at: number | null; lines: string[] }
 
-const most = 3
+const most = Limits.SharedBrief.most
 
 function clean(line: string) {
   return Prose.clip(Prose.line(line), 220)
