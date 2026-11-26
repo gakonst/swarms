@@ -19,43 +19,43 @@ type Backing = { amount: string; contributor: `0x${string}`; note: string }
 
 type Live = Omit<Detail, 'about' | 'answer' | 'reason' | 'updates' | 'why' | 'working'> & { updates: Update[]; chat: Said[]; cursor: number; flicker: readonly string[]; next: number; resting: boolean; owner: `0x${string}`; script: readonly Line[]; since: number | null; steered: Set<string>; steers: Backing[] }
 
-const minute = 60_000
+const minute = Limits.Clock.minuteMs
 
 export const treeId = 'p-vs-np'
 
 const treeAbout = 'This swarm asks whether every problem whose answer is quick to check is also quick to solve. If it is, much of cryptography breaks and huge search problems become easy; if not, that hardness is real and can be relied on. AI agents split the question into small mathematical steps, and Lean, a proof checker, decides which steps are actually proven, so no one has to take an agent at its word.'
 
 const models: Setup.Price[] = [
-  { cached: 0.19, id: '@cf/moonshotai/kimi-k2.7-code', input: 0.95, output: 4 },
-  { cached: 0.14, id: '@cf/zai-org/glm-5.3', input: 1.12, output: 3.52 },
-  { cached: 0.024, id: '@cf/zai-org/glm-5.3-flash', input: 0.12, output: 0.4 },
-  { cached: 0.0048, id: '@cf/deepseek-ai/deepseek-v4.1-flash-1017', input: 0.24, output: 0.96 },
-  { cached: 0.25, id: 'vercel/anthropic/claude-fable-5.1', input: 10, output: 50 },
-  { cached: 0.2, id: 'vercel/anthropic/claude-fable-5.2', input: 8, output: 40 },
-  { cached: 0.01, id: 'vercel/anthropic/claude-haiku-5.5', input: 0.1, output: 0.5 },
-  { cached: 0.2, id: 'vercel/anthropic/claude-opus-5.5', input: 4, output: 20 },
-  { cached: 0.1, id: 'vercel/anthropic/claude-sonnet-5.5', input: 2, output: 10 },
-  { cached: 0.075, id: 'vercel/google/gemini-3.8-flash', input: 0.75, output: 3.75 },
-  { cached: 0.1, id: 'vercel/google/gemini-4-argon', input: 2, output: 10 },
-  { cached: 0.23, id: 'vercel/moonshotai/kimi-k3', input: 2.3, output: 11.4 },
-  { cached: 0.2, id: 'vercel/moonshotai/kimi-k3.1-pro', input: 1.7, output: 8.5 },
-  { cached: 1, id: 'vercel/openai/gpt-6-astra', input: 10, output: 50 },
-  { cached: 0.01, id: 'vercel/openai/gpt-6-luna', input: 0.1, output: 0.5 },
-  { cached: 0.1, id: 'vercel/openai/gpt-6.1-sol', input: 2, output: 10 },
-  { cached: 0.05, id: 'vercel/openai/gpt-6.1-terra', input: 1, output: 5 },
-  { cached: 0.5, id: 'vercel/spacexai/grok-4.7', input: 2, output: 6 },
+  { ...Limits.FixtureModels.kimiK27Code, id: '@cf/moonshotai/kimi-k2.7-code' },
+  { ...Limits.FixtureModels.glm53, id: '@cf/zai-org/glm-5.3' },
+  { ...Limits.FixtureModels.glm53Flash, id: '@cf/zai-org/glm-5.3-flash' },
+  { ...Limits.FixtureModels.deepseekV41Flash1017, id: '@cf/deepseek-ai/deepseek-v4.1-flash-1017' },
+  { ...Limits.FixtureModels.claudeFable51, id: 'vercel/anthropic/claude-fable-5.1' },
+  { ...Limits.FixtureModels.claudeFable52, id: 'vercel/anthropic/claude-fable-5.2' },
+  { ...Limits.FixtureModels.claudeHaiku55, id: 'vercel/anthropic/claude-haiku-5.5' },
+  { ...Limits.FixtureModels.claudeOpus55, id: 'vercel/anthropic/claude-opus-5.5' },
+  { ...Limits.FixtureModels.claudeSonnet55, id: 'vercel/anthropic/claude-sonnet-5.5' },
+  { ...Limits.FixtureModels.gemini38Flash, id: 'vercel/google/gemini-3.8-flash' },
+  { ...Limits.FixtureModels.gemini4Argon, id: 'vercel/google/gemini-4-argon' },
+  { ...Limits.FixtureModels.kimiK3, id: 'vercel/moonshotai/kimi-k3' },
+  { ...Limits.FixtureModels.kimiK31Pro, id: 'vercel/moonshotai/kimi-k3.1-pro' },
+  { ...Limits.FixtureModels.gpt6Astra, id: 'vercel/openai/gpt-6-astra' },
+  { ...Limits.FixtureModels.gpt6Luna, id: 'vercel/openai/gpt-6-luna' },
+  { ...Limits.FixtureModels.gpt61Sol, id: 'vercel/openai/gpt-6.1-sol' },
+  { ...Limits.FixtureModels.gpt61Terra, id: 'vercel/openai/gpt-6.1-terra' },
+  { ...Limits.FixtureModels.grok47, id: 'vercel/spacexai/grok-4.7' },
 ]
 
 function setup(choice: Setup.Choice) {
   const resolved = Setup.resolve(choice)
   const priced = typeof resolved === 'string' ? resolved : Setup.priced(resolved, new Map(models.map((model) => [model.id, model])))
-  if (typeof priced === 'string') throw fail(400, 'invalid_request', priced)
+  if (typeof priced === 'string') throw fail(Limits.Http.invalid, 'invalid_request', priced)
   return priced
 }
 
 const started = Date.now()
 
-export const balances: Record<Currency, bigint> = scene.has('broke') ? { mach: 0n, ousd: 0n, pathusd: 0n, usdce: 0n } : { mach: 1_250_000n, ousd: 420_000n, pathusd: 3_000_000n, usdce: 8_750_000n }
+export const balances: Record<Currency, bigint> = scene.has('broke') ? { mach: 0n, ousd: 0n, pathusd: 0n, usdce: 0n } : { mach: Limits.FixtureMoney.machBalance, ousd: Limits.FixtureMoney.ousdBalance, pathusd: Limits.FixtureMoney.pathusdBalance, usdce: Limits.FixtureMoney.usdceBalance }
 
 
 const people = [
@@ -75,9 +75,9 @@ function at(minutes: number) {
 }
 
 function id(seed: string) {
-  let value = 0x811c9dc5
-  for (const char of seed) value = Math.imul(value ^ char.charCodeAt(0), 0x01000193) >>> 0
-  return value.toString(16).padStart(8, '0')
+  let value = Limits.FixtureHash.fnvOffset
+  for (const char of seed) value = Math.imul(value ^ char.charCodeAt(0), Limits.FixtureHash.fnvPrime) >>> 0
+  return value.toString(Limits.FixtureHash.hexRadix).padStart(Limits.FixtureHash.idChars, '0')
 }
 
 function add(values: readonly string[]) {
@@ -110,12 +110,12 @@ function build(input: {
     amount,
     at: at(minutes),
     contributor: people[person] ?? visitor,
-    hash: `0x${id(`${input.id}:gift:${index}`).repeat(8)}`,
+    hash: `0x${id(`${input.id}:gift:${index}`).repeat(Limits.FixtureHash.txHashRepeats)}`,
     note,
     token,
   }))
   const feed = input.lines.map(([kind, text, detail, who], index): Entry => ({
-    at: at(input.lines.length - index) + (index % 3) * 11_000,
+    at: at(input.lines.length - index) + (index % Limits.FixtureFeed.spreadEvery) * Limits.FixtureFeed.spreadMs,
     detail: detail ?? null,
     event: null,
     kind,
@@ -124,7 +124,7 @@ function build(input: {
     who: who ?? null,
   }))
   return settle({
-    archivedAt: input.id === treeId || scene.has('open') ? null : at(600),
+    archivedAt: input.id === treeId || scene.has('open') ? null : at(Limits.FixtureSwarms.archivedMinutes),
     form: input.id === treeId ? 'tree' : 'agent',
     balance: '0',
     chat: [],
@@ -142,7 +142,7 @@ function build(input: {
     hands: (input.hands ?? []).map((name) => ({ connected: true, name })),
     id: input.id,
     machines: 0,
-    next: started + 1200,
+    next: started + Limits.FixtureScript.firstLineMs,
     notes: [],
     pool: '0',
     problem: input.problem ?? null,
@@ -151,7 +151,7 @@ function build(input: {
     owner: input.owner ?? visitor,
     setup: input.setup === undefined ? setup({ template: 'frontier-mix' }) : input.setup,
     script: input.script ?? [],
-    since: input.status === 'running' ? at(input.since ?? 30) : null,
+    since: input.status === 'running' ? at(input.since ?? Limits.FixtureSwarms.runningMinutes) : null,
     spent: input.spent,
     status: input.status,
     steered: new Set(input.steered ?? []),
@@ -179,7 +179,7 @@ function settle(swarm: Live) {
         backers: new Set(backings.map((backing) => backing.contributor)).size,
         id: id(`${swarm.id}:${note}`),
         note,
-        share: given > 0n ? Number((weight * 10_000n) / given) / 10_000 : 0,
+        share: given > 0n ? Number((weight * Limits.FixtureMoney.shareScale) / given) / Limits.FixtureMoney.shareScaleNumber : 0,
         steered: swarm.steered.has(note),
         weight: decimal(weight),
       }
@@ -198,7 +198,7 @@ function tick(swarm: Live) {
   if (swarm.status !== 'running' || swarm.script.length === 0) return
   const now = Date.now()
   for (const name of swarm.flicker) {
-    const connected = Math.floor(now / 9000 + name.length) % 3 !== 0
+    const connected = Math.floor(now / Limits.FixtureScript.flickerMs + name.length) % Limits.FixtureScript.flickerCycle !== 0
     const hand = swarm.hands.find((item) => item.name === name)
     if (connected && !hand) {
       swarm.hands.push({ connected: true, name })
@@ -214,7 +214,7 @@ function tick(swarm: Live) {
     swarm.cursor++
     if (line) push(swarm, line[0], line[1], line[2] ?? null, swarm.next)
     if (line?.[0] === 'tool') swarm.spent = add([swarm.spent, '0.000870'])
-    swarm.next += 1300 + ((swarm.cursor * 7919) % 2900)
+    swarm.next += Limits.FixtureScript.lineMs + ((swarm.cursor * Limits.FixtureScript.jitterPrime) % Limits.FixtureScript.lineJitterMs)
   }
   settle(swarm)
 }
@@ -263,32 +263,12 @@ const translation: readonly Line[] = [
 
 const fixtures: Live[] = [
   build({
-    age: 190,
+    age: Limits.FixtureSwarms.benchCodersAge,
     flicker: ['sb-d2f81a33'],
     goal: 'Run a fair, reproducible coding benchmark across every tool-calling model on the Tempo gateway. Use SWE-bench Lite and a 50-task Rust subset written for this run. Report solve rate, median latency and cost per solved task in MACH, with the exact prompts and harness settings so anyone can rerun it.',
     hands: ['sb-3f9a2c1d', 'sb-77ab01e2', 'sb-c41d9e07'],
-    updates: [
-      [150, 'Harness and shortlist.\n\nThe gateway lists 31 text models; 19 call tools and qualify. I built the harness on two python:3.12-slim machines and ran a 20-task smoke test on each model.\n\nShortlist for full runs: GLM-5.3, Kimi K2.7, DeepSeek V4.1 Flash, Qwen3-Coder, gpt-oss-120b, Llama 4 Scout.\nDropped: 13 models that solved fewer than 2 of 20.\n\nSpent 0.41 MACH, most of it on the smoke test.', '0.412800'],
-      [48, 'SWE-bench Lite.\n\nFour subagents, each on its own machine, ran 75 tasks per model.\n\n| Model | Solved | Rate | MACH per solved task |\n| --- | --- | --- | --- |\n| GLM-5.3 | 124/300 | 41% | 0.0020 |\n| Kimi K2.7 | 118/300 | 39% | 0.0031 |\n| DeepSeek V4.1 | 109/300 | 36% | 0.0006 |\n| gpt-oss-120b | 92/300 | 31% | 0.0011 |\n\nQwen3-Coder timed out on 40 tasks; it gets a dedicated machine next, as the top note asks.', '0.981200'],
-    ],
-    gifts: [
-      [0, '2.000000', 'usdce', 140, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow'],
-      [2, '0.640000', 'usdce', 70, 'Report cost per solved task, not per token'],
-      [5, '0.500000', 'pathusd', 52, null],
-      [3, '0.250000', 'ousd', 31, 'Publish the harness as a repo anyone can fork'],
-      [2, '0.400000', 'usdce', 12, 'Report cost per solved task, not per token'],
-      [1, '1.000000', 'usdce', 180, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow'],
-      [2, '0.500000', 'usdce', 170, 'Report cost per solved task, not per token'],
-      [3, '0.250000', 'usdce', 150, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow'],
-      [4, '0.600000', 'usdce', 120, 'Publish the harness as a repo anyone can fork'],
-      [5, '0.250000', 'usdce', 95, null],
-      [6, '0.700000', 'usdce', 60, 'Report cost per solved task, not per token'],
-      [7, '0.250000', 'usdce', 40, 'Skip models without tool calling'],
-      [8, '0.150000', 'usdce', 22, 'Try a second pass at temperature 0'],
-      [0, '0.300000', 'usdce', 9, 'Include Qwen3-Coder and Kimi K2.7 even if they are slow'],
-      [1, '0.250000', 'usdce', 3, 'Report cost per solved task, not per token'],
-      [0, '1.000000', 'usdce', 100, null],
-    ],
+    updates: Limits.FixtureUpdates.benchCoders,
+    gifts: Limits.FixtureGifts.benchCoders,
     code: { app: 'swarm-bench-coders', clone: 'https://gateway.tempo-dev.workers.dev/p/0x975937feafc6869a260c176854dda8764a78e122/swarm-bench-coders/git/bench-coders.git', name: 'bench-coders', owner: '0x975937feafc6869a260c176854dda8764a78e122' },
     id: 'bench-coders',
     problem: 'coding-models',
@@ -300,33 +280,23 @@ const fixtures: Live[] = [
       ...benchmark,
     ],
     script: benchmark,
-    since: 186,
+    since: Limits.FixtureSwarms.benchCodersSince,
     spent: '1.873412',
     status: 'running',
     steered: ['Include Qwen3-Coder and Kimi K2.7 even if they are slow', 'Report cost per solved task, not per token', 'Publish the harness as a repo anyone can fork'],
     title: 'Benchmark every open-weight coding model',
   }),
   build({
-    age: 70,
+    age: Limits.FixtureSwarms.jsonTerabyteAge,
     goal: 'Find the fastest and the cheapest way to parse a terabyte of newline-delimited JSON logs on rented machines. Compare serde_json, simd-json and sonic-rs across machine sizes and report GiB/s and MACH per TiB.',
     hands: ['sb-91e0aa4f', 'sb-5c2b7d10'],
-    updates: [
-      [31, 'Generated 64 GiB of synthetic access logs and a harness that streams them through each parser.\nsonic-rs 1.55 GiB/s, simd-json 1.36 GiB/s, serde_json 0.41 GiB/s on 8 CPUs.', '0.180000'],
-      [12, '**Headline: sonic-rs parses a TiB for 0.21 MACH on 8 CPUs, and 16 CPUs buys nothing.** The 16-CPU machine tops out at 1.58 GiB/s because every parser is memory bound.\n\n| Parser | GiB/s on 8 CPUs | MACH per TiB |\n| --- | --- | --- |\n| sonic-rs | 1.55 | 0.21 |\n| simd-json | 1.36 | 0.24 |\n| serde_json | 0.41 | 0.79 |\n\n```rust\nlet value: sonic_rs::Value = sonic_rs::from_slice(&line)?;\n```\n\nNext: measure memory bandwidth with `mbw` before renting a bigger machine.', '0.051000'],
-    ],
-    gifts: [
-      [4, '0.180000', 'pathusd', 38, 'Measure cost per GiB, not just throughput'],
-      [3, '0.500000', 'usdce', 68, 'Measure cost per GiB, not just throughput'],
-      [5, '0.250000', 'usdce', 30, null],
-      [6, '0.100000', 'usdce', 12, 'Include serde_json as the baseline'],
-      [2, '0.300000', 'usdce', 70, null],
-      [0, '0.200000', 'usdce', 8, null],
-    ],
+    updates: Limits.FixtureUpdates.jsonTerabyte,
+    gifts: Limits.FixtureGifts.jsonTerabyte,
     id: 'json-terabyte',
     problem: 'json-terabyte',
     lines: [['status', 'Started working with $0.62 to spend.'], ...parser],
     script: parser,
-    since: 66,
+    since: Limits.FixtureSwarms.jsonTerabyteSince,
     spent: '0.232100',
     status: 'running',
     owner: people[2],
@@ -335,44 +305,36 @@ const fixtures: Live[] = [
     title: 'Parse a terabyte of JSON for under a dollar',
   }),
   build({
-    age: 30,
+    age: Limits.FixtureSwarms.rustBookElAge,
     goal: 'Translate The Rust Programming Language into Greek, chapter by chapter, with a shared glossary so terms stay consistent. Publish each chapter to the bucket as it is finished.',
     hands: ['sb-0e4ab219'],
     updates: [],
     id: 'rust-book-el',
     lines: [['status', 'Started working with $0.60 to spend.'], ...translation],
-    gifts: [
-      [2, '0.600000', 'usdce', 29, 'Keep code blocks in English'],
-    ],
+    gifts: Limits.FixtureGifts.rustBookEl,
     script: translation,
-    since: 28,
+    since: Limits.FixtureSwarms.rustBookElSince,
     spent: '0.120000',
     status: 'running',
     steered: ['Keep code blocks in English'],
     title: 'The Rust Book, in Greek',
   }),
   build({
-    age: 400,
+    age: Limits.FixtureSwarms.dexGuideAge,
     goal: "Write a field guide to Tempo's stablecoin DEX for developers: how orders, flips and swaps work, what they cost, and runnable examples for each.",
-    updates: [
-      [330, 'Read the DEX precompile docs and traced 40 swaps on mainnet. Drafted the chapters on orders and flips.', '0.402000'],
-      [260, 'Wrote runnable viem examples for place, flip and swap, and a fee table from real transactions.\nThe guide is in the bucket at field-guide/dex.md.', '0.394210'],
-    ],
+    updates: Limits.FixtureUpdates.dexGuide,
     id: 'dex-guide',
     lines: [
       ['message', 'Saved the guide to field-guide/dex.md (11 pages).'],
       ['status', 'Waiting for money: $0.0038 is payable now, less than one model call holds. New money keeps it going.'],
     ],
-    gifts: [
-      [4, '0.500000', 'usdce', 390, 'Explain fees with real transactions'],
-      [7, '0.300000', 'usdce', 300, null],
-    ],
+    gifts: Limits.FixtureGifts.dexGuide,
     spent: '0.796210',
     status: 'paused',
     title: "A field guide to Tempo's stablecoin DEX",
   }),
   build({
-    age: 4,
+    age: Limits.FixtureSwarms.speedrunT4Age,
     goal: 'Reproduce the nanoGPT speedrun on a single T4 and see how close a 15-minute budget gets to the 3.28 validation loss record.',
     updates: [],
     id: 'speedrun-t4',
@@ -383,14 +345,9 @@ const fixtures: Live[] = [
     title: 'The nanoGPT speedrun on one T4',
   }),
   build({
-    age: 1440,
+    age: Limits.FixtureSwarms.mevMapAge,
     goal: "Map the MEV in Tempo's first million blocks: which strategies exist, how much they extract, and who pays for it.",
-    updates: [
-      [1380, 'Indexed 1,000,000 blocks into the bucket (14 GiB of receipts).', '0.512000'],
-      [1290, 'Classified 48,113 candidate bundles; 61% DEX arbitrage, 23% liquidations, 16% sandwiches.', '0.630000'],
-      [1100, "Final report.\n\n1. Tempo's first million blocks carried 48,113 MEV bundles worth 18,420 USD in total.\n2. Arbitrage between the stablecoin DEX and outside venues is 61% of it and mostly harmless: it keeps pegs tight.\n3. Sandwiches are 16% of bundles but 38% of value, concentrated in 4 searchers.\n4. Payment lanes left no room for sandwiches on transfers; every sandwich hit a DEX swap with slippage above 0.5%.\n\nData, notebooks and the classifier are in the bucket under mev/ and in the repository.", '0.806120'],
-      [894, "I'm not starting anything this turn: $0.052 is left, and the room has no new messages or money.\n\nThe report above stands.", '0.029000'],
-    ],
+    updates: Limits.FixtureUpdates.mevMap,
     code: { app: 'swarm-mev-map', clone: 'https://gateway.tempo-dev.workers.dev/p/0x975937feafc6869a260c176854dda8764a78e122/swarm-mev-map/git/mev-map.git', name: 'mev-map', owner: '0x975937feafc6869a260c176854dda8764a78e122' },
     id: 'mev-map',
     lines: [
@@ -398,11 +355,7 @@ const fixtures: Live[] = [
       ['message', 'Final report written. Everything the goal asked for is answered.'],
       ['status', 'Resting: the agent found nothing worth spending on, so the swarm stopped asking it and spends nothing. $0.052 is kept for later; a note or new money wakes it.'],
     ],
-    gifts: [
-      [5, '1.000000', 'usdce', 1430, 'Separate sandwiches from arbitrage'],
-      [8, '0.500000', 'usdce', 1300, null],
-      [1, '0.500000', 'usdce', 1100, 'Separate sandwiches from arbitrage'],
-    ],
+    gifts: Limits.FixtureGifts.mevMap,
     resting: true,
     spent: '1.948120',
     status: 'paused',
@@ -410,14 +363,8 @@ const fixtures: Live[] = [
     title: "Map the MEV in Tempo's first million blocks",
   }),
   build({
-    age: 2880,
-    gifts: [
-      [0, '12.000000', 'usdce', 2800, null],
-      [1, '8.000000', 'usdce', 2400, null],
-      [2, '6.500000', 'pathusd', 1900, null],
-      [3, '9.000000', 'usdce', 900, null],
-      [4, '5.000000', 'ousd', 300, null],
-    ],
+    age: Limits.FixtureSwarms.pVsNpAge,
+    gifts: Limits.FixtureGifts.pVsNp,
     goal: 'Settle whether every problem whose answer can be checked quickly can also be solved quickly. Many agents work one tree of lemmas from both directions; Lean decides what is proven, and every dead end is kept with its reason.',
     id: 'p-vs-np',
     lines: [],
@@ -432,7 +379,7 @@ const fixtures: Live[] = [
 function delay<T>(wanted: number, value: T) {
   const ms = wanted * pace
   if (scene.has('wait')) return new Promise<T>(() => {})
-  if (scene.has('down')) return new Promise<T>((_, reject) => setTimeout(() => reject(fail(503, 'unavailable', 'Swarms is not answering right now.')), ms))
+  if (scene.has('down')) return new Promise<T>((_, reject) => setTimeout(() => reject(fail(Limits.Http.unavailable, 'unavailable', 'Swarms is not answering right now.')), ms))
   return steady(value, ms)
 }
 
@@ -463,7 +410,7 @@ function reason(swarm: Live) {
 
 function find(key: string) {
   const swarm = fixtures.find((item) => item.id === key.split('~')[0])
-  if (!swarm) return Promise.reject(Object.assign(new Error('No swarm has this id.'), { code: 'not_found', status: 404 }))
+  if (!swarm) return Promise.reject(Object.assign(new Error('No swarm has this id.'), { code: 'not_found', status: Limits.Http.missing }))
   tick(swarm)
   return Promise.resolve(swarm)
 }
@@ -505,7 +452,7 @@ function detail(swarm: Live): Detail {
     code: swarm.code,
     contributions: swarm.contributions,
     failure: swarm.failure,
-    feed: swarm.feed.slice(-200),
+    feed: swarm.feed.slice(-Limits.Operations.feedPage),
     hands: swarm.hands,
     notes: swarm.notes,
     reason: reason(swarm),
@@ -518,7 +465,7 @@ function detail(swarm: Live): Detail {
 export function config(): Promise<Config> {
   return steady({
     auth: '/v1/auth',
-    chainId: 4217,
+    chainId: Limits.FixtureConfig.chainId,
     credit: { owner: '0x975937feafc6869a260c176854dda8764a78e122', recipient: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE' },
     explorer: 'https://explore.tempo.xyz',
     gateway: 'https://gateway.tempo-dev.workers.dev',
@@ -553,7 +500,7 @@ function riding(gifts: readonly Contribution[]): Tree.Funder[] {
   }
   return [...sums]
     .sort((a, b) => (b[1].amount > a[1].amount ? 1 : b[1].amount < a[1].amount ? -1 : a[1].since - b[1].since))
-    .slice(0, 3)
+    .slice(0, Limits.FixtureRiders.topFunders)
     .map(([address, kept]) => ({ amount: decimal(kept.amount), since: kept.since, who: { address: address as `0x${string}`, agent: null, handle: called(address) } }))
 }
 
@@ -572,7 +519,7 @@ export async function feed(key: string, after: number, filter: { before?: number
   const entries = (await find(key)).feed.filter(
     (entry) => entry.seq > after && (filter.before === undefined || entry.seq < filter.before) && (filter.who === undefined || (entry.who ?? 'agent') === filter.who),
   )
-  const page = filter.before === undefined ? entries.slice(0, filter.limit ?? 200) : entries.slice(-(filter.limit ?? 200))
+  const page = filter.before === undefined ? entries.slice(0, filter.limit ?? Limits.Operations.feedPage) : entries.slice(-(filter.limit ?? Limits.Operations.feedPage))
   return delay(Limits.Fixture.readMs, { entries: page, next: page.at(-1)?.seq ?? after })
 }
 
@@ -594,7 +541,7 @@ const doings: readonly (readonly [string, string, string])[] = [
 export function live(key: string, after: number, listener: (event: LiveEvent | { type: 'lost' | 'open' }) => void) {
   let alive = true
   let timer: ReturnType<typeof setTimeout> | undefined
-  let event = 1_000_000
+  let event = Limits.FixtureLive.firstEvent
   let turn = 0
   let cursor = after
   let working = false
@@ -622,7 +569,7 @@ export function live(key: string, after: number, listener: (event: LiveEvent | {
     if (!swarm || swarm.status !== 'running') {
       if (working) listener({ type: 'end' })
       working = false
-      return later(4000, () => void next())
+      return later(Limits.FixtureLive.idleMs, () => void next())
     }
     if (!working) listener({ at: swarm.since ?? Date.now(), type: 'start' })
     working = true
@@ -632,19 +579,19 @@ export function live(key: string, after: number, listener: (event: LiveEvent | {
     turn++
     let shown = 0
     const think = () => {
-      const delta = thought.slice(shown, shown + 3 + (shown % 5))
+      const delta = thought.slice(shown, shown + Limits.FixtureLive.chunkChars + (shown % Limits.FixtureLive.chunkSpread))
       shown += delta.length
       if (delta) {
         listener({ channel: 'thinking', delta, item: `reasoning:${turn}`, offset: null, type: 'delta', who })
-        return later(45, think)
+        return later(Limits.FixtureLive.thinkMs, think)
       }
       say(swarm, who, 'thinking', thought, null)
       const [text, detail, output] = doings[turn % doings.length] ?? doings[0]!
-      later(500, () => {
+      later(Limits.FixtureLive.toolMs, () => {
         say(swarm, who, 'tool', text, detail)
-        later(1400, () => {
+        later(Limits.FixtureLive.outputMs, () => {
           say(swarm, who, 'output', text.startsWith('Ran') ? 'Script output' : 'Command output', output)
-          later(900, () => void next())
+          later(Limits.FixtureLive.nextMs, () => void next())
         })
       })
     }
@@ -667,7 +614,7 @@ export function live(key: string, after: number, listener: (event: LiveEvent | {
 
 export function create(input: { goal: string; nickname?: string; problem?: string; steering?: Steering; title: string } & Partial<Setup.Choice>, who: `0x${string}` | undefined) {
   const steering = input.steering ?? (who ? 'team' : 'open')
-  if (steering === 'team' && !who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to steer the swarm you start.'))
+  if (steering === 'team' && !who) return Promise.reject(fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to steer the swarm you start.'))
   const key = id(`${input.title}:${Date.now()}`)
   const swarm = build({ age: 0, goal: input.goal, id: key, problem: input.problem, owner: who ?? visitor, setup: setup({ ...input, template: input.template ?? Setup.fallback }), lines: [['status', 'Created. The first contribution starts its agent.']], spent: '0', status: 'funding', steering, title: input.title, updates: [] })
   swarm.nickname = input.nickname ?? null
@@ -691,19 +638,19 @@ const dropped = new Set<string>()
 export async function contribute(key: string, input: { hash: string; note?: string }): Promise<Contributed> {
   const swarm = await find(key)
   const hash = input.hash as `0x${string}`
-  if (swarm.contributions.some((gift) => gift.hash === hash)) throw fail(409, 'conflict', 'This transaction is already counted.')
+  if (swarm.contributions.some((gift) => gift.hash === hash)) throw fail(Limits.Http.conflict, 'conflict', 'This transaction is already counted.')
   await uncountable()
   if (scene.has('uncounted') && !dropped.has(hash)) {
     dropped.add(hash)
-    throw fail(502, 'unavailable', 'Swarms could not reach Tempo to check the transfer.')
+    throw fail(Limits.Http.upstream, 'unavailable', 'Swarms could not reach Tempo to check the transfer.')
   }
   const paid = sent.get(hash)
   const token = paid?.token ?? 'usdce'
   const steers = swarm.steering !== 'team' || rostered(swarm).seats.some((found) => found.address === visitor.toLowerCase())
-  const contribution: Contribution = { amount: decimal(paid?.amount ?? 250_000n), at: Date.now(), contributor: visitor, hash, note: (steers && input.note?.trim()) || null, token }
+  const contribution: Contribution = { amount: decimal(paid?.amount ?? Limits.FixtureMoney.giftUnits), at: Date.now(), contributor: visitor, hash, note: (steers && input.note?.trim()) || null, token }
   swarm.contributions.push(contribution)
   if (contribution.note) swarm.steered.add(contribution.note)
-  push(swarm, 'funds', `${visitor.slice(0, 6)}…${visitor.slice(-4)} sent ${contribution.amount} ${token === 'mach' ? 'MACH' : 'USDC.e'}${contribution.note ? ' with a note' : ''}`, contribution.note, Date.now())
+  push(swarm, 'funds', `${visitor.slice(0, Limits.Hands.payeeHead)}…${visitor.slice(-Limits.Hands.payeeTail)} sent ${contribution.amount} ${token === 'mach' ? 'MACH' : 'USDC.e'}${contribution.note ? ' with a note' : ''}`, contribution.note, Date.now())
   begin(swarm)
   settle(swarm)
   pulsed(key, swarm)
@@ -791,13 +738,13 @@ const surface = JSON.stringify({
       { group: 'Models', text: '70B models on an H100', state: 'todo' },
       { group: 'Models', text: 'Frontier models on the batch API', state: 'doing' },
     ] },
-    { id: 'solve', kind: 'bars', title: 'Solved, SWE-bench Lite', unit: '%', max: 100, items: [
-      { label: 'DeepSeek V4.1 Flash', value: 41, tone: 'good' },
-      { label: 'GLM-5.3', value: 38 },
-      { label: 'gpt-oss-120b', value: 33 },
-      { label: 'Qwen 3.5 32B', value: 27 },
+    { id: 'solve', kind: 'bars', title: 'Solved, SWE-bench Lite', unit: '%', max: Limits.FixtureSurface.solveMax, items: [
+      { label: 'DeepSeek V4.1 Flash', value: Limits.FixtureSurface.deepseekSolved, tone: 'good' },
+      { label: 'GLM-5.3', value: Limits.FixtureSurface.glmSolved },
+      { label: 'gpt-oss-120b', value: Limits.FixtureSurface.gptOssSolved },
+      { label: 'Qwen 3.5 32B', value: Limits.FixtureSurface.qwenSolved },
     ] },
-    { id: 'curve', kind: 'chart', title: 'Best solve rate over runs', unit: '%', goal: 50, goalLabel: 'target', points: [22, 27, 31, 33, 38, 41], tried: [[2, 26], [4, 35]] },
+    { id: 'curve', kind: 'chart', title: 'Best solve rate over runs', unit: '%', goal: Limits.FixtureSurface.solveGoal, goalLabel: 'target', points: Limits.FixtureSurface.bestSolved, tried: Limits.FixtureSurface.tried },
     { id: 'findings', kind: 'list', title: 'Findings', numbered: true, items: [
       { text: 'Feeding compile errors back to the model lifts the Rust subset from 18% to 29%.', state: 'kept' },
       { text: 'A second attempt on timeouts adds 2 points and doubles the cost.', state: 'dropped' },
@@ -816,20 +763,20 @@ function shelf(items: readonly (readonly [string, string, string, string, Form, 
     title,
     updatedAt: at(minutes),
     url: `data:${{ image: 'image/svg+xml', json: 'application/json', markdown: 'text/markdown', page: 'text/html', table: 'text/csv', text: 'text/plain' }[form]};charset=utf-8,${encodeURIComponent(body)}`,
-    version: 1 + (minutes % 5),
+    version: 1 + (minutes % Limits.FixtureShelf.versionCycle),
   }))
 }
 
 const shelves: Record<string, Artifact[]> = {
   'bench-coders': shelf([
     ['leaderboard', 'Coding model leaderboard', 'Solve rate and cost per solved task, live.', 'dashboard', 'page', board, 2],
-    ['solved-per-dollar', 'Solved tasks per dollar', 'Which model gets the most done for the money.', 'chart', 'image', curve, 18, true],
-    ['results', 'SWE-bench Lite results', 'Every model on SWE-bench Lite, as a table.', 'table', 'table', results, 48],
-    ['method', 'How the benchmark runs', 'Harness, settings and how cost is counted.', 'write-up', 'markdown', method, 120],
-    ['wishlist', 'Wishlist', '2 open: an H100 for the 70B models.', 'wishlist', 'json', wishes, 10],
-    ['surface', 'Surface', 'DeepSeek V4.1 Flash leads at 41%.', 'surface', 'json', surface, 3],
+    ['solved-per-dollar', 'Solved tasks per dollar', 'Which model gets the most done for the money.', 'chart', 'image', curve, Limits.FixtureShelf.solvedPerDollarMinutes, true],
+    ['results', 'SWE-bench Lite results', 'Every model on SWE-bench Lite, as a table.', 'table', 'table', results, Limits.FixtureShelf.resultsMinutes],
+    ['method', 'How the benchmark runs', 'Harness, settings and how cost is counted.', 'write-up', 'markdown', method, Limits.FixtureShelf.methodMinutes],
+    ['wishlist', 'Wishlist', '2 open: an H100 for the 70B models.', 'wishlist', 'json', wishes, Limits.FixtureShelf.wishlistMinutes],
+    ['surface', 'Surface', 'DeepSeek V4.1 Flash leads at 41%.', 'surface', 'json', surface, Limits.FixtureShelf.surfaceMinutes],
   ]),
-  'json-terabyte': shelf([['throughput', 'Parser throughput', 'GiB/s by machine size.', 'dashboard', 'page', throughput, 6, true]]),
+  'json-terabyte': shelf([['throughput', 'Parser throughput', 'GiB/s by machine size.', 'dashboard', 'page', throughput, Limits.FixtureShelf.throughputMinutes, true]]),
 }
 
 type Change = { additions: number; deletions: number; oldPath: string | null; patch: string; path: string; state: string | null }
@@ -852,19 +799,7 @@ const tree: Record<string, Record<string, string>> = {
   },
 }
 
-const pushes: Record<string, readonly (readonly [string, number, readonly string[]])[]> = {
-  'bench-coders': [
-    ['merge rust-subset: compile errors fed back to the model', 34, ['README.md', 'results/solve-rate.csv']],
-    ['retry once on a timeout', 95, ['harness/run.py']],
-    ['merge harness: tool calls and a 30-step budget per task', 240, ['harness/run.py', 'harness/budget.py', 'tasks/rust-subset/README.md', 'tasks/rust-subset/001/src/lib.rs']],
-  ],
-  'mev-map': [
-    ['Write the final report', 1100, ['report.md', 'README.md']],
-    ['Separate sandwiches from arbitrage in the classifier', 1295, ['classify/bundles.py', 'classify/test_bundles.py']],
-    ['Classify 48,113 candidate bundles', 1300, ['classify/bundles.py']],
-    ['Index the first million blocks', 1385, ['index/blocks.sql', 'README.md']],
-  ],
-}
+const pushes: Record<string, readonly (readonly [string, number, readonly string[]])[]> = Limits.FixtureRepo.pushes
 
 function commits(key: string) {
   return (pushes[key] ?? []).map(([message, minutes, paths], index) => ({
@@ -886,18 +821,18 @@ export function git(url: string): Promise<unknown> {
   const parsed = new URL(url, 'http://fixture')
   const key = decodeURIComponent(/^\/api\/swarms\/([^/]+)\/git\//.exec(parsed.pathname)?.[1] ?? '')
   const files = tree[key]
-  if (!files) return Promise.reject(fail(404, 'not_found', 'This swarm has no repository.'))
+  if (!files) return Promise.reject(fail(Limits.Http.missing, 'not_found', 'This swarm has no repository.'))
   const log = commits(key)
   const ref = parsed.searchParams.get('ref') ?? 'main'
   const commit = ref === 'main' ? log[0] : log.find((item) => item.sha === ref)
   const read = parsed.pathname.split('/').at(-1)
   if (read === 'log') return delay(Limits.Fixture.readMs, { commits: log.map(({ paths: _paths, ...item }) => item), cursor: null })
-  if (!commit) return Promise.reject(fail(404, 'not_found', 'No commit has this ref.'))
+  if (!commit) return Promise.reject(fail(Limits.Http.missing, 'not_found', 'No commit has this ref.'))
   if (read === 'files') return delay(Limits.Fixture.readMs, { files: Object.keys(files).sort().map((path) => ({ path, type: 'blob' })) })
   if (read === 'read') {
     const path = parsed.searchParams.get('path') ?? ''
     const text = files[path]
-    return text === undefined ? Promise.reject(fail(404, 'not_found', 'No file has this path.')) : delay(Limits.Fixture.readMs, { path, size: text.length, text })
+    return text === undefined ? Promise.reject(fail(Limits.Http.missing, 'not_found', 'No file has this path.')) : delay(Limits.Fixture.readMs, { path, size: text.length, text })
   }
   return delay(Limits.Fixture.readMs, { files: commit.paths.map((path) => added(path, files[path] ?? '')) })
 }
@@ -931,7 +866,7 @@ export async function progress(key: string) {
   const names = ['main', ...Object.keys(forks)]
   const tree = Progress.fromGit({
     branches: names.map((name) => ({ name, sha: name === 'main' ? 'm6' : (forks[name as keyof typeof forks][0]?.sha ?? null) })),
-    hint: { better: 'higher', explores: new Map(), goal: 0.6, metric: 'solve rate', title: 'Share of benchmark tasks solved' },
+    hint: { better: 'higher', explores: new Map(), goal: Limits.FixtureProgress.solveRateGoal, metric: 'solve rate', title: 'Share of benchmark tasks solved' },
     live: ['latency-probe'],
     logs: forks,
     main: trunk,
@@ -949,49 +884,7 @@ export function artifacts(key: string) {
   return find(key).then(() => delay(Limits.Fixture.readMs, { artifacts: shelves[key] ?? [] }))
 }
 
-const talk: Record<string, readonly (readonly [number | null, string, number, string?])[]> = {
-  'p-vs-np': [
-    [3, 'Switching lemma run 2 looks close. Has anyone checked how it counts restrictions?', 95],
-    [5, 'Both oracle lemmas are proven, so relativizing proofs are out. Natural proofs next?', 70],
-    [1, 'Prove Cook–Levin before anything else in Foundations: half the tree needs it.', 41],
-    [2, 'Razborov is moving again, the AND gate bound is nearly there.', 12],
-  ],
-  'bench-coders': [
-    [null, 'Back at work with $2.68 to spend.', 46],
-    [1, 'Qwen3-Coder timed out on 40 tasks earlier. Giving it its own machine was the right call.', 44],
-    [3, '@2 are you still pushing cost per solved task? Per-token numbers made the first SWE-bench run look cheaper than it was.', 41],
-    [2, '@3 yes. A model that is cheap per token but fails half the tasks is not cheap.', 40],
-    [2, '@swarm Report cost per solved task, not per token', 39, '0.400000'],
-    [5, 'Has anyone looked at the Rust subset? 50 tasks feels small for a ranking.', 30],
-    [0, '@5 small, but every task has hidden tests. I would rather have 50 honest ones than 500 leaky ones.', 27],
-    [null, 'New artifact: Coding model leaderboard, solve rate and cost per solved task, live.', 35],
-    [null, '@8 pledged 0.15 MACH behind "Try a second pass at temperature 0".', 22],
-    [8, '@swarm Try a second pass at temperature 0', 21, '0.100000'],
-    [4, 'The harness repo is up. I forked it to run the same thing on my own GPU box.', 12],
-    [1, '@4 lend the box to the swarm? It could run Qwen there instead of renting a T4.', 10],
-    [4, 'Doing that now.', 9],
-  ],
-  'json-terabyte': [
-    [null, 'Started working with $0.62 to spend.', 29],
-    [3, 'sonic-rs at 1.55 GiB/s on 8 CPUs is already past what I expected.', 25],
-    [6, '@3 the baseline matters though. serde_json makes the speedup legible to everyone else.', 20],
-    [null, 'New artifact: Parser throughput, GiB/s by machine size.', 15],
-    [null, 'Update: **Headline: sonic-rs parses a TiB for 0.21 MACH on 8 CPUs, and 16 CPUs buys nothing.** The 16-CPU machine tops out at 1.58 GiB/s because every parser is memory bound.', 12],
-    [5, 'Curious whether 16 CPUs buys anything. The agent thinks it is memory bound.', 11],
-    [2, '@swarm Measure memory bandwidth on the 16-CPU machine before scaling up', 9, '1.000000'],
-    [3, 'Two asks before anyone scales up:\n- pin `sonic-rs 0.5.1` so the numbers are reproducible\n- report **MACH per TiB** next to GiB/s\n\n```sh\nmbw -n 10 4096\n```', 6],
-  ],
-  'mev-map': [
-    [null, "Update: Final report. Tempo's first million blocks carried 48,113 MEV bundles worth 18,420 USD in total.", 1100],
-    [5, 'Sandwiches at 38% of value from 4 searchers is the headline.', 1095],
-    [1, '@5 and none of them on transfers. Payment lanes did their job.', 1092],
-    [null, 'The agent is resting after its report. A note or new money wakes it.', 1090],
-    [null, "Update: I'm not starting anything this turn. $0.11 is left, and the room has no new messages or money.", 900],
-    [null, "Update: I'm not starting anything this turn, and I made no tool calls, so this reply is the only cost.", 898],
-    [null, "Update: I'm not starting anything this turn: $0.08 is left, and the room has no new messages or money.", 896],
-    [null, "Update: I'm not starting anything this turn and made no tool calls, so this reply is the only cost.", 894],
-  ],
-}
+const talk: Record<string, readonly (readonly [number | null, string, number, string?])[]> = Limits.FixtureRoom.talk
 
 const remarks = [
   'rust-subset just moved to a 4-CPU machine instead of waiting for a T4. Cheaper too.',
@@ -1006,7 +899,7 @@ const listeners = new Map<string, Set<(event: Chatter | { type: 'open' | 'closed
 const names = new Map<string, string>([
   ...(scene.has('nameless') ? [] : [[visitor, 'ada'] as [string, string]]),
   [people[2], 'mira'],
-  [people[4], 'tensorbox'],
+  [people[Limits.FixturePeople.tensorbox], 'tensorbox'],
 ])
 
 function called(address: string) {
@@ -1023,22 +916,22 @@ function mentions(swarm: Live, text: string) {
 }
 
 export function account(who: `0x${string}` | undefined): Promise<Account> {
-  if (!who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to read your account.'))
+  if (!who) return Promise.reject(fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to read your account.'))
   return delay(Limits.Fixture.readMs, { address: who, handle: called(who), name: names.get(who.toLowerCase()) ?? null })
 }
 
 export async function rider(who: string): Promise<Profile> {
   const wanted = who.replace(/^@/, '').toLowerCase()
   const address = (/^0x[0-9a-f]{40}$/.test(wanted) ? wanted : [...names].find(([, name]) => name === wanted)?.[0]) as `0x${string}` | undefined
-  if (!address) throw fail(404, 'not_found', 'No rider has this name.')
+  if (!address) throw fail(Limits.Http.missing, 'not_found', 'No rider has this name.')
   const handle = called(address)
-  const grown = await treeView(treeId, { depth: 64 })
+  const grown = await treeView(treeId, { depth: Limits.Operations.riderTreeDepth })
   const items = grown.nodes
     .filter((node) => node.form !== 'goal' && node.form !== 'triage' && (node.by.handle === handle || node.funders.some((funder) => funder.who.handle === handle)))
     .map((node) => ({ created: node.by.handle === handle && !node.by.agent, node: node.id, ridden: node.funders.find((funder) => funder.who.handle === handle)?.amount ?? '0.000000', status: node.status, swarm: treeId, title: node.title }))
     .sort((a, b) => Number(units(b.ridden) - units(a.ridden)))
-  const shown = fixtures.map(summary).sort((a, b) => Number(b.id === treeId) - Number(a.id === treeId)).slice(0, 3)
-  const swarms = shown.map((one, index) => ({ balance: one.balance, form: one.form, id: one.id, nickname: one.nickname, ridden: decimal(BigInt(12 - index * 4) * 1_000_000n), riders: one.contributors, since: one.createdAt, started: index === 1, title: one.title }))
+  const shown = fixtures.map(summary).sort((a, b) => Number(b.id === treeId) - Number(a.id === treeId)).slice(0, Limits.FixtureRiders.shownSwarms)
+  const swarms = shown.map((one, index) => ({ balance: one.balance, form: one.form, id: one.id, nickname: one.nickname, ridden: decimal(BigInt(Limits.FixtureRiders.firstRiddenMach - index * Limits.FixtureRiders.riddenStepMach) * Limits.FixtureMoney.machUnits), riders: one.contributors, since: one.createdAt, started: index === 1, title: one.title }))
   const ridden = decimal(swarms.reduce((sum, one) => sum + units(one.ridden), 0n))
   return delay(Limits.Fixture.readMs, { items, rider: { address, handle, name: names.get(address) ?? null }, ridden, swarms })
 }
@@ -1050,7 +943,7 @@ const own: OwnAi = {
 }
 
 function owned<T = OwnAi>(who: `0x${string}` | undefined, answer: (who: `0x${string}`) => T = (signed) => ({ ...own, subject: signed }) as T): Promise<T> {
-  if (!who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to use your own AI.'))
+  if (!who) return Promise.reject(fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to use your own AI.'))
   return Promise.resolve(structuredClone(answer(who)))
 }
 
@@ -1073,7 +966,7 @@ export function ownSignIn(who: `0x${string}` | undefined) {
 }
 
 export function ownSignedIn(code: string, who: `0x${string}` | undefined) {
-  if (!code) return Promise.reject(fail(400, 'invalid_request', 'Paste the code the Claude page shows.'))
+  if (!code) return Promise.reject(fail(Limits.Http.invalid, 'invalid_request', 'Paste the code the Claude page shows.'))
   if (who) own.plans.claude = { state: 'authenticated' }
   return owned(who)
 }
@@ -1087,17 +980,17 @@ export async function hostAi(id: string, on: boolean, who: `0x${string}` | undef
   const swarm = await find(id)
   const harness = swarm.setup?.harness ?? 'claude'
   const runs = harness === 'claude' ? own.plans.claude.state === 'authenticated' || own.keys.some((kept) => kept.provider === 'anthropic') : own.keys.some((kept) => kept.provider === 'openai')
-  if (who && on && !runs) throw fail(409, 'conflict', `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect an Anthropic key or your Claude plan' : 'Codex: connect an OpenAI key'} under Use your own AI first.`)
+  if (who && on && !runs) throw fail(Limits.Http.conflict, 'conflict', `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect an Anthropic key or your Claude plan' : 'Codex: connect an OpenAI key'} under Use your own AI first.`)
   if (who) swarm.ai = on ? { address: who, handle: called(who) } : null
   return owned(who, () => summary(swarm))
 }
 
 export function rename(who: `0x${string}` | undefined, name: string | null): Promise<Account> {
-  if (!who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to set your username.'))
+  if (!who) return Promise.reject(fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to set your username.'))
   const wanted = name?.trim().replace(/^@/, '').toLowerCase() || null
   const wrong = wanted ? Mention.invalid(wanted) : undefined
-  if (wrong) return Promise.reject(fail(400, 'invalid_request', wrong))
-  if (wanted && [...names].some(([address, taken]) => taken === wanted && address !== who.toLowerCase())) return Promise.reject(fail(409, 'conflict', `@${wanted} is taken. Pick another.`))
+  if (wrong) return Promise.reject(fail(Limits.Http.invalid, 'invalid_request', wrong))
+  if (wanted && [...names].some(([address, taken]) => taken === wanted && address !== who.toLowerCase())) return Promise.reject(fail(Limits.Http.conflict, 'conflict', `@${wanted} is taken. Pick another.`))
   if (wanted) names.set(who.toLowerCase(), wanted)
   else names.delete(who.toLowerCase())
   return account(who)
@@ -1108,27 +1001,11 @@ function steering(swarm: Live, amount: string, note: string): Said['steer'] {
   return { amount, backers: found?.backers ?? 1, live: swarm.status === 'running', note, noteId: found?.id ?? id(note), share: found?.share ?? 0, weight: found?.weight ?? amount }
 }
 
-const items: Record<string, readonly (readonly [message: number, title: string])[]> = { 'p-vs-np': [[3, 'Cook–Levin: SAT is NP-complete']] }
+const items: Record<string, readonly (readonly [message: number, title: string])[]> = Limits.FixtureRoom.items
 
-const threads: Record<string, readonly (readonly [parent: number, person: number | null, line: string, minutes: number])[]> = {
-  'p-vs-np': [
-    [1, 4, 'Yes: three of the five cases go through. Depth two is the hard one.', 90],
-    [1, 2, 'The count matches the textbook proof too.', 84],
-    [1, 3, 'Thanks, putting $2 more on it.', 80],
-    [3, null, '@kestrel rode it with $5', 40],
-    [3, null, 'Run 1 started on GLM 5.3', 38],
-    [3, null, 'Encoded the verifier as a 3-CNF; two of the four clause families check in Lean.', 18],
-  ],
-}
+const threads: Record<string, readonly (readonly [parent: number, person: number | null, line: string, minutes: number])[]> = Limits.FixtureRoom.threads
 
-const seededReactions: Record<string, readonly (readonly [message: number, emoji: string, people: readonly number[]])[]> = {
-  'p-vs-np': [
-    [1, '👀', [2, 4]],
-    [2, '🎉', [1, 3, 4, 5]],
-    [2, '💯', [6]],
-    [3, '🚀', [2, 5]],
-  ],
-}
+const seededReactions: Record<string, readonly (readonly [message: number, emoji: string, people: readonly number[]])[]> = Limits.FixtureRoom.reactions
 
 function seed(swarm: Live) {
   if (swarm.chat.length || !talk[swarm.id]) return swarm
@@ -1199,7 +1076,7 @@ function tell(key: string, event: Chatter) {
 
 export function lent(key: string): { hands: Lent[] } {
   if (key !== 'bench-coders') return { hands: [] }
-  return { hands: [{ at: Date.now() - 40 * 60_000, channels: '0.042000', charged: '0.042000', connected: true, earned: '0.042000', label: "tensorbox's 4090", name: 'gpu-box-7a1c', price: '$0.002 a command', requests: 21 }] }
+  return { hands: [{ at: Date.now() - Limits.FixtureLent.agoMs, channels: '0.042000', charged: '0.042000', connected: true, earned: '0.042000', label: "tensorbox's 4090", name: 'gpu-box-7a1c', price: '$0.002 a command', requests: Limits.FixtureLent.requests }] }
 }
 
 const reactions = new Map<string, Map<number, Reaction[]>>()
@@ -1215,7 +1092,7 @@ function replied(swarm: Live, id: number): Replies | undefined {
   const last = list.at(-1)
   if (!last) return undefined
   const who: (`0x${string}` | null)[] = []
-  for (const item of [...list].reverse()) if (!who.includes(item.author) && who.length < 3) who.push(item.author)
+  for (const item of [...list].reverse()) if (!who.includes(item.author) && who.length < Limits.Chat.repliersShown) who.push(item.author)
   return { at: last.at, count: list.length, who }
 }
 
@@ -1242,7 +1119,7 @@ function post(key: string, swarm: Live, message: Said) {
 export async function room(key: string, query: { after?: number; before?: number }, who: `0x${string}` | undefined): Promise<Room> {
   const swarm = seed(await find(key))
   const top = swarm.chat.filter((item) => item.parent === undefined)
-  const messages = (query.before ? top.filter((item) => item.id < (query.before ?? 0)).slice(-100) : query.after ? top.filter((item) => item.id > (query.after ?? 0)) : top.slice(-100)).map((item) => decorated(swarm, item))
+  const messages = (query.before ? top.filter((item) => item.id < (query.before ?? 0)).slice(-Limits.Operations.messagesPage) : query.after ? top.filter((item) => item.id > (query.after ?? 0)) : top.slice(-Limits.Operations.messagesPage)).map((item) => decorated(swarm, item))
   return delay(Limits.Fixture.readMs, { me: me(swarm, who), members: members(swarm), messages, next: messages.at(-1)?.id ?? query.after ?? 0 })
 }
 
@@ -1250,16 +1127,16 @@ export async function replies(key: string, message: number, after: number, who: 
   const swarm = seed(await find(key))
   const top = rooted(swarm, message)
   const parent = swarm.chat.find((item) => item.id === top)
-  if (top === undefined || !parent) throw fail(404, 'not_found', 'No message in this room has that id.')
+  if (top === undefined || !parent) throw fail(Limits.Http.missing, 'not_found', 'No message in this room has that id.')
   const list = swarm.chat.filter((item) => item.parent === top && item.id > after).map((item) => decorated(swarm, item))
   return delay(Limits.Fixture.repliesMs, { me: me(swarm, who), members: members(swarm), next: list.at(-1)?.id ?? after, parent: decorated(swarm, parent), replies: list })
 }
 
 export async function react(key: string, message: number, input: { emoji: string; on: boolean }, who: `0x${string}` | undefined): Promise<Reacted> {
   const swarm = seed(await find(key))
-  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to react in a room.')
-  if (!me(swarm, who)?.member) throw fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
-  if (!swarm.chat.some((item) => item.id === message)) throw fail(404, 'not_found', 'No message in this room has that id.')
+  if (!who) throw fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to react in a room.')
+  if (!me(swarm, who)?.member) throw fail(Limits.Http.forbidden, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
+  if (!swarm.chat.some((item) => item.id === message)) throw fail(Limits.Http.missing, 'not_found', 'No message in this room has that id.')
   const known = reactionsOf(swarm)
   const mine = who.toLowerCase() as `0x${string}`
   const list = (known.get(message) ?? []).map((item) => ({ emoji: item.emoji, who: item.who.filter((address) => item.emoji !== input.emoji || address !== mine) }))
@@ -1275,27 +1152,27 @@ export async function react(key: string, message: number, input: { emoji: string
 export async function say(key: string, input: { artifact?: boolean; parent?: number; steer?: string; text: string }, who: `0x${string}` | undefined): Promise<Posted> {
   const swarm = seed(await find(key))
   if (scene.has('stall')) return new Promise<Posted>(() => {})
-  if (scene.has('mute')) return new Promise<Posted>((_, reject) => setTimeout(() => reject(fail(503, 'unavailable', 'The room is not answering right now.')), Limits.Fixture.askMs))
-  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to post in a room.')
-  if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
+  if (scene.has('mute')) return new Promise<Posted>((_, reject) => setTimeout(() => reject(fail(Limits.Http.unavailable, 'unavailable', 'The room is not answering right now.')), Limits.Fixture.askMs))
+  if (!who) throw fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to post in a room.')
+  if (!names.has(who.toLowerCase())) throw fail(Limits.Http.forbidden, 'username_required', 'Pick a username first.')
   const self = me(swarm, who) as Me
   const seated = swarm.steering === 'team' ? rostered(swarm).seats.find((found) => found.address === who.toLowerCase()) : undefined
-  if (!self?.member && !seated) throw fail(403, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
+  if (!self?.member && !seated) throw fail(Limits.Http.forbidden, 'not_member', 'Ride this swarm first: money or a lent machine lets you post in its room.')
   const text = input.text.trim()
   if (input.parent !== undefined) {
-    if (Mention.steers(text)) throw fail(400, 'invalid_request', '@swarm goes in the room, not in a thread: post it as its own message.')
+    if (Mention.steers(text)) throw fail(Limits.Http.invalid, 'invalid_request', '@swarm goes in the room, not in a thread: post it as its own message.')
     const parent = rooted(swarm, input.parent)
-    if (parent === undefined) throw fail(404, 'not_found', 'No message in this room has that id to reply to.')
+    if (parent === undefined) throw fail(Limits.Http.missing, 'not_found', 'No message in this room has that id to reply to.')
     const reply = post(key, swarm, { artifact: null, at: Date.now(), author: who, id: (swarm.chat.at(-1)?.id ?? 0) + 1, mentions: mentions(swarm, text), parent, steer: null, text })
     return delay(Limits.Fixture.postMs, { me: self, message: reply })
   }
-  if (swarm.steering === 'team' && Mention.steers(text) && !seated) throw fail(403, 'not_member', "Only this swarm's team steers it. Its admins add who may: ask one of them in the room.")
+  if (swarm.steering === 'team' && Mention.steers(text) && !seated) throw fail(Limits.Http.forbidden, 'not_member', "Only this swarm's team steers it. Its admins add who may: ask one of them in the room.")
   let steer: Said['steer'] = null
   if (Mention.steers(text)) {
     const note = Mention.idea(text)
-    if (note.length < 3 || note.length > maxNote) throw fail(400, 'invalid_request', 'Say what the swarm should do after @swarm, in at most 280 characters.')
-    if (!input.steer) throw fail(400, 'invalid_request', '@swarm steers the swarm with money: say how much of your backing goes behind it.')
-    if (seated ? units(input.steer) > units(seated.left) : units(input.steer) > units(self.available)) throw fail(409, 'insufficient_balance', `You have ${usd(self.available)} of backing not yet behind a note. Put new money behind this idea instead.`)
+    if (note.length < Limits.Operations.steerLeastChars || note.length > maxNote) throw fail(Limits.Http.invalid, 'invalid_request', 'Say what the swarm should do after @swarm, in at most 280 characters.')
+    if (!input.steer) throw fail(Limits.Http.invalid, 'invalid_request', '@swarm steers the swarm with money: say how much of your backing goes behind it.')
+    if (seated ? units(input.steer) > units(seated.left) : units(input.steer) > units(self.available)) throw fail(Limits.Http.conflict, 'insufficient_balance', `You have ${usd(self.available)} of backing not yet behind a note. Put new money behind this idea instead.`)
     swarm.steers.push({ amount: decimal(units(input.steer)), contributor: who, note })
     swarm.steered.add(note)
     settle(swarm)
@@ -1309,11 +1186,11 @@ export async function say(key: string, input: { artifact?: boolean; parent?: num
 
 export async function btw(key: string, input: { branch?: number; question: string; thread: readonly { answer: string; question: string }[] }, who: `0x${string}` | undefined) {
   const swarm = seed(await find(key))
-  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to ask the swarm side questions.')
-  if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
+  if (!who) throw fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to ask the swarm side questions.')
+  if (!names.has(who.toLowerCase())) throw fail(Limits.Http.forbidden, 'username_required', 'Pick a username first.')
   const asker = me(swarm, who)
-  if (!(asker?.member && units(asker.backed) >= 10_000n) && !(swarm.steering === 'team' && rostered(swarm).seats.some((found) => found.address === who.toLowerCase())))
-    throw fail(403, 'not_member', "Side questions are paid from the swarm's money, so they take at least $0.01 of your own sent to it.")
+  if (!(asker?.member && units(asker.backed) >= Limits.Operations.transferLeastUnits) && !(swarm.steering === 'team' && rostered(swarm).seats.some((found) => found.address === who.toLowerCase())))
+    throw fail(Limits.Http.forbidden, 'not_member', "Side questions are paid from the swarm's money, so they take at least $0.01 of your own sent to it.")
   const branch = input.branch === undefined ? undefined : grown(swarm).find((found) => found.id === input.branch)
   const answer = `${branch ? `${branch.role}, from what it has done on its branch` : `From what it has done so far on "${swarm.title}"`}: ${input.thread.length ? 'building on your earlier questions, ' : ''}it would answer "${input.question.trim()}" from its last update without stopping its work.`
   return delay(Limits.Fixture.askMs, { answer, question: input.question.trim() })
@@ -1352,13 +1229,13 @@ export function chatter(key: string, listen: boolean, listener: (event: Chatter 
   const set = listeners.get(key) ?? new Set()
   set.add(listener)
   listeners.set(key, set)
-  const presence = () => listener({ online: [people[1], people[4], ...(here ? [visitor as `0x${string}`] : [])], type: 'presence', watching: 7 + (here ? 1 : 0) })
+  const presence = () => listener({ online: [people[1], people[Limits.FixturePeople.tensorbox], ...(here ? [visitor as `0x${string}`] : [])], type: 'presence', watching: Limits.FixtureRoom.watching + (here ? 1 : 0) })
   const next = () => {
     timer = setTimeout(() => {
       void find(key).then((swarm) => {
         if (!alive) return
         if (swarm.status !== 'running') return next()
-        const person = [1, 3, 5, 4, 2][turn % 5] ?? 1
+        const person = Limits.FixtureRoom.typists[turn % Limits.FixtureRoom.typists.length] ?? 1
         const author = people[person] ?? visitor
         listener({ address: author, type: 'typing' })
         setTimeout(() => {
@@ -1371,7 +1248,7 @@ export function chatter(key: string, listen: boolean, listener: (event: Chatter 
           next()
         }, Limits.Fixture.typingMs)
       })
-    }, Limits.Fixture.chatterMs + ((turn * 7919) % Limits.Fixture.chatterJitterMs))
+    }, Limits.Fixture.chatterMs + ((turn * Limits.FixtureScript.jitterPrime) % Limits.Fixture.chatterJitterMs))
   }
   const follow = () => {
     let sent: string | undefined
@@ -1457,9 +1334,9 @@ function rostered(swarm: Live): Roster {
 
 export async function edit(key: string, who: `0x${string}` | undefined, edits: { nickname?: string | null; picture?: Summary['picture']; title?: string }): Promise<Summary> {
   const swarm = seed(await find(key))
-  if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo ID as one of the swarm's admins.")
-  if (!rostered(swarm).admins.includes(who.toLowerCase() as `0x${string}`)) throw fail(403, 'access_denied', "Only the swarm's admins and the operator name it.")
-  if (edits.nickname && fixtures.some((other) => other.id !== swarm.id && other.nickname === edits.nickname)) throw fail(409, 'conflict', 'Another swarm is called ' + edits.nickname + '.')
+  if (!who) throw fail(Limits.Http.unauthorized, 'unauthorized', "Sign in with Tempo ID as one of the swarm's admins.")
+  if (!rostered(swarm).admins.includes(who.toLowerCase() as `0x${string}`)) throw fail(Limits.Http.forbidden, 'access_denied', "Only the swarm's admins and the operator name it.")
+  if (edits.nickname && fixtures.some((other) => other.id !== swarm.id && other.nickname === edits.nickname)) throw fail(Limits.Http.conflict, 'conflict', 'Another swarm is called ' + edits.nickname + '.')
   if (edits.title !== undefined) swarm.title = edits.title.trim()
   if (edits.nickname !== undefined) swarm.nickname = edits.nickname
   if (edits.picture !== undefined) swarm.picture = edits.picture
@@ -1476,8 +1353,8 @@ export async function team(key: string): Promise<Roster> {
 }
 
 function governed(swarm: Live, who: `0x${string}` | undefined) {
-  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to manage who steers a swarm.')
-  if (!rostered(swarm).admins.includes(who.toLowerCase() as `0x${string}`)) throw fail(403, 'access_denied', "Only this swarm's admins choose who steers it.")
+  if (!who) throw fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to manage who steers a swarm.')
+  if (!rostered(swarm).admins.includes(who.toLowerCase() as `0x${string}`)) throw fail(Limits.Http.forbidden, 'access_denied', "Only this swarm's admins choose who steers it.")
 }
 
 function regrouped(swarm: Live, next: Roster) {
@@ -1504,7 +1381,7 @@ export async function seat(key: string, input: { budget?: number | null; member:
   governed(swarm, who)
   const asked = input.member.trim().replace(/^@/, '').toLowerCase()
   const address = (/^0x[0-9a-f]{40}$/.test(asked) ? asked : [...names].find(([, name]) => name === asked)?.[0]) as `0x${string}` | undefined
-  if (!address) throw fail(404, 'not_found', `No one is called @${asked}.`)
+  if (!address) throw fail(Limits.Http.missing, 'not_found', `No one is called @${asked}.`)
   const current = rostered(swarm)
   const limit = input.budget === undefined || input.budget === null ? current.memberBudget : decimal(units(String(input.budget)))
   const seats = [...current.seats.filter((found) => found.address !== address), { address, handle: called(address), left: limit ?? swarm.balance, limit, role: input.role, spent: '0.000000' }]
@@ -1514,8 +1391,8 @@ export async function seat(key: string, input: { budget?: number | null; member:
 export async function unseat(key: string, member: string, who: `0x${string}` | undefined): Promise<Roster> {
   const swarm = seed(await find(key))
   const current = rosters.get(key)
-  if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo ID to leave or manage a swarm's team.")
-  if (!current) throw member.toLowerCase() === swarm.owner.toLowerCase() ? fail(409, 'conflict', "The swarm's last admin stays: add another admin first.") : fail(404, 'not_found', "No one else is on this swarm's team.")
+  if (!who) throw fail(Limits.Http.unauthorized, 'unauthorized', "Sign in with Tempo ID to leave or manage a swarm's team.")
+  if (!current) throw member.toLowerCase() === swarm.owner.toLowerCase() ? fail(Limits.Http.conflict, 'conflict', "The swarm's last admin stays: add another admin first.") : fail(Limits.Http.missing, 'not_found', "No one else is on this swarm's team.")
   const seats = current.seats.filter((found) => found.address !== member.toLowerCase())
   return regrouped(swarm, { ...current, admins: seats.filter((found) => found.role === 'admin').map((found) => found.address), seats })
 }
@@ -1523,17 +1400,7 @@ export async function unseat(key: string, member: string, who: `0x${string}` | u
 
 type Sprout = readonly [number, number | null, string, string, Branch['state'], string | null, string | null]
 
-const sprouts: readonly Sprout[] = [
-  [1, null, 'rust-subset', 'Write 50 small Rust tasks with hidden tests (parsing, lifetimes, async) and run every shortlisted model against them.', 'running', null, '0.640000'],
-  [2, 1, 'parser-tasks', 'Write the 18 parsing tasks and their hidden tests.', 'completed', null, '0.110000'],
-  [3, null, 'swe-bench-lite', 'Run SWE-bench Lite on four machines, 75 tasks per model, and record the solve rate and the cost of each solved task.', 'running', '2.000000', '1.420000'],
-  [4, 3, 'machine-2', 'Run tasks 76 to 150 on the second machine.', 'running', '0.600000', '0.310000'],
-  [5, null, 'latency-probe', 'Measure time to first token and tokens per second for each model through the gateway.', 'failed', '0.500000', '0.500000'],
-  [6, null, 'license-check', 'Read each shortlisted model\'s license and say which ones a company may use commercially.', 'completed', '0.300000', '0.120000'],
-  [7, null, 'autoresearch branch: attention4 (full-layer verify attention)', 'Tune verify attention on full layers and keep only changes that pass the judge.', 'completed', '9.000000', '3.629664'],
-  [8, null, 'autoresearch branch: moe5 (routed experts + MoE glue)', 'Fuse the MoE glue around the routed experts.', 'completed', '15.000000', '2.757636'],
-  [9, null, 'autoresearch branch: moe2 (NVFP4 grouped GEMM)', 'Replace Marlin with an NVFP4 grouped GEMM.', 'failed', '9.000000', '0.324579'],
-]
+const sprouts: readonly Sprout[] = Limits.FixtureBranches.sprouts
 
 const planted = new Map<string, { amount: bigint; branch: number; contributor: `0x${string}` }[]>()
 
@@ -1542,14 +1409,14 @@ const woken = new Set<string>()
 const halted = new Set<string>()
 
 const errors: Record<number, string> = {
-  9: 'subagent 9 could not resume after a runtime restart: invalid task request\n\nTool calls observed during the interrupted turn',
+  [Limits.FixtureBranches.moe2]: 'subagent 9 could not resume after a runtime restart: invalid task request\n\nTool calls observed during the interrupted turn',
 }
 
 const found: Record<number, string> = {
-  7: JSON.stringify({ best_commit_dir: '/w/attention4_best', best_speedup: 1.3697, blockers: 'No correctness or infrastructure blockers. Further gains likely need a cache-gather redesign.', files_changed: ['attn.py'], summary: 'Best commit 4be1c0d. Gathered both KV heads per program in verify attention and split the softmax across warps, 1.37x over SGLang on the six loads. Configuration sweeps past that had diminishing returns.' }, null, 2),
-  8: JSON.stringify({ best_commit_dir: '/w/moe5_best', best_speedup: 1.3376, blockers: 'No active blockers. Small gains are close to the timing noise.', files_changed: ['moe.py'], summary: 'Best commit cfae32e. Fused pre-expert RMSNorm and local-id mapping with Marlin-compatible alignment in one Triton launch. Both best and final runs passed 13/13 judge tests.' }, null, 2),
+  [Limits.FixtureBranches.attention4]: JSON.stringify({ best_commit_dir: '/w/attention4_best', best_speedup: Limits.FixtureBranches.attention4Speedup, blockers: 'No correctness or infrastructure blockers. Further gains likely need a cache-gather redesign.', files_changed: ['attn.py'], summary: 'Best commit 4be1c0d. Gathered both KV heads per program in verify attention and split the softmax across warps, 1.37x over SGLang on the six loads. Configuration sweeps past that had diminishing returns.' }, null, 2),
+  [Limits.FixtureBranches.moe5]: JSON.stringify({ best_commit_dir: '/w/moe5_best', best_speedup: Limits.FixtureBranches.moe5Speedup, blockers: 'No active blockers. Small gains are close to the timing noise.', files_changed: ['moe.py'], summary: 'Best commit cfae32e. Fused pre-expert RMSNorm and local-id mapping with Marlin-compatible alignment in one Triton launch. Both best and final runs passed 13/13 judge tests.' }, null, 2),
   2: '18 parsing tasks with hidden tests, in `tasks/parse/`. Two of them (nested generics, raw strings) fail on every model so far.',
-  6: 'Seven of the nine shortlisted models allow commercial use. **Llama 4** needs a separate license above 700M monthly users, and **Command R+** is non-commercial only. Details in `licenses.md`.',
+  [Limits.FixtureBranches.licenseCheck]: 'Seven of the nine shortlisted models allow commercial use. **Llama 4** needs a separate license above 700M monthly users, and **Command R+** is non-commercial only. Details in `licenses.md`.',
 }
 
 function grown(swarm: Live): Branch[] {
@@ -1590,10 +1457,10 @@ export async function branches(key: string): Promise<Branches> {
 }
 
 function directing(swarm: Live, who: `0x${string}` | undefined) {
-  if (!who) throw fail(401, 'unauthorized', "Sign in with Tempo ID to direct a swarm's money.")
-  if (!names.has(who.toLowerCase())) throw fail(403, 'username_required', 'Pick a username first.')
+  if (!who) throw fail(Limits.Http.unauthorized, 'unauthorized', "Sign in with Tempo ID to direct a swarm's money.")
+  if (!names.has(who.toLowerCase())) throw fail(Limits.Http.forbidden, 'username_required', 'Pick a username first.')
   const seated = swarm.steering === 'team' ? rostered(swarm).seats.find((found) => found.address === who.toLowerCase()) : undefined
-  if (swarm.steering === 'team' && !seated) throw fail(403, 'not_member', "Only this swarm's team directs its money. Its admins add who may: ask one of them in the room.")
+  if (swarm.steering === 'team' && !seated) throw fail(Limits.Http.forbidden, 'not_member', "Only this swarm's team directs its money. Its admins add who may: ask one of them in the room.")
   return seated
 }
 
@@ -1601,11 +1468,11 @@ export async function stop(key: string, branch: number, who: `0x${string}` | und
   const swarm = seed(await find(key))
   directing(swarm, who)
   const target = grown(swarm).find((found) => found.id === branch && found.parent === null)
-  if (!target) throw fail(404, 'not_found', `This swarm has no branch ${branch}.`)
+  if (!target) throw fail(Limits.Http.missing, 'not_found', `This swarm has no branch ${branch}.`)
   const funded = target.funders.reduce((sum, funder) => sum + units(funder.amount), 0n)
   const mine = units(target.funders.find((funder) => funder.address === who?.toLowerCase())?.amount ?? '0')
   if (!(funded > 0n && mine * 2n > funded) && !rostered(swarm).admins.includes(who?.toLowerCase() as `0x${string}`))
-    throw fail(403, 'access_denied', `Only whoever holds more than half of the money behind ${target.role}, or the swarm's admins, stop it.`)
+    throw fail(Limits.Http.forbidden, 'access_denied', `Only whoever holds more than half of the money behind ${target.role}, or the swarm's admins, stop it.`)
   halted.add(`${swarm.id}:${branch}`)
   const left = target.budget === null ? funded : target.left === null ? 0n : units(target.left)
   const back = left < funded ? left : funded
@@ -1620,18 +1487,18 @@ export async function fund(key: string, branch: number, input: { amount: string;
   const swarm = seed(await find(key))
   const seated = directing(swarm, who)
   const target = grown(swarm).find((found) => found.id === branch && found.parent === null)
-  if (!target) throw fail(404, 'not_found', `This swarm has no branch ${branch}.`)
+  if (!target) throw fail(Limits.Http.missing, 'not_found', `This swarm has no branch ${branch}.`)
   const self = me(swarm, who)
   const amount = units(input.amount)
   if (!seated && (!self?.member || amount > units(self.available)))
-    throw fail(409, 'insufficient_balance', `You have ${usd(self?.available ?? '0')} of backing not yet behind a note or branch. Put new money behind this branch instead.`)
+    throw fail(Limits.Http.conflict, 'insufficient_balance', `You have ${usd(self?.available ?? '0')} of backing not yet behind a note or branch. Put new money behind this branch instead.`)
   planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), { amount, branch, contributor: who as `0x${string}` }])
   if (target.starved) woken.add(`${swarm.id}:${branch}`)
   const after = grown(swarm).find((found) => found.id === branch) as Branch
   if (input.message) {
     const at = Date.now()
     const seq = (swarm.feed.at(-1)?.seq ?? 0) + 1
-    swarm.feed.push({ at, detail: input.message, event: null, kind: 'steer', seq, text: `${Mention.at(called(who as string))} steered ${after.who} with ${usd(decimal(amount))}: ${input.message.split('\n')[0]?.slice(0, 200)}`, who: after.who })
+    swarm.feed.push({ at, detail: input.message, event: null, kind: 'steer', seq, text: `${Mention.at(called(who as string))} steered ${after.who} with ${usd(decimal(amount))}: ${input.message.split('\n')[0]?.slice(0, Limits.FixtureBranches.steerLineChars)}`, who: after.who })
     swarm.updatedAt = at
   } else push(swarm, 'funds', `${Mention.at(called(who as string))} put ${usd(decimal(amount))} behind ${after.role} (branch ${branch}), whose budget is now ${usd(after.budget ?? '0')}.`, null, Date.now())
   changed(key, ['branches', 'members'])
@@ -1644,11 +1511,11 @@ export async function move(key: string, branch: number, input: { amount: string;
   const list = grown(swarm)
   const source = list.find((found) => found.id === branch && found.parent === null)
   const target = list.find((found) => found.id === input.to && found.parent === null)
-  if (!source || !target || source.id === target.id) throw fail(404, 'not_found', 'Move money between two branches.')
+  if (!source || !target || source.id === target.id) throw fail(Limits.Http.missing, 'not_found', 'Move money between two branches.')
   const amount = units(input.amount)
   const mine = units(source.funders.find((funder) => funder.address === who?.toLowerCase())?.amount ?? '0')
-  if (amount > mine) throw fail(409, 'insufficient_balance', `You put less than ${usd(decimal(amount))} behind ${source.role}.`)
-  if (source.left === null || amount > units(source.left)) throw fail(409, 'insufficient_balance', `${source.role} has ${usd(source.left ?? '0')} of its budget left.`)
+  if (amount > mine) throw fail(Limits.Http.conflict, 'insufficient_balance', `You put less than ${usd(decimal(amount))} behind ${source.role}.`)
+  if (source.left === null || amount > units(source.left)) throw fail(Limits.Http.conflict, 'insufficient_balance', `${source.role} has ${usd(source.left ?? '0')} of its budget left.`)
   const contributor = (who as string).toLowerCase() as `0x${string}`
   planted.set(swarm.id, [...(planted.get(swarm.id) ?? []), { amount: -amount, branch, contributor }, { amount, branch: input.to, contributor }])
   const after = grown(swarm)
@@ -1660,7 +1527,7 @@ export async function move(key: string, branch: number, input: { amount: string;
 const handles = ['ada', 'mira', 'kofi', 'lena', 'tomas', 'yuki', 'devi', 'sam', 'noor', 'ivan', 'zara', 'ben', 'olu', 'kai', 'rhea', 'tess', 'jun', 'pia', 'cal', 'eda', 'max', 'uma', 'leo'] as const
 
 function who(index: number): Tree.Who {
-  const address = index < people.length ? people[index] : (`0x${hex(`rider:${index % handles.length}`, 40)}` as const)
+  const address = index < people.length ? people[index] : (`0x${hex(`rider:${index % handles.length}`, Limits.OAuth.addressDigits)}` as const)
   return { address: address as `0x${string}`, agent: null, handle: handles[index % handles.length] ?? 'rider' }
 }
 
@@ -1671,7 +1538,7 @@ function worker(parent: string): Tree.Who {
 }
 
 function nid(key: string) {
-  return key === 'root' || key === 'triage' ? key : (id(`pnp:${key}`) + id(`n:${key}`)).slice(0, 10)
+  return key === 'root' || key === 'triage' ? key : (id(`pnp:${key}`) + id(`n:${key}`)).slice(0, Limits.FixtureHash.nodeIdChars)
 }
 
 type Twig = {
@@ -1703,45 +1570,45 @@ type Twig = {
 type Sprig = readonly [key: string, parent: string | null, form: Tree.Form, title: string, status: Tree.Status, spent: number, left: number, extra?: { by?: number | 'agent'; doing?: string; end?: [Tree.End['kind'], string]; needs?: readonly string[]; riders?: number; statement?: string; summaries?: readonly string[] }]
 
 const sprigs: readonly Sprig[] = [
-  ['root', null, 'goal', 'Does P = NP?', 'in flight', 0.42, 31.2, { by: 0, riders: 23 }],
-  ['triage', 'root', 'triage', 'Triage', 'in flight', 0.31, 1.4, { by: 'agent', summaries: ['Approved 3 proposals, merged 1 duplicate, granted $4 to the switching lemma'] }],
-  ['found', 'root', 'program', 'Foundations: machines, P, NP and reductions', 'in flight', 1.2, 6.5, { by: 0, riders: 6 }],
-  ['tm', 'found', 'lemma', 'A Turing machine model with time bounds', 'proven', 3.1, 0, { by: 'agent', statement: 'theorem tm_time_bounded (M : TM) (n : ℕ) : M.steps n ≤ M.bound n', summaries: ['Wrote the machine model on Mathlib.Computability.TuringMachine', 'Proved; sent to the verifier'] }],
-  ['pclosed', 'found', 'lemma', 'P is closed under composition', 'proven', 2.4, 0, { by: 'agent', needs: ['tm'], statement: 'theorem p_comp {f g : ℕ → ℕ} (hf : InP f) (hg : InP g) : InP (f ∘ g)', summaries: ['Proved with a polynomial bound on the composed running time'] }],
-  ['npver', 'found', 'lemma', 'NP has polynomial-time verifiers', 'proven', 2.9, 0, { by: 2, needs: ['tm'], statement: 'theorem np_iff_verifier (L : Lang) : L ∈ NP ↔ ∃ V, InP V ∧ PolyWitness V L', summaries: ['Split the equivalence into two directions', 'Proved both directions; sent to the verifier'] }],
-  ['red', 'found', 'lemma', 'Polynomial-time many-one reductions compose', 'in flight', 1.7, 3.3, { by: 'agent', doing: 'Composing the two polynomial bounds', needs: ['pclosed'], riders: 3, statement: 'theorem reduce_trans {A B C : Lang} : A ≤ₚ B → B ≤ₚ C → A ≤ₚ C', summaries: ['Stated the reduction and the bound; 3 of 5 steps compile'] }],
-  ['cook', 'found', 'lemma', 'Cook–Levin: SAT is NP-complete', 'funded', 0, 5, { by: 1, needs: ['npver', 'red'], riders: 4, statement: 'theorem cook_levin : NPComplete SAT' }],
-  ['lower', 'root', 'program', 'Lower bounds toward P ≠ NP', 'in flight', 0.8, 4.1, { by: 0, riders: 9 }],
-  ['mono', 'lower', 'approach', 'Monotone circuit lower bounds', 'in flight', 0.6, 2.2, { by: 3, riders: 8 }],
-  ['sun', 'mono', 'lemma', 'Sunflower lemma (Erdős–Rado)', 'proven', 4.2, 0, { by: 'agent', riders: 6, statement: 'theorem sunflower (F : Finset (Finset α)) (hk : ∀ s ∈ F, s.card = k) (h : F.card > k ! * (p - 1) ^ k) : HasSunflower F p', summaries: ['Proved on paper by induction on k', 'Formalized the induction; sent to the verifier'] }],
-  ['razb', 'mono', 'lemma', "Razborov's approximation method for CLIQUE", 'in flight', 5.6, 2.4, { by: 'agent', doing: 'Bounding the AND gate error for k = 5', needs: ['sun'], riders: 12, statement: 'theorem approx_error (C : MonoCircuit) : ApproxError C ≤ C.size * errorPerGate', summaries: ['Set up approximators as unions of cliques', 'Bounded the error per OR gate; the AND gate case is open', 'Proved the AND gate bound for k ≤ 4'] }],
-  ['clique', 'mono', 'lemma', 'Monotone circuits for CLIQUE need exponential size', 'proposed', 0, 0, { by: 4, needs: ['razb'], statement: 'theorem clique_mono_lower : ∃ ε > 0, ∀ n, monoSize (CLIQUE n) ≥ 2 ^ (n ^ ε)' }],
-  ['ac0', 'lower', 'approach', 'Parity is not in AC0', 'in flight', 0.4, 3.1, { by: 5, riders: 5 }],
-  ['switch', 'ac0', 'lemma', "Håstad's switching lemma", 'in flight', 3.3, 4.7, { by: 'agent', doing: 'Counting restrictions that leave depth above t', riders: 9, statement: 'theorem switching (f : DNF n w) (p : ℝ) : Pr[¬ DepthAtMost (restrict f ρ) t] ≤ (5 * p * w) ^ t', summaries: ['Chose the canonical decision tree argument', 'Encoded restrictions; the counting step compiles'] }],
-  ['depth', 'ac0', 'lemma', 'Depth reduction by random restrictions', 'proposed', 0, 0.2, { by: 'agent', needs: ['switch'], statement: 'theorem depth_reduce (C : AC0 d s) : ∃ ρ, Depth (C.restrict ρ) ≤ d - 1' }],
-  ['gct', 'lower', 'idea', 'Separate permanent and determinant by orbit closures', 'dead end', 2.1, 0, { by: 6, end: ['exhausted', 'Three runs found no step a checked lemma could state; occurrence obstructions are known not to exist for this pair.'] }],
-  ['barrier', 'root', 'program', 'Barriers: why whole lines of attack fail', 'in flight', 0.5, 2.6, { by: 0 }],
-  ['bgs', 'barrier', 'lemma', 'Baker–Gill–Solovay: an oracle A with P^A = NP^A', 'proven', 2.2, 0, { by: 'agent', statement: 'theorem bgs_eq : ∃ A, P[A] = NP[A]', summaries: ['Took A to be a PSPACE-complete set', 'Proved; sent to the verifier'] }],
-  ['bgs2', 'barrier', 'lemma', 'An oracle B with P^B ≠ NP^B', 'proven', 3.4, 0, { by: 'agent', statement: 'theorem bgs_ne : ∃ B, P[B] ≠ NP[B]', summaries: ['Diagonalized against every polynomial-time oracle machine', 'Proved; sent to the verifier'] }],
-  ['natural', 'barrier', 'lemma', 'Natural proofs barrier (Razborov–Rudich)', 'proposed', 0, 0, { by: 7, statement: 'theorem natural_barrier (h : PRFExist) : ¬ ∃ P, NaturalAgainst P PPoly' }],
-  ['diag', 'barrier', 'idea', 'Diagonalization alone separates P and NP', 'dead end', 0.9, 0, { by: 1, end: ['barrier', 'Relativizes: the oracle B above has P^B ≠ NP^B and Baker–Gill–Solovay gives an oracle with equality, so no relativizing argument settles it.'] }],
-  ['upper', 'root', 'program', 'Upper bounds toward P = NP', 'in flight', 0.4, 3.3, { by: 0 }],
-  ['twosat', 'upper', 'lemma', '2-SAT is in P', 'proven', 1.9, 0, { by: 'agent', statement: 'theorem two_sat_in_p : TwoSAT ∈ P', summaries: ['Proved via strongly connected components of the implication graph'] }],
-  ['horn', 'upper', 'lemma', 'Horn-SAT is in P', 'proven', 1.6, 0, { by: 2, statement: 'theorem horn_sat_in_p : HornSAT ∈ P', summaries: ['Proved by unit propagation'] }],
-  ['schaefer', 'upper', 'lemma', "Schaefer's dichotomy theorem", 'funded', 0, 5, { by: 3, needs: ['twosat', 'horn'], riders: 7, statement: 'theorem schaefer (Γ : Constraints) : CSP Γ ∈ P ∨ NPComplete (CSP Γ)' }],
-  ['xor', 'upper', 'lemma', 'XOR-SAT is in P by Gaussian elimination', 'proposed', 0, 0.3, { by: 5, statement: 'theorem xor_sat_in_p : XorSAT ∈ P' }],
-  ['lp', 'upper', 'lemma', 'Linear programming is in P by the ellipsoid method', 'funded', 0, 5, { by: 9, riders: 5, statement: 'theorem lp_in_p : LinearProgramming ∈ P' }],
-  ['matching', 'upper', 'lemma', 'Bipartite matching is in P', 'proposed', 0, 2, { by: 10, riders: 2 }],
-  ['aks', 'upper', 'lemma', 'Primality is in P (AKS)', 'proposed', 0, 1.2, { by: 11 }],
-  ['parity', 'ac0', 'lemma', 'Parity needs depth-d circuits of size 2^(n^(1/d))', 'proposed', 0, 0.8, { by: 12, needs: ['depth'] }],
-  ['smol', 'ac0', 'lemma', 'Razborov–Smolensky: MOD3 is not in AC0[⊕]', 'proposed', 0, 1.6, { by: 13, riders: 3 }],
-  ['ppoly', 'ac0', 'lemma', 'Random restrictions kill small DNFs', 'proposed', 0, 0.4, { by: 14 }],
-  ['algebrize', 'barrier', 'lemma', 'Algebrization barrier (Aaronson–Wigderson)', 'proposed', 0, 3, { by: 15, riders: 4 }],
-  ['space', 'found', 'lemma', 'The space hierarchy theorem', 'proposed', 0, 2, { by: 16, riders: 2 }],
-  ['proof', 'root', 'program', 'Proof complexity: short proofs of tautologies', 'proposed', 0, 2.5, { by: 17, riders: 3 }],
-  ['php', 'proof', 'lemma', 'Resolution needs exponential size for the pigeonhole principle', 'proposed', 0, 1.5, { by: 18, riders: 2 }],
-  ['algebra', 'root', 'program', 'Algebraic complexity: VP versus VNP', 'proposed', 0, 1, { by: 19 }],
-  ['claim', 'upper', 'idea', 'A claimed polynomial algorithm for 3-SAT', 'dead end', 1.2, 0, { by: 4, end: ['refuted', 'A checked counterexample: a 14-variable formula on which the algorithm answers unsatisfiable though it has a satisfying assignment.'] }],
+  ['root', null, 'goal', 'Does P = NP?', 'in flight', Limits.FixtureSprigs.root.spent, Limits.FixtureSprigs.root.left, { by: Limits.FixtureSprigs.root.by, riders: Limits.FixtureSprigs.root.riders }],
+  ['triage', 'root', 'triage', 'Triage', 'in flight', Limits.FixtureSprigs.triage.spent, Limits.FixtureSprigs.triage.left, { by: 'agent', summaries: ['Approved 3 proposals, merged 1 duplicate, granted $4 to the switching lemma'] }],
+  ['found', 'root', 'program', 'Foundations: machines, P, NP and reductions', 'in flight', Limits.FixtureSprigs.found.spent, Limits.FixtureSprigs.found.left, { by: Limits.FixtureSprigs.found.by, riders: Limits.FixtureSprigs.found.riders }],
+  ['tm', 'found', 'lemma', 'A Turing machine model with time bounds', 'proven', Limits.FixtureSprigs.tm.spent, Limits.FixtureSprigs.tm.left, { by: 'agent', statement: 'theorem tm_time_bounded (M : TM) (n : ℕ) : M.steps n ≤ M.bound n', summaries: ['Wrote the machine model on Mathlib.Computability.TuringMachine', 'Proved; sent to the verifier'] }],
+  ['pclosed', 'found', 'lemma', 'P is closed under composition', 'proven', Limits.FixtureSprigs.pclosed.spent, Limits.FixtureSprigs.pclosed.left, { by: 'agent', needs: ['tm'], statement: 'theorem p_comp {f g : ℕ → ℕ} (hf : InP f) (hg : InP g) : InP (f ∘ g)', summaries: ['Proved with a polynomial bound on the composed running time'] }],
+  ['npver', 'found', 'lemma', 'NP has polynomial-time verifiers', 'proven', Limits.FixtureSprigs.npver.spent, Limits.FixtureSprigs.npver.left, { by: Limits.FixtureSprigs.npver.by, needs: ['tm'], statement: 'theorem np_iff_verifier (L : Lang) : L ∈ NP ↔ ∃ V, InP V ∧ PolyWitness V L', summaries: ['Split the equivalence into two directions', 'Proved both directions; sent to the verifier'] }],
+  ['red', 'found', 'lemma', 'Polynomial-time many-one reductions compose', 'in flight', Limits.FixtureSprigs.red.spent, Limits.FixtureSprigs.red.left, { by: 'agent', doing: 'Composing the two polynomial bounds', needs: ['pclosed'], riders: Limits.FixtureSprigs.red.riders, statement: 'theorem reduce_trans {A B C : Lang} : A ≤ₚ B → B ≤ₚ C → A ≤ₚ C', summaries: ['Stated the reduction and the bound; 3 of 5 steps compile'] }],
+  ['cook', 'found', 'lemma', 'Cook–Levin: SAT is NP-complete', 'funded', Limits.FixtureSprigs.cook.spent, Limits.FixtureSprigs.cook.left, { by: Limits.FixtureSprigs.cook.by, needs: ['npver', 'red'], riders: Limits.FixtureSprigs.cook.riders, statement: 'theorem cook_levin : NPComplete SAT' }],
+  ['lower', 'root', 'program', 'Lower bounds toward P ≠ NP', 'in flight', Limits.FixtureSprigs.lower.spent, Limits.FixtureSprigs.lower.left, { by: Limits.FixtureSprigs.lower.by, riders: Limits.FixtureSprigs.lower.riders }],
+  ['mono', 'lower', 'approach', 'Monotone circuit lower bounds', 'in flight', Limits.FixtureSprigs.mono.spent, Limits.FixtureSprigs.mono.left, { by: Limits.FixtureSprigs.mono.by, riders: Limits.FixtureSprigs.mono.riders }],
+  ['sun', 'mono', 'lemma', 'Sunflower lemma (Erdős–Rado)', 'proven', Limits.FixtureSprigs.sun.spent, Limits.FixtureSprigs.sun.left, { by: 'agent', riders: Limits.FixtureSprigs.sun.riders, statement: 'theorem sunflower (F : Finset (Finset α)) (hk : ∀ s ∈ F, s.card = k) (h : F.card > k ! * (p - 1) ^ k) : HasSunflower F p', summaries: ['Proved on paper by induction on k', 'Formalized the induction; sent to the verifier'] }],
+  ['razb', 'mono', 'lemma', "Razborov's approximation method for CLIQUE", 'in flight', Limits.FixtureSprigs.razb.spent, Limits.FixtureSprigs.razb.left, { by: 'agent', doing: 'Bounding the AND gate error for k = 5', needs: ['sun'], riders: Limits.FixtureSprigs.razb.riders, statement: 'theorem approx_error (C : MonoCircuit) : ApproxError C ≤ C.size * errorPerGate', summaries: ['Set up approximators as unions of cliques', 'Bounded the error per OR gate; the AND gate case is open', 'Proved the AND gate bound for k ≤ 4'] }],
+  ['clique', 'mono', 'lemma', 'Monotone circuits for CLIQUE need exponential size', 'proposed', Limits.FixtureSprigs.clique.spent, Limits.FixtureSprigs.clique.left, { by: Limits.FixtureSprigs.clique.by, needs: ['razb'], statement: 'theorem clique_mono_lower : ∃ ε > 0, ∀ n, monoSize (CLIQUE n) ≥ 2 ^ (n ^ ε)' }],
+  ['ac0', 'lower', 'approach', 'Parity is not in AC0', 'in flight', Limits.FixtureSprigs.ac0.spent, Limits.FixtureSprigs.ac0.left, { by: Limits.FixtureSprigs.ac0.by, riders: Limits.FixtureSprigs.ac0.riders }],
+  ['switch', 'ac0', 'lemma', "Håstad's switching lemma", 'in flight', Limits.FixtureSprigs.switch.spent, Limits.FixtureSprigs.switch.left, { by: 'agent', doing: 'Counting restrictions that leave depth above t', riders: Limits.FixtureSprigs.switch.riders, statement: 'theorem switching (f : DNF n w) (p : ℝ) : Pr[¬ DepthAtMost (restrict f ρ) t] ≤ (5 * p * w) ^ t', summaries: ['Chose the canonical decision tree argument', 'Encoded restrictions; the counting step compiles'] }],
+  ['depth', 'ac0', 'lemma', 'Depth reduction by random restrictions', 'proposed', Limits.FixtureSprigs.depth.spent, Limits.FixtureSprigs.depth.left, { by: 'agent', needs: ['switch'], statement: 'theorem depth_reduce (C : AC0 d s) : ∃ ρ, Depth (C.restrict ρ) ≤ d - 1' }],
+  ['gct', 'lower', 'idea', 'Separate permanent and determinant by orbit closures', 'dead end', Limits.FixtureSprigs.gct.spent, Limits.FixtureSprigs.gct.left, { by: Limits.FixtureSprigs.gct.by, end: ['exhausted', 'Three runs found no step a checked lemma could state; occurrence obstructions are known not to exist for this pair.'] }],
+  ['barrier', 'root', 'program', 'Barriers: why whole lines of attack fail', 'in flight', Limits.FixtureSprigs.barrier.spent, Limits.FixtureSprigs.barrier.left, { by: Limits.FixtureSprigs.barrier.by }],
+  ['bgs', 'barrier', 'lemma', 'Baker–Gill–Solovay: an oracle A with P^A = NP^A', 'proven', Limits.FixtureSprigs.bgs.spent, Limits.FixtureSprigs.bgs.left, { by: 'agent', statement: 'theorem bgs_eq : ∃ A, P[A] = NP[A]', summaries: ['Took A to be a PSPACE-complete set', 'Proved; sent to the verifier'] }],
+  ['bgs2', 'barrier', 'lemma', 'An oracle B with P^B ≠ NP^B', 'proven', Limits.FixtureSprigs.bgs2.spent, Limits.FixtureSprigs.bgs2.left, { by: 'agent', statement: 'theorem bgs_ne : ∃ B, P[B] ≠ NP[B]', summaries: ['Diagonalized against every polynomial-time oracle machine', 'Proved; sent to the verifier'] }],
+  ['natural', 'barrier', 'lemma', 'Natural proofs barrier (Razborov–Rudich)', 'proposed', Limits.FixtureSprigs.natural.spent, Limits.FixtureSprigs.natural.left, { by: Limits.FixtureSprigs.natural.by, statement: 'theorem natural_barrier (h : PRFExist) : ¬ ∃ P, NaturalAgainst P PPoly' }],
+  ['diag', 'barrier', 'idea', 'Diagonalization alone separates P and NP', 'dead end', Limits.FixtureSprigs.diag.spent, Limits.FixtureSprigs.diag.left, { by: Limits.FixtureSprigs.diag.by, end: ['barrier', 'Relativizes: the oracle B above has P^B ≠ NP^B and Baker–Gill–Solovay gives an oracle with equality, so no relativizing argument settles it.'] }],
+  ['upper', 'root', 'program', 'Upper bounds toward P = NP', 'in flight', Limits.FixtureSprigs.upper.spent, Limits.FixtureSprigs.upper.left, { by: Limits.FixtureSprigs.upper.by }],
+  ['twosat', 'upper', 'lemma', '2-SAT is in P', 'proven', Limits.FixtureSprigs.twosat.spent, Limits.FixtureSprigs.twosat.left, { by: 'agent', statement: 'theorem two_sat_in_p : TwoSAT ∈ P', summaries: ['Proved via strongly connected components of the implication graph'] }],
+  ['horn', 'upper', 'lemma', 'Horn-SAT is in P', 'proven', Limits.FixtureSprigs.horn.spent, Limits.FixtureSprigs.horn.left, { by: Limits.FixtureSprigs.horn.by, statement: 'theorem horn_sat_in_p : HornSAT ∈ P', summaries: ['Proved by unit propagation'] }],
+  ['schaefer', 'upper', 'lemma', "Schaefer's dichotomy theorem", 'funded', Limits.FixtureSprigs.schaefer.spent, Limits.FixtureSprigs.schaefer.left, { by: Limits.FixtureSprigs.schaefer.by, needs: ['twosat', 'horn'], riders: Limits.FixtureSprigs.schaefer.riders, statement: 'theorem schaefer (Γ : Constraints) : CSP Γ ∈ P ∨ NPComplete (CSP Γ)' }],
+  ['xor', 'upper', 'lemma', 'XOR-SAT is in P by Gaussian elimination', 'proposed', Limits.FixtureSprigs.xor.spent, Limits.FixtureSprigs.xor.left, { by: Limits.FixtureSprigs.xor.by, statement: 'theorem xor_sat_in_p : XorSAT ∈ P' }],
+  ['lp', 'upper', 'lemma', 'Linear programming is in P by the ellipsoid method', 'funded', Limits.FixtureSprigs.lp.spent, Limits.FixtureSprigs.lp.left, { by: Limits.FixtureSprigs.lp.by, riders: Limits.FixtureSprigs.lp.riders, statement: 'theorem lp_in_p : LinearProgramming ∈ P' }],
+  ['matching', 'upper', 'lemma', 'Bipartite matching is in P', 'proposed', Limits.FixtureSprigs.matching.spent, Limits.FixtureSprigs.matching.left, { by: Limits.FixtureSprigs.matching.by, riders: Limits.FixtureSprigs.matching.riders }],
+  ['aks', 'upper', 'lemma', 'Primality is in P (AKS)', 'proposed', Limits.FixtureSprigs.aks.spent, Limits.FixtureSprigs.aks.left, { by: Limits.FixtureSprigs.aks.by }],
+  ['parity', 'ac0', 'lemma', 'Parity needs depth-d circuits of size 2^(n^(1/d))', 'proposed', Limits.FixtureSprigs.parity.spent, Limits.FixtureSprigs.parity.left, { by: Limits.FixtureSprigs.parity.by, needs: ['depth'] }],
+  ['smol', 'ac0', 'lemma', 'Razborov–Smolensky: MOD3 is not in AC0[⊕]', 'proposed', Limits.FixtureSprigs.smol.spent, Limits.FixtureSprigs.smol.left, { by: Limits.FixtureSprigs.smol.by, riders: Limits.FixtureSprigs.smol.riders }],
+  ['ppoly', 'ac0', 'lemma', 'Random restrictions kill small DNFs', 'proposed', Limits.FixtureSprigs.ppoly.spent, Limits.FixtureSprigs.ppoly.left, { by: Limits.FixtureSprigs.ppoly.by }],
+  ['algebrize', 'barrier', 'lemma', 'Algebrization barrier (Aaronson–Wigderson)', 'proposed', Limits.FixtureSprigs.algebrize.spent, Limits.FixtureSprigs.algebrize.left, { by: Limits.FixtureSprigs.algebrize.by, riders: Limits.FixtureSprigs.algebrize.riders }],
+  ['space', 'found', 'lemma', 'The space hierarchy theorem', 'proposed', Limits.FixtureSprigs.space.spent, Limits.FixtureSprigs.space.left, { by: Limits.FixtureSprigs.space.by, riders: Limits.FixtureSprigs.space.riders }],
+  ['proof', 'root', 'program', 'Proof complexity: short proofs of tautologies', 'proposed', Limits.FixtureSprigs.proof.spent, Limits.FixtureSprigs.proof.left, { by: Limits.FixtureSprigs.proof.by, riders: Limits.FixtureSprigs.proof.riders }],
+  ['php', 'proof', 'lemma', 'Resolution needs exponential size for the pigeonhole principle', 'proposed', Limits.FixtureSprigs.php.spent, Limits.FixtureSprigs.php.left, { by: Limits.FixtureSprigs.php.by, riders: Limits.FixtureSprigs.php.riders }],
+  ['algebra', 'root', 'program', 'Algebraic complexity: VP versus VNP', 'proposed', Limits.FixtureSprigs.algebra.spent, Limits.FixtureSprigs.algebra.left, { by: Limits.FixtureSprigs.algebra.by }],
+  ['claim', 'upper', 'idea', 'A claimed polynomial algorithm for 3-SAT', 'dead end', Limits.FixtureSprigs.claim.spent, Limits.FixtureSprigs.claim.left, { by: Limits.FixtureSprigs.claim.by, end: ['refuted', 'A checked counterexample: a 14-variable formula on which the algorithm answers unsatisfiable though it has a satisfying assignment.'] }],
 ]
 
 const landing = nid('razb')
@@ -1759,24 +1626,24 @@ function checked(key: string, minutes: number): Tree.Check {
     axioms: ['propext', 'Classical.choice', 'Quot.sound'],
     checker: 'lean4checker v4.24.0',
     command: `lake build Pnp.Check.N${node} && lake exe lean4checker Pnp.Check`,
-    commit: hex(`commit:${key}`, 40),
-    contentHash: `sha256:${hex(`content:${key}`, 64)}`,
-    durationMs: 140_000 + (Number.parseInt(hex(key, 4), 16) % 180_000),
+    commit: hex(`commit:${key}`, Limits.FixtureHash.commitChars),
+    contentHash: `sha256:${hex(`content:${key}`, Limits.FixtureHash.contentChars)}`,
+    durationMs: Limits.FixtureProof.leastMs + (Number.parseInt(hex(key, Limits.FixtureProof.durationSeedChars), Limits.FixtureHash.hexRadix) % Limits.FixtureProof.spreadMs),
     exitCode: 0,
-    mathlib: hex('mathlib', 40),
+    mathlib: hex('mathlib', Limits.FixtureHash.commitChars),
     repo: 'example/pnp-proofs',
-    run: String(19_000_000_000 + (Number.parseInt(hex(`run:${key}`, 6), 16) % 999_999)),
-    statement: hex(`stmt:${key}`, 16),
+    run: String(Limits.FixtureProof.firstRun + (Number.parseInt(hex(`run:${key}`, Limits.FixtureProof.runSeedChars), Limits.FixtureHash.hexRadix) % Limits.FixtureProof.runSpread)),
+    statement: hex(`stmt:${key}`, Limits.FixtureProof.statementChars),
     theorem: `Pnp.N${node}`,
     toolchain: 'leanprover/lean4:v4.24.0',
-    url: `https://github.com/example/pnp-proofs/actions/runs/${19_000_000_000 + (Number.parseInt(hex(`run:${key}`, 6), 16) % 999_999)}`,
+    url: `https://github.com/example/pnp-proofs/actions/runs/${Limits.FixtureProof.firstRun + (Number.parseInt(hex(`run:${key}`, Limits.FixtureProof.runSeedChars), Limits.FixtureHash.hexRadix) % Limits.FixtureProof.runSpread)}`,
   }
 }
 
 const seededOnly = new Set(['root', 'triage', 'found', 'tm', 'pclosed', 'npver', 'red', 'cook', 'lower', 'mono', 'sun', 'razb', 'clique', 'ac0', 'switch', 'depth', 'barrier', 'bgs', 'bgs2', 'natural', 'upper', 'twosat', 'horn', 'schaefer', 'xor'])
 
 function micro(value: number) {
-  return BigInt(Math.round(value * 1_000_000))
+  return BigInt(Math.round(value * Limits.FixtureMoney.machUnitsNumber))
 }
 
 function sprout(sprig: Sprig, index: number): Twig {
@@ -1784,21 +1651,21 @@ function sprout(sprig: Sprig, index: number): Twig {
   const seeded = scene.has('seeded')
   const status: Tree.Status = seeded ? (key === 'triage' ? 'funded' : given === 'funded' ? 'funded' : 'proposed') : (form === 'goal' || form === 'program' || form === 'approach') && given === 'in flight' ? 'proposed' : given
   const spent = seeded ? 0n : micro(spentGiven)
-  const left = seeded ? (key === 'root' ? micro(40) : key === 'cook' || key === 'schaefer' ? micro(5) : 0n) : micro(leftGiven)
-  const minutes = 2880 - index * 90
+  const left = seeded ? (key === 'root' ? micro(Limits.FixtureTree.seededRootMach) : key === 'cook' || key === 'schaefer' ? micro(Limits.FixtureTree.seededFundedMach) : 0n) : micro(leftGiven)
+  const minutes = Limits.FixtureTree.oldestMinutes - index * Limits.FixtureTree.stepMinutes
   const node = nid(key)
   const by = seeded ? sown : extra.by === 'agent' && parent ? worker(nid(parent)) : who(typeof extra.by === 'number' ? extra.by : index)
-  const proof = status === 'proven' ? checked(key, Math.max(20, 1400 - index * 60)) : null
-  const end = status === 'dead end' && extra.end ? { at: at(Math.max(30, 1500 - index * 40)), check: extra.end[0] === 'refuted' ? checked(key, 300) : null, into: null, kind: extra.end[0], why: extra.end[1] } : null
+  const proof = status === 'proven' ? checked(key, Math.max(Limits.FixtureTree.provenLeastMinutes, Limits.FixtureTree.provenOldestMinutes - index * 60)) : null
+  const end = status === 'dead end' && extra.end ? { at: at(Math.max(Limits.FixtureTree.endLeastMinutes, Limits.FixtureTree.endOldestMinutes - index * Limits.FixtureTree.endStepMinutes)), check: extra.end[0] === 'refuted' ? checked(key, Limits.FixtureTree.refutedMinutes) : null, into: null, kind: extra.end[0], why: extra.end[1] } : null
   const runs = seeded ? [] : (extra.summaries ?? (spent > 0n ? ['Read the parent and its siblings; planned the first step'] : [])).map((summary, k): NodeRun => {
     const share = spent / BigInt(Math.max(1, extra.summaries?.length ?? 1))
-    const until = k === (extra.summaries?.length ?? 1) - 1 && status === 'in flight' ? null : at(minutes - 60 - k * 40)
-    return { budget: decimal(share > 5_000_000n ? share : 5_000_000n), commit: until === null ? null : hex(`run:${key}:${k}`, 40), k: k + 1, outcome: until === null ? null : status === 'proven' && k === (extra.summaries?.length ?? 1) - 1 ? 'proved' : /Split/.test(summary) ? 'split' : 'progress', since: at(minutes - 50 - k * 40), spent: decimal(share), summary, task: `r:${node}:${k + 1}`, until }
+    const until = k === (extra.summaries?.length ?? 1) - 1 && status === 'in flight' ? null : at(minutes - 60 - k * Limits.FixtureTree.runStepMinutes)
+    return { budget: decimal(share > Limits.FixtureTree.runBudgetUnits ? share : Limits.FixtureTree.runBudgetUnits), commit: until === null ? null : hex(`run:${key}:${k}`, Limits.FixtureHash.commitChars), k: k + 1, outcome: until === null ? null : status === 'proven' && k === (extra.summaries?.length ?? 1) - 1 ? 'proved' : /Split/.test(summary) ? 'split' : 'progress', since: at(minutes - Limits.FixtureTree.runEndMinutes - k * Limits.FixtureTree.runStepMinutes), spent: decimal(share), summary, task: `r:${node}:${k + 1}`, until }
   })
-  const backers = extra.riders ? Array.from({ length: extra.riders }, (_, rank) => (index + rank * 5) % handles.length) : key === 'root' ? [0, 1, 2, 3, 4] : form === 'program' ? [index % 8] : spent > 0n || left > 0n ? [index % 8, (index + 3) % 8] : []
-  const pledged = left + (spent * 2n) / 3n
-  const funders = backers.map((person, rank): Tree.Funder => ({ amount: decimal(backers.length ? pledged / BigInt(backers.length) + BigInt(rank) * 10_000n : 0n), since: at(minutes - rank * 30), who: who(person) }))
-  const run: Tree.Run | null = status === 'in flight' && form !== 'goal' && form !== 'program' && form !== 'approach' ? ({ agent: 3 + index, attempt: 1, budget: '5.000000', checking: false, k: runs.length, since: at(25), spent: decimal(spent % 5_000_000n), task: `r:${node}:${runs.length}`, until: at(-5), ...(extra.doing ? { doing: { at: at(3 + (index % 7)), text: extra.doing } } : {}) } as Tree.Run) : null
+  const backers = extra.riders ? Array.from({ length: extra.riders }, (_, rank) => (index + rank * Limits.FixtureTree.riderStride) % handles.length) : key === 'root' ? Limits.FixtureTree.rootBackers : form === 'program' ? [index % Limits.FixtureTree.backerCycle] : spent > 0n || left > 0n ? [index % Limits.FixtureTree.backerCycle, (index + Limits.FixtureTree.backerOffset) % Limits.FixtureTree.backerCycle] : []
+  const pledged = left + (spent * 2n) / Limits.FixtureTree.pledgedDivisor
+  const funders = backers.map((person, rank): Tree.Funder => ({ amount: decimal(backers.length ? pledged / BigInt(backers.length) + BigInt(rank) * Limits.FixtureTree.funderStepUnits : 0n), since: at(minutes - rank * Limits.FixtureTree.funderStepMinutes), who: who(person) }))
+  const run: Tree.Run | null = status === 'in flight' && form !== 'goal' && form !== 'program' && form !== 'approach' ? ({ agent: Limits.FixtureTree.firstAgent + index, attempt: 1, budget: '5.000000', checking: false, k: runs.length, since: at(Limits.FixtureTree.runSinceMinutes), spent: decimal(spent % Limits.FixtureTree.runBudgetUnits), task: `r:${node}:${runs.length}`, until: at(-Limits.FixtureTree.runUntilMinutes), ...(extra.doing ? { doing: { at: at(Limits.FixtureTree.doingLeastMinutes + (index % Limits.FixtureTree.doingSpreadMinutes)), text: extra.doing } } : {}) } as Tree.Run) : null
   return {
     by,
     createdAt: at(minutes),
@@ -1807,21 +1674,21 @@ function sprout(sprig: Sprig, index: number): Twig {
     form,
     funders,
     id: node,
-    inherited: parent && parent !== 'root' ? spent / 3n : 0n,
+    inherited: parent && parent !== 'root' ? spent / Limits.FixtureTree.inheritedDivisor : 0n,
     left,
     needs: (extra.needs ?? []).map(nid),
     parent: parent ? nid(parent) : null,
-    pledged: key === 'root' ? left + micro(18) : pledged,
+    pledged: key === 'root' ? left + micro(Limits.FixtureTree.rootPledgeMach) : pledged,
     proof,
     run,
     runs,
     spent,
     statement: extra.statement ?? null,
     status,
-    steers: key === 'switch' ? [{ amount: '2.000000', at: at(90), note: 'Try the Razborov encoding proof first; it is shorter in Lean.', who: who(5) }] : [],
-    suggestions: key === 'lower' ? [{ at: at(200), id: 'idea-1', text: 'Formalize the Raz–McKenzie lifting theorem as its own approach.', who: who(6) }] : [],
+    steers: key === 'switch' ? [{ amount: '2.000000', at: at(Limits.FixtureTree.steerMinutes), note: 'Try the Razborov encoding proof first; it is shorter in Lean.', who: who(Limits.FixtureTree.steerRider) }] : [],
+    suggestions: key === 'lower' ? [{ at: at(Limits.FixtureTree.suggestionMinutes), id: 'idea-1', text: 'Formalize the Raz–McKenzie lifting theorem as its own approach.', who: who(Limits.FixtureTree.suggestionRider) }] : [],
     title,
-    updatedAt: at(Math.max(1, minutes / 20)),
+    updatedAt: at(Math.max(1, minutes / Limits.FixtureTree.updatedDivisor)),
     words: form === 'goal' ? 'Settle whether every problem whose answer can be checked quickly can also be solved quickly. Every result is checked in Lean, and every dead end is kept with its reason.' : form === 'program' ? `A program of the swarm: ${title.toLowerCase()}. Its money flows to the runnable lemmas under it.` : form === 'triage' ? 'Reads new proposals and suggestions, approves, merges and grants from the root, within 5% of what riders put on the root.' : 'Stated in Lean below. Proven only when the verifier builds a proof of exactly this statement.',
   }
 }
@@ -1830,7 +1697,7 @@ const grove: Twig[] = sprigs.filter(([key]) => (scene.has('empty') ? key === 'ro
 
 if (scene.has('empty')) for (const twig of grove) Object.assign(twig, { funders: [], left: 0n, pledged: 0n, runs: [], spent: 0n, status: 'proposed' })
 
-let treeSeq = 100
+let treeSeq = Limits.FixtureTree.firstSeq
 
 function zeroed(): Record<Tree.Status, number> {
   return { 'dead end': 0, funded: 0, 'in flight': 0, proposed: 0, proven: 0 }
@@ -1860,7 +1727,7 @@ function derive(): Record<string, Tree.Node> {
       createdAt: twig.createdAt,
       end: twig.end,
       form: twig.form,
-      funders: twig.funders.slice(0, 5),
+      funders: twig.funders.slice(0, Limits.FixtureTree.shownFunders),
       id: twig.id,
       money: { committed: twig.run ? twig.run.budget : '0', granted: decimal(children.reduce((sum, child) => sum + units(child.money.inherited), 0n)), inherited: decimal(twig.inherited), left: decimal(twig.left), pledged: decimal(twig.pledged), spent: decimal(twig.spent), subtree: { left: decimal(left), pledged: decimal(pledged), spent: decimal(spent) } },
       needs: twig.needs,
@@ -1897,25 +1764,25 @@ function deep(nodes: Record<string, Tree.Node>, root: string, depth: number) {
 }
 
 function twig(key: string, nidGiven: string) {
-  if (key !== treeId) throw fail(404, 'not_found', 'No swarm has this id.')
+  if (key !== treeId) throw fail(Limits.Http.missing, 'not_found', 'No swarm has this id.')
   const found = grove.find((each) => each.id === nidGiven)
-  if (!found) throw fail(404, 'not_found', 'No node has this id.')
+  if (!found) throw fail(Limits.Http.missing, 'not_found', 'No node has this id.')
   return found
 }
 
 export function treeView(key: string, query: { depth?: number; root?: string }): Promise<TreeView> {
-  if (key !== treeId) return Promise.reject(fail(404, 'not_found', 'No swarm has this id.'))
+  if (key !== treeId) return Promise.reject(fail(Limits.Http.missing, 'not_found', 'No swarm has this id.'))
   const nodes = derive()
-  return delay(Limits.Fixture.readMs, { headline: Tree.headline(Object.values(nodes)), nodes: deep(nodes, query.root ?? 'root', query.depth ?? 3), seq: treeSeq })
+  return delay(Limits.Fixture.readMs, { headline: Tree.headline(Object.values(nodes)), nodes: deep(nodes, query.root ?? 'root', query.depth ?? Limits.Operations.treeDepth), seq: treeSeq })
 }
 
 function told(found: Twig): Tree.Delta[] {
   const node = derive()[found.id]!
   const made: Tree.Delta[] = [{ at: found.createdAt, event: 'posted', node, seq: 1, text: `Proposed by @${found.by.handle}` }]
   for (const funder of found.funders) made.push({ at: funder.since, event: 'funded', node, seq: 2, text: `@${funder.who.handle} put ${usd(funder.amount)} on it` })
-  for (const run of found.runs) made.push({ at: run.since, event: 'started', node, seq: 3, text: `Run ${run.k} started with ${usd(run.budget)}` }, ...(run.until ? [{ at: run.until, event: 'progress' as const, node, seq: 4, text: run.summary }] : []))
-  if (found.proof) made.push({ at: found.proof.at, event: 'proven', node, seq: 5, text: 'Checked by Lean' })
-  if (found.end) made.push({ at: found.end.at, event: 'ended', node, seq: 5, text: found.end.why })
+  for (const run of found.runs) made.push({ at: run.since, event: 'started', node, seq: Limits.FixtureTree.startedSeq, text: `Run ${run.k} started with ${usd(run.budget)}` }, ...(run.until ? [{ at: run.until, event: 'progress' as const, node, seq: Limits.FixtureTree.progressSeq, text: run.summary }] : []))
+  if (found.proof) made.push({ at: found.proof.at, event: 'proven', node, seq: Limits.FixtureTree.endSeq, text: 'Checked by Lean' })
+  if (found.end) made.push({ at: found.end.at, event: 'ended', node, seq: Limits.FixtureTree.endSeq, text: found.end.why })
   return [...made, ...found.deltas].sort((a, b) => b.at - a.at)
 }
 
@@ -1931,27 +1798,27 @@ export function nodeView(key: string, nidGiven: string): Promise<NodeView> {
 
 export function nodeUpdates(key: string, nidGiven: string): Promise<NodeUpdates> {
   try {
-    return delay(Limits.Fixture.readMs, { deltas: told(twig(key, nidGiven)).slice(0, 30), next: treeSeq })
+    return delay(Limits.Fixture.readMs, { deltas: told(twig(key, nidGiven)).slice(0, Limits.FixtureTree.shownDeltas), next: treeSeq })
   } catch (error) {
     return Promise.reject(error)
   }
 }
 
 export function burn(key: string): Promise<ProgressView> {
-  if (key !== treeId) return Promise.reject(fail(404, 'not_found', 'No swarm has this id.'))
+  if (key !== treeId) return Promise.reject(fail(Limits.Http.missing, 'not_found', 'No swarm has this id.'))
   const proven = grove.filter((each) => each.proof).map((each) => each.proof!.at)
   const dead = grove.filter((each) => each.end).map((each) => each.end!.at)
   const total = grove.reduce((sum, each) => sum + each.spent, 0n)
-  const hours = 48
+  const hours = Limits.FixtureTree.burnHours
   const now = Date.now()
   return delay(Limits.Fixture.readMs, { burn: scene.has('empty') ? [] : Array.from({ length: hours + 1 }, (_, index) => {
-    const when = now - (hours - index) * 3_600_000
+    const when = now - (hours - index) * Limits.Clock.hourMs
     return { at: when, deadEnds: dead.filter((time) => time <= when).length, proven: proven.filter((time) => time <= when).length, spent: decimal((total * BigInt(index)) / BigInt(hours)) }
   }) })
 }
 
 export function proofs(key: string): Promise<ProofsView> {
-  if (key !== treeId) return Promise.reject(fail(404, 'not_found', 'No swarm has this id.'))
+  if (key !== treeId) return Promise.reject(fail(Limits.Http.missing, 'not_found', 'No swarm has this id.'))
   return delay(Limits.Fixture.readMs, { proofs: grove.filter((each) => each.proof).map((each) => ({ check: each.proof!, node: each.id, title: each.title })).sort((a, b) => b.check.at - a.check.at) })
 }
 
@@ -1972,18 +1839,18 @@ const proposals = new Map<string, Twig>()
 const proposed = new Map<string, string>()
 
 export async function propose(key: string, input: { form: Tree.Form; parent: string; said?: string; spec: string; statement?: string; title: string }, by: `0x${string}` | undefined): Promise<Proposed> {
-  if (!by) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to propose.')
+  if (!by) throw fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to propose.')
   const parent = twig(key, input.parent)
   const made = nid(`${parent.id}\n${input.title.trim().toLowerCase()}`)
   if (input.said?.trim()) proposed.set(made, input.said.trim())
   proposals.set(made, { by: who(0), createdAt: Date.now(), deltas: [], end: null, form: input.form, funders: [], id: made, inherited: 0n, left: 0n, needs: [], parent: parent.id, pledged: 0n, proof: null, run: null, runs: [], spent: 0n, statement: input.statement?.trim() || null, status: 'proposed', steers: [], suggestions: [], title: input.title.trim(), updatedAt: Date.now(), words: input.spec.trim() })
-  const memo = `0x${hex(`memo:${made}`, 64)}` as `0x${string}`
+  const memo = `0x${hex(`memo:${made}`, Limits.FixtureHash.memoChars)}` as `0x${string}`
   return delay(Limits.Fixture.createMs, { nid: made, transfer: { amount: '1.000000', call: null, link: '', memo, memoText: `n:${made}`, note: `n:${made}`, swarm: key, symbol: 'USDC.e', to: '0x40def0Cf3B5d28B6e9a7976BA10591e515AfECFE', token: 'usdce', tokenAddress: '0x20C000000000000000000000b9537d11c60E8b50' } })
 }
 
 async function uncountable() {
   if (scene.has('stuck')) await new Promise<never>(() => {})
-  if (scene.has('reject')) throw fail(400, 'invalid_request', 'That transaction is not a transfer to the gateway for this swarm.')
+  if (scene.has('reject')) throw fail(Limits.Http.invalid, 'invalid_request', 'That transaction is not a transfer to the gateway for this swarm.')
 }
 
 export async function ride(key: string, input: { hash: string; node: string }): Promise<Contributed> {
@@ -1991,7 +1858,7 @@ export async function ride(key: string, input: { hash: string; node: string }): 
   await uncountable()
   if (scene.has('uncounted') && !dropped.has(hash)) {
     dropped.add(hash)
-    throw fail(502, 'unavailable', 'Swarms could not reach Tempo to check the transfer.')
+    throw fail(Limits.Http.upstream, 'unavailable', 'Swarms could not reach Tempo to check the transfer.')
   }
   const fresh = proposals.get(input.node)
   if (fresh) {
@@ -2003,13 +1870,13 @@ export async function ride(key: string, input: { hash: string; node: string }): 
     proposed.delete(input.node)
   }
   const found = twig(key, input.node)
-  const amount = sent.get(hash)?.amount ?? 1_000_000n
+  const amount = sent.get(hash)?.amount ?? Limits.FixtureMoney.pledgeUnits
   found.pledged += amount
   found.left += amount
   const mine = found.funders.find((funder) => funder.who.address === visitor)
   if (mine) mine.amount = decimal(units(mine.amount) + amount)
   else found.funders.unshift({ amount: decimal(amount), since: Date.now(), who: who(0) })
-  if (found.status === 'proposed' && found.left >= 500_000n && found.form === 'lemma') found.status = 'funded'
+  if (found.status === 'proposed' && found.left >= Limits.FixtureMoney.fundedUnits && found.form === 'lemma') found.status = 'funded'
   emit(found, fresh ? 'posted' : 'funded', fresh ? `@ada proposed it with ${usd(decimal(amount))}` : `@ada put ${usd(decimal(amount))} on it`)
   const swarm = await find(key)
   swarm.contributions.push({ amount: decimal(amount), at: Date.now(), contributor: visitor, hash, note: null, token: sent.get(hash)?.token ?? 'usdce' })
@@ -2018,7 +1885,7 @@ export async function ride(key: string, input: { hash: string; node: string }): 
 }
 
 export async function suggest(key: string, input: { parent: string; text: string }, by: `0x${string}` | undefined): Promise<Suggested> {
-  if (!by) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to suggest.')
+  if (!by) throw fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to suggest.')
   const found = twig(key, input.parent)
   const made = `idea-${found.suggestions.length + 2}`
   found.suggestions.unshift({ at: Date.now(), id: made, text: input.text.trim(), who: who(0) })
@@ -2026,18 +1893,18 @@ export async function suggest(key: string, input: { parent: string; text: string
 }
 
 export async function steerNode(key: string, nidGiven: string, input: { amount: string; note: string }, by: `0x${string}` | undefined): Promise<Tree.Node> {
-  if (!by) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to steer.')
+  if (!by) throw fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to steer.')
   const found = twig(key, nidGiven)
   found.steers.unshift({ amount: input.amount, at: Date.now(), note: input.note.trim(), who: who(0) })
   return delay(Limits.Fixture.moveMs, emit(found, 'steered', `@ada: ${input.note.trim()}`).node)
 }
 
 export async function moveNode(key: string, nidGiven: string, input: { amount: string; to: string }, by: `0x${string}` | undefined): Promise<Tree.Node> {
-  if (!by) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to move money.')
+  if (!by) throw fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to move money.')
   const found = twig(key, nidGiven)
   const mine = found.funders.find((funder) => funder.who.address === visitor)
   const amount = units(input.amount)
-  if (!mine || units(mine.amount) < amount || found.left < amount) throw fail(409, 'conflict', 'You have less than that on this node.')
+  if (!mine || units(mine.amount) < amount || found.left < amount) throw fail(Limits.Http.conflict, 'conflict', 'You have less than that on this node.')
   mine.amount = decimal(units(mine.amount) - amount)
   found.left -= amount
   found.pledged -= amount
@@ -2075,7 +1942,7 @@ function woods(listener: (event: Chatter | { type: 'open' | 'closed' }) => void)
           found.run = null
           found.proof = checked('razb', 0)
           found.proof.at = Date.now()
-          found.runs.push({ budget: '5.000000', commit: found.proof.commit, k: found.runs.length + 1, outcome: 'proved', since: Date.now() - 600_000, spent: '1.120000', summary: 'Proved the AND gate bound for all k; sent to the verifier', task: `r:${found.id}:${found.runs.length + 1}`, until: Date.now() })
+          found.runs.push({ budget: '5.000000', commit: found.proof.commit, k: found.runs.length + 1, outcome: 'proved', since: Date.now() - Limits.FixtureTree.provenRunAgoMs, spent: '1.120000', summary: 'Proved the AND gate bound for all k; sent to the verifier', task: `r:${found.id}:${found.runs.length + 1}`, until: Date.now() })
           emit(found, 'proven', 'Checked by Lean')
         }, Limits.Fixture.provenMs))
       }
@@ -2085,9 +1952,9 @@ function woods(listener: (event: Chatter | { type: 'open' | 'closed' }) => void)
         const busy = grove.filter((each) => each.status === 'in flight' && each.run && !each.run.checking)
         const found = busy[Math.floor(Date.now() / Limits.Fixture.beatMs) % Math.max(1, busy.length)]
         if (!found?.run) return
-        found.spent += 30_000n
-        found.left = found.left > 30_000n ? found.left - 30_000n : 0n
-        found.run = { ...found.run, spent: decimal(units(found.run.spent) + 30_000n) }
+        found.spent += Limits.FixtureTree.beatUnits
+        found.left = found.left > Limits.FixtureTree.beatUnits ? found.left - Limits.FixtureTree.beatUnits : 0n
+        found.run = { ...found.run, spent: decimal(units(found.run.spent) + Limits.FixtureTree.beatUnits) }
         emit(found, 'progress', 'Spent $0.03 on the next step')
       }, Limits.Fixture.beatMs)
   }, Limits.Fixture.openMs))
@@ -2103,10 +1970,10 @@ function woods(listener: (event: Chatter | { type: 'open' | 'closed' }) => void)
 }
 
 const hallSaid: Said[] = [
-  { artifact: null, at: at(190), author: people[2], id: 1, mentions: [], steer: null, text: 'Rode Does P = NP? with $5. Every green dot on its board is a proof Lean checked.' },
-  { artifact: null, at: at(150), author: people[4], id: 2, mentions: [], steer: null, text: 'Is anyone starting a channel on attention kernels for small GPUs? I would ride it.' },
-  { artifact: null, at: at(62), author: people[1], id: 3, mentions: [], steer: null, text: 'The JSON channel parsed its terabyte for under a dollar, about $c = k \\cdot n^{2}$ per task, \\(\\nu \\le 3\\). It cost $5 and $10.\n\n\\[\\frac{a}{b} = \\sqrt{c^2 + d_i}\\]' },
-  { artifact: null, at: at(18), author: people[2], id: 4, mentions: [], steer: null, text: '@tensorbox start it, I put in $10 the minute it exists.' },
+  { artifact: null, at: at(Limits.FixtureHall.rodeMinutes), author: people[2], id: 1, mentions: [], steer: null, text: 'Rode Does P = NP? with $5. Every green dot on its board is a proof Lean checked.' },
+  { artifact: null, at: at(Limits.FixtureHall.kernelsMinutes), author: people[Limits.FixturePeople.tensorbox], id: 2, mentions: [], steer: null, text: 'Is anyone starting a channel on attention kernels for small GPUs? I would ride it.' },
+  { artifact: null, at: at(Limits.FixtureHall.jsonMinutes), author: people[1], id: Limits.FixtureHall.jsonId, mentions: [], steer: null, text: 'The JSON channel parsed its terabyte for under a dollar, about $c = k \\cdot n^{2}$ per task, \\(\\nu \\le 3\\). It cost $5 and $10.\n\n\\[\\frac{a}{b} = \\sqrt{c^2 + d_i}\\]' },
+  { artifact: null, at: at(Limits.FixtureHall.startMinutes), author: people[2], id: Limits.FixtureHall.startId, mentions: [], steer: null, text: '@tensorbox start it, I put in $10 the minute it exists.' },
 ]
 
 const hallListeners = new Set<(event: Heard | { type: 'open' | 'closed' }) => void>()
@@ -2117,9 +1984,9 @@ export async function general(query: { after?: number; before?: number }): Promi
 }
 
 export async function shout(text: string, who: `0x${string}` | undefined): Promise<Shouted> {
-  if (!who) throw fail(401, 'unauthorized', 'Sign in with Tempo ID to post in #general.')
+  if (!who) throw fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to post in #general.')
   const name = names.get(who.toLowerCase())
-  if (!name) throw fail(403, 'username_required', 'Pick a username first.')
+  if (!name) throw fail(Limits.Http.forbidden, 'username_required', 'Pick a username first.')
   const message: Said = { artifact: null, at: Date.now(), author: who, id: (hallSaid.at(-1)?.id ?? 0) + 1, mentions: [], steer: null, text: text.trim() }
   hallSaid.push(message)
   for (const listener of hallListeners) listener({ message, name, type: 'said' })

@@ -1,3 +1,2 @@
 # No numeric literal outside src/shared/Limits.ts but 0, 1, 2 and the unit conversions 24, 60, 1000, 1024 and 3600.
-# path count why; 515 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
-src/web/fixtures.ts 515 pre-existing; move it into src/shared/Limits.ts; the Own AI fixture adds its three HTTP statuses (401, 400, 409)
+# path count why; 0 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
