@@ -710,7 +710,20 @@ export async function spentOf(self: Swarm, run: string, close = false): Promise<
     const prompted = self.kv.get<string>('prompted:' + run)
     const pick = self.kv.get<Nodes.Pick>('picked:' + run)
     const agent = self.kv.get<Dispatcher>('dispatcher')?.id
-    return (prompted || pick) && agent ? dispatched(self, swarm, { agent, at: 0, sub: 0, ...(prompted ? { turn: prompted } : {}), ...(pick ? { pick } : {}) }) : 0n
+    const base = (prompted || pick) && agent ? await dispatched(self, swarm, { agent, at: 0, sub: 0, ...(prompted ? { turn: prompted } : {}), ...(pick ? { pick } : {}) }) : 0n
+    if (!close || !agent) return base
+    const listed = await list(self, swarm, agent, true)
+    if (!listed.ok) return null
+    const role = 'n:' + Flow.runNode(run) + '#' + Nodes.kOf(run)
+    const stray = listed.value.find((one) => one.parent_agent_id === null && one.role === role)
+    if (!stray) return base
+    if (!finished.has(stray.status.state)) {
+      const closed = await Gateway.close(self.env, swarm, agent, stray.agent_id)
+      if (!closed.ok) return null
+    }
+    const again = await list(self, swarm, agent, true)
+    const last = (again.ok ? again.value.find((one) => one.agent_id === stray.agent_id) : undefined) ?? stray
+    return base + Flow.micro(last.spent_usd)
   }
   const listed = await list(self, swarm, spawned.agent, true)
   if (!listed.ok) return null
@@ -821,7 +834,7 @@ export async function tick(self: Swarm): Promise<number | null> {
     for (const task of await self.board.held())
       if (task.claim && (((task.labels['kind'] === 'run' || task.labels['kind'] === 'verify') && !rt.claims.has(task.claim)) || (task.labels['kind'] === 'settle' && !self.settling.has(task.claim))))
         await self.board.release(task.id, task.claim, 'its worker restarted')
-    await Nodes.reconcile(self, (run) => spentOf(self, run))
+    await Nodes.reconcile(self, (run) => spentOf(self, run, true))
   }
   await late(self).catch((error: unknown) => console.error('Charging late spend failed', error))
   await Nodes.git(self).catch((error: unknown) => console.error('Writing to the proofs repository failed', error))
