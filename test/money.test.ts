@@ -127,7 +127,7 @@ test('a backing that ended is lowered to what it paid, since the rest never left
   ])
   await Money.refresh(stranded.self, row, { credit: true, hands: false })
   assert.deepEqual(stranded.writes.filter((write) => write.sql.startsWith('update contributions set amount')).map((write) => write.args), [['5000000', 'backing:' + live, 'abc123abc123', '25000000']])
-  assert.ok(stranded.logged.some((text) => /approval of \$25 can pay \$5 in all/.test(text)))
+  assert.ok(stranded.logged.some((text) => /approval of \$5 can pay \$5 in all/.test(text)))
 })
 
 test('a branch whose money came from a backing that ended gets the budget still behind it, and a branch of an old agent or with no budget is left alone', async () => {

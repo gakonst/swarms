@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto'
+import { registerHooks } from 'node:module'
 import * as Flow from '../../src/worker/Flow.ts'
 import * as Payment from '../../src/worker/machines/Payment.ts'
 import * as Store from '../../src/worker/Store.ts'
+import * as Words from '../../src/worker/Words.ts'
+import type * as MoneyModule from '../../src/worker/Money.ts'
 import { open } from '../d1.ts'
 
 type Violation = { detail: string; invariant: string }
@@ -11,6 +14,7 @@ type Outcome = { steps: number; violations: Violation[] }
 export const limits = {
   backing: { floors: 8, racers: 4, reach: [9_000_000n, 7_000_000n, 6_000_000n, 4_000_000n], refreshes: 2 },
   flow: { contributors: 3, ops: 60, parts: 3 },
+  overdraw: { after: 3, before: 2, ended: 0.5, limitLeast: 2, limitMost: 40, overMost: 10, slackMost: 3 },
   pay: { commits: 4, crash: 0.15, duplicate: 0.25, moves: 10, pledges: 6, spends: 2, stale: 0.5, tries: 40 },
   steps: { draws: 200, records: 3 },
   transfer: { crash: 0.2, duplicate: 0.3, hashes: 5, tries: 40 },
@@ -685,7 +689,126 @@ async function backingLower(seed: string): Promise<Outcome> {
   return { steps: steps(), violations }
 }
 
+const order = { fresh: true }
+async function overdraw(seed: string): Promise<Outcome> {
+  const random = rng(seed, 'overdraw')
+  const { fail, violations } = recorder()
+  const O = limits.overdraw
+  registerHooks({
+    resolve: (specifier, context, next) =>
+      specifier === 'cloudflare:workers'
+        ? { shortCircuit: true, url: 'data:text/javascript,export const waitUntil = () => {}; export class DurableObject {}' }
+        : next(specifier, context),
+  })
+  const Money = (await import('../../src/worker/Money.ts')) as typeof MoneyModule
+  Money.guards.fresh = order.fresh
+  const d1 = world()
+  const unit = 1_000_000n
+  const key = ('0x' + 'd'.repeat(40)) as Address
+  const limit = BigInt(random.int(O.limitLeast, O.limitMost)) * unit
+  const pooled = BigInt(random.int(1, O.limitMost)) * unit
+  const slack = BigInt(random.int(0, O.slackMost)) * unit
+  const over = slack + BigInt(random.int(1, O.overMost)) * unit
+  const ended = random.chance(O.ended)
+  const paid = BigInt(random.int(0, Number(limit / unit / 2n))) * unit
+  await Store.give(d1.env, {
+    amount: String(pooled + slack),
+    channel: null,
+    contributor: riders[1] as Address,
+    id: '0xpool',
+    note: null,
+    note_id: null,
+    swarm: 's1',
+    token: 'ousd',
+  })
+  await Store.give(d1.env, {
+    amount: String(limit),
+    channel: key,
+    contributor: riders[0] as Address,
+    id: 'backing:' + key,
+    note: null,
+    note_id: null,
+    swarm: 's1',
+    token: 'mach',
+  })
+  const states: { ended: boolean; spent: bigint }[] = []
+  for (let n = 0; n < O.before; n++) states.push({ ended: false, spent: (limit * BigInt(random.int(0, 4))) / 8n })
+  states.push({ ended: false, spent: limit + over })
+  for (let n = 0; n < O.after; n++) states.push({ ended, spent: paid })
+  const now = { state: states[0] as { ended: boolean; spent: bigint } }
+  const decimal = (units: bigint) =>
+    (units < 0n ? '-' : '') + String((units < 0n ? -units : units) / unit) + '.' + String((units < 0n ? -units : units) % unit).padStart(6, '0')
+  const logged: string[] = []
+  const stored = new Map<string, unknown>()
+  const self = {
+    agent: () => undefined,
+    beacon: () => undefined,
+    changed: () => undefined,
+    contributed: async () => undefined,
+    env: {
+      ...d1.env,
+      GATEWAY: {
+        fetch: async (request: Request) => {
+          const path = new URL(request.url).pathname
+          if (path === '/api/keys/credit') return Response.json({ deposited: '0', left: decimal(0n), spent: decimal(pooled) })
+          const left = now.state.ended ? 0n : limit - now.state.spent
+          return Response.json({
+            backings: [
+              {
+                backer: riders[0],
+                createdAt: 1,
+                ended: now.state.ended,
+                expiresAt: null,
+                key,
+                left: decimal(left),
+                limit: decimal(limit),
+                spent: decimal(now.state.spent),
+                tag: null,
+                token: 'mach',
+              },
+            ],
+            left: decimal(left > 0n ? left : 0n),
+            spent: decimal(now.state.spent),
+          })
+        },
+      },
+      GATEWAY_URL: 'https://gateway.test',
+      SWARMS_GATEWAY_KEY: 'test',
+    },
+    kv: { get: (name: string) => stored.get(name), put: (name: string, value: unknown) => void stored.set(name, value) },
+    log: (_kind: string, text: string) => void logged.push(text),
+    remember: () => undefined,
+    turn: () => false,
+  }
+  let steps = 0
+  let held = limit
+  for (const state of states) {
+    now.state = state
+    const row = await Store.find(d1.env, 's1')
+    if (!row) return { steps, violations: [{ detail: 'no swarm', invariant: 'remaining' }] }
+    await Money.refresh(self as never, row, { credit: true, hands: false })
+    steps += 1
+    const worth = state.ended ? state.spent : limit - state.spent > 0n ? limit : state.spent
+    held = held > worth ? worth : held < state.spent ? state.spent : held
+    const bound = pooled + slack + held - (pooled + state.spent)
+    const after = await Store.find(d1.env, 's1')
+    const remaining = BigInt(after?.remaining ?? 0)
+    if (remaining > bound)
+      fail(
+        'remaining',
+        'step ' + steps + ' remaining ' + remaining + ' over raised less real spent ' + bound + ' (limit ' + limit + ', spent ' + state.spent + ')',
+      )
+  }
+  for (const text of logged) {
+    const said = /approval of \$([\d.]+)/.exec(text)?.[1]
+    if (said !== undefined && said !== Words.trim(decimal(limit)))
+      fail('approval', 'funds line said approval of $' + said + ' for a $' + Words.trim(decimal(limit)) + ' approval')
+  }
+  return { steps, violations }
+}
+
 export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = {
+  gateway_overdraw: overdraw,
   backing_lower: backingLower,
   flow_ledger: flowLedger,
   flow_pay: flowPay,
@@ -719,4 +842,5 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
   { flip: flag(Payment.guards, 'keyed'), invariant: 'keyed id', name: 'mb.steps.keyed', scenario: 'pay_steps', seeds: ['1', '2', '3'] },
   { flip: flag(Payment.guards, 'told'), invariant: 'told once', name: 'mb.transfer.told', scenario: 'transfer_once', seeds: ['1', '2', '3'] },
   { flip: flag(Payment.guards, 'fenced'), invariant: 'lower only', name: 'mb.backing.fenced', scenario: 'backing_lower', seeds: ['1', '2', '3'] },
+  { flip: flag(order, 'fresh'), invariant: 'remaining', name: 'mb.overdraw.stale', scenario: 'gateway_overdraw', seeds: ['1', '2', '3'] },
 ]

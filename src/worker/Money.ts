@@ -18,6 +18,8 @@ export const everything: Plan = { credit: true, hands: true }
 
 const unbackedMs = Limits.Money.unbackedMs
 
+export const guards = { fresh: true }
+
 function earned(hand: Gateway.Listed) {
   const charges = hand['charges'] as { usd?: unknown } | null | undefined
   return typeof charges?.usd === 'number' && charges.usd > 0 ? Memo.units(charges.usd.toFixed(6)) : 0n
@@ -54,7 +56,7 @@ async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {
         'funds',
         each.ended
           ? `${Words.short(each.backer)}'s backing ended after paying $${Words.trim(Memo.decimal(counted))}; the rest never left their wallet`
-          : `${Words.short(each.backer)}'s approval of $${Words.trim(Memo.decimal(held))} can pay $${Words.trim(Memo.decimal(counted))} in all; the rest is out of the swarm's reach and stays theirs`,
+          : `${Words.short(each.backer)}'s approval of $${Words.trim(each.limit)} can pay $${Words.trim(Memo.decimal(counted))} in all; the rest is out of the swarm's reach and stays theirs`,
         each.key,
       )
       await lowered(self, row.id, taken).catch((error: unknown) => console.error('Lowering branch budgets failed', error))
@@ -87,16 +89,8 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
   const used = backings?.ok ? Memo.units(backings.value.spent) : BigInt(row.sponsor_spent)
   const left = credited + backed
   const known = !plan.credit || (!!credit?.ok && (!backable || !!backings?.ok))
-  const settling = backings?.ok ? await settle(self, row, backings.value.backings).catch((error: unknown) => (console.error('Settling backings failed', error), undefined)) : undefined
-  const recovered = credit?.ok && Memo.units(credit.value.deposited) > 0n ? await recover(self, row, credit.value.deposited).catch((error: unknown) => (console.error('Recovering credited transfers failed', error), 0)) : 0
-  const settled = settling === true || recovered > 0
-  if (backings?.ok && settling !== undefined && backings.value.backings.every((each) => each.ended)) self.kv.put('unbacked', Date.now())
-
   const previous = self.kv.get<Hand[]>('hands') ?? []
   const connected = hands?.ok ? hands.value.hands.filter((hand) => hand.connected) : undefined
-  if (connected) await joined(self, row, connected, new Set(previous.map((hand) => hand.name)))
-
-  const listed = hands?.ok ? hands.value.hands : undefined
   const pool = { machines: connected?.length ?? previous.length, pool_left: Number(credited), pool_spent: Number(spent), sponsor_left: Number(backed), sponsor_spent: Number(used) }
   const same =
     Number(row.machines) === pool.machines &&
@@ -104,9 +98,19 @@ export async function refresh(self: Swarm, row: Store.Row, plan: Plan = everythi
     Number(row.pool_spent) === pool.pool_spent &&
     Number(row.sponsor_left) === pool.sponsor_left &&
     Number(row.sponsor_spent) === pool.sponsor_spent
+  const first = guards.fresh && !same
+  if (first) await Store.update(self.env, row.id, pool)
+  const settling = backings?.ok ? await settle(self, row, backings.value.backings).catch((error: unknown) => (console.error('Settling backings failed', error), undefined)) : undefined
+  const recovered = credit?.ok && Memo.units(credit.value.deposited) > 0n ? await recover(self, row, credit.value.deposited).catch((error: unknown) => (console.error('Recovering credited transfers failed', error), 0)) : 0
+  const settled = settling === true || recovered > 0
+  if (backings?.ok && settling !== undefined && backings.value.backings.every((each) => each.ended)) self.kv.put('unbacked', Date.now())
+
+  if (connected) await joined(self, row, connected, new Set(previous.map((hand) => hand.name)))
+
+  const listed = hands?.ok ? hands.value.hands : undefined
   if (same && !settled) return { known, left: room(left, row), listed, row }
 
-  if (!same) await Store.update(self.env, row.id, pool)
+  if (!same && !first) await Store.update(self.env, row.id, pool)
   const paid = Number(row.spent) - Number(row.pool_spent) - Number(row.sponsor_spent) + pool.pool_spent + pool.sponsor_spent
   const updated = settled ? ((await Store.find(self.env, row.id)) ?? row) : { ...row, ...pool, remaining: Number(row.balance) - paid, spent: paid }
   self.remember(updated)
