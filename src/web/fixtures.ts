@@ -1,6 +1,6 @@
 import * as Answer from '../shared/Answer.ts'
 import * as Shelf from '../shared/Artifact.ts'
-import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Hall, Heard, Kind, Lent, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Reacted, Reaction, Replied, Replies, Room, Roster, Said, Shouted, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Hall, Heard, Kind, Lent, OwnAi, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Reacted, Reaction, Replied, Replies, Room, Roster, Said, Shouted, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -479,6 +479,7 @@ function summary(swarm: Live): Summary {
     goal: swarm.goal,
     id: swarm.id,
     machines: swarm.machines,
+    ai: swarm.ai ?? null,
     nickname: swarm.nickname,
     picture: swarm.picture ?? null,
     pool: swarm.pool,
@@ -1037,6 +1038,55 @@ export async function rider(who: string): Promise<Profile> {
   const swarms = shown.map((one, index) => ({ balance: one.balance, form: one.form, id: one.id, nickname: one.nickname, ridden: decimal(BigInt(12 - index * 4) * 1_000_000n), riders: one.contributors, since: one.createdAt, started: index === 1, title: one.title }))
   const ridden = decimal(swarms.reduce((sum, one) => sum + units(one.ridden), 0n))
   return delay({ items, rider: { address, handle, name: names.get(address) ?? null }, ridden, swarms })
+}
+
+const own: OwnAi = {
+  keys: scene.has('own') ? [{ added_at: Date.now(), hint: 'a4f2', provider: 'anthropic' }] : [],
+  plans: { claude: { state: scene.has('own') ? 'authenticated' : 'signed_out' } },
+  subject: visitor,
+}
+
+function owned<T = OwnAi>(who: `0x${string}` | undefined, answer: (who: `0x${string}`) => T = (signed) => ({ ...own, subject: signed }) as T): Promise<T> {
+  if (!who) return Promise.reject(fail(401, 'unauthorized', 'Sign in with Tempo ID to use your own AI.'))
+  return Promise.resolve(structuredClone(answer(who)))
+}
+
+export function ownAi(who: `0x${string}` | undefined) {
+  return owned(who)
+}
+
+export function ownKey(provider: 'anthropic' | 'openai', key: string, who: `0x${string}` | undefined) {
+  if (who) own.keys = [...own.keys.filter((kept) => kept.provider !== provider), { added_at: Date.now(), hint: key.slice(key.length - [...'last'].length), provider }]
+  return owned(who)
+}
+
+export function ownDrop(provider: 'anthropic' | 'openai', who: `0x${string}` | undefined) {
+  if (who) own.keys = own.keys.filter((kept) => kept.provider !== provider)
+  return owned(who)
+}
+
+export function ownSignIn(who: `0x${string}` | undefined) {
+  return owned(who, () => ({ url: 'https://claude.ai/oauth/authorize?fixture=1' }))
+}
+
+export function ownSignedIn(code: string, who: `0x${string}` | undefined) {
+  if (!code) return Promise.reject(fail(400, 'invalid_request', 'Paste the code the Claude page shows.'))
+  if (who) own.plans.claude = { state: 'authenticated' }
+  return owned(who)
+}
+
+export function ownSignOut(who: `0x${string}` | undefined) {
+  if (who) own.plans.claude = { state: 'signed_out' }
+  return owned(who)
+}
+
+export async function hostAi(id: string, on: boolean, who: `0x${string}` | undefined): Promise<Summary> {
+  const swarm = await find(id)
+  const harness = swarm.setup?.harness ?? 'claude'
+  const runs = harness === 'claude' ? own.plans.claude.state === 'authenticated' || own.keys.some((kept) => kept.provider === 'anthropic') : own.keys.some((kept) => kept.provider === 'openai')
+  if (who && on && !runs) throw fail(409, 'conflict', `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect an Anthropic key or your Claude plan' : 'Codex: connect an OpenAI key'} under Use your own AI first.`)
+  if (who) swarm.ai = on ? { address: who, handle: called(who) } : null
+  return owned(who, () => summary(swarm))
 }
 
 export function rename(who: `0x${string}` | undefined, name: string | null): Promise<Account> {

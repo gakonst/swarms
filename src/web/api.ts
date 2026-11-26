@@ -277,31 +277,31 @@ export function account() {
 }
 
 export function ownAi() {
-  return signed(() => request<OwnAi>('/api/me/ai'))
+  return signed(() => (fixture ? staged((fixtures) => fixtures.ownAi(who())) : request<OwnAi>('/api/me/ai')))
 }
 
 export function ownKey(provider: 'anthropic' | 'openai', key: string) {
-  return signed(() => request<OwnAi>('/api/me/ai/keys/' + provider, { key }))
+  return signed(() => (fixture ? staged((fixtures) => fixtures.ownKey(provider, key, who())) : request<OwnAi>('/api/me/ai/keys/' + provider, { key })))
 }
 
 export function ownDrop(provider: 'anthropic' | 'openai') {
-  return signed(() => request<OwnAi>('/api/me/ai/keys/' + provider, undefined, 'DELETE'))
+  return signed(() => (fixture ? staged((fixtures) => fixtures.ownDrop(provider, who())) : request<OwnAi>('/api/me/ai/keys/' + provider, undefined, 'DELETE')))
 }
 
 export function ownSignIn() {
-  return signed(() => request<{ url: string }>('/api/me/ai/claude', {}))
+  return signed(() => (fixture ? staged((fixtures) => fixtures.ownSignIn(who())) : request<{ url: string }>('/api/me/ai/claude', {})))
 }
 
 export function ownSignedIn(code: string) {
-  return signed(() => request<OwnAi>('/api/me/ai/claude/complete', { code }))
+  return signed(() => (fixture ? staged((fixtures) => fixtures.ownSignedIn(code, who())) : request<OwnAi>('/api/me/ai/claude/complete', { code })))
 }
 
 export function ownSignOut() {
-  return signed(() => request<OwnAi>('/api/me/ai/claude', undefined, 'DELETE'))
+  return signed(() => (fixture ? staged((fixtures) => fixtures.ownSignOut(who())) : request<OwnAi>('/api/me/ai/claude', undefined, 'DELETE')))
 }
 
 export function hostAi(swarm: string, on: boolean) {
-  return signed(() => request<Summary>(path(swarm) + '/ai', { on }))
+  return signed(() => (fixture ? staged((fixtures) => fixtures.hostAi(swarm, on, who())) : request<Summary>(path(swarm) + '/ai', { on })))
 }
 
 export function rename(name: string | null) {
