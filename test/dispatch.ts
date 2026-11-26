@@ -117,6 +117,7 @@ export async function planted(route: Parameters<typeof world>[0], triageShare = 
   await Store.insert(w.env, { creator: null, form: 'tree', goal: 'g', id, problem: null, setup: null, steering: 'open', title: 'Tree' })
   await w.swarm.plant({
     dispatcher: 'spawn',
+    reviewed: false,
     rules: 'rules',
     root: { statement, title: 'Does P = NP?', words: 'The question.' },
     seed: [],

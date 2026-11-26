@@ -203,7 +203,6 @@ test/mock/github.ts 1 pre-existing hand formatting
 test/mock/model.ts 1 pre-existing hand formatting
 test/nickname-page.test.ts 1 pre-existing hand formatting
 test/nickname.test.ts 1 pre-existing hand formatting
-test/nodes.test.ts 1 pre-existing hand formatting
 test/og.test.ts 1 pre-existing hand formatting
 test/page-server.test.ts 1 pre-existing hand formatting
 test/pay.test.ts 1 pre-existing hand formatting

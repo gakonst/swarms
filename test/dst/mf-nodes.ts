@@ -540,8 +540,457 @@ async function runs(seed: string): Promise<Outcome> {
   return { steps, violations }
 }
 
+const tree = {
+  amountMost: 9_000_000,
+  bare: 2,
+  dependents: 2,
+  extraMost: 4_000_000,
+  gapParts: 2,
+  lateRounds: 3,
+  lemmas: 4,
+  orphans: 3,
+  quietMost: 4,
+  quietLeast: 2,
+  reposts: 4,
+  rotateOver: 3,
+  topups: 3,
+  untilMs: 4000,
+}
+
+const nodeMutants = {
+  adopt: false,
+  inherit: false,
+  late: false,
+  orphan: false,
+  quiet: false,
+  rest: false,
+  rotate: false,
+  schema: false,
+  step: false,
+  stray: false,
+  told: false,
+}
+
+function nodeMutant(key: keyof typeof nodeMutants) {
+  return () => {
+    nodeMutants[key] = true
+    return () => void (nodeMutants[key] = false)
+  }
+}
+
+function seeded(random: Rng) {
+  const saved = { random: Math.random, uuid: crypto.randomUUID.bind(crypto) }
+  Math.random = () => random.next()
+  crypto.randomUUID = () => {
+    const hex = Array.from({ length: 32 }, () => random.int(0, 15).toString(16)).join('')
+    return (hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-4' + hex.slice(13, 16) + '-a' + hex.slice(17, 20) + '-' + hex.slice(20, 32)) as ReturnType<
+      Crypto['randomUUID']
+    >
+  }
+  return () => {
+    Math.random = saved.random
+    crypto.randomUUID = saved.uuid
+  }
+}
+
+type Tree = {
+  D: typeof import('../dispatch.ts')
+  Flow: typeof import('../../src/worker/Flow.ts')
+  Memo: typeof import('../../src/shared/Memo.ts')
+  Nodes: typeof import('../../src/worker/Nodes.ts')
+  Runner: typeof import('../../src/worker/Runner.ts')
+  fail: (invariant: string, detail: string) => void
+  g: ReturnType<typeof import('../dispatch.ts').gateway>
+  hash: () => string
+  random: Rng
+  waited: (check: () => boolean | Promise<boolean>) => Promise<boolean>
+  w: Awaited<ReturnType<typeof import('../dispatch.ts').planted>>
+}
+
+async function planted(seed: string, name: string, body: (t: Tree) => Promise<number>): Promise<Outcome> {
+  const random = rng(seed, name)
+  const { fail, violations } = recorder()
+  const unseed = seeded(rng(seed, name, 'ids'))
+  await import('../run.ts')
+  const D = await import('../dispatch.ts')
+  const Flow = await import('../../src/worker/Flow.ts')
+  const Memo = await import('../../src/shared/Memo.ts')
+  const Nodes = await import('../../src/worker/Nodes.ts')
+  const Runner = await import('../../src/worker/Runner.ts')
+  const was = { nodes: { ...Nodes.guards }, required: [...((Runner.output as { required?: string[] }).required ?? [])], runner: { ...Runner.guards } }
+  for (const key of ['inherit', 'orphan', 'quiet', 'step', 'told'] as const) Nodes.guards[key] = !nodeMutants[key]
+  for (const key of ['adopt', 'late', 'rest', 'rotate', 'stray'] as const) Runner.guards[key] = !nodeMutants[key]
+  const required = (Runner.output as { required?: string[] }).required
+  if (nodeMutants.schema && required) required.splice(required.indexOf('outcome'), 1)
+  const g = D.gateway()
+  const w = await D.planted(g.route as never)
+  const hash = () => '0x' + Array.from({ length: 64 }, () => random.int(0, 15).toString(16)).join('')
+  const waited = (check: () => boolean | Promise<boolean>) =>
+    D.until(check, tree.untilMs).then(
+      () => true,
+      () => false,
+    )
+  let steps = 0
+  try {
+    steps = await body({ D, Flow, Memo, Nodes, Runner, fail, g, hash, random, w, waited })
+  } catch (error) {
+    fail('finished', String((error as Error)?.stack ?? error).slice(0, 300))
+  } finally {
+    await Runner.stop(w.swarm)
+    w.restore()
+    Object.assign(Nodes.guards, was.nodes)
+    Object.assign(Runner.guards, was.runner)
+    if (required) required.splice(0, required.length, ...was.required)
+    unseed()
+  }
+  return { steps, violations }
+}
+
+async function program(t: Tree) {
+  const made = await t.Nodes.post(t.w.swarm, { by: 'seed', form: 'program', needs: [], parent: 'root', statement: null, title: 'Lower bounds', words: '' })
+  t.Nodes.weigh(t.w.swarm, made.nid, 1)
+  return made.nid
+}
+
+function shuffled<T>(random: Rng, items: T[]) {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = random.int(0, i)
+    ;[items[i], items[j]] = [items[j]!, items[i]!]
+  }
+  return items
+}
+
+const flow = (seed: string) =>
+  planted(seed, 'mf-nodes.flow', async (t) => {
+    const { D, Flow, Memo, Nodes, random, w } = t
+    const p = await program(t)
+    const step = Memo.units(Nodes.defaults.runStep)
+    const k = random.int(1, tree.lemmas)
+    const plan = shuffled(random, [
+      ...Array.from({ length: k }, (_, n) => ({ by: 'agent:n:' + p, title: 'Lemma ' + n })),
+      ...Array.from({ length: random.int(0, tree.bare) }, (_, n) => ({ by: random.pick([D.bo, D.ana]), title: 'Proposal ' + n })),
+    ])
+    const lemmas: string[] = []
+    const others: string[] = []
+    for (const one of plan) {
+      const made = await Nodes.post(w.swarm, { by: one.by, form: 'lemma', needs: [], parent: p, statement: 'True', title: one.title, words: '' })
+      ;(one.by.startsWith('agent:') ? lemmas : others).push(made.nid)
+    }
+    for (let n = random.int(0, tree.dependents); n > 0; n--) {
+      const made = await Nodes.post(w.swarm, {
+        by: 'agent:n:' + p,
+        form: 'lemma',
+        needs: [random.pick(lemmas)],
+        parent: p,
+        statement: 'True',
+        title: 'After ' + n,
+        words: '',
+      })
+      others.push(made.nid)
+    }
+    const extra = BigInt(random.int(0, tree.extraMost))
+    const amount = step * BigInt(k) + extra
+    await w.swarm.treePledge(D.id, { amount: Memo.decimal(amount), contributor: random.pick([D.ana, D.bo]), hash: t.hash(), nid: p })
+    if (!(await t.waited(() => t.g.subs.length >= k))) t.fail('flow', 'only ' + t.g.subs.length + ' of ' + k + ' lemmas started')
+    const got = t.g.subs.map((sub) => sub.role + '=' + sub.budget_usd).sort()
+    const want = lemmas.map((nid) => 'n:' + nid + '#1=' + Flow.number(step)).sort()
+    if (got.join() !== want.join())
+      t.fail('flow', 'a pledge of ' + Memo.decimal(amount) + ' over ' + k + ' lemmas started ' + got.join() + ', expected ' + want.join())
+    const ledger = Flow.fold(await Flow.rows(w.env, D.id))
+    for (const nid of others)
+      if ((ledger.inherited.get(nid) ?? 0n) !== 0n)
+        t.fail('flow', nid + ' inherited ' + Memo.decimal(ledger.inherited.get(nid) ?? 0n) + ' without being runnable')
+    if ((ledger.left.get(p) ?? 0n) !== extra) t.fail('flow', 'the program kept ' + Memo.decimal(ledger.left.get(p) ?? 0n) + ', expected ' + Memo.decimal(extra))
+    return k + others.length
+  })
+
+const reconciled = (seed: string) =>
+  planted(seed, 'mf-nodes.reconcile', async (t) => {
+    const { D, Flow, Memo, Nodes, random, w } = t
+    const p = await program(t)
+    const least = Memo.units(Nodes.defaults.runMin)
+    const pledged = BigInt(random.int(Number(least) * 2, tree.amountMost))
+    const committed = BigInt(random.int(Number(least), Number(pledged)))
+    const who = random.pick([D.ana, D.bo])
+    await Flow.write(w.env, { from: null, id: t.hash(), kind: 'pledge', parts: [[who, pledged]], swarm: D.id, to: { node: p, run: null } })
+    await Flow.write(w.env, {
+      from: { node: p, run: null },
+      id: 'commit:' + p + ':1',
+      kind: 'commit',
+      parts: [[who, committed]],
+      swarm: D.id,
+      to: { node: p, run: 'r:' + p + ':1' },
+    })
+    const orphans = [...new Set(Array.from({ length: random.int(1, tree.orphans) }, () => 'r:root:' + random.int(2, 9)))]
+    for (const orphan of orphans) await w.swarm.board.post({ id: orphan, labels: { kind: 'run', node: 'root' }, parent: 'n:root', spec: 'run of root' })
+    const ended = await Nodes.post(w.swarm, { by: D.bo, form: 'idea', needs: [], parent: random.pick(['root', p]), statement: null, title: 'Gone', words: '' })
+    const gone = BigInt(random.int(1, tree.amountMost))
+    await Flow.write(w.env, {
+      from: null,
+      id: t.hash(),
+      kind: 'pledge',
+      parts: [[random.pick([D.ana, D.bo]), gone]],
+      swarm: D.id,
+      to: { node: ended.nid, run: null },
+    })
+    await w.swarm.board.cancel('n:' + ended.nid, JSON.stringify({ at: 1, check: null, into: null, kind: 'withdrawn', why: 'x' }))
+    await w.ring()
+    for (const orphan of orphans) {
+      const reason = (await w.swarm.board.task(orphan))?.reason
+      if (reason !== 'orphan') t.fail('reconciled', orphan + ' has no money and was left with reason ' + String(reason))
+    }
+    if (!(await t.waited(() => t.g.subs.some((sub) => sub.role === 'n:' + p + '#1'))))
+      t.fail('reconciled', 'the committed run of ' + p + ' was never posted and started')
+    const ledger = Flow.fold(await Flow.rows(w.env, D.id))
+    if ((ledger.left.get(ended.nid) ?? 0n) !== 0n || ledger.left.get(Flow.free) !== gone)
+      t.fail(
+        'reconciled',
+        'the ended node kept ' +
+          Memo.decimal(ledger.left.get(ended.nid) ?? 0n) +
+          ' and the pool holds ' +
+          Memo.decimal(ledger.left.get(Flow.free) ?? 0n) +
+          ', expected ' +
+          Memo.decimal(gone),
+      )
+    return orphans.length
+  })
+
+const refused = (seed: string) =>
+  planted(seed, 'mf-nodes.refusal', async (t) => {
+    const { D, Flow, Memo, Nodes, Runner, g, random, w } = t
+    const amount = BigInt(random.int(Number(Memo.units(Nodes.defaults.runMin)), Number(Memo.units(Nodes.defaults.runStep))))
+    g.state.refuse = true
+    await w.swarm.treePledge(D.id, { amount: Memo.decimal(amount), contributor: random.pick([D.ana, D.bo]), hash: t.hash(), nid: null })
+    if (!(await t.waited(() => w.swarm.kv.get<number>('rest:r:root:1') !== undefined))) t.fail('refusal rests', 'a refused run never rested')
+    const rest = w.swarm.kv.get<number>('rest:r:root:1') ?? 0
+    const task = await w.swarm.board.task('r:root:1')
+    if (rest <= Date.now() || task?.phase !== 'open' || task.attempts !== 1 || g.subs.length)
+      t.fail(
+        'refusal rests',
+        'after a refusal the run rests until +' +
+          (rest - Date.now()) +
+          'ms in phase ' +
+          task?.phase +
+          ' after ' +
+          task?.attempts +
+          ' attempts with ' +
+          g.subs.length +
+          ' subagents',
+      )
+    g.state.refuse = false
+    g.make({ budget_usd: random.int(1, tree.lemmas), role: 'n:root#1', task: 'adopted' })
+    w.swarm.kv.delete('rest:r:root:1')
+    Runner.ensure(w.swarm)
+    const budgeted = await t.waited(() => g.budgets.length >= 1 || g.subs.length > 1)
+    if (!budgeted || g.subs.length !== 1 || g.prompts.length || g.budgets[0]?.join() !== [1, Flow.number(amount)].join())
+      t.fail('adopted by role', 'the paid run left ' + g.subs.length + ' subagents, ' + g.prompts.length + ' prompts and budgets ' + JSON.stringify(g.budgets))
+    return 2
+  })
+
+const topped = (seed: string) =>
+  planted(seed, 'mf-nodes.topup', async (t) => {
+    const { D, Flow, Memo, Nodes, Runner, g, random, w } = t
+    const step = Memo.units(Nodes.defaults.runStep)
+    const stray = g.make({ budget_usd: 1, role: 'n:' + random.int(1, 9) + 'bcdefabcd#' + random.int(1, 9), task: 'nobody asked' })
+    const n = random.int(1, tree.topups)
+    const extra = BigInt(random.int(1, Number(step) - 1))
+    await w.swarm.treePledge(D.id, { amount: Memo.decimal(step * BigInt(n + 1) + extra), contributor: random.pick([D.ana, D.bo]), hash: t.hash(), nid: null })
+    await t.waited(() => g.spawned.length >= 1)
+    if (!(g.spawned[0]?.['output_schema'] as { required?: string[] } | undefined)?.required?.includes('outcome'))
+      t.fail('output schema', 'the spawn sent ' + JSON.stringify(g.spawned[0]?.['output_schema']).slice(0, 160))
+    const run = g.subs.find((sub) => sub.role === 'n:root#1')
+    if (!run) throw new Error('the run never started')
+    let total = step
+    let spent = 0n
+    for (let i = 0; i < n; i++) {
+      spent = total - BigInt(random.int(0, Number(step / BigInt(tree.gapParts))))
+      run.spent_usd = Flow.number(spent)
+      Runner.wake(w.swarm)
+      total += step
+      if (!(await t.waited(() => run.budget_usd === Flow.number(total))))
+        t.fail('top-up step', 'after spending ' + Memo.decimal(spent) + ' the bound is ' + run.budget_usd + ', expected ' + Flow.number(total))
+    }
+    if (!(await t.waited(() => stray.status.state === 'closed'))) t.fail('strays closed', 'a subagent no run asked for stays ' + stray.status.state)
+    const view = await w.swarm.treeRead(D.id, { depth: 0, root: 'root', status: undefined })
+    const money = view.ok ? view.value.nodes[0]?.money : undefined
+    if (money?.left !== Memo.decimal(extra) || money.committed !== Memo.decimal(total - spent))
+      t.fail(
+        'top-up step',
+        'the root shows left ' + money?.left + ' committed ' + money?.committed + ', expected ' + Memo.decimal(extra) + ' and ' + Memo.decimal(total - spent),
+      )
+    return n
+  })
+
+const rotated = (seed: string) =>
+  planted(seed, 'mf-nodes.rotate', async (t) => {
+    const { D, Memo, Nodes, Runner, g, random, w } = t
+    const rotate = random.chance(0.5)
+    const runs = rotate ? Runner.rotateAfter + random.int(0, tree.rotateOver) : random.int(0, Runner.rotateAfter - 1)
+    w.swarm.kv.put('dispatcher', { at: 0, id: 'agt_d0', runs })
+    await w.swarm.treePledge(D.id, { amount: Nodes.defaults.runMin, contributor: random.pick([D.ana, D.bo]), hash: t.hash(), nid: null })
+    await t.waited(() => g.subs.length >= 1)
+    const kept = w.swarm.kv.get<{ id: string; runs: number }>('dispatcher')
+    const want = rotate ? { id: 'agt_d1', runs: 1 } : { id: 'agt_d0', runs: runs + 1 }
+    if (kept?.id !== want.id || kept.runs !== want.runs)
+      t.fail(
+        'rotated',
+        'after ' + runs + ' runs the dispatcher is ' + JSON.stringify(kept) + ', expected ' + JSON.stringify(want) + ' (' + Memo.decimal(0n) + ')',
+      )
+    return runs
+  })
+
+const charged = (seed: string) =>
+  planted(seed, 'mf-nodes.late', async (t) => {
+    const { D, Flow, Memo, Nodes, Runner, g, random, w } = t
+    const step = Memo.units(Nodes.defaults.runStep)
+    const amount = step + BigInt(random.int(Number(step), tree.amountMost))
+    await w.swarm.treePledge(D.id, { amount: Memo.decimal(amount), contributor: random.pick([D.ana, D.bo]), hash: t.hash(), nid: null })
+    await t.waited(() => g.subs.length >= 1)
+    const run = g.subs[0]
+    if (!run) throw new Error('the run never started')
+    let spent = BigInt(random.int(1, Number(step) - 1))
+    run.spent_usd = Flow.number(spent)
+    run.status = { output: { children: [], commit: null, outcome: 'progress', summary: 'Some way in', theorem: null, why: null }, state: 'completed' }
+    Runner.wake(w.swarm)
+    await t.waited(async () => (await w.swarm.board.task('s:r:root:1'))?.phase === 'done')
+    const rounds = random.int(1, tree.lateRounds)
+    for (let i = 0; i < rounds; i++) {
+      if (random.chance(0.7)) spent += BigInt(random.int(1, tree.extraMost / tree.lemmas))
+      run.spent_usd = Flow.number(spent)
+      for (let n = random.int(1, 2); n > 0; n--) await Runner.late(w.swarm)
+      const now = Flow.fold(await Flow.rows(w.env, D.id)).spent.get('root') ?? 0n
+      const others = (await Flow.rows(w.env, D.id)).filter((row) => row.kind === 'spend' && row.node === 'root' && row.run !== null && row.run !== 'r:root:1')
+      const theirs = others.reduce((sum, row) => sum - row.amount, 0n)
+      if (now - (theirs > 0n ? theirs : -theirs) !== spent)
+        t.fail('late once', 'round ' + i + ' charged root ' + Memo.decimal(now) + ' for a run that spent ' + Memo.decimal(spent))
+    }
+    return rounds
+  })
+
+const quieted = (seed: string) =>
+  planted(seed, 'mf-nodes.quiet', async (t) => {
+    const { D, Nodes, g, random, w } = t
+    const Triage = await import('../../src/worker/Triage.ts')
+    const cap = random.int(tree.quietLeast, tree.quietMost)
+    w.swarm.kv.put('tree', { ...Nodes.defaults, quietRuns: cap })
+    const result = (outcome: import('../../src/worker/Nodes.ts').Result['outcome'], children: import('../../src/worker/Nodes.ts').Result['children'] = []) => ({
+      children,
+      commit: null,
+      outcome,
+      summary: outcome,
+      theorem: null,
+      why: null,
+    })
+    const verify = async () => undefined
+    const made: string[] = []
+    let steps = 0
+    for (const title of ['A', 'B']) {
+      const nid = (await Nodes.post(w.swarm, { by: 'agent:n:root', form: 'lemma', needs: [], parent: 'root', statement: null, title, words: '' })).nid
+      made.push(nid)
+      let quiet = 0
+      let stuck = 0
+      let k = 0
+      let halves = 0
+      while (quiet < cap) {
+        k += 1
+        steps += 1
+        const kind = random.pick(['progress', 'progress', 'stuck', 'split', 'again'] as const)
+        if (kind === 'split') {
+          halves += 1
+          await Nodes.ran(
+            w.swarm,
+            Nodes.runId(nid, k),
+            result('split', [{ needs: [], spec: 'Half.', statement: null, title: 'Half ' + halves + ' of ' + title }]),
+            verify,
+          )
+          quiet = 0
+        } else if (kind === 'again' && halves) {
+          await Nodes.ran(
+            w.swarm,
+            Nodes.runId(nid, k),
+            result('split', [{ needs: [], spec: 'Half.', statement: null, title: 'Half ' + halves + ' of ' + title }]),
+            verify,
+          )
+          quiet += 1
+        } else {
+          const outcome = kind === 'stuck' && stuck < Nodes.stuckRuns - 1 ? 'stuck' : 'progress'
+          if (outcome === 'stuck') stuck += 1
+          await Nodes.ran(w.swarm, Nodes.runId(nid, k), result(outcome), verify)
+          quiet += 1
+        }
+        const paused = Nodes.paused(w.swarm, nid)
+        const want = quiet >= cap ? quiet : null
+        if (paused !== want)
+          t.fail('quiet pause', title + ' after run ' + k + ' (' + kind + ') shows paused ' + paused + ', expected ' + want + ' under a cap of ' + cap)
+      }
+      for (let n = 1; n <= halves; n++)
+        await w.swarm.board.cancel(
+          'n:' + (await Nodes.nid(nid, 'Half ' + n + ' of ' + title)),
+          JSON.stringify({ at: 1, check: null, into: null, kind: 'withdrawn', why: 'x' }),
+        )
+    }
+    const [a, b] = made as [string, string]
+    if ((await Nodes.view(w.swarm)).nodes.get(a)?.paused !== Nodes.paused(w.swarm, a)) t.fail('quiet pause', 'the view shows a different pause from the count')
+    await w.swarm.treePledge(D.id, { amount: Nodes.defaults.runStep, contributor: D.ana, hash: t.hash(), nid: null })
+    await w.ring()
+    if (g.subs.some((sub) => sub.role.startsWith('n:' + a) || sub.role.startsWith('n:' + b)) || (await Nodes.start(w.swarm, await Nodes.state(w.swarm), a)))
+      t.fail('quiet pause', 'a paused node started a run')
+    const applied = await Triage.apply(w.swarm, [{ amount: Nodes.defaults.ideaMin, kind: 'grant', node: a }], 'agent:n:triage', 'quiet', async () => undefined)
+    if (!applied.every((one) => one.ok) || Nodes.paused(w.swarm, a) !== null)
+      t.fail('quiet pause', 'a triage grant left ' + a + ' paused: ' + JSON.stringify(applied))
+    await w.ring()
+    if (!(await t.waited(() => g.subs.some((sub) => sub.role === 'n:' + a + '#1')))) t.fail('quiet pause', 'a granted node never ran')
+    await w.swarm.treePledge(D.id, { amount: Nodes.defaults.runStep, contributor: D.bo, hash: t.hash(), nid: b })
+    if (Nodes.paused(w.swarm, b) !== null) t.fail('quiet pause', 'a fresh pledge left ' + b + ' paused')
+    if (!(await t.waited(() => g.subs.some((sub) => sub.role === 'n:' + b + '#1')))) t.fail('quiet pause', 'a pledged node never ran')
+    return steps
+  })
+
+const reposted = (seed: string) =>
+  planted(seed, 'mf-nodes.repost', async (t) => {
+    const { Nodes, random, w } = t
+    const parent = random.chance(0.5) ? 'root' : await program(t)
+    const statement = random.chance(0.7) ? random.pick(['True', 'True ∧ True', '1 = 1']) : null
+    const input: Parameters<typeof Nodes.post>[1] = {
+      by: random.pick(['seed', 'agent:n:' + parent]),
+      form: 'lemma',
+      needs: [],
+      parent,
+      statement,
+      title: random.pick(['Again', 'Once more', 'Twice']),
+      words: '',
+    }
+    const times = random.int(2, tree.reposts)
+    let dropped = false
+    const made: { created: boolean; nid: string }[] = []
+    for (let n = 0; n < times; n++) {
+      const one = await Nodes.post(w.swarm, input)
+      made.push(one)
+      if (random.chance(0.5)) {
+        w.swarm.kv.delete('statement:' + one.nid)
+        dropped = true
+      }
+    }
+    const nid = made[0]!.nid
+    if (made.some((one, n) => one.created !== (n === 0) || one.nid !== nid))
+      t.fail('repost once', 'posting ' + times + ' times answered ' + JSON.stringify(made))
+    const told = Number(w.swarm.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM tree_deltas WHERE node = ? AND event = 'posted'", nid).one().n)
+    if (told !== 1) t.fail('repost once', 'the node was told posted ' + told + ' times')
+    const queued = w.swarm.kv.get('statement:' + nid)
+    if (queued !== (dropped || statement === null ? undefined : statement)) t.fail('repost once', 'its statement is queued as ' + JSON.stringify(queued))
+    return times
+  })
+
 export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = {
+  'mf-nodes.flow': flow,
+  'mf-nodes.late': charged,
+  'mf-nodes.quiet': quieted,
+  'mf-nodes.reconcile': reconciled,
+  'mf-nodes.refusal': refused,
+  'mf-nodes.repost': reposted,
+  'mf-nodes.rotate': rotated,
   'mf-nodes.runs': runs,
+  'mf-nodes.topup': topped,
 }
 
 export const canaries: { flip: () => () => void; invariant: string; name: string; scenario: string; seeds: string[] }[] = [
@@ -552,4 +1001,15 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
   { flip: mutant('versioned'), invariant: 'tracked again', name: 'mf-nodes.runs.versioned', scenario: 'mf-nodes.runs', seeds: ['1', '2', '3'] },
   { flip: mutant('unwrap'), invariant: 'readable', name: 'mf-nodes.runs.unwrap', scenario: 'mf-nodes.runs', seeds: ['1', '2', '3'] },
   { flip: mutant('running'), invariant: 'log reread', name: 'mf-nodes.runs.running', scenario: 'mf-nodes.runs', seeds: ['1', '2', '3', '4', '5', '6'] },
+  { flip: nodeMutant('inherit'), invariant: 'flow', name: 'mf-nodes.flow.inherit', scenario: 'mf-nodes.flow', seeds: ['1', '2', '3', '4', '5'] },
+  { flip: nodeMutant('orphan'), invariant: 'reconciled', name: 'mf-nodes.reconcile.orphan', scenario: 'mf-nodes.reconcile', seeds: ['1', '2', '3'] },
+  { flip: nodeMutant('rest'), invariant: 'refusal rests', name: 'mf-nodes.refusal.rest', scenario: 'mf-nodes.refusal', seeds: ['1', '2', '3'] },
+  { flip: nodeMutant('adopt'), invariant: 'adopted by role', name: 'mf-nodes.refusal.adopt', scenario: 'mf-nodes.refusal', seeds: ['1', '2', '3'] },
+  { flip: nodeMutant('step'), invariant: 'top-up step', name: 'mf-nodes.topup.step', scenario: 'mf-nodes.topup', seeds: ['1', '2', '3'] },
+  { flip: nodeMutant('stray'), invariant: 'strays closed', name: 'mf-nodes.topup.stray', scenario: 'mf-nodes.topup', seeds: ['1', '2', '3'] },
+  { flip: nodeMutant('schema'), invariant: 'output schema', name: 'mf-nodes.topup.schema', scenario: 'mf-nodes.topup', seeds: ['1', '2', '3'] },
+  { flip: nodeMutant('rotate'), invariant: 'rotated', name: 'mf-nodes.rotate.rotate', scenario: 'mf-nodes.rotate', seeds: ['1', '2', '3', '4', '5', '6'] },
+  { flip: nodeMutant('late'), invariant: 'late once', name: 'mf-nodes.late.late', scenario: 'mf-nodes.late', seeds: ['1', '2', '3'] },
+  { flip: nodeMutant('quiet'), invariant: 'quiet pause', name: 'mf-nodes.quiet.quiet', scenario: 'mf-nodes.quiet', seeds: ['1', '2', '3'] },
+  { flip: nodeMutant('told'), invariant: 'repost once', name: 'mf-nodes.repost.told', scenario: 'mf-nodes.repost', seeds: ['1', '2', '3'] },
 ]

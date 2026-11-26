@@ -23,6 +23,8 @@ export const defaults: Settings = { ideaMin: '1.000000', quietRuns: 12, runCap: 
 
 export const retry: Work.Retry = { backoffMs: 15_000, maxAttempts: 3 }
 
+export const guards = { inherit: true, orphan: true, quiet: true, step: true, told: true }
+
 export const stuckRuns = Limits.Nodes.stuckRuns
 
 const lockMs = Limits.Nodes.lockMs
@@ -221,7 +223,7 @@ function waiting(self: Swarm, nid: string) {
 
 export function paused(self: Swarm, nid: string) {
   const quiet = self.kv.get<number>('quiet:' + nid) ?? 0
-  return quiet >= units(self).quietRuns ? quiet : null
+  return guards.quiet && quiet >= units(self).quietRuns ? quiet : null
 }
 
 export function resume(self: Swarm, nid: string) {
@@ -288,7 +290,7 @@ export async function post(self: Swarm, input: Posting) {
     spec: spec(input),
   })
   if (posted.ok) {
-    if (!posted.found || !told(self, id)) emit(self, id, 'posted', normalized(input.title))
+    if (!posted.found || !guards.told || !told(self, id)) emit(self, id, 'posted', normalized(input.title))
     if (input.statement !== null && !posted.found) {
       self.kv.put('statement:' + id, input.statement)
       if (self.kv.get<number>('seeded')) self.ctx.waitUntil(statements(self).catch((error: unknown) => console.error('Committing statements failed', error)))
@@ -432,7 +434,7 @@ function weight(self: Swarm, found: State, weighed: Map<string, number>, nid: st
   const by = task.labels['by'] ?? ''
   const parent = parentOf(task)
   if (by === 'seed' || (parent !== null && by === 'agent:n:' + parent)) return 1
-  return (found.ledger.pledged.get(nid) ?? 0n) >= units(self).ideaMin ? 1 : 0
+  return !guards.inherit || (found.ledger.pledged.get(nid) ?? 0n) >= units(self).ideaMin ? 1 : 0
 }
 
 function eligible(self: Swarm, found: State, weighed: Map<string, number>, nid: string) {
@@ -564,7 +566,7 @@ export async function topUp(self: Swarm, run: string, spent: bigint) {
     const total = bucketTotal(found, run)
     if (total >= set.runCap || total - spent > set.runStep / 2n) return null
     const room = set.runCap - total
-    const want = set.runStep < room ? set.runStep : room
+    const want = guards.step && set.runStep < room ? set.runStep : room
     if (left(found, nid) < want) await pull(self, found, nid, want - left(found, nid))
     const have = left(found, nid)
     const amount = have < want ? have : want
@@ -758,7 +760,7 @@ export async function reconcile(self: Swarm, spentOf: (run: string) => Promise<b
     }
   }
   for (const runs of found.runs.values())
-    for (const task of runs) if (!terminal(task) && !found.ledger.runs.has(task.id) && task.labels['node'] !== undefined) await self.board.cancel(task.id, 'orphan')
+    for (const task of runs) if (guards.orphan && !terminal(task) && !found.ledger.runs.has(task.id) && task.labels['node'] !== undefined) await self.board.cancel(task.id, 'orphan')
   for (const [nid, task] of found.nodes) if (terminal(task) && left(found, nid) > 0n) await settleNode(self, nid)
 }
 

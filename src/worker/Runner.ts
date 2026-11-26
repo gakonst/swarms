@@ -23,6 +23,8 @@ export const rotateAfter = Limits.Runner.rotateAfter
 
 export const verifiers = Limits.Runner.verifiers
 
+export const guards = { adopt: true, late: true, rest: true, rotate: true, stray: true }
+
 export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: 8 }
 
 const finished = new Set(['completed', 'failed', 'closed', 'interrupted'])
@@ -157,7 +159,7 @@ function boarded(self: Swarm) {
 
 export async function dispatcher(self: Swarm, swarm: string): Promise<Gateway.Result<string>> {
   const kept = self.kv.get<Dispatcher>('dispatcher')
-  if (kept && kept.runs < rotateAfter) return { ok: true, value: kept.id }
+  if (kept && (kept.runs < rotateAfter || !guards.rotate)) return { ok: true, value: kept.id }
   if (kept && [...runtime(self).aborts.keys()].some((run) => self.kv.get<Nodes.Spawned>('run:' + run)?.agent === kept.id)) return { ok: true, value: kept.id }
   const chosen = setup(self)
   const made = await Gateway.agent(
@@ -267,7 +269,7 @@ async function strays(self: Swarm, swarm: string, agent: string) {
   const listed = await list(self, swarm, agent, true)
   if (!listed.ok) return
   const open = new Set((await self.board.tasks()).filter((task) => task.labels['kind'] === 'run' && !Work.terminal(task.phase)).map((task) => 'n:' + (task.labels['node'] ?? '') + '#' + Nodes.kOf(task.id)))
-  for (const sub of listed.value) if (sub.parent_agent_id === null && !finished.has(sub.status.state) && !open.has(sub.role)) await Gateway.close(self.env, swarm, agent, sub.agent_id)
+  for (const sub of listed.value) if (guards.stray && sub.parent_agent_id === null && !finished.has(sub.status.state) && !open.has(sub.role)) await Gateway.close(self.env, swarm, agent, sub.agent_id)
 }
 
 async function refusal(self: Swarm, task: Work.Task, lease: Board.PoolLease, failure: { detail: string; status: number }): Promise<never> {
@@ -275,7 +277,7 @@ async function refusal(self: Swarm, task: Work.Task, lease: Board.PoolLease, fai
   if (failure.status !== 402 && !transient) throw new Error(failure.detail)
   const tries = (self.kv.get<number>('paid:' + task.id) ?? 0) + 1
   const wait = transient ? Math.min(Limits.Runner.followBackoffMostMs, Limits.Runner.followBackoffMs * 2 ** Math.min(tries, Limits.Runner.followBackoffDoublings)) : Work.delay(paying, tries)
-  const until = Date.now() + wait
+  const until = Date.now() + (guards.rest ? wait : 0)
   self.kv.put('paid:' + task.id, tries)
   self.kv.put('rest:' + task.id, until)
   await self.board.release(task.id, lease.claim, (transient ? 'The gateway did not take the run yet: ' : 'The gateway refused payment: ') + failure.detail)
@@ -350,7 +352,7 @@ async function running(self: Swarm, task: Work.Task, lease: Board.PoolLease): Pr
     let budgeted = false
     if (!spawned) {
       const listed = await list(self, swarm, agent.value, true)
-      const adopted = listed.ok ? listed.value.find((sub) => sub.role === role && sub.parent_agent_id === null) : undefined
+      const adopted = guards.adopt && listed.ok ? listed.value.find((sub) => sub.role === role && sub.parent_agent_id === null) : undefined
       const prompted = self.kv.get<string>('prompted:' + task.id)
       const kept = self.kv.get<Nodes.Pick>('picked:' + task.id)
       if (adopted) {
@@ -676,7 +678,7 @@ async function charge(self: Swarm) {
     const kept = Sub.observe(self.kv, held.agent, sub)
     if (!held.sub && !Sub.done(kept)) await Gateway.close(self.env, swarm, held.agent, sub.agent_id)
     const now = Sub.spent(kept)
-    const extra = now - Memo.units(held.spent)
+    const extra = now - (guards.late ? Memo.units(held.spent) : 0n)
     if (extra <= 0n) continue
     const nid = Flow.runNode(run)
     await Nodes.budgeting(self, async () => {

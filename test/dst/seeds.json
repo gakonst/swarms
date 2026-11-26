@@ -103,5 +103,12 @@
     "invariant": "revoked everywhere",
     "found": "2026-11-26: a token ended through one isolate still answered on another isolate from its session cache, and a replica read could still return the deleted row",
     "fix": "fix(sessions): an ended token is refused on every isolate at the next request"
+  },
+  {
+    "job": "mf-nodes.topup",
+    "seed": "2",
+    "invariant": "top-up step",
+    "found": "2026-11-26 by mf-nodes.topup: a run topped up once could not be topped up again, since the commit key counted commit rows that Flow.rows sums per contributor, so the second top-up reused the first key and was dropped",
+    "fix": "fix(tree): a run's bound tops up again after its first top-up"
   }
 ]
