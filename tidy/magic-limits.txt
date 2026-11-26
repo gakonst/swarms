@@ -1,5 +1,5 @@
 # No numeric literal outside src/shared/Limits.ts but 0, 1, 2 and the unit conversions 24, 60, 1000, 1024 and 3600.
-# path count why; 2343 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 2142 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 cli/src/auth.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/account.ts 4 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/ai.ts 2 pre-existing; move it into src/shared/Limits.ts
@@ -9,27 +9,6 @@ cli/src/commands/swarms.ts 11 pre-existing; move it into src/shared/Limits.ts
 cli/src/commands/watch.ts 7 pre-existing; move it into src/shared/Limits.ts
 cli/src/context.ts 14 pre-existing; move it into src/shared/Limits.ts
 cli/src/mcp.ts 3 pre-existing; move it into src/shared/Limits.ts
-src/shared/Answer.ts 7 pre-existing; move it into src/shared/Limits.ts
-src/shared/Artifact.ts 6 pre-existing; move it into src/shared/Limits.ts
-src/shared/Brief.ts 1 pre-existing; move it into src/shared/Limits.ts
-src/shared/Btw.ts 2 pre-existing; move it into src/shared/Limits.ts
-src/shared/Credit.ts 3 pre-existing; move it into src/shared/Limits.ts
-src/shared/Crew.ts 3 pre-existing; move it into src/shared/Limits.ts
-src/shared/Fleet.ts 8 pre-existing; move it into src/shared/Limits.ts
-src/shared/Fuzzy.ts 15 pre-existing; move it into src/shared/Limits.ts
-src/shared/Memo.ts 5 pre-existing; move it into src/shared/Limits.ts
-src/shared/Mention.ts 6 pre-existing; move it into src/shared/Limits.ts
-src/shared/Picture.ts 26 pre-existing; move it into src/shared/Limits.ts
-src/shared/Progress.ts 15 pre-existing; move it into src/shared/Limits.ts
-src/shared/Prose.ts 3 pre-existing; move it into src/shared/Limits.ts
-src/shared/ResearchBrief.ts 1 pre-existing; move it into src/shared/Limits.ts
-src/shared/Setup.ts 8 pre-existing; move it into src/shared/Limits.ts
-src/shared/Status.ts 3 pre-existing; move it into src/shared/Limits.ts
-src/shared/Surface.ts 36 pre-existing; move it into src/shared/Limits.ts
-src/shared/Trace.ts 3 pre-existing; move it into src/shared/Limits.ts
-src/shared/Trail.ts 28 pre-existing; move it into src/shared/Limits.ts
-src/shared/Tree.ts 2 pre-existing; move it into src/shared/Limits.ts
-src/shared/Wishlist.ts 5 pre-existing; move it into src/shared/Limits.ts
 src/web/api.ts 9 pre-existing; move it into src/shared/Limits.ts
 src/web/App.tsx 3 pre-existing; move it into src/shared/Limits.ts
 src/web/Art.tsx 33 pre-existing; move it into src/shared/Limits.ts

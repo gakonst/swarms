@@ -53,7 +53,7 @@ export function conversation(thread: readonly Exchange[]) {
 
 export async function seal(exchange: Exchange) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${exchange.question.trim()}\u0000${exchange.answer.trim()}`))
-  return Array.from(new Uint8Array(digest).slice(0, 16), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return Array.from(new Uint8Array(digest).slice(0, Limits.SharedBtw.idBytes), (byte) => byte.toString(Limits.SharedBtw.hexRadix).padStart(2, '0')).join('')
 }
 
 export function ask(thread: readonly Exchange[], question: string) {

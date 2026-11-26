@@ -308,8 +308,25 @@ export const Share = {
   look: 3,
 } as const
 
+export const SharedAnswer = {
+  centsShownFrom: 0.1,
+  briefChars: 220,
+  lineLeast: 20,
+  freshChars: 240,
+} as const
+
+export const SharedArtifact = {
+  unwrapDepth: 5,
+  keyProbe: 600,
+  pathChars: 300,
+  pathParts: 4,
+  summaryChars: 300,
+  titleChars: 120,
+} as const
+
 export const SharedBrief = {
   most: 3,
+  lineChars: 220,
 } as const
 
 export const SharedBtw = {
@@ -320,15 +337,44 @@ export const SharedBtw = {
   perSwarmHour: 120,
   maxThreadBytes: 32_768,
   maxMessageBytes: 48_000,
+  idBytes: 16,
+  hexRadix: 16,
+} as const
+
+export const SharedCredit = {
+  chainId: 4217,
+  tagBytes: 16,
+} as const
+
+export const SharedCrew = {
+  wholeFrom: 100,
+  tenthsFrom: 10,
+} as const
+
+export const SharedFleet = {
+  gbTenths: 10,
+  reasonChars: 300,
+  shellParts: 3,
+  lookahead: 6,
+  clippedFrom: 1990,
+  pendingLeft: 5,
+  unwrapDepth: 4,
 } as const
 
 export const SharedMemo = {
   maxNote: 280,
+  unit: 1_000_000n,
+  decimals: 6,
 } as const
 
 export const SharedMention = {
   maxText: 1000,
   maxName: 24,
+  smallestSteer: 10_000n,
+  wordHexEnd: 10,
+  hexRadix: 16,
+  headChars: 6,
+  tailChars: 4,
 } as const
 
 export const SharedNickname = {
@@ -336,9 +382,52 @@ export const SharedNickname = {
   most: 40,
 } as const
 
+export const SharedFuzzy = {
+  exactBase: 100,
+  exactPerChar: 6,
+  exactBoundary: 40,
+  exactStart: 20,
+  exactLeadMost: 60,
+  exactLeadCost: 0.2,
+  fuzzyLeast: 3,
+  fuzzyPerChar: 8,
+  fuzzyJoined: 6,
+  fuzzyBoundary: 10,
+  gapMost: 10,
+  gapCost: 0.8,
+  leadMost: 20,
+  leadCost: 0.3,
+  spreadPerChar: 4,
+  spreadSlack: 6,
+} as const
+
 export const SharedPicture = {
   most: 65_536,
   side: 128,
+  emojiChars: 32,
+  versionRadix: 36,
+  png: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  jpeg: [0xff, 0xd8, 0xff],
+  gif: [0x47, 0x49, 0x46, 0x38],
+  riff: [0x52, 0x49, 0x46, 0x46],
+  webpAt: 8,
+  webp: [0x57, 0x45, 0x42, 0x50],
+} as const
+
+export const SharedProgress = {
+  stateChars: 40,
+  rowsMost: 2000,
+  chainMost: 500,
+  lineChars: 400,
+  betterChars: 10,
+  exploresChars: 300,
+  titleChars: 200,
+  branchesMost: 200,
+} as const
+
+export const SharedProse = {
+  breakFrom: 0.6,
+  markupLeast: 3,
 } as const
 
 export const SharedReaction = {
@@ -351,18 +440,84 @@ export const SharedSetup = {
   written: 1_000,
   longest: 1_024,
   budgetCalls: 20,
+  least: 50_000n,
+  microsPerDollar: 1_000_000,
+  fineBelow: 10_000,
+  fineDigits: 4,
+  coarseDigits: 3,
+} as const
+
+export const SharedStatus = {
+  fuel: 0.05,
 } as const
 
 export const SharedSurface = {
   most: 12,
+  askText: 160,
+  askAmount: 16,
+  askWhy: 240,
+  idChars: 40,
+  titleChars: 80,
+  asks: 4,
+  stats: 6,
+  statLabel: 32,
+  statValue: 20,
+  checks: 16,
+  checkText: 120,
+  points: 200,
+  goalLabel: 40,
+  unitChars: 8,
+  bars: 10,
+  barLabel: 48,
+  rows: 10,
+  rowText: 240,
+  rowState: 20,
+  rowNote: 80,
+  meterLabel: 40,
+  rangeNote: 120,
+  rangeUnit: 12,
+  tiles: 120,
+  tileLabel: 32,
+  tileState: 16,
+  noteText: 1200,
+  statuses: 3,
+  statusText: 220,
+} as const
+
+export const SharedTrace = {
+  detailChars: 20_000,
 } as const
 
 export const SharedTrail = {
   thought: 1500,
+  headline: 120,
+  detail: 4000,
+  brief: 2000,
+  result: 20_000,
+  role: 80,
+  command: 140,
+  reason: 240,
+  target: 40,
+  program: 30,
+  query: 50,
+  nsPerMs: 1_000_000,
+  centsShownFrom: 0.1,
+  entries: 5000,
+} as const
+
+export const SharedTree = {
+  graceMs: 2_000,
+  shortSha: 7,
 } as const
 
 export const SharedWishlist = {
   most: 50,
+  wantChars: 280,
+  whyChars: 400,
+} as const
+
+export const SharedResearchBrief = {
+  titleChars: 80,
 } as const
 
 export const Store = {

@@ -1,4 +1,5 @@
 import type { Answer } from './Api.ts'
+import * as Limits from './Limits.ts'
 import * as Prose from './Prose.ts'
 
 const status = /^[*_>\s]*STATUS:\s*(done|continue)\b[\s:\u2014\u2013-]*(.*?)[*_\s]*$/i
@@ -38,7 +39,7 @@ function matchCase(found: string, next: string) {
 
 export function cash(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '$0.00'
-  if (value >= 0.1) return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })
+  if (value >= Limits.SharedAnswer.centsShownFrom) return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })
   return '$' + String(Number(value.toPrecision(2)))
 }
 
@@ -84,16 +85,16 @@ export function local(text: string, at: number, format: (at: number) => string) 
   return text.replace(/\b(\d{2}):(\d{2}) UTC\b/g, (found, hours: string, minutes: string) => {
     const day = new Date(at)
     let next = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), Number(hours), Number(minutes))
-    if (next < at - 60_000) next += 86_400_000
+    if (next < at - Limits.Clock.minuteMs) next += Limits.Clock.dayMs
     return Number.isFinite(next) ? format(next) : found
   })
 }
 
-export function brief(text: string, length = 220) {
+export function brief(text: string, length: number = Limits.SharedAnswer.briefChars) {
   return Prose.clip(Prose.line(unround(text)), length)
 }
 
-export function excerpt(text: string, length = 220) {
+export function excerpt(text: string, length: number = Limits.SharedAnswer.briefChars) {
   return Prose.plain(brief(text, length))
 }
 
@@ -102,7 +103,7 @@ function plain(line: string) {
 }
 
 function telling(line: string) {
-  return line.length > 20 && !/^[-: ]+$/.test(line)
+  return line.length > Limits.SharedAnswer.lineLeast && !/^[-: ]+$/.test(line)
 }
 
 const signs: Record<string, string> = {
@@ -187,7 +188,7 @@ export function opening(text: string, title = '') {
     const said = bare(Prose.plain(part))
     return said && !bare(title).startsWith(said) && !said.startsWith(bare(title))
   })
-  return Prose.clip(fresh[0] ?? '', 240)
+  return Prose.clip(fresh[0] ?? '', Limits.SharedAnswer.freshChars)
 }
 
 export function lead(text: string) {

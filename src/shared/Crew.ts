@@ -1,5 +1,6 @@
 import type { Branch } from './Api.ts'
 import * as Prose from './Prose.ts'
+import * as Limits from './Limits.ts'
 
 export type State = 'working' | 'done' | 'failed' | 'stopped' | 'starved'
 
@@ -32,7 +33,7 @@ function sentence(text: string) {
 }
 
 function number(value: number) {
-  return Math.abs(value) >= 100 ? value.toFixed(0) : Math.abs(value) >= 10 ? value.toFixed(1) : value.toFixed(2)
+  return Math.abs(value) >= Limits.SharedCrew.wholeFrom ? value.toFixed(0) : Math.abs(value) >= Limits.SharedCrew.tenthsFrom ? value.toFixed(1) : value.toFixed(2)
 }
 
 function metric(fields: Record<string, unknown>) {
@@ -40,7 +41,7 @@ function metric(fields: Record<string, unknown>) {
     if (typeof value !== 'number' || !Number.isFinite(value)) continue
     const name = key.toLowerCase()
     if (/speed_?up/.test(name)) return `${number(value)}×`
-    if (/^best_/.test(name)) return `${name.slice(5).replace(/_/g, ' ')} ${number(value)}`
+    if (/^best_/.test(name)) return `${name.slice('best_'.length).replace(/_/g, ' ')} ${number(value)}`
   }
   return null
 }

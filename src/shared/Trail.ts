@@ -8,6 +8,7 @@ export type Buffers = { add(who: string | null, text: string): void; take(who: s
 const quiet = new Set(['write_stdin', 'wait', 'wait_agent', 'list_agents', 'spawn_agent'])
 
 export const thought = Limits.SharedTrail.thought
+const clipAt = Limits.SharedTrail
 
 export function appended(held: string, text: string) {
   return held.trim().length > thought ? held : held + text
@@ -33,7 +34,7 @@ export function clip(text: string, length: number) {
 export function gist(text: string) {
   const headed = [...text.matchAll(/\*\*([^*\n]+)\*\*/g)].at(-1)?.[1]
   const lines = text.split('\n').map((line) => line.replace(/^[#>\s]+/, '').replace(/[*`]+/g, '').replace(/\s+/g, ' ').trim()).filter(Boolean)
-  return clip((headed ?? lines.at(-1) ?? '').trim(), 120)
+  return clip((headed ?? lines.at(-1) ?? '').trim(), clipAt.headline)
 }
 
 export function redact(text: string) {
@@ -56,9 +57,9 @@ export function call(payload: Record<string, unknown>): Step | undefined {
       : {}
   const on = typeof input['hand'] === 'string' ? ` on ${input['hand']}` : ''
 
-  if (name === 'exec') return { detail: clip(raw, 4000), kind: 'tool', text: `Ran a script: ${clip(raw.split('\n')[0] ?? '', 120)}` }
+  if (name === 'exec') return { detail: clip(raw, clipAt.detail), kind: 'tool', text: `Ran a script: ${clip(raw.split('\n')[0] ?? '', clipAt.headline)}` }
   if (name === 'spawn_agent')
-    return { detail: clip(String(input['task'] ?? ''), 2000), kind: 'tool', text: `Spawned a subagent: ${clip(String(input['role'] ?? 'worker'), 80)}` }
+    return { detail: clip(String(input['task'] ?? ''), clipAt.brief), kind: 'tool', text: `Spawned a subagent: ${clip(String(input['role'] ?? 'worker'), clipAt.role)}` }
   if (name === 'wait_agent') return { detail: null, kind: 'tool', text: 'Waiting on subagents' }
   if (name === 'compute_create')
     return {
@@ -67,15 +68,15 @@ export function call(payload: Record<string, unknown>): Step | undefined {
       text: `Starting machine ${String(input['attach'] ?? '')} (${String(input['image'] ?? 'default image')}${input['gpu'] ? ', ' + String(input['gpu']) : ''})`,
     }
   if (name === 'compute_terminate') return { detail: raw, kind: 'machine', text: 'Shutting down a machine' }
-  if (name === 'exec_command') return { detail: raw, kind: 'tool', text: `$ ${clip(String(input['cmd'] ?? ''), 140)}${on}` }
+  if (name === 'exec_command') return { detail: raw, kind: 'tool', text: `$ ${clip(String(input['cmd'] ?? ''), clipAt.command)}${on}` }
   if (name === 'write_stdin' || name === 'wait') return undefined
   if (name === 'send_feedback' || name === 'stake_feedback')
     return {
-      detail: clip([input['message'], input['tool'] && `Tool: ${String(input['tool'])}`, input['error'] && `Error: ${typeof input['error'] === 'string' ? input['error'] : JSON.stringify(input['error'])}`, input['context'] && `Context: ${typeof input['context'] === 'string' ? input['context'] : JSON.stringify(input['context'])}`].filter(Boolean).join('\n\n'), 4000),
+      detail: clip([input['message'], input['tool'] && `Tool: ${String(input['tool'])}`, input['error'] && `Error: ${typeof input['error'] === 'string' ? input['error'] : JSON.stringify(input['error'])}`, input['context'] && `Context: ${typeof input['context'] === 'string' ? input['context'] : JSON.stringify(input['context'])}`].filter(Boolean).join('\n\n'), clipAt.detail),
       kind: 'status',
-      text: `Reported a problem to the gateway's team: ${clip(String(input['message'] ?? '').split('\n')[0] ?? '', 140)}`,
+      text: `Reported a problem to the gateway's team: ${clip(String(input['message'] ?? '').split('\n')[0] ?? '', clipAt.command)}`,
     }
-  return { detail: clip(raw, 2000), kind: 'tool', text: `Called ${name}${on}` }
+  return { detail: clip(raw, clipAt.brief), kind: 'tool', text: `Called ${name}${on}` }
 }
 
 export function output(value: unknown): string {
@@ -103,19 +104,19 @@ export function step(type: string | undefined, payload: Record<string, unknown>)
   if (type === 'tool.result') {
     const name = tool(payload)
     const text = output(payload['result']).trim()
-    const timed = typeof payload['duration_ns'] === 'number' ? { ms: Math.round(payload['duration_ns'] / 1e6) } : {}
-    if (payload['status'] !== 'completed') return { detail: clip(text || JSON.stringify(payload['result'] ?? ''), 2000), kind: 'error', text: `${name} failed`, ...timed }
+    const timed = typeof payload['duration_ns'] === 'number' ? { ms: Math.round(payload['duration_ns'] / clipAt.nsPerMs) } : {}
+    if (payload['status'] !== 'completed') return { detail: clip(text || JSON.stringify(payload['result'] ?? ''), clipAt.brief), kind: 'error', text: `${name} failed`, ...timed }
     if (quiet.has(name) || !text) return undefined
     const shown = result(name, text)
     if (!shown.body) return undefined
-    return { detail: clip(shown.body, 2000), kind: 'output', text: shown.text, ...timed }
+    return { detail: clip(shown.body, clipAt.brief), kind: 'output', text: shown.text, ...timed }
   }
-  if (type === 'assistant.message') return { detail: null, kind: 'message', text: clip(String(payload['text'] ?? ''), 4000) }
-  if (type === 'run.failed') return { detail: clip(JSON.stringify(payload), 2000), kind: 'error', text: 'The run failed.' }
+  if (type === 'assistant.message') return { detail: null, kind: 'message', text: clip(String(payload['text'] ?? ''), clipAt.detail) }
+  if (type === 'run.failed') return { detail: clip(JSON.stringify(payload), clipAt.brief), kind: 'error', text: 'The run failed.' }
   if (type === 'model.call.failed') {
     const said = String(payload['error'] ?? '')
     const reason = /"message":"((?:[^"\\]|\\.)*)"/.exec(said)?.[1]?.replace(/\\"/g, '"') ?? ''
-    return { detail: clip(JSON.stringify(payload), 2000), kind: 'error', text: reason ? `A model call failed: ${clip(reason, 240)}` : 'A model call failed.' }
+    return { detail: clip(JSON.stringify(payload), clipAt.brief), kind: 'error', text: reason ? `A model call failed: ${clip(reason, clipAt.reason)}` : 'A model call failed.' }
   }
   return undefined
 }
@@ -160,7 +161,7 @@ export function subagent(buffers: Buffers, crew: Crew, scope: string, update: un
     const taken = Object.entries(crew.names).some(([other, name]) => other !== key && name === role)
     const who = taken ? `${role} #${id}` : role
     crew.names[key] = who
-    return { steps: [{ detail: clip(String(row.agent?.['task'] ?? ''), 2000) || null, kind: 'status', text: `Started a subagent: ${who}` }], who }
+    return { steps: [{ detail: clip(String(row.agent?.['task'] ?? ''), clipAt.brief) || null, kind: 'status', text: `Started a subagent: ${who}` }], who }
   }
   const who = crew.names[key] ?? `subagent ${id}`
   if (row.type === 'event') return { steps: narrate(buffers, who, row.event?.type, row.event?.payload ?? {}), who }
@@ -170,9 +171,9 @@ export function subagent(buffers: Buffers, crew: Crew, scope: string, update: un
     crew.ended[key] = state
     if (state === 'completed') {
       const result = output(row.status?.['output']).trim()
-      return { steps: [{ detail: result ? clip(result, 20_000) : null, kind: 'output', text: `${who} finished` }], who }
+      return { steps: [{ detail: result ? clip(result, clipAt.result) : null, kind: 'output', text: `${who} finished` }], who }
     }
-    if (state === 'failed') return { steps: [{ detail: clip(output(row.status?.['error']), 2000) || null, kind: 'error', text: `${who} failed` }], who }
+    if (state === 'failed') return { steps: [{ detail: clip(output(row.status?.['error']), clipAt.brief) || null, kind: 'error', text: `${who} failed` }], who }
     if (state === 'interrupted' || state === 'closed') return { steps: [{ detail: null, kind: 'status', text: `${who} stopped` }], who }
   }
   return { steps: [], who }
@@ -219,7 +220,7 @@ export function command(line: string) {
   if (['cat', 'head', 'tail', 'less', 'bat', 'wc'].includes(head)) return target ? `Read ${base(target)}` : 'Read a file'
   if (head === 'sed' && words.includes('-n')) return target ? `Read ${base(target)}` : 'Read a file'
   if (['ls', 'find', 'tree'].includes(head)) return target ? `Listed ${base(target)}` : 'Listed files'
-  if (['grep', 'rg', 'ag'].includes(head)) return rest[0] ? `Searched for ${clip(rest[0].replace(/^['"]|['"]$/g, ''), 40)}` : 'Searched the files'
+  if (['grep', 'rg', 'ag'].includes(head)) return rest[0] ? `Searched for ${clip(rest[0].replace(/^['"]|['"]$/g, ''), clipAt.target)}` : 'Searched the files'
   if (['curl', 'wget'].includes(head)) {
     const url = words.find((word) => /^['"]?https?:\/\//.test(word))
     return url ? `Downloaded from ${new URL(url.replace(/^['"]|['"]$/g, '')).host}` : 'Downloaded a file'
@@ -232,7 +233,7 @@ export function command(line: string) {
     return rest[0] && !words.includes('-c') && !words.includes('-e') ? `Ran ${base(rest[0])}` : `Ran ${head}`
   }
   if (['git', 'cargo', 'go', 'npm', 'pnpm', 'yarn', 'make', 'docker', 'uv'].includes(head)) return `Ran ${head}${rest[0] ? ` ${clip(rest[0], 24)}` : ''}`
-  return `Ran ${clip(head, 30)}`
+  return `Ran ${clip(head, clipAt.program)}`
 }
 
 function script(code: string) {
@@ -254,7 +255,7 @@ function script(code: string) {
 export function named(entry: Pick<Entry, 'detail' | 'text'>) {
   const text = entry.text
   if (text.startsWith('$ ')) return command(text.slice(2))
-  if (text.startsWith('Ran a script:')) return script(entry.detail ?? text.slice(13))
+  if (text.startsWith('Ran a script:')) return script(entry.detail ?? text.slice('Ran a script:'.length))
   const called = /^Called (\w+)/.exec(text)?.[1]
   if (!called) return text
   const input = args(entry.detail)
@@ -262,8 +263,8 @@ export function named(entry: Pick<Entry, 'detail' | 'text'>) {
   const where = pick('key', 'path', 'name', 'file')
   if (called === 'bucket_put') return where ? `Saved ${base(where)} to the bucket` : 'Saved a file to the bucket'
   if (called === 'bucket_get') return where ? `Read ${base(where)} from the bucket` : 'Read a file from the bucket'
-  if (called === 'kv_set') return where ? `Saved ${clip(where, 40)}` : 'Saved a value'
-  if (called === 'kv_get' || called === 'kv_list') return where ? `Read ${clip(where, 40)}` : 'Read saved values'
+  if (called === 'kv_set') return where ? `Saved ${clip(where, clipAt.target)}` : 'Saved a value'
+  if (called === 'kv_get' || called === 'kv_list') return where ? `Read ${clip(where, clipAt.target)}` : 'Read saved values'
   if (called === 'git_commit') return pick('message') ? `Committed: ${clip(pick('message')?.split('\n')[0] ?? '', 60)}` : 'Committed code'
   if (called === 'git_create') return where ? `Created the repository ${where}` : 'Created a repository'
   if (called === 'fetch') {
@@ -274,7 +275,7 @@ export function named(entry: Pick<Entry, 'detail' | 'text'>) {
       return 'Fetched a page'
     }
   }
-  if (called === 'web__run' || called === 'web_search' || called === 'search') return pick('query', 'q') ? `Searched the web for ${clip(pick('query', 'q') ?? '', 50)}` : 'Searched the web'
+  if (called === 'web__run' || called === 'web_search' || called === 'search') return pick('query', 'q') ? `Searched the web for ${clip(pick('query', 'q') ?? '', clipAt.query)}` : 'Searched the web'
   if (called === 'compute_exec') return pick('command', 'cmd') ? `${command(pick('command', 'cmd') ?? '')} on a machine` : 'Ran a command on a machine'
   if (called === 'compute_read') return where ? `Read ${base(where)} on a machine` : 'Read a file on a machine'
   if (called === 'compute_write') return where ? `Wrote ${base(where)} on a machine` : 'Wrote a file on a machine'
@@ -283,7 +284,7 @@ export function named(entry: Pick<Entry, 'detail' | 'text'>) {
   if (called === 'compute_spawn') return 'Started a process on a machine'
   if (called === 'submit_result') return 'Handed in its result'
   if (called === 'browser_create') return 'Opened a browser'
-  if (called.startsWith('browser_')) return `Used the browser: ${called.slice(8).replace(/_/g, ' ')}`
+  if (called.startsWith('browser_')) return `Used the browser: ${called.slice('browser_'.length).replace(/_/g, ' ')}`
   return text
 }
 
@@ -304,14 +305,14 @@ export function trouble(entry: Pick<Entry, 'detail' | 'text'>): Trouble {
 }
 
 function spentCash(value: number) {
-  return value >= 0.1 ? `$${value.toFixed(2)}` : `$${Number(value.toPrecision(2))}`
+  return value >= clipAt.centsShownFrom ? `$${value.toFixed(2)}` : `$${Number(value.toPrecision(2))}`
 }
 
 export function key(entry: Pick<Entry, 'event' | 'kind' | 'seq'>) {
   return typeof entry.event === 'number' ? `e${entry.event}${entry.kind}` : `s${entry.seq}`
 }
 
-export function merge(previous: readonly Entry[], next: readonly Entry[], cap = 5000) {
+export function merge(previous: readonly Entry[], next: readonly Entry[], cap: number = clipAt.entries) {
   if (next.length === 0) return previous
   const byKey = new Map(previous.map((entry) => [key(entry), entry]))
   let changed = false

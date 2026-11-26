@@ -1,4 +1,5 @@
 import * as Maths from './Math.ts'
+import * as Limits from './Limits.ts'
 
 type Token =
   | { at: number; kind: 'text'; text: string }
@@ -125,7 +126,7 @@ function shut(open: readonly string[]) {
 function words(text: string, room: number) {
   const cut = text.slice(0, room)
   const gap = cut.search(/\s\S*$/)
-  return (gap > room * 0.6 ? cut.slice(0, gap) : cut).trimEnd()
+  return (gap > room * Limits.SharedProse.breakFrom ? cut.slice(0, gap) : cut).trimEnd()
 }
 
 const fence = /^\s{0,3}(\x60{3,}|~{3,})/
@@ -182,8 +183,8 @@ export function clip(text: string, length: number) {
       continue
     }
     if (token.kind === 'text') out += words(token.text, room)
-    else if (token.kind === 'code' && room > 3) out += token.tick + token.body.slice(0, room).trimEnd() + token.tick
-    else if (token.kind === 'link' && room > 3) out += clip(token.inner, room).replace(/…$/, '')
+    else if (token.kind === 'code' && room > Limits.SharedProse.markupLeast) out += token.tick + token.body.slice(0, room).trimEnd() + token.tick
+    else if (token.kind === 'link' && room > Limits.SharedProse.markupLeast) out += clip(token.inner, room).replace(/…$/, '')
     break
   }
   out = out.trimEnd()

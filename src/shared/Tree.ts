@@ -1,5 +1,6 @@
 import type { Board } from 'nanocode-ts'
 import { decimal, units } from './Memo.ts'
+import * as Limits from './Limits.ts'
 
 export type Form = 'goal' | 'program' | 'approach' | 'lemma' | 'idea' | 'triage'
 export type Status = 'proposed' | 'funded' | 'in flight' | 'proven' | 'dead end'
@@ -79,7 +80,7 @@ export type Line = { state: State; label: string; text: string; at: number | nul
 
 const labels: Record<State, string> = { stuck: 'Stuck', blocked: 'Blocked', checking: 'Checking', dead: 'Dead end', done: 'Done', open: 'Open', paused: 'Paused', queued: 'Queued', running: 'Running', stalled: 'Stalled' }
 
-export const graceMs = 2_000
+export const graceMs = Limits.SharedTree.graceMs
 
 export function plain(text: string) {
   return /^over_limit:/.test(text) ? 'It used all the money committed to this run.' : text
@@ -89,7 +90,7 @@ export function line(node: Node, now: number, title: (nid: string) => { title: s
   const last = node.last ?? null
   const base = { agent: null, at: last?.at ?? null, budget: null, run: null, spent: null, text: plain(last?.text ?? '') }
   const make = (state: State, rest: Partial<Line> = {}): Line => ({ ...base, ...rest, label: labels[state], state })
-  if (node.status === 'proven') return make('done', node.proof ? { at: node.proof.at || base.at, text: 'Checked by Lean at ' + node.proof.commit.slice(0, 7) } : {})
+  if (node.status === 'proven') return make('done', node.proof ? { at: node.proof.at || base.at, text: 'Checked by Lean at ' + node.proof.commit.slice(0, Limits.SharedTree.shortSha) } : {})
   if (node.status === 'dead end') return make('dead', node.end ? { at: node.end.at || base.at, text: node.end.why || node.end.kind } : {})
   if (node.status === 'in flight' && node.run) {
     const run = { agent: node.run.agent, budget: node.run.budget, run: node.run.k, spent: node.run.spent }

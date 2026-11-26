@@ -1,3 +1,7 @@
+import * as Limits from './Limits.ts'
+
+const cap = Limits.SharedProgress
+
 export type State = 'exploring' | 'promising' | 'dead end' | 'done'
 
 export type Step = { commit: string; kept: boolean; merged: string | null; text: string; value: number | null }
@@ -19,7 +23,7 @@ function words(value: unknown, most: number) {
 }
 
 function state(value: unknown): State {
-  const text = words(value, 40).toLowerCase()
+  const text = words(value, cap.stateChars).toLowerCase()
   return (states as readonly string[]).includes(text) ? (text as State) : /dead|drop|abandon|fail/.test(text) ? 'dead end' : /done|finish|complete|merged/.test(text) ? 'done' : 'exploring'
 }
 
@@ -27,7 +31,7 @@ export function table(text: string) {
   return text
     .split(/\r?\n/)
     .filter((line) => line.trim())
-    .slice(0, 2000)
+    .slice(0, cap.rowsMost)
     .map((line) => line.split('\t').map((cell) => cell.trim()))
 }
 
@@ -56,7 +60,7 @@ export function fromGit(input: { branches: readonly { name: string; sha: string 
   const head = input.main[0]
   if (!head) return undefined
   const chain: Commit[] = []
-  for (let at: Commit | undefined = head; at && chain.length < 500; at = at.parents[0] ? known.get(at.parents[0]) : undefined) chain.push(at)
+  for (let at: Commit | undefined = head; at && chain.length < cap.chainMost; at = at.parents[0] ? known.get(at.parents[0]) : undefined) chain.push(at)
   chain.reverse()
   const onTrunk = new Set(chain.map((commit) => commit.sha))
   const onMain = new Set(input.main.map((commit) => commit.sha))
@@ -67,7 +71,7 @@ export function fromGit(input: { branches: readonly { name: string; sha: string 
     const merged = commit.parents.length > 1 ? (merges(commit.message) ?? owner(commit.parents[1]!) ?? 'a branch') : null
     const found = measure(commit.message, metric)
     if (found && !metric) metric = found.metric
-    return { commit: commit.sha, kept: true, merged, text: commit.message.split('\n')[0]?.slice(0, 400) ?? '', value: found?.value ?? null }
+    return { commit: commit.sha, kept: true, merged, text: commit.message.split('\n')[0]?.slice(0, cap.lineChars) ?? '', value: found?.value ?? null }
   })
   const merged = new Set(steps.flatMap((step) => (step.merged ? [step.merged] : [])))
   const live = new Set(input.live.map((name) => name.toLowerCase()))
@@ -79,7 +83,7 @@ export function fromGit(input: { branches: readonly { name: string; sha: string 
     const own = log.find((commit) => !onMain.has(commit.sha))
     return [{
       explores: input.hint?.explores.get(name) ?? '',
-      found: own?.message.split('\n')[0]?.slice(0, 400) ?? '',
+      found: own?.message.split('\n')[0]?.slice(0, cap.lineChars) ?? '',
       from,
       merged: absorbed,
       name,
@@ -104,11 +108,11 @@ export function hint(data: unknown): Hint | undefined {
   const goal = Number(fields['goal'])
   const listed = Array.isArray(fields['branches']) ? fields['branches'] : []
   return {
-    better: words(fields['better'], 10).toLowerCase() === 'lower' ? 'lower' : words(fields['better'], 10).toLowerCase() === 'higher' ? 'higher' : null,
-    explores: new Map(listed.flatMap((item) => (typeof item === 'object' && item !== null ? [[words((item as Record<string, unknown>)['name'], 60).toLowerCase(), words((item as Record<string, unknown>)['explores'], 300)] as const] : []))),
+    better: words(fields['better'], cap.betterChars).toLowerCase() === 'lower' ? 'lower' : words(fields['better'], cap.betterChars).toLowerCase() === 'higher' ? 'higher' : null,
+    explores: new Map(listed.flatMap((item) => (typeof item === 'object' && item !== null ? [[words((item as Record<string, unknown>)['name'], 60).toLowerCase(), words((item as Record<string, unknown>)['explores'], cap.exploresChars)] as const] : []))),
     goal: Number.isFinite(goal) && goal > 0 ? goal : null,
     metric: words(fields['metric'], 60),
-    title: words(fields['title'], 200),
+    title: words(fields['title'], cap.titleChars),
   }
 }
 
@@ -125,7 +129,7 @@ export function steps(text: string, metric: string): Step[] {
     const raw = Number(row[measured])
     const said = row[described] ?? ''
     const kept = status < 0 ? true : (row[status] ?? '').toLowerCase() === 'keep'
-    return [{ commit, kept, merged: kept ? merges(said) : null, text: said.slice(0, 400), value: Number.isFinite(raw) && raw > 0 ? raw : null }]
+    return [{ commit, kept, merged: kept ? merges(said) : null, text: said.slice(0, cap.lineChars), value: Number.isFinite(raw) && raw > 0 ? raw : null }]
   })
 }
 
@@ -138,22 +142,22 @@ export function parse(data: unknown, main: string | undefined): Progress | undef
   if (!line.some((step) => step.kept && step.value !== null)) return undefined
   const merged = new Set(line.flatMap((step) => (step.merged ? [step.merged] : [])))
   const listed = Array.isArray(fields['branches']) ? fields['branches'] : []
-  const branches = listed.slice(0, 200).flatMap((item): Line[] => {
+  const branches = listed.slice(0, cap.branchesMost).flatMap((item): Line[] => {
     if (typeof item !== 'object' || item === null) return []
     const branch = item as Record<string, unknown>
     const name = words(branch['name'], 60).toLowerCase()
     if (!name || name === 'main') return []
-    const found = words(branch['found'], 400)
-    return [{ explores: words(branch['explores'], 300), found, merged: merged.has(name) || /\(merged\)/i.test(found), name, state: state(branch['state']) }]
+    const found = words(branch['found'], cap.lineChars)
+    return [{ explores: words(branch['explores'], cap.exploresChars), found, merged: merged.has(name) || /\(merged\)/i.test(found), name, state: state(branch['state']) }]
   })
   const goal = Number(fields['goal'])
   return {
-    better: words(fields['better'], 10).toLowerCase() === 'lower' ? 'lower' : 'higher',
+    better: words(fields['better'], cap.betterChars).toLowerCase() === 'lower' ? 'lower' : 'higher',
     branches,
     goal: Number.isFinite(goal) && goal > 0 ? goal : null,
     main: line,
     metric,
     source: 'artifact',
-    title: words(fields['title'], 200),
+    title: words(fields['title'], cap.titleChars),
   }
 }

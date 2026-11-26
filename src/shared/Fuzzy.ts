@@ -1,3 +1,7 @@
+import * as Limits from './Limits.ts'
+
+const weigh = Limits.SharedFuzzy
+
 export type Hit = { exact: boolean; marks: readonly number[]; score: number }
 
 function fold(text: string) {
@@ -13,11 +17,16 @@ function boundary(text: string, at: number) {
 function token(text: string, folded: string, word: string): Hit | undefined {
   let best: Hit | undefined
   for (let at = folded.indexOf(word); at !== -1; at = folded.indexOf(word, at + 1)) {
-    const score = 100 + word.length * 6 + (boundary(text, at) ? 40 : 0) + (at === 0 ? 20 : 0) - Math.min(at, 60) * 0.2
+    const score =
+      weigh.exactBase +
+      word.length * weigh.exactPerChar +
+      (boundary(text, at) ? weigh.exactBoundary : 0) +
+      (at === 0 ? weigh.exactStart : 0) -
+      Math.min(at, weigh.exactLeadMost) * weigh.exactLeadCost
     if (!best || score > best.score) best = { exact: true, marks: Array.from({ length: word.length }, (_, index) => at + index), score }
   }
   if (best) return best
-  if (word.length < 3) return undefined
+  if (word.length < weigh.fuzzyLeast) return undefined
   const marks: number[] = []
   let score = 0
   let from = 0
@@ -34,11 +43,15 @@ function token(text: string, folded: string, word: string): Hit | undefined {
     }
     if (at === -1) return undefined
     const joined = marks.length > 0 && at === marks.at(-1)! + 1
-    score += 8 + (joined ? 6 : 0) + (boundary(text, at) ? 10 : 0) - (marks.length ? Math.min(at - marks.at(-1)! - 1, 10) * 0.8 : Math.min(at, 20) * 0.3)
+    score +=
+      weigh.fuzzyPerChar +
+      (joined ? weigh.fuzzyJoined : 0) +
+      (boundary(text, at) ? weigh.fuzzyBoundary : 0) -
+      (marks.length ? Math.min(at - marks.at(-1)! - 1, weigh.gapMost) * weigh.gapCost : Math.min(at, weigh.leadMost) * weigh.leadCost)
     marks.push(at)
     from = at + 1
   }
-  if (marks.at(-1)! - marks[0]! + 1 > word.length * 4 + 6) return undefined
+  if (marks.at(-1)! - marks[0]! + 1 > word.length * weigh.spreadPerChar + weigh.spreadSlack) return undefined
   return { exact: false, marks, score }
 }
 

@@ -1,4 +1,5 @@
 import type { Artifact, Cover, Form } from './Api.ts'
+import * as Limits from './Limits.ts'
 
 export const prefix = 'artifacts/'
 
@@ -41,7 +42,11 @@ export function scriptedType(path: string) {
 
 export function unwrapped(body: string, key: string) {
   let text = body
-  for (let depth = 0; depth < 5 && text.startsWith('{') && text.slice(0, 600).includes('"key"'); depth++) {
+  for (
+    let depth = 0;
+    depth < Limits.SharedArtifact.unwrapDepth && text.startsWith('{') && text.slice(0, Limits.SharedArtifact.keyProbe).includes('"key"');
+    depth++
+  ) {
     try {
       const fields = JSON.parse(text) as { key?: unknown; text?: unknown } | null
       if (typeof fields !== 'object' || fields === null || fields.key !== key || typeof fields.text !== 'string') break
@@ -54,9 +59,9 @@ export function unwrapped(body: string, key: string) {
 }
 
 export function path(value: unknown) {
-  if (typeof value !== 'string' || value.length > 300) return undefined
+  if (typeof value !== 'string' || value.length > Limits.SharedArtifact.pathChars) return undefined
   const parts = value.replace(/^\.\//, '').split('/')
-  return parts.length <= 4 && parts.every((part) => segment.test(part) && part !== '..') ? parts.join('/') : undefined
+  return parts.length <= Limits.SharedArtifact.pathParts && parts.every((part) => segment.test(part) && part !== '..') ? parts.join('/') : undefined
 }
 
 function text(value: unknown, limit: number) {
@@ -79,8 +84,8 @@ export function read(key: string, value: unknown, version: number, base: string)
     form: form(entry),
     kind: text(manifest['kind'], 24) ?? form(entry),
     slug: name,
-    summary: text(manifest['summary'], 300),
-    title: text(manifest['title'], 120) ?? name,
+    summary: text(manifest['summary'], Limits.SharedArtifact.summaryChars),
+    title: text(manifest['title'], Limits.SharedArtifact.titleChars) ?? name,
     updatedAt: time(manifest['updated'] ?? manifest['updatedAt']),
     url: `${base}/${name}/${entry.split('/').map(encodeURIComponent).join('/')}`,
     version,

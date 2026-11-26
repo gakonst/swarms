@@ -1,5 +1,6 @@
 import * as Answer from './Answer.ts'
 import type { Entry, Kind } from './Api.ts'
+import * as Limits from './Limits.ts'
 
 export type Row = { at: number; count: number; detail: string | null; kind: Kind; seq: number; text: string; who: string | null }
 
@@ -57,9 +58,9 @@ export function shown(row: Pick<Row, 'detail' | 'text'>) {
     const parsed = JSON.parse(row.detail) as unknown
     const fields = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
     const streams = fields ? [fields['stdout'], fields['stderr']].filter((part): part is string => typeof part === 'string' && part.trim() !== '') : []
-    if (streams.length) return streams.join('\n').slice(0, 20_000)
-    return (typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2)).slice(0, 20_000)
+    if (streams.length) return streams.join('\n').slice(0, Limits.SharedTrace.detailChars)
+    return (typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2)).slice(0, Limits.SharedTrace.detailChars)
   } catch {
-    return row.detail.slice(0, 20_000)
+    return row.detail.slice(0, Limits.SharedTrace.detailChars)
   }
 }

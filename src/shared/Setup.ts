@@ -145,7 +145,7 @@ export const written = Limits.SharedSetup.written
 
 export const longest = Limits.SharedSetup.longest
 
-export const least = 50_000n
+export const least = Limits.SharedSetup.least
 
 export const budgetCalls = Limits.SharedSetup.budgetCalls
 
@@ -159,15 +159,15 @@ export function resolve(choice: Choice): Omit<Setup, keyof Costs> | string {
 }
 
 export function step(price: Price) {
-  return ((context - fresh) * price.cached + fresh * price.input + written * price.output) / 1_000_000
+  return ((context - fresh) * price.cached + fresh * price.input + written * price.output) / Limits.SharedSetup.microsPerDollar
 }
 
 export function most(price: Price) {
-  return (context * price.input + longest * price.output) / 1_000_000
+  return (context * price.input + longest * price.output) / Limits.SharedSetup.microsPerDollar
 }
 
 export function units(usd: number) {
-  return BigInt(Math.ceil(usd * 1_000_000))
+  return BigInt(Math.ceil(usd * Limits.SharedSetup.microsPerDollar))
 }
 
 export function priced(setup: Omit<Setup, keyof Costs>, prices: ReadonlyMap<string, Price>): Setup | string {
@@ -182,7 +182,7 @@ export function priced(setup: Omit<Setup, keyof Costs>, prices: ReadonlyMap<stri
 }
 
 export function told(setup: Setup) {
-  const dollars = (value: string) => '$' + (Number(value) / 1_000_000).toFixed(Number(value) < 10_000 ? 4 : 3)
+  const dollars = (value: string) => '$' + (Number(value) / Limits.SharedSetup.microsPerDollar).toFixed(Number(value) < Limits.SharedSetup.fineBelow ? Limits.SharedSetup.fineDigits : Limits.SharedSetup.coarseDigits)
   const harness = (value: Harness) => (value === 'claude' ? 'Claude Code' : 'Codex')
   const offer = setup.subagents && setup.subagents.models.map((model) => (setup.steps[model] ? model + ' (about ' + dollars(setup.steps[model]) + ' a call)' : model)).join(', ')
   if (setup.template === 'board' && setup.subagents)

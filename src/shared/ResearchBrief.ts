@@ -1,3 +1,4 @@
+import * as Limits from './Limits.ts'
 export type Problem = { goal: string; hint: string; id: string; label: string; title: string }
 
 export const problems: readonly Problem[] = [
@@ -134,5 +135,5 @@ export const briefInstruction =
 
 export function brief(question: string) {
   const text = question.trim()
-  return { title: text.slice(0, 80), goal: `${text}\n\n${briefInstruction}` }
+  return { title: text.slice(0, Limits.SharedResearchBrief.titleChars), goal: `${text}\n\n${briefInstruction}` }
 }

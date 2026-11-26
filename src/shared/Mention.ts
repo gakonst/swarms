@@ -3,7 +3,7 @@ export const maxText = Limits.SharedMention.maxText
 
 export const maxName = Limits.SharedMention.maxName
 
-export const smallestSteer = 10_000n
+export const smallestSteer = Limits.SharedMention.smallestSteer
 
 const words = [
   'alder', 'axon', 'basalt', 'birch', 'boson', 'cedar', 'cipher', 'cobalt', 'comet', 'coral', 'delta', 'drift', 'dune', 'ember', 'falcon', 'fern',
@@ -24,12 +24,12 @@ const person = /(?<![\w@-])@([a-z][a-z0-9_-]{1,22}[a-z0-9])(?![\w-])/gi
 
 export function handle(address: string) {
   const lower = address.toLowerCase()
-  return `${words[Number.parseInt(lower.slice(2, 10), 16) % words.length]}-${lower.slice(-4)}`
+  return `${words[Number.parseInt(lower.slice(2, Limits.SharedMention.wordHexEnd), Limits.SharedMention.hexRadix) % words.length]}-${lower.slice(-Limits.SharedMention.tailChars)}`
 }
 
 export function short(address: string) {
   const lower = address.toLowerCase()
-  return `${lower.slice(0, 6)}…${lower.slice(-4)}`
+  return `${lower.slice(0, Limits.SharedMention.headChars)}…${lower.slice(-Limits.SharedMention.tailChars)}`
 }
 
 export function claimed(text: string) {

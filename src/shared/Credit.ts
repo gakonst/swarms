@@ -1,7 +1,8 @@
 import { concat, keccak256, slice, stringToHex } from 'viem'
 import * as Transfer from './Transfer.ts'
+import * as Limits from './Limits.ts'
 
-export const chainId = 4217
+export const chainId = Limits.SharedCredit.chainId
 
 export function backing(key: string) {
   return 'backing:' + key.toLowerCase()
@@ -12,9 +13,12 @@ export function app(swarm: string) {
 }
 
 export function tag(swarm: string, note?: string | null) {
-  return slice(Transfer.memo(swarm, note), 0, 16)
+  return slice(Transfer.memo(swarm, note), 0, Limits.SharedCredit.tagBytes)
 }
 
 export function memo(owner: string, swarm: string, note?: string | null) {
-  return concat([slice(keccak256(stringToHex(`gateway:credit:${chainId}:${owner.toLowerCase()}:${app(swarm)}`)), 0, 16), tag(swarm, note)])
+  return concat([
+    slice(keccak256(stringToHex(`gateway:credit:${chainId}:${owner.toLowerCase()}:${app(swarm)}`)), 0, Limits.SharedCredit.tagBytes),
+    tag(swarm, note),
+  ])
 }

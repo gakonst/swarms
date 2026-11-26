@@ -1,4 +1,5 @@
 import type { Entry, Hand, Lent } from './Api.ts'
+import * as Limits from './Limits.ts'
 
 export type Run = { at: number; failed: boolean; output: string | null; seq: number; text: string; who: string | null }
 
@@ -92,7 +93,7 @@ function value(key: string, raw: unknown): string {
   if (key === 'env' && typeof raw === 'object' && raw !== null) return Object.keys(raw).join(', ')
   if (key === 'blockNetwork') return raw ? 'blocked' : 'open'
   if (Array.isArray(raw)) return raw.map((item) => (typeof item === 'object' && item !== null ? JSON.stringify(item) : String(item))).join(', ')
-  if ((key === 'memory' || key === 'memoryMax') && typeof raw === 'number') return raw >= 1024 ? `${Math.round((raw / 1024) * 10) / 10} GB` : `${raw} MB`
+  if ((key === 'memory' || key === 'memoryMax') && typeof raw === 'number') return raw >= 1024 ? `${Math.round((raw / 1024) * Limits.SharedFleet.gbTenths) / Limits.SharedFleet.gbTenths} GB` : `${raw} MB`
   if ((key === 'lease' || key === 'timeout' || key === 'idleTimeout') && typeof raw === 'number') return raw >= 60 ? `${Math.round(raw / 60)} min` : `${raw} s`
   if (typeof raw === 'boolean') return raw ? 'yes' : 'no'
   if (typeof raw === 'object' && raw !== null) return JSON.stringify(raw)
@@ -112,7 +113,7 @@ export function sandbox(text: string | null) {
 
 function reason(text: string | null) {
   const found = /\\*"detail\\*"\s*:\s*\\*"(.*?)\\*"\s*[,}]/.exec(text ?? '')?.[1]
-  return found ? found.replace(/\\+"/g, '"') : text?.slice(0, 300) ?? null
+  return found ? found.replace(/\\+"/g, '"') : text?.slice(0, Limits.SharedFleet.reasonChars) ?? null
 }
 
 function called(text: string, args: Record<string, unknown> | undefined, detail: string | null) {
@@ -120,7 +121,7 @@ function called(text: string, args: Record<string, unknown> | undefined, detail:
   const path = args?.['path'] ?? /"path"\s*:\s*"([^"]+)"/.exec(detail ?? '')?.[1]
   if (text === 'Called compute_exec' || text === 'Called compute_spawn' || text === 'Called compute_stream') {
     const parts = Array.isArray(command) ? command.map(String) : []
-    const script = parts.length === 3 && /^(ba)?sh$/.test(parts[0] ?? '') && parts[1] === '-c' ? parts[2] : parts.join(' ')
+    const script = parts.length === Limits.SharedFleet.shellParts && /^(ba)?sh$/.test(parts[0] ?? '') && parts[1] === '-c' ? parts[2] : parts.join(' ')
     return script ? `$ ${script.trim()}` : text.replace('Called ', '')
   }
   if (text === 'Called compute_write' || text === 'Called compute_read') return `${text.replace('Called compute_', '')} ${String(path ?? '')}`.trim()
@@ -228,7 +229,7 @@ export function folded(entries: readonly Entry[], hands: readonly Hand[]): Machi
     const machine = found.get(on) ?? get(on, boxed || on.startsWith('sb-') ? 'sandbox' : 'hand', entry.at, entry.who)
     let output = args ? null : entry.detail
     let failed = false
-    for (const next of sorted.slice(index + 1, index + 6)) {
+    for (const next of sorted.slice(index + 1, index + Limits.SharedFleet.lookahead)) {
       if ((next.who ?? null) !== (entry.who ?? null)) continue
       if (next.kind === 'tool') break
       if (next.kind === 'output' || next.kind === 'error') {
@@ -276,7 +277,7 @@ function answer(waiting: Tracker['pending'][number], entry: Entry, ms: number | 
   const exit = exited(entry.text, entry.detail)
   const detail = entry.detail ?? ''
   return {
-    clipped: detail.length >= 1990 && detail.endsWith('…'),
+    clipped: detail.length >= Limits.SharedFleet.clippedFrom && detail.endsWith('…'),
     exit,
     failed: entry.kind === 'error' || /exit [1-9]/.test(entry.text) || (guards.exit && exit !== null && exit !== 0) || /timedOut\\*"\s*:\s*true/.test(detail),
     log: /logPath\\*"\s*:\s*\\*"([^"\\]+)/.exec(detail)?.[1] ?? null,
@@ -318,7 +319,7 @@ export function track(state: Tracker, entry: Entry, ms: number | null = null): T
     command: { at: entry.at, clipped: false, exit: null, failed: false, log: null, machine: on, ms: null, output: null, seq: entry.seq, text: boxed ? called(entry.text, args, entry.detail) : entry.text.replace(/ on \S+$/, ''), who },
     kind: 'command',
   })
-  state.pending.push({ at: entry.at, left: 5, seq: entry.seq, who })
+  state.pending.push({ at: entry.at, left: Limits.SharedFleet.pendingLeft, seq: entry.seq, who })
   return found
 }
 
@@ -345,7 +346,7 @@ function unwrapped(value: unknown): string | undefined {
 
 export function readable(text: string) {
   let current = text
-  for (let depth = 0; depth < 4; depth++) {
+  for (let depth = 0; depth < Limits.SharedFleet.unwrapDepth; depth++) {
     const value = parsed(current)
     if (typeof value === 'object' && value !== null && !Array.isArray(value) && ('stdout' in value || 'stderr' in value)) {
       const { stderr, stdout } = value as { stderr?: unknown; stdout?: unknown }

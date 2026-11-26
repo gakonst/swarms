@@ -7,7 +7,7 @@ export type Brief = { at: number | null; lines: string[] }
 const most = Limits.SharedBrief.most
 
 function clean(line: string) {
-  return Prose.clip(Prose.line(line), 220)
+  return Prose.clip(Prose.line(line), Limits.SharedBrief.lineChars)
 }
 
 function sentences(text: string) {

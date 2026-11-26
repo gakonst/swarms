@@ -31,7 +31,8 @@ export type Node = Base &
 
 export type Kind = Node['kind']
 
-const most = Limits.SharedSurface.most
+const cap = Limits.SharedSurface
+const most = cap.most
 
 function text(value: unknown, limit: number) {
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
@@ -73,110 +74,110 @@ function check(value: unknown): Check['state'] {
 function asks(items: unknown[]) {
   return items.flatMap((item): Ask[] => {
     const fields = record(item)
-    const said = fields ? text(fields['text'] ?? fields['ask'] ?? fields['want'], 160) : text(item, 160)
+    const said = fields ? text(fields['text'] ?? fields['ask'] ?? fields['want'], cap.askText) : text(item, cap.askText)
     if (!said) return []
     const action = fields && /chat|room|help|lend|invite|talk/i.test(String(fields['action'] ?? '')) ? 'chat' : 'back'
     const label = text(fields?.['label'] ?? fields?.['button'], 24) ?? (action === 'chat' ? 'Help in the chat' : 'Steer this')
-    return [{ action, amount: text(fields?.['amount'], 16), label, text: said, why: text(fields?.['why'], 240) }]
+    return [{ action, amount: text(fields?.['amount'], cap.askAmount), label, text: said, why: text(fields?.['why'], cap.askWhy) }]
   })
 }
 
 function node(value: unknown, index: number): Node[] {
   const fields = record(value)
   if (!fields) return []
-  const base: Base = { id: text(fields['id'], 40) ?? String(index), title: text(fields['title'], 80), wide: fields['wide'] === true }
+  const base: Base = { id: text(fields['id'], cap.idChars) ?? String(index), title: text(fields['title'], cap.titleChars), wide: fields['wide'] === true }
   const items = (limit: number) => list(fields['items'] ?? fields['rows'], limit)
   switch (String(fields['kind'] ?? '').toLowerCase()) {
     case 'asks':
     case 'attention':
     case 'needs': {
-      const read = asks(items(4))
+      const read = asks(items(cap.asks))
       return read.length ? [{ ...base, items: read, kind: 'asks' }] : []
     }
     case 'stats': {
-      const read = items(6).flatMap((item): Stat[] => {
+      const read = items(cap.stats).flatMap((item): Stat[] => {
         const row = record(item)
-        const label = text(row?.['label'], 32)
-        const shown = text(row?.['value'], 20)
+        const label = text(row?.['label'], cap.statLabel)
+        const shown = text(row?.['value'], cap.statValue)
         return label && shown ? [{ label, value: shown }] : []
       })
       return read.length ? [{ ...base, items: read, kind: 'stats' }] : []
     }
     case 'checklist':
     case 'plan': {
-      const read = items(16).flatMap((item): Check[] => {
+      const read = items(cap.checks).flatMap((item): Check[] => {
         const row = record(item)
-        const said = row ? text(row['text'] ?? row['item'], 120) : text(item, 120)
+        const said = row ? text(row['text'] ?? row['item'], cap.checkText) : text(item, cap.checkText)
         return said ? [{ group: text(row?.['group'], 60), state: check(row?.['state'] ?? row?.['status'] ?? row?.['done']), text: said }] : []
       })
       return read.length ? [{ ...base, items: read, kind: 'checklist' }] : []
     }
     case 'chart': {
-      const points = list(fields['points'], 200).flatMap((point) => {
+      const points = list(fields['points'], cap.points).flatMap((point) => {
         const read = number(point)
         return read === null ? [] : [read]
       })
       if (points.length < 2) return []
-      const tried = list(fields['tried'], 200).flatMap((pair): [number, number][] => {
+      const tried = list(fields['tried'], cap.points).flatMap((pair): [number, number][] => {
         const at = Array.isArray(pair) ? number(pair[0]) : null
         const read = Array.isArray(pair) ? number(pair[1]) : null
         return at !== null && read !== null ? [[at, read]] : []
       })
-      return [{ ...base, goal: number(fields['goal']), goalLabel: text(fields['goalLabel'] ?? fields['goal_label'], 40), kind: 'chart', points, tried, unit: text(fields['unit'], 8) }]
+      return [{ ...base, goal: number(fields['goal']), goalLabel: text(fields['goalLabel'] ?? fields['goal_label'], cap.goalLabel), kind: 'chart', points, tried, unit: text(fields['unit'], cap.unitChars) }]
     }
     case 'bars':
     case 'budget': {
-      const read = items(10).flatMap((item): Bar[] => {
+      const read = items(cap.bars).flatMap((item): Bar[] => {
         const row = record(item)
-        const label = text(row?.['label'], 48)
+        const label = text(row?.['label'], cap.barLabel)
         const amount = number(row?.['value'])
         return label && amount !== null && amount >= 0 ? [{ label, note: text(row?.['note'], 24), tone: tone(row?.['tone'] ?? row?.['state']), value: amount }] : []
       })
-      return read.length ? [{ ...base, items: read, kind: 'bars', mark: number(fields['mark']), max: number(fields['max']), unit: text(fields['unit'], 8) }] : []
+      return read.length ? [{ ...base, items: read, kind: 'bars', mark: number(fields['mark']), max: number(fields['max']), unit: text(fields['unit'], cap.unitChars) }] : []
     }
     case 'list':
     case 'findings':
     case 'hypotheses':
     case 'sources': {
-      const read = items(10).flatMap((item): Row[] => {
+      const read = items(cap.rows).flatMap((item): Row[] => {
         const row = record(item)
-        const said = row ? text(row['text'] ?? row['item'], 240) : text(item, 240)
-        const state = text(row?.['state'] ?? row?.['status'], 20)
-        return said ? [{ note: text(row?.['note'], 80), state, text: said, tone: tone(row?.['tone'] ?? state) }] : []
+        const said = row ? text(row['text'] ?? row['item'], cap.rowText) : text(item, cap.rowText)
+        const state = text(row?.['state'] ?? row?.['status'], cap.rowState)
+        return said ? [{ note: text(row?.['note'], cap.rowNote), state, text: said, tone: tone(row?.['tone'] ?? state) }] : []
       })
       return read.length ? [{ ...base, items: read, kind: 'list', numbered: fields['numbered'] === true }] : []
     }
     case 'meter': {
       const max = number(fields['max'])
       const read = number(fields['value'])
-      return max !== null && max > 0 && read !== null ? [{ ...base, kind: 'meter', label: text(fields['label'], 40), max, value: Math.min(Math.max(read, 0), max) }] : []
+      return max !== null && max > 0 && read !== null ? [{ ...base, kind: 'meter', label: text(fields['label'], cap.meterLabel), max, value: Math.min(Math.max(read, 0), max) }] : []
     }
     case 'range':
     case 'estimate': {
       const low = number(fields['low'])
       const high = number(fields['high'])
       const mid = number(fields['mid'] ?? fields['value'])
-      return low !== null && high !== null && mid !== null && low <= mid && mid <= high ? [{ ...base, high, kind: 'range', low, mid, note: text(fields['note'], 120), unit: text(fields['unit'], 12) }] : []
+      return low !== null && high !== null && mid !== null && low <= mid && mid <= high ? [{ ...base, high, kind: 'range', low, mid, note: text(fields['note'], cap.rangeNote), unit: text(fields['unit'], cap.rangeUnit) }] : []
     }
     case 'tiles': {
-      const read = items(120).flatMap((item): Tile[] => {
+      const read = items(cap.tiles).flatMap((item): Tile[] => {
         const row = record(item)
-        const label = row ? text(row['label'], 32) : text(item, 32)
-        const state = text(row?.['state'] ?? row?.['status'], 16)
+        const label = row ? text(row['label'], cap.tileLabel) : text(item, cap.tileLabel)
+        const state = text(row?.['state'] ?? row?.['status'], cap.tileState)
         return label ? [{ label, state, tone: tone(row?.['tone'] ?? state) }] : []
       })
       return read.length ? [{ ...base, items: read, kind: 'tiles' }] : []
     }
     case 'text':
     case 'note': {
-      const said = typeof fields['text'] === 'string' ? fields['text'].trim().slice(0, 1200) : ''
+      const said = typeof fields['text'] === 'string' ? fields['text'].trim().slice(0, cap.noteText) : ''
       return said ? [{ ...base, kind: 'text', text: said }] : []
     }
     case 'status':
     case 'now':
     case 'latest': {
-      const read = items(3).flatMap((item) => {
-        const said = text(record(item)?.['text'] ?? item, 220)
+      const read = items(cap.statuses).flatMap((item) => {
+        const said = text(record(item)?.['text'] ?? item, cap.statusText)
         return said ? [said] : []
       })
       return read.length ? [{ ...base, items: read, kind: 'status' }] : []
@@ -203,7 +204,7 @@ export function read(value: unknown): Node[] {
 }
 
 export function status(nodes: readonly Node[]) {
-  return nodes.flatMap((item) => (item.kind === 'status' ? item.items : [])).slice(0, 3)
+  return nodes.flatMap((item) => (item.kind === 'status' ? item.items : [])).slice(0, cap.statuses)
 }
 
 export function shown(nodes: readonly Node[]) {

@@ -1,6 +1,7 @@
 import { cash } from './Answer.ts'
 import type { Failure, Summary, Waiting } from './Api.ts'
 import { decimal } from './Memo.ts'
+import * as Limits from './Limits.ts'
 
 export type Word = 'Working' | 'Stuck' | 'Starting' | 'Needs money' | 'Not started' | 'Stopped'
 
@@ -115,10 +116,10 @@ export function line(word: Word) {
   return lines[word]
 }
 
-export const fuel = 0.05
+export const fuel = Limits.SharedStatus.fuel
 
 export function fueled(swarm: Pick<Summary, 'remaining'> & { setup?: Summary['setup'] | undefined }) {
-  return Number(swarm.remaining) >= (swarm.setup ? Number(swarm.setup.most) / 1_000_000 : fuel)
+  return Number(swarm.remaining) >= (swarm.setup ? Number(swarm.setup.most) / Limits.SharedSetup.microsPerDollar : fuel)
 }
 
 export function refused(swarm: Stood) {
@@ -167,7 +168,7 @@ export function count(swarms: readonly Stood[]) {
 }
 
 export function lively(swarm: Stood & Pick<Summary, 'updatedAt'>, now: number) {
-  const hours = Math.max(0, now - swarm.updatedAt) / 3_600_000
+  const hours = Math.max(0, now - swarm.updatedAt) / Limits.Clock.hourMs
   return (live(swarm) ? 1_000 : 0) + (1 + Number(swarm.balance)) / (1 + hours / 24)
 }
 

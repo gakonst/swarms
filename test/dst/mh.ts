@@ -1169,7 +1169,12 @@ export const canaries: Canary[] = [
     seeds: all,
   },
   {
-    flip: mutant('fleet.output', 'src/shared/Fleet.ts', 'sorted.slice(index + 1, index + 6)', 'sorted.slice(index + 2, index + 6)'),
+    flip: mutant(
+      'fleet.output',
+      'src/shared/Fleet.ts',
+      'sorted.slice(index + 1, index + Limits.SharedFleet.lookahead)',
+      'sorted.slice(index + 2, index + Limits.SharedFleet.lookahead)',
+    ),
     invariant: 'fleet commands',
     name: 'fleet.output',
     scenario: 'fleet',
