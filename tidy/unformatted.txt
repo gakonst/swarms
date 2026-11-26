@@ -189,7 +189,6 @@ test/endpoints-entry.test.ts 1 pre-existing hand formatting
 test/fleet.test.ts 1 pre-existing hand formatting
 test/follow.test.ts 1 pre-existing hand formatting
 test/funding.test.ts 1 pre-existing hand formatting
-test/fuzzy.test.ts 1 pre-existing hand formatting
 test/general.test.ts 1 pre-existing hand formatting
 test/grove.test.ts 1 pre-existing hand formatting
 test/hands.test.ts 1 pre-existing hand formatting
@@ -214,7 +213,6 @@ test/page-server.test.ts 1 pre-existing hand formatting
 test/pages.test.ts 1 pre-existing hand formatting
 test/pay.test.ts 1 pre-existing hand formatting
 test/progress.test.ts 1 pre-existing hand formatting
-test/prose.test.ts 1 pre-existing hand formatting
 test/relay.test.ts 1 pre-existing hand formatting
 test/replica.test.ts 1 pre-existing hand formatting
 test/repo.test.ts 1 pre-existing hand formatting
@@ -226,7 +224,6 @@ test/site.test.ts 1 pre-existing hand formatting
 test/sockets.test.ts 1 pre-existing hand formatting
 test/status.test.ts 1 pre-existing hand formatting
 test/store.test.ts 1 pre-existing hand formatting
-test/surface.test.ts 1 pre-existing hand formatting
 test/sweep.test.ts 1 pre-existing hand formatting
 test/team.test.ts 1 pre-existing hand formatting
 test/telegram.test.ts 1 pre-existing hand formatting
