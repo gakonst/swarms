@@ -859,10 +859,13 @@ const charged = (seed: string) =>
       run.spent_usd = Flow.number(spent)
       for (let n = random.int(1, 2); n > 0; n--) await Runner.late(w.swarm)
       const now = Flow.fold(await Flow.rows(w.env, D.id)).spent.get('root') ?? 0n
-      const others = (await Flow.rows(w.env, D.id)).filter((row) => row.kind === 'spend' && row.node === 'root' && row.run !== null && row.run !== 'r:root:1')
-      const theirs = others.reduce((sum, row) => sum - row.amount, 0n)
-      if (now - (theirs > 0n ? theirs : -theirs) !== spent)
-        t.fail('late once', 'round ' + i + ' charged root ' + Memo.decimal(now) + ' for a run that spent ' + Memo.decimal(spent))
+      const { results } = await w.env.DB.prepare(
+        "select coalesce(-sum(amount), 0) as amount from flows where swarm = ?1 and kind = 'spend' and node = 'root' and run is not null and run != 'r:root:1' and id not like ?1 || ':late:r:root:1:%'",
+      )
+        .bind(D.id)
+        .all<{ amount: number }>()
+      const theirs = BigInt(results[0]?.amount ?? 0)
+      if (now - theirs !== spent) t.fail('late once', 'round ' + i + ' charged root ' + Memo.decimal(now) + ' for a run that spent ' + Memo.decimal(spent))
     }
     return rounds
   })

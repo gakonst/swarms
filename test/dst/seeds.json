@@ -173,5 +173,19 @@
     "invariant": "money",
     "found": "2026-11-26 by pnpm dst --seeds: same as h8f445fbd1543",
     "fix": "fix(runner): leave room for the dispatcher's turn in a prompted run's budget"
+  },
+  {
+    "job": "mf-nodes.late",
+    "seed": "h3ceaa37d9bf8",
+    "invariant": "late once",
+    "found": "2026-11-26 by pnpm dst --hunt: the late charge for run 1 was drawn from run 2's bucket on the same node, and the scenario counted it as run 2's own spending (harness assumption, not a Swarms bug)",
+    "fix": "test(dst): late once counts a run's late charge wherever it was drawn from"
+  },
+  {
+    "job": "mf-nodes.late",
+    "seed": "1944",
+    "invariant": "late once",
+    "found": "2026-11-26 by pnpm dst --seeds: same as h3ceaa37d9bf8",
+    "fix": "test(dst): late once counts a run's late charge wherever it was drawn from"
   }
 ]
