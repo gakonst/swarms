@@ -52,7 +52,8 @@ typecheck() {
 tidy() { "${node[@]}" scripts/tidy.ts; }
 sim() {
   grep -q '"dst":' package.json || { echo "no dst script in package.json yet: test/dst is the only test"; return 3; }
-  pnpm -s dst ${seeds:+--seeds "$seeds"}
+  if [ -n "$seeds" ]; then pnpm -s dst --seeds "$seeds"; else pnpm -s dst --seeds-file; fi || return 1
+  pnpm -s dst --canaries
 }
 build() { pnpm -s build >/dev/null && "${node[@]}" scripts/size.ts; }
 
