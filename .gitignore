@@ -6,3 +6,4 @@ dist
 codestorage.key
 *.key
 *.pem
+output

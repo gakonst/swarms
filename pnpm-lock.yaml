@@ -72,6 +72,9 @@ importers:
       nanocode-ts-old:
         specifier: https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz
         version: nanocode-ts@https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(@pierre/highlights@0.5.2)(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@6.0.2)(zod@4.6.7)
+      prettier:
+        specifier: ^3.10.1
+        version: 3.10.1
       typescript:
         specifier: 6.0.2
         version: 6.0.2
@@ -1617,6 +1620,11 @@ packages:
 
   preact@11.0.0-beta.0:
     resolution: {integrity: sha512-IcODoASASYwJ9kxz7+MJeiJhvLriwSb4y4mHIyxdgaRZp6kPUud7xytrk/6GZw8U3y6EFJaRb5wi9SrEK+8+lg==}
+
+  prettier@3.10.1:
+    resolution: {integrity: sha512-70vp3ZUYoPlFbF9uiTdXHUUCGEIp7d4+6p+8DYbkm2jP7x/3i/paXVF6dopSI3zd/CEitrZN1rc4i85xWmmXlg==}
+    engines: {node: '>=14'}
+    hasBin: true
 
   property-information@7.2.0:
     resolution: {integrity: sha512-IAtzIB6sUiWaJYrX9smp3V46pBGbBeLFRGdh25kg1334VcBlD8HzhPeNIWQH9zhGmo2itIe25EHt9dQP7G5hmg==}
@@ -3493,6 +3501,8 @@ snapshots:
       preact: 11.0.0-beta.0
 
   preact@11.0.0-beta.0: {}
+
+  prettier@3.10.1: {}
 
   property-information@7.2.0: {}
 

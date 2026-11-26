@@ -1,0 +1,18 @@
+# No comments in code.
+# path count why; 163 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+cli/src/commands/fund.ts 1 pre-existing; delete it or say it in a name
+cli/src/commands/swarms.ts 1 pre-existing; delete it or say it in a name
+src/worker/Branching.ts 2 pre-existing; delete it or say it in a name
+src/worker/Follow.ts 2 pre-existing; delete it or say it in a name
+src/worker/Hands.ts 17 pre-existing; delete it or say it in a name
+src/worker/Host.ts 3 pre-existing; delete it or say it in a name
+src/worker/machines/Cursor.ts 9 pre-existing; delete it or say it in a name
+src/worker/machines/Lease.ts 15 pre-existing; delete it or say it in a name
+src/worker/machines/Run.ts 33 pre-existing; delete it or say it in a name
+src/worker/machines/Sub.ts 10 pre-existing; delete it or say it in a name
+src/worker/Money.ts 3 pre-existing; delete it or say it in a name
+src/worker/Operations.ts 3 pre-existing; delete it or say it in a name
+src/worker/Swarm.ts 8 pre-existing; delete it or say it in a name
+src/worker/Turns.ts 9 pre-existing; delete it or say it in a name
+src/worker/Vault.ts 3 pre-existing; delete it or say it in a name
+src/worker/Work.ts 44 pre-existing; delete it or say it in a name

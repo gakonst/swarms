@@ -1,0 +1,8 @@
+# No claim, lock or Work.serial held across another await.
+# path count why; 13 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+src/worker/Branching.ts 1 pre-existing; commit the state change, release, then do the I/O
+src/worker/Hands.ts 3 pre-existing; commit the state change, release, then do the I/O
+src/worker/Nodes.ts 3 pre-existing; commit the state change, release, then do the I/O
+src/worker/Swarm.ts 1 pre-existing; commit the state change, release, then do the I/O
+src/worker/Turns.ts 3 pre-existing; commit the state change, release, then do the I/O
+src/worker/Work.ts 2 pre-existing; commit the state change, release, then do the I/O

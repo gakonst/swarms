@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# scripts/check: every check below in parallel, one green/red line each with its time, then GREEN or RED.
+#   scripts/check            fmt, lint, typecheck, tidy, build + size, dst (pass jobs and canaries)
+#   scripts/check --no-dst   everything but the simulator
+#   scripts/check --seeds N  seeds per DST pass job (passed to pnpm dst)
+# Logs: output/check/<check>.log. Allowances: tidy/*.txt (path count why; counts only fall).
+set -uo pipefail
+root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+cd "$root"
+case " $* " in *" -h "* | *" --help "*) sed -n '2,6p' "$0"; exit 0 ;; esac
+dst=1 seeds=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-dst) dst=0 ;;
+    --seeds) seeds="$2"; shift ;;
+    *) echo "scripts/check: unknown option $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+logs=output/check
+rm -rf "$logs" && mkdir -p "$logs"
+node=(node --experimental-strip-types --no-warnings)
+bin=node_modules/.bin
+[ -x "$bin/prettier" ] || pnpm install --frozen-lockfile >"$logs/install.log" 2>&1 || { echo "FAIL install     (output/check/install.log)"; echo "RED   swarms"; exit 1; }
+
+fmt() {
+  local listed unformatted new gone
+  listed=$(grep -v '^#' tidy/unformatted.txt | cut -d' ' -f1 | sort)
+  unformatted=$(git ls-files -co --exclude-standard 'src/**.ts' 'src/**.tsx' 'cli/src/**.ts' 'test/**.ts' 'scripts/**.ts' | xargs "$bin/prettier" --list-different 2>/dev/null | sort)
+  new=$(comm -13 <(echo "$listed") <(echo "$unformatted") | grep .)
+  gone=$(comm -23 <(echo "$listed") <(echo "$unformatted") | grep .)
+  [ -z "$new" ] || { echo "not formatted (pnpm fmt <file>):"; echo "$new"; }
+  [ -z "$gone" ] || { echo "formatted now, drop from tidy/unformatted.txt:"; echo "$gone"; }
+  echo "$(echo "$unformatted" | grep -c .) files still on tidy/unformatted.txt"
+  [ -z "$new" ] && [ -z "$gone" ]
+}
+lint() {
+  local found
+  found=$(for p in tsconfig.worker.json tsconfig.web.json test/e2e/tsconfig.json; do "$bin/tsc" --noEmit -p "$p" --noUnusedLocals --noUnusedParameters --pretty false; done | grep -E 'error TS6(133|138|192|196|198|199|205)' | sort -u)
+  [ -z "$found" ] || { echo "$found"; echo "$(echo "$found" | grep -c .) unused declarations"; return 1; }
+  echo "no unused locals, parameters or imports"
+}
+typecheck() {
+  local ok=0
+  "$bin/tsc" -b --force --pretty false || ok=1
+  "$bin/tsc" -p cli --noEmit --pretty false || ok=1
+  "$bin/tsc" -p test/e2e/tsconfig.json --pretty false || ok=1
+  [ ! -f test/dst/tsconfig.json ] || "$bin/tsc" -p test/dst/tsconfig.json --noEmit --pretty false || ok=1
+  [ "$ok" = 1 ] && echo "$(cat "$logs/typecheck.log" | grep -c 'error TS') type errors" || echo "worker, web, cli, e2e$([ -f test/dst/tsconfig.json ] && echo ', dst')"
+  return $ok
+}
+tidy() { "${node[@]}" scripts/tidy.ts; }
+sim() {
+  grep -q '"dst":' package.json || { echo "no dst script in package.json yet: test/dst is the only test"; return 3; }
+  pnpm -s dst ${seeds:+--seeds "$seeds"}
+}
+build() { pnpm -s build >/dev/null && "${node[@]}" scripts/size.ts; }
+
+checks=(fmt lint typecheck tidy build)
+[ "$dst" = 1 ] && checks+=(sim)
+now() { date +%s%3N; }
+start=$(now)
+declare -A pid
+for c in "${checks[@]}"; do
+  ( t=$(now); "$c" >"$logs/$c.log" 2>&1; s=$?; echo $(( $(now) - t )) >"$logs/$c.ms"; exit $s ) &
+  pid[$c]=$!
+done
+secs() { printf '%d.%01d' $(( $1 / 1000 )) $(( $1 % 1000 / 100 )); }
+red=0
+for c in "${checks[@]}"; do
+  wait "${pid[$c]}"; s=$?
+  if [ "$s" = 0 ]; then status="ok  "; elif [ "$c" = sim ] && [ "$s" = 3 ]; then status=SKIP; else status=FAIL; red=1; fi
+  ms=$(cat "$logs/$c.ms" 2>/dev/null || echo 0)
+  summary=$(grep -vE '^\s*$' "$logs/$c.log" | tail -1 | cut -c1-120)
+  printf '%s %-9s %6ss  %s\n' "$status" "$c" "$(secs "$ms")" "$summary"
+  [ "$status" = FAIL ] && grep -vE '^\s*$' "$logs/$c.log" | grep -vE '^ok ' | head -12 | sed 's/^/     | /'
+done
+if [ "$red" = 0 ]; then echo "GREEN swarms $(secs $(( $(now) - start )))s"; else echo "RED   swarms $(secs $(( $(now) - start )))s (output/check/<check>.log)"; exit 1; fi

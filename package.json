@@ -4,20 +4,22 @@
   "type": "module",
   "version": "0.0.0",
   "scripts": {
-    "dev": "vite",
     "build": "vite build && tsc -p cli",
-    "check": "tsc -b && tsc -p cli --noEmit",
-    "check:e2e": "tsc -p test/e2e/tsconfig.json",
+    "check": "scripts/check",
     "db:migrate": "wrangler d1 migrations apply swarms --remote",
     "db:migrate:local": "wrangler d1 migrations apply swarms --local",
     "deploy": "vite build && wrangler deployments list --name swarms-site > /dev/null && wrangler deploy -c dist/swarms/wrangler.json && wrangler deploy",
-    "endpoints": "node --experimental-strip-types test/e2e/endpoints.ts",
+    "dev": "vite",
     "e2e": "node --test --experimental-strip-types --test-concurrency=1 test/e2e/*.test.ts",
+    "endpoints": "node --experimental-strip-types test/e2e/endpoints.ts",
+    "fmt": "prettier --write",
     "gen:types": "wrangler types worker-configuration.d.ts",
     "load": "node --experimental-strip-types test/load/main.ts",
     "mock:gateway": "node --experimental-strip-types test/mock/gateway.ts",
     "mock:github": "node --experimental-strip-types test/mock/github.ts",
-    "test": "node --test --experimental-strip-types test/*.test.ts"
+    "size": "node --experimental-strip-types --no-warnings scripts/size.ts",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "tidy": "node --experimental-strip-types --no-warnings scripts/tidy.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
@@ -43,6 +45,7 @@
     "esbuild": "0.28.2",
     "miniflare": "5.20261023.3-beta",
     "nanocode-ts-old": "https://github.com/nanocodexyz/nanocode-ts/releases/download/build-887f3cc/nanocode-ts-887f3cc.tgz",
+    "prettier": "^3.10.1",
     "typescript": "6.0.2",
     "vite": "^8.3.5",
     "wrangler": "^4.156.0"
