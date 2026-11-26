@@ -1,12 +1,16 @@
+import * as Limits from '../shared/Limits.ts'
+
+const sfnt = Limits.WorkerGlyphs
+
 export type Face = { advances: Uint16Array; ascent: number; descent: number; family: string; glyphs: Map<number, number>; units: number }
 
 export function face(data: ArrayBuffer, family: string): Face {
   const view = new DataView(data)
   const tables = new Map<string, number>()
-  const count = view.getUint16(4)
+  const count = view.getUint16(sfnt.tableCountAt)
   for (let index = 0; index < count; index++) {
-    const at = 12 + index * 16
-    tables.set(String.fromCharCode(view.getUint8(at), view.getUint8(at + 1), view.getUint8(at + 2), view.getUint8(at + 3)), view.getUint32(at + 8))
+    const at = sfnt.tablesAt + index * sfnt.tableSize
+    tables.set(String.fromCharCode(...new Uint8Array(data, at, sfnt.tagBytes)), view.getUint32(at + sfnt.tableOffsetAt))
   }
   const table = (name: string) => {
     const at = tables.get(name)
@@ -16,22 +20,22 @@ export function face(data: ArrayBuffer, family: string): Face {
   const head = table('head')
   const hhea = table('hhea')
   const hmtx = table('hmtx')
-  const metrics = view.getUint16(hhea + 34)
-  const total = view.getUint16(table('maxp') + 4)
+  const metrics = view.getUint16(hhea + sfnt.metricsCountAt)
+  const total = view.getUint16(table('maxp') + sfnt.glyphCountAt)
   const advances = new Uint16Array(total)
-  for (let index = 0; index < total; index++) advances[index] = view.getUint16(hmtx + Math.min(index, metrics - 1) * 4)
-  return { advances, ascent: view.getInt16(hhea + 4), descent: -view.getInt16(hhea + 6), family, glyphs: cmap(view, table('cmap')), units: view.getUint16(head + 18) }
+  for (let index = 0; index < total; index++) advances[index] = view.getUint16(hmtx + Math.min(index, metrics - 1) * sfnt.metricSize)
+  return { advances, ascent: view.getInt16(hhea + sfnt.ascentAt), descent: -view.getInt16(hhea + sfnt.descentAt), family, glyphs: cmap(view, table('cmap')), units: view.getUint16(head + sfnt.unitsAt) }
 }
 
 function cmap(view: DataView, at: number) {
   const glyphs = new Map<number, number>()
   const count = view.getUint16(at + 2)
   for (let index = 0; index < count; index++) {
-    const sub = at + view.getUint32(at + 4 + index * 8 + 4)
+    const sub = at + view.getUint32(at + sfnt.encodingsAt + index * sfnt.encodingSize + sfnt.encodingOffsetAt)
     const format = view.getUint16(sub)
-    if (format === 4) {
-      const segments = view.getUint16(sub + 6) / 2
-      const ends = sub + 14
+    if (format === sfnt.segmentFormat) {
+      const segments = view.getUint16(sub + sfnt.segmentsAt) / 2
+      const ends = sub + sfnt.endsAt
       const starts = ends + segments * 2 + 2
       const deltas = starts + segments * 2
       const offsets = deltas + segments * 2
@@ -40,19 +44,19 @@ function cmap(view: DataView, at: number) {
         const start = view.getUint16(starts + segment * 2)
         const delta = view.getInt16(deltas + segment * 2)
         const offset = view.getUint16(offsets + segment * 2)
-        for (let code = start; code <= end && code !== 0xffff; code++) {
-          const glyph = offset === 0 ? (code + delta) & 0xffff : view.getUint16(offsets + segment * 2 + offset + (code - start) * 2)
-          if (glyph && !glyphs.has(code)) glyphs.set(code, offset === 0 ? glyph : (glyph + delta) & 0xffff)
+        for (let code = start; code <= end && code !== sfnt.lastCode; code++) {
+          const glyph = offset === 0 ? (code + delta) & sfnt.glyphMask : view.getUint16(offsets + segment * 2 + offset + (code - start) * 2)
+          if (glyph && !glyphs.has(code)) glyphs.set(code, offset === 0 ? glyph : (glyph + delta) & sfnt.glyphMask)
         }
       }
     }
-    if (format === 12) {
-      const groups = view.getUint32(sub + 12)
+    if (format === sfnt.groupFormat) {
+      const groups = view.getUint32(sub + sfnt.groupCountAt)
       for (let group = 0; group < groups; group++) {
-        const base = sub + 16 + group * 12
+        const base = sub + sfnt.groupsAt + group * sfnt.groupSize
         const start = view.getUint32(base)
-        const end = view.getUint32(base + 4)
-        const first = view.getUint32(base + 8)
+        const end = view.getUint32(base + sfnt.groupEndAt)
+        const first = view.getUint32(base + sfnt.groupGlyphAt)
         for (let code = start; code <= end; code++) if (!glyphs.has(code)) glyphs.set(code, first + code - start)
       }
     }
@@ -69,7 +73,7 @@ export function width(face: Face, text: string, size: number, spacing = 0) {
   let count = 0
   for (const char of text) {
     const glyph = face.glyphs.get(char.codePointAt(0) ?? 0)
-    units += glyph === undefined ? face.units * 0.6 : (face.advances[glyph] ?? 0)
+    units += glyph === undefined ? face.units * sfnt.missingAdvance : (face.advances[glyph] ?? 0)
     count++
   }
   return (units / face.units) * size + spacing * count
