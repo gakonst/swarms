@@ -6,7 +6,7 @@ type Prepared = { amount: string | null; link: string; memo: string; swarm: stri
 
 function units(value: string) {
   const [whole = '0', part = ''] = value.split('.')
-  return BigInt(whole) * 1_000_000n + BigInt((part + '000000').slice(0, 6))
+  return BigInt(whole) * Limits.SharedMemo.unit + BigInt(part.padEnd(Limits.SharedMemo.decimals, '0').slice(0, Limits.SharedMemo.decimals))
 }
 
 export function asked(title: string) {
@@ -17,7 +17,7 @@ export type Ridden = { amount: string; balance: string; counted: boolean; hash: 
 
 export async function ride(ctx: Context, summary: Summary, amount: string): Promise<Ridden> {
   const given = amount.replace(/^\$/, '')
-  if (!/^\d+(\.\d{1,6})?$/.test(given) || units(given) < 10_000n) throw new Failure(`${amount} is not an amount to send.`, { code: 'usage', exit: 2, next: 'Pass dollars, at least 0.01, such as swarms fund my-swarm 5.' })
+  if (!/^\d+(\.\d{1,6})?$/.test(given) || units(given) < Limits.Cli.fundLeast) throw new Failure(`${amount} is not an amount to send.`, { code: 'usage', exit: 2, next: 'Pass dollars, at least 0.01, such as swarms fund my-swarm 5.' })
   const path = `/v1/swarms/${encodeURIComponent(summary.id)}`
   const note = ctx.flag('note')
   const node = ctx.flag('node')
@@ -26,7 +26,7 @@ export async function ride(ctx: Context, summary: Summary, amount: string): Prom
     const counted = await ctx.api<{ contribution: { amount: string }; swarm: Summary }>('POST', `${path}/contributions`, { hash, ...(note ? { note } : {}), ...(node ? { node } : {}) })
     return { amount: counted.contribution.amount, balance: counted.swarm.balance, counted: true, hash, link: null, swarm: counted.swarm, url: page(ctx.host, counted.swarm) }
   }
-  if (summary.archivedAt) throw new Failure(`${summary.title} is archived: it takes no new rides.`, { code: 'gone', next: 'Pick another swarm with swarms ls.', status: 410 })
+  if (summary.archivedAt) throw new Failure(`${summary.title} is archived: it takes no new rides.`, { code: 'gone', next: 'Pick another swarm with swarms ls.', status: Limits.Http.gone })
   await confirm(ctx, `Send ${usd(given)} of real money to ${asked(summary.title)}?`)
   const token = ctx.flag('token')
   const prepared = await ctx.api<Prepared>('POST', `${path}/transfer`, { amount: given, ...(note ? { note } : {}), ...(node ? { node } : {}), ...(token ? { token } : {}) })

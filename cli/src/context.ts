@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http'
 import { Money } from '../../src/shared/Limits.ts'
+import * as Limits from '../../src/shared/Limits.ts'
 
 export type Flags = Record<string, string | boolean>
 
@@ -69,13 +70,13 @@ export function host(flags: Flags, env: NodeJS.ProcessEnv = process.env) {
 }
 
 const hints: Record<number, string> = {
-  401: 'Run swarms login, then try again.',
-  403: 'Only the swarm\'s admins can do this; check who you are with swarms whoami.',
-  404: 'Check the name with swarms ls.',
-  409: 'Nothing changed; read where it stands with swarms status <swarm>.',
-  429: 'Wait a minute and try again.',
-  502: 'The gateway did not answer; try again shortly.',
-  503: 'Try again shortly.',
+  [Limits.Http.unauthorized]: 'Run swarms login, then try again.',
+  [Limits.Http.forbidden]: 'Only the swarm\'s admins can do this; check who you are with swarms whoami.',
+  [Limits.Http.missing]: 'Check the name with swarms ls.',
+  [Limits.Http.conflict]: 'Nothing changed; read where it stands with swarms status <swarm>.',
+  [Limits.Http.tooMany]: 'Wait a minute and try again.',
+  [Limits.Http.upstream]: 'The gateway did not answer; try again shortly.',
+  [Limits.Http.unavailable]: 'Try again shortly.',
 }
 
 export function hint(status: number, code: string) {
@@ -121,7 +122,7 @@ export function context(argv: { args: string[]; flags: Flags }, env: NodeJS.Proc
       try {
         parsed = read ? JSON.parse(read) : undefined
       } catch {}
-      if (status >= 200 && status < 300) return parsed as T
+      if (status >= Limits.Http.ok && status < Limits.Cli.okBelow) return parsed as T
       const problem = (parsed ?? {}) as { code?: string; detail?: string }
       const code = problem.code ?? `http_${status}`
       throw new Failure(problem.detail ?? `${method} ${path} answered ${status}.`, { code, next: hint(status, code), status })
@@ -167,7 +168,7 @@ export async function swarm(ctx: Context, given: string): Promise<string> {
   try {
     return (await ctx.api<{ swarm: string }>('GET', `/v1/names/${encodeURIComponent(name)}`)).swarm
   } catch (error) {
-    if (error instanceof Failure && error.status === 404) throw new Failure(`No swarm is called ${name}.`, { code: 'not_found', next: 'List swarms with swarms ls, or pass its id.', status: 404 })
+    if (error instanceof Failure && error.status === Limits.Http.missing) throw new Failure(`No swarm is called ${name}.`, { code: 'not_found', next: 'List swarms with swarms ls, or pass its id.', status: Limits.Http.missing })
     throw error
   }
 }
@@ -178,7 +179,7 @@ export function page(host: string, summary: { id: string; nickname?: string | nu
 
 export function usd(value: string | number | null | undefined) {
   const amount = Number(value ?? 0)
-  return `$${amount.toFixed(amount !== 0 && Math.abs(amount) < Money.cent ? 4 : 2)}`
+  return `$${amount.toFixed(amount !== 0 && Math.abs(amount) < Money.cent ? Limits.Cli.fineDigits : 2)}`
 }
 
 export function spent(value: string | number | null | undefined) {
@@ -191,7 +192,7 @@ export function table(rows: string[][]) {
   return rows.map((row) => row.map((cell, at) => (at === row.length - 1 ? cell : cell.padEnd(widths[at] ?? 0))).join('  ')).join('\n')
 }
 
-export function line(text: string, most = 160) {
+export function line(text: string, most: number = Limits.Cli.lineChars) {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length > most ? flat.slice(0, most - 1) + '…' : flat
 }

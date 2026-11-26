@@ -12,7 +12,7 @@ function shown(frame: Frame): string | undefined {
   if (data['type'] === 'start') return '— the agent started working'
   if (data['type'] === 'idle' || data['type'] === 'end') return '— the agent is idle'
   const node = data['node'] as { status?: string; title?: string } | undefined
-  if (node && typeof data['event'] === 'string') return `${data['event'].padEnd(9)} [${node.status ?? ''}] ${line(node.title ?? '', 100)}`
+  if (node && typeof data['event'] === 'string') return `${data['event'].padEnd(Limits.Cli.eventPad)} [${node.status ?? ''}] ${line(node.title ?? '', Limits.Cli.eventTitleChars)}`
   return undefined
 }
 
@@ -36,7 +36,7 @@ export async function watch(ctx: Context) {
       continue
     }
     const status = response.statusCode ?? 0
-    if (status < 200 || status >= 300) {
+    if (status < Limits.Http.ok || status >= Limits.Cli.okBelow) {
       let problem: { code?: string; detail?: string } = {}
       try {
         problem = JSON.parse(await body(response)) as typeof problem
@@ -53,12 +53,12 @@ export async function watch(ctx: Context) {
         buffer = blocks.pop() ?? ''
         for (const block of blocks) {
           const lines = block.split(/\r?\n/)
-          const text = lines.filter((each) => each.startsWith('data:')).map((each) => each.slice(5).trimStart()).join('\n')
+          const text = lines.filter((each) => each.startsWith('data:')).map((each) => each.slice('data:'.length).trimStart()).join('\n')
           if (!text) continue
           const frame: Frame = { data: text, event: 'message', id: null }
           for (const each of lines) {
-            if (each.startsWith('event:')) frame.event = each.slice(6).trim()
-            if (each.startsWith('id:')) frame.id = each.slice(3).trim()
+            if (each.startsWith('event:')) frame.event = each.slice('event:'.length).trim()
+            if (each.startsWith('id:')) frame.id = each.slice('id:'.length).trim()
           }
           try {
             frame.data = JSON.parse(text)

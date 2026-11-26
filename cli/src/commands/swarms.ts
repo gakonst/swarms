@@ -1,5 +1,6 @@
 import type { Failure as Failed, Summary as Shared, Waiting, Why } from '../../../src/shared/Api.ts'
 import * as Status from '../../../src/shared/Status.ts'
+import * as Limits from '../../../src/shared/Limits.ts'
 import { ask, browse, confirm, type Context, Failure, line, page, spent, swarm, table, usd } from '../context.ts'
 
 export type Summary = {
@@ -52,11 +53,11 @@ type Machine = { by: string | null; connected: boolean; kind: string; label: str
 
 function ago(at: number, now = Date.now()) {
   const seconds = Math.max(0, Math.round((now - at) / 1000))
-  return seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.round(seconds / 60)}m` : seconds < 86_400 ? `${Math.round(seconds / 3600)}h` : `${Math.round(seconds / 86_400)}d`
+  return seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.round(seconds / 60)}m` : seconds < Limits.Cli.daySeconds ? `${Math.round(seconds / 3600)}h` : `${Math.round(seconds / Limits.Cli.daySeconds)}d`
 }
 
 function clock(at: number) {
-  return new Date(at).toISOString().slice(11, 19)
+  return new Date(at).toISOString().slice(Limits.Cli.isoClockFrom, Limits.Cli.isoClockTo)
 }
 
 export async function ls(ctx: Context) {
@@ -119,9 +120,9 @@ export async function status(ctx: Context) {
         ['swarm', `${read.title}  ${page(ctx.host, read)}`],
         ['status', told.status],
         ['money', `${usd(read.remaining)} left of ${usd(read.balance)} · ${spent(read.spent)} spent · ${read.contributors} rider${read.contributors === 1 ? '' : 's'}`],
-        ['goal', line(read.goal, 200)],
-        ...(told.why ? [['why', line(told.why, 200)]] : []),
-        ...(latest ? [['latest', `${ago(latest.at)} ago: ${line(latest.excerpt ?? '', 200)}`]] : []),
+        ['goal', line(read.goal, Limits.Cli.detailChars)],
+        ...(told.why ? [['why', line(told.why, Limits.Cli.detailChars)]] : []),
+        ...(latest ? [['latest', `${ago(latest.at)} ago: ${line(latest.excerpt ?? '', Limits.Cli.detailChars)}`]] : []),
       ],
     )
   })
@@ -137,14 +138,14 @@ export async function logs(ctx: Context) {
 }
 
 export function entry(each: Entry) {
-  return `${clock(each.at)} ${each.kind.padEnd(8)} ${each.who ? `${each.who}: ` : ''}${line(each.text)}`
+  return `${clock(each.at)} ${each.kind.padEnd(Limits.Cli.kindPad)} ${each.who ? `${each.who}: ` : ''}${line(each.text)}`
 }
 
 export async function ideas(ctx: Context) {
   const action = ctx.need(1, 'what to do: swarms ideas add <swarm> <text>')
   if (action !== 'add') throw new Failure(`swarms ideas ${action} is not a command.`, { code: 'usage', exit: 2, next: 'Run swarms ideas add <swarm> <text>.' })
   const id = await swarm(ctx, ctx.need(2, 'the swarm'))
-  const text = ctx.args.slice(3).join(' ').trim()
+  const text = ctx.args.slice(Limits.Cli.subjectArg).join(' ').trim()
   if (!text) throw new Failure('Missing the idea.', { code: 'usage', exit: 2, next: 'Run swarms ideas add <swarm> "<your idea>".' })
   await ctx.signed()
   const parent = ctx.flag('parent')
@@ -162,7 +163,7 @@ export async function tree(ctx: Context) {
     const top = read.nodes.find((node) => node.id === (ctx.flag('root') ?? 'root')) ?? read.nodes.find((node) => !node.parent || !nodes.has(node.parent))
     const lines = [`${read.headline.proven} proven · ${read.headline.frontier} on the frontier · ${read.headline.inFlight} in flight · ${read.headline.deadEnds} dead ends · ${spent(read.headline.spent)} spent`]
     const draw = (node: Node, lead: string, last: boolean, first: boolean) => {
-      lines.push(`${first ? '' : `${lead}${last ? '└─ ' : '├─ '}`}[${node.status}] ${line(node.title, 80)}  ${usd(node.money?.pledged)}  ${node.id}`)
+      lines.push(`${first ? '' : `${lead}${last ? '└─ ' : '├─ '}`}[${node.status}] ${line(node.title, Limits.Cli.treeTitleChars)}  ${usd(node.money?.pledged)}  ${node.id}`)
       const next = first ? '' : lead + (last ? '   ' : '│  ')
       const shown = node.children.filter((child) => nodes.has(child))
       shown.forEach((child, at) => draw(nodes.get(child)!, next, at === shown.length - 1 && shown.length === node.children.length, false))
@@ -184,7 +185,7 @@ const pictures: Record<string, string> = { '.gif': 'image/gif', '.jpeg': 'image/
 export async function edit(ctx: Context) {
   const id = await swarm(ctx, ctx.need(1, 'the swarm'))
   const field = ctx.args[2]
-  const value = ctx.args.slice(3).join(' ').trim()
+  const value = ctx.args.slice(Limits.Cli.subjectArg).join(' ').trim()
   const edits: { pfp?: string; slug?: string; title?: string } = {}
   if (field) {
     if (field !== 'title' && field !== 'slug' && field !== 'pfp') throw new Failure(`${field} is not something swarms edit changes.`, { code: 'usage', exit: 2, next: 'Run swarms edit <swarm> title|slug|pfp <value>.' })

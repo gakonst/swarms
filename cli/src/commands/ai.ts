@@ -1,4 +1,5 @@
 import { ask, type Context, Failure, swarm } from '../context.ts'
+import * as Limits from '../../../src/shared/Limits.ts'
 
 type OwnAi = { keys: { added_at: number; hint: string; provider: string }[]; plans: { claude: { state: string } } }
 
@@ -10,7 +11,7 @@ export async function byok(ctx: Context) {
   const config = await ctx.api<{ ownAi?: boolean }>('GET', '/v1/config')
   if (config.ownAi !== true) {
     if (action === 'status') return ctx.out({ available: false }, 'Own AI is not available yet: swarms run on the money riders send them.')
-    throw new Failure('Own AI is not available yet.', { code: 'unavailable', next: 'Swarms run on the money riders send them until it is; ride one with swarms fund.', status: 503 })
+    throw new Failure('Own AI is not available yet.', { code: 'unavailable', next: 'Swarms run on the money riders send them until it is; ride one with swarms fund.', status: Limits.Http.unavailable })
   }
   await ctx.signed()
   if (action === 'on' || action === 'off') {
@@ -26,5 +27,5 @@ export async function byok(ctx: Context) {
     read = await ctx.api<OwnAi>('PUT', `/v1/me/ai/keys/${encodeURIComponent(provider)}`, { key })
   } else if (action === 'rm') read = await ctx.api<OwnAi>('DELETE', `/v1/me/ai/keys/${encodeURIComponent(ctx.need(2, 'the provider, anthropic or openai'))}`)
   else read = await ctx.api<OwnAi>('GET', '/v1/me/ai')
-  ctx.out({ available: true, ...read }, [...(read.keys.length ? read.keys.map((each) => `${each.provider.padEnd(10)} …${each.hint}`) : ['No keys yet. Add one with swarms byok set anthropic|openai.']), `claude     ${read.plans.claude.state}`].join('\n'))
+  ctx.out({ available: true, ...read }, [...(read.keys.length ? read.keys.map((each) => `${each.provider.padEnd(Limits.Cli.providerPad)} …${each.hint}`) : ['No keys yet. Add one with swarms byok set anthropic|openai.']), `claude     ${read.plans.claude.state}`].join('\n'))
 }

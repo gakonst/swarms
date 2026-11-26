@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import * as Limits from '../../src/shared/Limits.ts'
 
 export type Saved = { address?: string; token: string }
 
@@ -33,7 +34,7 @@ export function keychain(env: NodeJS.ProcessEnv = process.env): 'macos' | 'linux
 }
 
 function run(command: string, args: string[], input?: string) {
-  const done = spawnSync(command, args, { encoding: 'utf8', input: input ?? '', stdio: ['pipe', 'pipe', 'ignore'], timeout: 10_000 })
+  const done = spawnSync(command, args, { encoding: 'utf8', input: input ?? '', stdio: ['pipe', 'pipe', 'ignore'], timeout: Limits.Cli.keyTimeoutMs })
   return done.status === 0 ? done.stdout : undefined
 }
 
@@ -63,11 +64,11 @@ function filed(): Filed {
 }
 
 function keep(all: Filed) {
-  fs.mkdirSync(dir(), { mode: 0o700, recursive: true })
+  fs.mkdirSync(dir(), { mode: Limits.Cli.dirMode, recursive: true })
   const target = file()
   const temporary = `${target}.${process.pid}.tmp`
-  fs.writeFileSync(temporary, JSON.stringify(all, null, 2) + '\n', { mode: 0o600 })
-  fs.chmodSync(temporary, 0o600)
+  fs.writeFileSync(temporary, JSON.stringify(all, null, 2) + '\n', { mode: Limits.Cli.fileMode })
+  fs.chmodSync(temporary, Limits.Cli.fileMode)
   fs.renameSync(temporary, target)
 }
 

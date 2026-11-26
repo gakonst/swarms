@@ -9,7 +9,7 @@ export type Local = { input: Readable; output: Writable }
 
 export const fallback = 'https://swarms.new'
 
-const longest = 330_000
+const longest = Limits.Cli.mcpLongestMs
 
 const forwarded = new Set(['resources/list', 'resources/read', 'resources/templates/list', 'tools/call', 'tools/list'])
 
@@ -24,7 +24,7 @@ class Refused extends Error {
 function refused(error: unknown) {
   const detail = error instanceof Error ? error.message : String(error)
   const code = error instanceof Refused ? error.code : undefined
-  const signIn = code === 401 || code === 403 || /needs the swarms:\w+ scope|invalid_token/.test(detail)
+  const signIn = code === Limits.Http.unauthorized || code === Limits.Http.forbidden || /needs the swarms:\w+ scope|invalid_token/.test(detail)
   return { content: [{ text: signIn ? `${detail}\nSign in with the swarms CLI first, or set SWARMS_TOKEN, so this tool runs as you.` : detail, type: 'text' as const }], isError: true }
 }
 

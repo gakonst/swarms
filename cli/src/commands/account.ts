@@ -22,14 +22,14 @@ export async function login(ctx: Context) {
       if (polled && Date.now() > until) throw new Failure('The sign-in code expired before it was approved.', { code: 'expired', next: 'Run swarms login again.' })
       await sleep(every)
       polled = await ctx.api<Polled>('POST', '/v1/auth/device/token', { device_code: started.device_code }, { token: '' }).catch((error: unknown) => {
-        if (error instanceof Failure && error.status === 410) throw new Failure('The sign-in code expired.', { code: 'expired', next: 'Run swarms login again.', status: 410 })
+        if (error instanceof Failure && error.status === Limits.Http.gone) throw new Failure('The sign-in code expired.', { code: 'expired', next: 'Run swarms login again.', status: Limits.Http.gone })
         throw error
       })
     }
     token = polled.token
   }
   const me = await ctx.api<Account>('GET', '/v1/me', undefined, { token }).catch((error: unknown) => {
-    if (error instanceof Failure && error.status === 401) throw new Failure('That token is not a live session.', { code: 'unauthorized', next: 'Run swarms login without --token to sign in in the browser.', status: 401 })
+    if (error instanceof Failure && error.status === Limits.Http.unauthorized) throw new Failure('That token is not a live session.', { code: 'unauthorized', next: 'Run swarms login without --token to sign in in the browser.', status: Limits.Http.unauthorized })
     throw error
   })
   const stored = await Auth.save(ctx.host, { address: me.address, token })
