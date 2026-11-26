@@ -19,7 +19,7 @@ import { Inline } from './Markdown.tsx'
 import { NodePanel, Ride } from './Node.tsx'
 import { Overlay } from './Overlay.tsx'
 import * as Pay from './pay.ts'
-import { Room } from './Room.tsx'
+import { Room, ThreadLink } from './Room.tsx'
 import { back, Link, navigate, useBase, useThread } from './router.tsx'
 import { shareTree } from './channels.ts'
 import { useShown } from './Share.tsx'
@@ -92,6 +92,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const [settled, setSettled] = useState<string | undefined>()
   const [members, setMembers] = useState<readonly Member[]>(() => seeded<{ members: Member[] }>(`room:${id}`)?.members ?? [])
   const [replying, setReplying, unthread] = useThread()
+  const [talked, setTalked] = useState<Readonly<Record<string, Said>>>({})
   const [asking, setAsking] = useState<{ anchor: HTMLElement | null; sent: () => void; text: string }>()
   const awaited = useRef<string | undefined>(undefined)
   const chatMade = useRef(new Set<string>())
@@ -178,6 +179,12 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
 
   const heard = useCallback((said: readonly Said[], _me: unknown, list: readonly Member[]) => {
     setMembers(list)
+    setTalked((current) => {
+      const next: Record<string, Said> = {}
+      for (const item of said) if (item.node && item.replies) next[item.node] = item
+      const keys = Object.keys(next)
+      return keys.length === Object.keys(current).length && keys.every((nid) => current[nid] === next[nid]) ? current : next
+    })
     const made = awaited.current && said.find((item) => item.node === awaited.current)
     if (made) {
       awaited.current = undefined
@@ -380,6 +387,12 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
             <p><b>Thread</b><span><i aria-hidden="true">#</i>general</span></p>
           </header>
           <div className="thread-body">
+            {talked[selected]?.replies && (
+              <p className="thread-talked">
+                <span><i aria-hidden="true">#</i>general</span>
+                <ThreadLink lit={false} name={(address) => members.find((member) => member.address.toLowerCase() === address.toLowerCase())?.handle ?? address} now={now} onOpen={() => navigate(`${base}/board?thread=${talked[selected]?.id}`, { keep: true, replace: !phone })} replies={talked[selected]!.replies!} />
+              </p>
+            )}
             <NodePanel
               config={props.config}
               error={node.error}

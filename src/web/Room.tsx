@@ -740,9 +740,9 @@ export const Room = memo(function Room(props: {
                       <span>Open →</span>
                     </button>
                   ) : (
-                    <button className="msg-bubble msg-update" disabled={!props.onResults} onClick={props.onResults} type="button">
+                    <button className="msg-bubble msg-update" disabled={!props.onThread && !props.onResults} onClick={props.onThread ? () => props.onThread?.(row.item.id) : props.onResults} type="button">
                       <Inline text={Answer.brief(row.text, 320)} />
-                      <small>See results →</small>
+                      <small>{props.onThread ? 'Open thread →' : 'See results →'}</small>
                     </button>
                   )}
                   {under(row.item)}

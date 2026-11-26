@@ -72,6 +72,8 @@
 .thread-close { display:grid; place-items:center; width:36px; height:36px; border:0; border-radius:50%; background:none; font-size:22px; line-height:1; color:var(--muted); cursor:pointer; }
 .thread-close:hover { background:var(--wash); color:var(--fg); }
 .pane[data-open] > .panel { display:none; }
+.thread-talked { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin:0 0 12px; padding-bottom:10px; border-bottom:1px solid var(--line); font:12px var(--mono); color:var(--muted); }
+.thread-talked > span i { font-style:normal; color:var(--faint); }
 .tab-open { gap:2px; color:var(--fg); border-bottom-color:var(--fg); }
 .tab-close { display:grid; place-items:center; width:24px; height:24px; margin-right:-6px; border:0; border-radius:50%; background:none; font-size:17px; line-height:1; color:var(--muted); cursor:pointer; }
 .tab-close:hover { background:var(--wash); color:var(--fg); }

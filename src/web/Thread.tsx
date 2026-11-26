@@ -129,7 +129,7 @@ export function ChatThread(props: { config: Config | undefined; id: number; item
             <b style={author ? { color: tint(author) } : undefined}>{author ? named(author).replace(/^@/, '') : 'AI'}</b>
             <time dateTime={new Date(item.at).toISOString()}>{stamped(item.at, now)}</time>
           </p>
-          <div className="msg-bubble">{author ? <Markdown compact marks text={marked(item.text, handles, mine)} /> : <Inline text={item.text} />}</div>
+          <div className="msg-bubble">{author ? <Markdown compact marks text={marked(item.text, handles, mine)} /> : <Inline text={item.text.replace(/^(Update|New artifact): /, '')} />}</div>
           {lead && item.node && props.items && <Item items={props.items} node={item.node} />}
           {item.sending === 'failed' && item.client && <Unsent client={item.client} error={item.error} />}
           <Chips me={me} name={named} onAdd={react} onToggle={member ? (emoji, on) => toggle(item, emoji, on) : undefined} reactions={item.reactions} />
