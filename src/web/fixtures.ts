@@ -1551,7 +1551,7 @@ const found: Record<number, string> = {
 }
 
 function grown(swarm: Live): Branch[] {
-  if (swarm.status === 'funding') return []
+  if (swarm.status === 'funding' || swarm.script === translation) return []
   const puts = planted.get(swarm.id) ?? []
   return sprouts.map(([id, parent, role, task, state, budget, spent]) => {
     const mine = puts.filter((put) => put.branch === id)
