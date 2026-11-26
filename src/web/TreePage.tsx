@@ -13,7 +13,7 @@ import { Code, useWarmCode } from './Repo.tsx'
 import { Divider } from './Divider.tsx'
 import { ago } from './format.ts'
 import { Headline, Since } from './Headline.tsx'
-import { useMedia, useNow, usePoll } from './hooks.ts'
+import { useMedia, useNow, usePoll, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Inline } from './Markdown.tsx'
 import { NodePanel, Ride } from './Node.tsx'
@@ -76,6 +76,8 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const [grove, setGrove] = useState<Grove.Grove | undefined>(() => tree.data && Grove.grow(tree.data))
   const [node, review] = usePoll(() => Api.node(id, selected), null, `node:${id}:${selected}`)
   const [updates, reupdate] = usePoll(() => Api.nodeUpdates(id, selected), null, `updates:${id}:${selected}`)
+  const wallet = useWallet()
+  const backing = node.data?.id === selected && node.data.status !== 'proven' && node.data.status !== 'dead end' && !!wallet.session && node.data.funders.some((funder) => funder.who.address === wallet.session?.address)
   const [burn, reburn] = usePoll(() => Api.burn(id), null, `burn:${id}`)
   const [proofs, reproof, setProofs] = usePoll(() => Api.proofs(id), null, `proofs:${id}`)
   const told = useRef(here().searchParams.has('open'))
@@ -389,13 +391,15 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
             <Composer
               config={props.config}
               disabled={Grove.closed(nodes[selected]!) ? 'This thread has ended.' : undefined}
-              fine="A note on this item, free. Five a day; triage may turn it into an item."
-              label="Message this thread"
+              fine={backing ? 'Goes to the agent working on this item, with your money on it behind it.' : 'A note on this item, free. Five a day; triage may turn it into an item.'}
+              label={backing ? 'Steer this item' : 'Message this thread'}
               onPost={async (text) => {
-                await Api.suggest(id, { parent: selected, text })
+                if (backing) await Api.steerNode(id, selected, { amount: '0', note: text })
+                else await Api.suggest(id, { parent: selected, text })
                 review()
+                reupdate()
               }}
-              placeholder="Message this thread"
+              placeholder={backing ? 'Steer this item' : 'Message this thread'}
             />
           )}
         </aside>
