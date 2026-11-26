@@ -377,7 +377,8 @@ async function running(self: Swarm, task: Work.Task, lease: Board.PoolLease): Pr
       Sub.seed(self.kv, spawned.agent, spawned.sub, role)
       self.kv.put('run:' + task.id, spawned)
       if (!budgeted) {
-        const set = await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(budget - Memo.units(spawned.pick?.spent ?? '0')))
+        const room = budget - (await dispatched(self, swarm, spawned))
+        const set = await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(room > 0n ? room : 0n))
         if (!set.ok && set.status === 402) return await refusal(self, task, lease, set)
       }
       await strays(self, swarm, spawned.agent)

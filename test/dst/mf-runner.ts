@@ -243,14 +243,15 @@ async function ride(seed: string): Promise<Outcome> {
     try {
       await w.swarm.treePledge(D.id, { amount: String(amount), contributor: D.ana, hash: hash(random), nid: null })
       const fallback = mode === 'missing' || mode === 'fresh'
+      const turn = fallback ? BigInt(Math.round(limits.pick.turnUsd * Number(limits.money.unit))) : 0n
       if (!(await wait('spawn once', told + ': the first run', () => g.subs.length === 1 && (!fallback || g.budgets.length === 1)))) return { steps: 1, w }
       const key = await runKey('r:root:1')
       if (g.subs[0]?.role !== 'n:root#1') fail('spawn once', told + ': spawned role ' + g.subs[0]?.role)
       if (fallback) {
         if (g.prompts.length !== 1 || g.spawned.length !== 0)
           fail('spawn once', told + ': ' + g.prompts.length + ' prompts and ' + g.spawned.length + ' spawn calls')
-        if (JSON.stringify(g.budgets) !== JSON.stringify([[1, dollars(bound)]]))
-          fail('spawn bound', told + ': budgets set ' + JSON.stringify(g.budgets) + ', not ' + dollars(bound))
+        if (JSON.stringify(g.budgets) !== JSON.stringify([[1, dollars(bound - turn)]]))
+          fail('spawn bound', told + ': budgets set ' + JSON.stringify(g.budgets) + ', not ' + dollars(bound - turn))
       } else {
         if (g.spawned.length !== starting + 1) fail('spawn once', told + ': ' + g.spawned.length + ' spawn calls for ' + starting + ' starting answers')
         const keys = new Set(g.spawned.map((body) => body['key']))
@@ -259,13 +260,13 @@ async function ride(seed: string): Promise<Outcome> {
         if (g.spawned[0]?.['budget_usd'] !== dollars(bound)) fail('spawn bound', told + ': spawned with bound ' + String(g.spawned[0]?.['budget_usd']))
         if (g.budgets.length !== 0) fail('spawn bound', told + ': the bound was set again after the spawn ' + JSON.stringify(g.budgets))
       }
-      if (g.subs[0]?.budget_usd !== dollars(bound)) fail('spawn bound', told + ': the subagent holds ' + g.subs[0]?.budget_usd)
+      if (g.subs[0]?.budget_usd !== dollars(bound - turn)) fail('spawn bound', told + ': the subagent holds ' + g.subs[0]?.budget_usd)
       let view = await w.swarm.treeRead(D.id, { depth: 3, root: 'root', status: undefined })
       const root = view.ok ? view.value.nodes.find((node) => node.id === 'root') : undefined
       if (root?.status !== 'in flight' || root.money.committed !== usd(bound) || root.money.left !== usd(units(amount) - bound))
         fail('money', told + ': root shows ' + JSON.stringify({ committed: root?.money.committed, left: root?.money.left, status: root?.status }))
-      const cents = random.int(0, Number(bound / limits.money.cent))
-      const spent = BigInt(cents) * limits.money.cent + (fallback ? BigInt(Math.round(limits.pick.turnUsd * Number(limits.money.unit))) : 0n)
+      const cents = random.int(0, Number((bound - turn) / limits.money.cent))
+      const spent = BigInt(cents) * limits.money.cent + turn
       const count = random.int(0, L.childrenMost)
       const children = Array.from({ length: count }, (_, i) => ({
         needs: i > 0 && random.chance(0.5) ? ['Lemma ' + (i - 1)] : [],

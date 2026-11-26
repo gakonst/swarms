@@ -159,5 +159,19 @@
     "invariant": "provider pause",
     "found": "2026-11-26 in production: a swarm whose H200 compute_create kept failing with the gateway's GPU provider over its spend limit took 13 turns ($2.33) that ran nothing, since a failed machine call never paused it",
     "fix": "fix(worker): a provider outage pauses the swarm on that provider and probes it instead of spending turns"
+  },
+  {
+    "job": "mf-runner.ride",
+    "seed": "h8f445fbd1543",
+    "invariant": "money",
+    "found": "2026-11-26 by pnpm dst --hunt: a run started through the dispatcher's prompt gave its subagent the whole committed budget although the dispatcher turn had already cost 0.004; the subagent spent all of it, the run settled 0.004 past its bucket, and with the node's money already pulled down to a child the extra was never charged (ledger short of the gateway)",
+    "fix": "fix(runner): leave room for the dispatcher's turn in a prompted run's budget"
+  },
+  {
+    "job": "mf-runner.ride",
+    "seed": "1383",
+    "invariant": "money",
+    "found": "2026-11-26 by pnpm dst --seeds: same as h8f445fbd1543",
+    "fix": "fix(runner): leave room for the dispatcher's turn in a prompted run's budget"
   }
 ]
