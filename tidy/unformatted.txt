@@ -155,7 +155,6 @@ src/worker/machines/Sub.ts 1 pre-existing hand formatting
 src/worker/machines/Tree.ts 1 pre-existing hand formatting
 src/worker/site.ts 1 pre-existing hand formatting
 test/answer.test.ts 1 pre-existing hand formatting
-test/api-tree.test.ts 1 pre-existing hand formatting
 test/board.ts 1 pre-existing hand formatting
 test/brief.test.ts 1 pre-existing hand formatting
 test/channel.test.ts 1 pre-existing hand formatting

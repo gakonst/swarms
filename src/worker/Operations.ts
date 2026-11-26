@@ -606,12 +606,14 @@ export function listed(value: Listing) {
   return { ...value, swarms: value.swarms.map((swarm) => (swarm.answer ? { ...swarm, answer: { ...swarm.answer, text: Answer.lead(swarm.answer.text) } } : swarm)) }
 }
 
+export const guards = { limit: true, owner: true, reviewed: true, setup: true, tag: true }
+
 export async function create(env: Cloudflare.Env, input: Input<'create'>, creator?: Address): Promise<Problem.Result<Summary>> {
   const parsed = parse(schema.create, input)
   if (!parsed.ok) return parsed
 
   const tree = parsed.value.form === 'tree'
-  const asked = tree ? undefined : Setup.resolve(parsed.value)
+  const asked = tree && guards.setup ? undefined : Setup.resolve(parsed.value)
   if (typeof asked === 'string') return Problem.fail(400, 'invalid_request', asked)
   if (!tree && parsed.value.template !== 'custom' && (parsed.value.harness || parsed.value.model || parsed.value.subagents !== undefined))
     return Problem.fail(400, 'invalid_request', 'harness, model and subagents go with template custom.')
@@ -1769,7 +1771,7 @@ export async function contribute(
   const total = credited.value.deposits.reduce((sum, deposit) => sum + Memo.units(deposit.amount), 0n)
   if (row.form === 'tree') {
     const asked = request.node && request.node !== Nodes.root ? request.node : null
-    const tagged = asked && credited.value.deposits.some((deposit) => deposit.tag.toLowerCase() === Credit.tag(row.id, 'n:' + asked).toLowerCase()) ? asked : null
+    const tagged = asked && (!guards.tag || credited.value.deposits.some((deposit) => deposit.tag.toLowerCase() === Credit.tag(row.id, 'n:' + asked).toLowerCase())) ? asked : null
     const gift = existing ?? (await Store.give(env, { amount: String(total), channel: null, contributor: first.from, id: request.hash as Hex, note: null, note_id: null, swarm: row.id, token: first.token })) ?? (await Store.gift(env, request.hash))
     if (!gift) return Problem.fail(502, 'unavailable', 'The contribution was not saved.')
     await stub(env, row.id).treePledge(row.id, { amount: gift.amount.includes('.') ? gift.amount : Memo.decimal(BigInt(gift.amount)), contributor: gift.contributor, hash: request.hash, nid: tagged })
@@ -1969,7 +1971,7 @@ export async function suggest(env: Cloudflare.Env, input: Input<'suggest'>, addr
   const written = await env.DB.prepare(
     'insert into ideas (id, swarm, parent, author, text, created_at) select ?1, ?2, ?3, ?4, ?5, ?6 where (select count(*) from ideas where author = ?4 and created_at > ?6 - 86400000) < ?7',
   )
-    .bind(idea, row.value.id, request.parent, address.toLowerCase(), request.text, Date.now(), ideasPerDay)
+    .bind(idea, row.value.id, request.parent, address.toLowerCase(), request.text, Date.now(), ideasPerDay + (guards.limit ? 0 : 1))
     .run()
   if (!written.meta.changes) return Problem.fail(429, 'rate_limited', 'At most ' + ideasPerDay + ' suggestions a day from one account.')
   return Problem.ok({ id: idea })
@@ -2050,7 +2052,7 @@ function taken(name: string) {
 }
 
 async function owned(env: Cloudflare.Env, row: Store.Row, address: Address | undefined, operated: boolean, refused = "Only the swarm's admins and the operator name it."): Promise<Problem.Result<null>> {
-  if (operated) return Problem.ok(null)
+  if (operated || !guards.owner) return Problem.ok(null)
   if (!address) return Problem.fail(401, 'unauthorized', "Sign in with Tempo ID as one of the swarm's admins or the operator, or send the operator's gateway key as the bearer token.")
   const operator = await Gateway.wallet(env)
   if (operator && address.toLowerCase() === operator.toLowerCase()) return Problem.ok(null)
@@ -2240,7 +2242,7 @@ async function plant(env: Cloudflare.Env, row: Store.Row, request: z.output<type
   }
   await stub(env, row.id).plant({
     dispatcher: Persona.orchestrator(),
-    reviewed: request.reviewed,
+    reviewed: guards.reviewed && request.reviewed,
     root: { statement: request.statement ?? null, title: request.title, words: request.goal },
     seed,
     rules: Persona.rules(setup),

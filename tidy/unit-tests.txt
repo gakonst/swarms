@@ -2,7 +2,6 @@
 # path count why; 61 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 examples/board-swarm/test/swarm.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/answer.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/api-tree.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/brief.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/channel.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/chatter.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it

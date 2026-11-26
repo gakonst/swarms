@@ -981,7 +981,286 @@ const reposted = (seed: string) =>
     return times
   })
 
+const apiLimits = { amountMost: 3_000_000, amountLeast: 100_000, lemmas: 4, rides: 4, skewMost: 50_000, suggestExtra: 2 }
+
+const apiMutants = { covered: false, drift: false, limit: false, owner: false, reviewed: false, setup: false, tag: false }
+
+function apiMutant(key: keyof typeof apiMutants) {
+  return () => {
+    apiMutants[key] = true
+    return () => void (apiMutants[key] = false)
+  }
+}
+
+async function api(seed: string): Promise<Outcome> {
+  const random = rng(seed, 'mf-nodes.api')
+  const { fail, violations } = recorder()
+  const unseed = seeded(rng(seed, 'mf-nodes.api', 'ids'))
+  const { world } = await import('../run.ts')
+  const D = await import('../dispatch.ts')
+  const Credit = await import('../../src/shared/Credit.ts')
+  const Setup = await import('../../src/shared/Setup.ts')
+  const Memo = await import('../../src/shared/Memo.ts')
+  const Limits = await import('../../src/shared/Limits.ts')
+  const Flow = await import('../../src/worker/Flow.ts')
+  const Operations = await import('../../src/worker/Operations.ts')
+  const Riding = await import('../../src/worker/Riding.ts')
+  const Runner = await import('../../src/worker/Runner.ts')
+  const Store = await import('../../src/worker/Store.ts')
+  const was = { covered: Flow.guards.covered, drift: Riding.guards.drift, operations: { ...Operations.guards } }
+  for (const key of ['limit', 'owner', 'reviewed', 'setup', 'tag'] as const) Operations.guards[key] = !apiMutants[key]
+  Riding.guards.drift = !apiMutants.drift
+  Flow.guards.covered = !apiMutants.covered
+  const owner = '0x00000000000000000000000000000000000000ee'
+  const ana = D.ana as `0x${string}`
+  const bo = D.bo as `0x${string}`
+  const deposits = new Map<string, { amount: string; from: string; tag: string }>()
+  const skew = random.chance(0.5) ? BigInt(random.int(1, apiLimits.skewMost)) : 0n
+  const total = () => [...deposits.values()].reduce((sum, one) => sum + Memo.units(one.amount), 0n)
+  const w = world((async (request: Request, url: URL) => {
+    if (url.pathname === '/v1/models')
+      return Response.json({
+        data: [Setup.flash, Setup.glmFlash, Setup.fable, Setup.sol, 'vercel/google/gemini-3.8-flash'].map((id) => ({
+          id,
+          kind: 'generate',
+          pricing: { cached: 0.01, input: 0.1, output: 0.4 },
+        })),
+      })
+    if (url.pathname === '/api/keys/me') return Response.json({ wallet: owner })
+    if (url.pathname === '/api/keys/credit' && request.method === 'POST') {
+      const { hash } = (await request.json()) as { hash: string }
+      const found = deposits.get(hash)
+      if (!found) return Response.json({ error: 'no receipt' }, { status: 404 })
+      return Response.json({
+        created: true,
+        credit: { deposited: found.amount, left: found.amount, spent: '0' },
+        deposits: [{ ...found, log: 0, token: 'pathusd' }],
+      })
+    }
+    if (url.pathname === '/api/keys/credit') return Response.json({ deposited: Memo.decimal(total()), left: Memo.decimal(total() + skew), spent: '0' })
+    if (url.pathname === '/v1/agents' && request.method === 'POST') return Response.json({ id: 'agt_d' })
+    if (url.pathname.startsWith('/v1/agents/agt_d'))
+      return Response.json(url.pathname.endsWith('/subagents') ? { agents: [] } : { request_id: 'x', status: 'queued' })
+    return undefined
+  }) as never)
+  ;(w.env as unknown as Record<string, unknown>)['SWARMS'] = { get: () => w.swarm, idFromName: (name: string) => name }
+  D.github(w.env)
+  let steps = 0
+  const hash = () => '0x' + Array.from({ length: 64 }, () => random.int(0, 15).toString(16)).join('')
+  const amount = () => Memo.decimal(BigInt(random.int(apiLimits.amountLeast, apiLimits.amountMost)))
+  try {
+    const n = random.int(1, apiLimits.lemmas)
+    const statements = ['True', 'True ∧ True', '1 = 1']
+    const lemmas = Array.from({ length: n }, (_, i) => ({
+      form: 'lemma' as const,
+      key: 'l' + i,
+      needs: i > 0 && random.chance(0.5) ? ['l' + random.int(0, i - 1)] : [],
+      parent: 'lower',
+      statement: random.pick(statements),
+      title: 'Lemma ' + i,
+    }))
+    const reviewed = random.chance(0.5)
+    const made = await Operations.create(
+      w.env,
+      {
+        form: 'tree',
+        goal: 'Settle whether P equals NP, checked in Lean.',
+        reviewed,
+        seed: [{ form: 'program', key: 'lower', title: 'Lower bounds' }, ...lemmas],
+        statement: 'P = NP ∨ P ≠ NP',
+        template: 'cheap',
+        title: 'P vs NP',
+      },
+      ana,
+    )
+    if (!made.ok) throw new Error(JSON.stringify(made))
+    const id = made.value.id
+    const shown = await Operations.tree(w.env, { swarm: id })
+    if (!shown.ok) throw new Error(JSON.stringify(shown))
+    const byTitle = new Map(shown.value.nodes.map((node) => [node.title, node]))
+    const titles = shown.value.nodes.map((node) => node.title).sort()
+    const wantTitles = ['Lower bounds', 'P vs NP', 'Triage', ...lemmas.map((one) => one.title)].sort()
+    if (titles.join() !== wantTitles.join()) fail('tree created', 'the tree holds ' + titles.join() + ', expected ' + wantTitles.join())
+    const ids = new Map(lemmas.map((one) => [one.key, byTitle.get(one.title)?.id ?? '']))
+    for (const one of lemmas) {
+      const node = byTitle.get(one.title)
+      const needs = one.needs.map((key) => ids.get(key))
+      if (node?.needs.join() !== needs.join()) fail('tree created', one.title + ' needs ' + node?.needs.join() + ', expected ' + needs.join())
+      if (node?.review !== !reviewed) fail('tree created', one.title + ' shows review ' + node?.review + ' for a seed created reviewed=' + reviewed)
+    }
+    if (byTitle.get('Lower bounds')?.review !== false) fail('tree created', 'the program shows a statement under review')
+    const frontier = lemmas.filter((one) => !one.needs.length).length
+    if (shown.value.headline.frontier !== frontier) fail('tree created', 'the frontier is ' + shown.value.headline.frontier + ', expected ' + frontier)
+    const pick = random.pick(lemmas)
+    const detail = await Operations.node(w.env, { node: ids.get(pick.key), swarm: id })
+    if (!detail.ok || detail.value.review !== !reviewed || detail.value.statement !== pick.statement)
+      fail('tree created', pick.title + ' reads as ' + JSON.stringify(detail).slice(0, 200))
+    const listed = await Store.list(w.env)
+    if (listed.map((row) => row.id + ':' + row.form).join() !== id + ':tree')
+      fail('tree created', 'the list holds ' + listed.map((row) => row.id + ':' + row.form).join())
+    const branches = await Operations.branches(w.env, { swarm: id })
+    if (branches.ok || branches.status !== 410) fail('tree created', 'branches of a tree answered ' + JSON.stringify(branches).slice(0, 120))
+
+    const rider = {
+      harness: random.pick(['codex', 'claude'] as const),
+      model: random.pick([Setup.flash, Setup.glmFlash, Setup.sol]),
+      template: random.pick(['custom', 'cheap', 'fable'] as const),
+    }
+    const other = await Operations.create(
+      w.env,
+      {
+        form: 'tree',
+        goal: 'Settle whether P equals NP, checked in Lean.',
+        ...rider,
+        subagents: { harnesses: [rider.harness], models: [rider.model] },
+        title: 'P vs NP again',
+      },
+      ana,
+    )
+    const chosen = other.ok ? (JSON.parse(String((await Store.find(w.env, other.value.id))?.setup)) as import('../../src/shared/Setup.ts').Setup) : undefined
+    const want = { harnesses: ['claude', 'codex'], models: [Setup.fable, 'vercel/google/gemini-3.8-flash', Setup.sol] }
+    if (
+      !chosen ||
+      chosen.template !== 'board' ||
+      chosen.harness !== 'claude' ||
+      chosen.model !== Setup.fable ||
+      JSON.stringify(chosen.subagents) !== JSON.stringify(want)
+    )
+      fail('tree setup', 'a tree asked for ' + JSON.stringify(rider) + ' was set up as ' + JSON.stringify(chosen ?? other).slice(0, 200))
+    const agent = await Operations.create(
+      w.env,
+      { goal: 'An agent swarm still checks its fields.', model: Setup.flash, template: 'cheap', title: 'Agent' },
+      ana,
+    )
+    if (agent.ok || agent.status !== 400) fail('tree setup', 'an agent swarm with a model outside custom answered ' + JSON.stringify(agent).slice(0, 120))
+
+    const funders = new Map<string, Map<string, bigint>>()
+    const add = (node: string, who: string, value: bigint) => {
+      const held = funders.get(node) ?? new Map<string, bigint>()
+      held.set(who, (held.get(who) ?? 0n) + value)
+      funders.set(node, held)
+    }
+    const nodes = ['root', ...ids.values()]
+    const rides = random.int(1, apiLimits.rides)
+    let boBacked = 0n
+    for (let i = 0; i <= rides; i++) {
+      steps += 1
+      const node = random.pick(nodes)
+      const wrong = i === 0 || random.chance(0.3)
+      const who = random.pick([ana, bo])
+      const value = amount()
+      const prepared = await Operations.transfer(w.env, { amount: value, node, swarm: id, token: 'pathusd' }, 'https://swarms.test')
+      const memo = Credit.memo(owner, id, node === 'root' ? null : 'n:' + node)
+      if (!prepared.ok || prepared.value.memo !== memo) fail('ride tag', 'a ride on ' + node + ' was prepared as ' + JSON.stringify(prepared).slice(0, 160))
+      const tx = hash()
+      deposits.set(tx, { amount: value, from: who, tag: Credit.tag(id, wrong ? 'n:ffffffffff' : node === 'root' ? null : 'n:' + node) })
+      const counted = await Operations.contribute(w.env, { hash: tx, node, swarm: id })
+      if (!counted.ok || !counted.value.created) fail('ride tag', 'a ride on ' + node + ' was counted as ' + JSON.stringify(counted).slice(0, 160))
+      if (random.chance(0.3)) {
+        const again = await Operations.contribute(w.env, { hash: tx, node, swarm: id })
+        if (!again.ok || again.value.created) fail('ride tag', 'a ride counted again answered ' + JSON.stringify(again).slice(0, 160))
+      }
+      add(wrong ? 'root' : node, who, Memo.units(value))
+      if (who === bo) boBacked += Memo.units(value)
+    }
+    for (const node of nodes) {
+      const read = await Operations.node(w.env, { node, swarm: id })
+      const held = funders.get(node) ?? new Map<string, bigint>()
+      if (!read.ok) {
+        fail('ride tag', node + ' could not be read')
+        continue
+      }
+      if (node === 'root') {
+        const pledged = Memo.decimal([...held.values()].reduce((sum, one) => sum + one, 0n))
+        if (read.value.money.pledged !== pledged) fail('ride tag', 'the root shows pledged ' + read.value.money.pledged + ', expected ' + pledged)
+        continue
+      }
+      const got = read.value.funders.map((funder) => funder.who.address + '=' + funder.amount).sort()
+      const wantFunders = [...held].map(([who, value]) => who + '=' + Memo.decimal(value)).sort()
+      if (got.join() !== wantFunders.join()) fail('ride tag', node + ' is ridden by ' + got.join() + ', expected ' + wantFunders.join())
+    }
+    const parent = random.pick([...ids.values()])
+    const proposed = await Operations.propose(
+      w.env,
+      { parent, spec: 'Use the switching lemma.', swarm: id, title: 'Restrictions', token: 'pathusd' },
+      'https://swarms.test',
+      bo,
+    )
+    if (!proposed.ok) fail('ride tag', 'a proposal answered ' + JSON.stringify(proposed).slice(0, 160))
+    else {
+      const tx = hash()
+      deposits.set(tx, { amount: proposed.value.transfer.amount ?? '0', from: bo, tag: Credit.tag(id, 'n:' + proposed.value.nid) })
+      await Operations.contribute(w.env, { hash: tx, node: proposed.value.nid, swarm: id })
+      boBacked += Memo.units(proposed.value.transfer.amount ?? '0')
+      const node = await Operations.node(w.env, { node: proposed.value.nid, swarm: id })
+      if (!node.ok || node.value.by.address !== bo || node.value.parent !== parent)
+        fail('ride tag', 'a ridden proposal reads as ' + JSON.stringify(node).slice(0, 160))
+      const mine = await Operations.standing(w.env, { swarm: id }, bo)
+      const standing = mine.ok ? Memo.units(mine.value.committed) + Memo.units(mine.value.refundable) : -1n
+      if (standing !== boBacked)
+        fail('ride tag', 'bo stands behind ' + Memo.decimal(standing) + ' committed and refundable, expected ' + Memo.decimal(boBacked))
+    }
+
+    const limit = Limits.Operations.ideasPerDay
+    const tries = shuffled(random, [
+      ...Array.from({ length: limit + random.int(1, apiLimits.suggestExtra) }, () => ana),
+      ...Array.from({ length: limit + random.int(1, apiLimits.suggestExtra) }, () => bo),
+    ])
+    const said = new Map<string, number>()
+    for (const who of tries) {
+      steps += 1
+      const before = said.get(who) ?? 0
+      const answer = await Operations.suggest(w.env, { swarm: id, text: 'Idea number ' + steps }, who)
+      if (answer.ok) said.set(who, before + 1)
+      const allowed = before < limit
+      if (answer.ok !== allowed || (!answer.ok && answer.status !== 429))
+        fail('suggest limit', who.slice(0, 6) + "'s suggestion " + (before + 1) + ' answered ' + JSON.stringify(answer).slice(0, 120))
+    }
+    const root = await Operations.node(w.env, { node: 'root', swarm: id })
+    if (!root.ok || root.value.suggestions.length !== limit * 2)
+      fail('suggest limit', 'the root lists ' + (root.ok ? root.value.suggestions.length : '?') + ' suggestions, expected ' + limit * 2)
+
+    const free = BigInt(random.int(apiLimits.amountLeast, apiLimits.amountMost))
+    const tx = hash()
+    deposits.set(tx, { amount: Memo.decimal(free), from: ana, tag: Credit.tag(id, 'n:ffffffffff') })
+    await Operations.contribute(w.env, { hash: tx, swarm: id })
+    const moving = free / 2n
+    const moved = await Operations.nodeMove(w.env, { amount: Memo.decimal(moving), node: 'root', swarm: id, to: '' }, ana)
+    if (!moved.ok) fail('move kept', 'a rider could not move ' + Memo.decimal(moving) + ' of their own: ' + JSON.stringify(moved).slice(0, 160))
+    const stolen = await Operations.nodeMove(w.env, { amount: Memo.decimal(BigInt(random.int(1, Number(moving)))), node: '', swarm: id, to: 'root' }, bo)
+    if (stolen.ok || stolen.status !== 409) fail('move kept', 'another rider moved free money that is not theirs: ' + JSON.stringify(stolen).slice(0, 160))
+    const mine = await Operations.standing(w.env, { swarm: id }, ana)
+    if (!mine.ok || mine.value.free !== Memo.decimal(moving))
+      fail('move kept', 'the rider has ' + (mine.ok ? mine.value.free : '?') + ' free, expected ' + Memo.decimal(moving))
+
+    const health = await Operations.health(w.env)
+    const book = health.ok ? health.value.ledgers.find((one) => one.swarm === id) : undefined
+    const held = Memo.decimal(total())
+    if (book?.held !== held || book.pledged !== held || book.drift !== Memo.decimal(skew))
+      fail('ledger drift', 'health reads ' + JSON.stringify(book) + ' for ' + held + ' held and a gateway ' + Memo.decimal(skew) + ' off')
+
+    const refused = await Operations.archive(w.env, { swarm: id }, bo)
+    if (refused.ok || refused.status !== 403) fail('archive admin', 'a rider who is not an admin archived the swarm: ' + JSON.stringify(refused).slice(0, 120))
+    const archived = await Operations.archive(w.env, { swarm: id }, owner)
+    if (!archived.ok || archived.value.archivedAt === null) fail('archive admin', 'the operator could not archive: ' + JSON.stringify(archived).slice(0, 120))
+    const late = await Operations.transfer(w.env, { amount: amount(), swarm: id, token: 'pathusd' }, 'https://swarms.test')
+    if (late.ok || late.status !== 410) fail('archive admin', 'an archived swarm prepared a ride: ' + JSON.stringify(late).slice(0, 120))
+    if (!(await Operations.tree(w.env, { swarm: id })).ok) fail('archive admin', 'an archived tree could not be read')
+  } catch (error) {
+    fail('finished', String((error as Error)?.stack ?? error).slice(0, 300))
+  } finally {
+    await Runner.stop(w.swarm)
+    w.restore()
+    Flow.guards.covered = was.covered
+    Riding.guards.drift = was.drift
+    Object.assign(Operations.guards, was.operations)
+    unseed()
+  }
+  return { steps, violations }
+}
+
 export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = {
+  'mf-nodes.api': api,
   'mf-nodes.flow': flow,
   'mf-nodes.late': charged,
   'mf-nodes.quiet': quieted,
@@ -1012,4 +1291,11 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
   { flip: nodeMutant('late'), invariant: 'late once', name: 'mf-nodes.late.late', scenario: 'mf-nodes.late', seeds: ['1', '2', '3'] },
   { flip: nodeMutant('quiet'), invariant: 'quiet pause', name: 'mf-nodes.quiet.quiet', scenario: 'mf-nodes.quiet', seeds: ['1', '2', '3'] },
   { flip: nodeMutant('told'), invariant: 'repost once', name: 'mf-nodes.repost.told', scenario: 'mf-nodes.repost', seeds: ['1', '2', '3'] },
+  { flip: apiMutant('reviewed'), invariant: 'tree created', name: 'mf-nodes.api.reviewed', scenario: 'mf-nodes.api', seeds: ['1', '2', '3', '4', '5', '6'] },
+  { flip: apiMutant('setup'), invariant: 'tree setup', name: 'mf-nodes.api.setup', scenario: 'mf-nodes.api', seeds: ['1', '2', '3'] },
+  { flip: apiMutant('tag'), invariant: 'ride tag', name: 'mf-nodes.api.tag', scenario: 'mf-nodes.api', seeds: ['1', '2', '3'] },
+  { flip: apiMutant('limit'), invariant: 'suggest limit', name: 'mf-nodes.api.limit', scenario: 'mf-nodes.api', seeds: ['1', '2', '3'] },
+  { flip: apiMutant('covered'), invariant: 'move kept', name: 'mf-nodes.api.covered', scenario: 'mf-nodes.api', seeds: ['1', '2', '3'] },
+  { flip: apiMutant('drift'), invariant: 'ledger drift', name: 'mf-nodes.api.drift', scenario: 'mf-nodes.api', seeds: ['1', '2', '3', '4', '5', '6'] },
+  { flip: apiMutant('owner'), invariant: 'archive admin', name: 'mf-nodes.api.owner', scenario: 'mf-nodes.api', seeds: ['1', '2', '3'] },
 ]
