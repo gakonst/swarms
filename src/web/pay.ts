@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
+import * as Limits from '../shared/Limits.ts'
 import * as Api from './api.ts'
 import { message } from './hooks.ts'
 
@@ -33,7 +34,7 @@ export type Counted = { at: 'counted' } | { at: 'later' } | { at: 'refused'; rea
 
 export const idle: Act = { at: 'idle' }
 
-export const retries = [2_000, 5_000, 15_000, 30_000] as const
+export const retries = Limits.Pay.retryMs
 
 export function slot(swarm: string, node?: string) {
   return node ? `${swarm}/n/${node}` : swarm
@@ -181,7 +182,7 @@ export function move(slot: string, event: Event) {
 function schedule(at: string, to: Act) {
   clearTimeout(timers.get(at))
   timers.delete(at)
-  const wait = to.at === 'owed' ? retries[to.tries] : undefined
+  const wait = to.at === 'owed' ? Limits.Pay.retryMs[to.tries] : undefined
   if (wait === undefined) return
   timers.set(
     at,
@@ -218,7 +219,7 @@ function refuses(error: unknown) {
 
 async function count(owed: Owed): Promise<Counted> {
   const note = owed.note ? { note: owed.note } : {}
-  for (let attempt = 0; ; attempt++) {
+  for (let attempt = 0; attempt <= Limits.Pay.countRetries; attempt++) {
     try {
       if (owed.node) {
         await Api.ride(owed.swarm, { hash: owed.hash, node: owed.node })
@@ -227,13 +228,14 @@ async function count(owed: Owed): Promise<Counted> {
       return { at: 'counted' }
     } catch (error) {
       if (code(error) === 'conflict') return { at: 'counted' }
-      if (attempt < 3 && code(error) === 'not_found') {
-        await new Promise((resolve) => setTimeout(resolve, 1500))
+      if (attempt < Limits.Pay.countRetries && code(error) === 'not_found') {
+        await new Promise((resolve) => setTimeout(resolve, Limits.Pay.countRetryMs))
         continue
       }
       return refuses(error) ? { at: 'refused', reason: message(error) } : { at: 'later' }
     }
   }
+  throw new Error(`Counting ${owed.hash} ran past its ${Limits.Pay.countRetries} retries.`)
 }
 
 async function counting(owed: Owed) {
@@ -280,7 +282,7 @@ if (typeof document !== 'undefined') {
     if ([...acts.values()].some((act) => act.at === 'creating' || act.at === 'paying')) event.preventDefault()
   })
   addEventListener('online', resume)
-  setTimeout(resume, 1_000)
+  setTimeout(resume, Limits.Pay.resumeMs)
 }
 
 function useVersion() {

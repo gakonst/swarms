@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { Chatter, Detail, Listing, Lobby, Part, Pulse, Said, Summary } from '../shared/Api.ts'
+import * as Limits from '../shared/Limits.ts'
 import * as Api from './api.ts'
 import { usePoll } from './hooks.ts'
 import * as Local from './local.ts'
@@ -16,9 +17,7 @@ export const parts = ['artifacts', 'branches', 'code', 'detail', 'feed', 'hands'
 
 const unversioned = ['artifacts', 'branches', 'code', 'hands', 'roster'] as const satisfies readonly Part[]
 
-const lingerMs = 5000
 
-const welcomeMs = 4000
 
 type Wire = {
   applied: string | undefined
@@ -95,15 +94,13 @@ function heard(wire: Wire, event: Chatter | { type: 'open' | 'closed' }) {
   if (event.type === 'changed') stir(wire, event.parts, 'changed')
 }
 
-const pageMax = 500
-
 async function caught(id: string, from: number) {
   let after = from
-  for (let page = 0; page < 4; page++) {
-    const got = await Api.deltas(id, after, pageMax).catch(() => undefined)
+  for (let page = 0; page < Limits.Wire.pagesMost; page++) {
+    const got = await Api.deltas(id, after, Limits.Wire.pageMost).catch(() => undefined)
     if (!got) return Local.lost(id)
     for (const delta of got.deltas) Local.delta(id, delta)
-    if (got.deltas.length < pageMax) return Local.caught(id, got.next)
+    if (got.deltas.length < Limits.Wire.pageMost) return Local.caught(id, got.next)
     after = got.next
   }
   Local.lost(id)
@@ -134,7 +131,7 @@ function open(id: string, mode: Mode) {
     if (wire.state !== 'opening') return
     wire.state = 'down'
     notify()
-  }, welcomeMs)
+  }, Limits.Wire.welcomeMs)
   wires.set(named(id, mode), wire)
   return wire
 }
@@ -156,7 +153,7 @@ export function join(id: string, mode: Mode, listener: (signal: Signal) => void)
       Local.link(id, false)
       wires.delete(name)
       notify()
-    }, lingerMs)
+    }, Limits.Wire.lingerMs)
   }
 }
 
@@ -213,7 +210,7 @@ function opened() {
     if (made.state !== 'opening') return
     made.state = 'down'
     notify()
-  }, welcomeMs)
+  }, Limits.Wire.welcomeMs)
   return made
 }
 
@@ -237,7 +234,7 @@ export function enter(listener: (event: Lobby) => void) {
       current.close()
       hall = undefined
       notify()
-    }, lingerMs)
+    }, Limits.Wire.lingerMs)
   }
 }
 

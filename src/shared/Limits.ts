@@ -8,6 +8,15 @@ export const Artifacts = {
   wrappedMost: 2_000_000,
 } as const
 
+export const Board = {
+  findMs: 100,
+  findTries: 60,
+  pace: 0.2,
+  scrollMs: 300,
+  settleMs: 150,
+  stepMs: 80,
+} as const
+
 export const Branching = {
   keptBytes: 1_000_000,
   keptMs: 10 * 60_000,
@@ -193,6 +202,13 @@ export const Operations = {
 
 export const Page = {
   firstChat: 30,
+} as const
+
+export const Pay = {
+  countRetries: 3,
+  countRetryMs: 1500,
+  resumeMs: 1000,
+  retryMs: [2_000, 5_000, 15_000, 30_000],
 } as const
 
 export const Phase = {
@@ -396,6 +412,13 @@ export const Watch = {
   pongMs: 10_000,
   retryMs: 3_000,
   pagesMost: 10,
+} as const
+
+export const Wire = {
+  lingerMs: 5000,
+  pageMost: 500,
+  pagesMost: 4,
+  welcomeMs: 4000,
 } as const
 
 export const Work = {

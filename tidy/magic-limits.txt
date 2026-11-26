@@ -34,7 +34,7 @@ src/web/api.ts 9 pre-existing; move it into src/shared/Limits.ts
 src/web/App.tsx 3 pre-existing; move it into src/shared/Limits.ts
 src/web/Art.tsx 33 pre-existing; move it into src/shared/Limits.ts
 src/web/Artifacts.tsx 2 pre-existing; move it into src/shared/Limits.ts
-src/web/Board.tsx 20 pre-existing; move it into src/shared/Limits.ts
+src/web/Board.tsx 15 pre-existing; move it into src/shared/Limits.ts
 src/web/Box.tsx 2 pre-existing; move it into src/shared/Limits.ts
 src/web/Branches.tsx 8 pre-existing; move it into src/shared/Limits.ts
 src/web/Card.tsx 2 pre-existing; move it into src/shared/Limits.ts
@@ -63,7 +63,7 @@ src/web/Node.tsx 3 pre-existing; move it into src/shared/Limits.ts
 src/web/Now.tsx 1 pre-existing; move it into src/shared/Limits.ts
 src/web/Overlay.tsx 3 pre-existing; move it into src/shared/Limits.ts
 src/web/OwnAi.tsx 1 pre-existing; move it into src/shared/Limits.ts
-src/web/pay.ts 11 pre-existing; move it into src/shared/Limits.ts
+src/web/pay.ts 5 pre-existing; move it into src/shared/Limits.ts
 src/web/Reactions.tsx 1 pre-existing; move it into src/shared/Limits.ts
 src/web/Repo.tsx 1 pre-existing; move it into src/shared/Limits.ts
 src/web/Results.tsx 4 pre-existing; move it into src/shared/Limits.ts
@@ -80,7 +80,7 @@ src/web/Traces.tsx 7 pre-existing; move it into src/shared/Limits.ts
 src/web/TreePage.tsx 7 pre-existing; move it into src/shared/Limits.ts
 src/web/Username.tsx 3 pre-existing; move it into src/shared/Limits.ts
 src/web/wallet.ts 9 pre-existing; move it into src/shared/Limits.ts
-src/web/wire.ts 5 pre-existing; move it into src/shared/Limits.ts
+src/web/wire.ts 1 pre-existing; move it into src/shared/Limits.ts
 src/worker/Artifacts.ts 17 pre-existing; move it into src/shared/Limits.ts
 src/worker/Branching.ts 6 pre-existing; move it into src/shared/Limits.ts
 src/worker/Cards.ts 86 pre-existing; move it into src/shared/Limits.ts

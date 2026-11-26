@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import * as Limits from '../shared/Limits.ts'
 import * as Site from '../shared/Site.ts'
 import * as Showing from './showing.ts'
 
@@ -157,10 +158,10 @@ function sleep(ms: number) {
 }
 
 async function find(doc: Document, selector: string) {
-  for (let tries = 0; tries < 60; tries++) {
+  for (let tries = 0; tries < Limits.Board.findTries; tries++) {
     const found = doc.querySelector(selector)
     if (found) return found as HTMLElement
-    await sleep(100)
+    await sleep(Limits.Board.findMs)
   }
   return undefined
 }
@@ -174,7 +175,6 @@ function scroller(element: HTMLElement | null, doc: Document) {
   return main && main.scrollHeight > main.clientHeight ? main : (doc.scrollingElement as HTMLElement)
 }
 
-const pace = 0.2
 
 const slots = { busy: 0, queue: [] as (() => void)[] }
 
@@ -196,16 +196,16 @@ function release() {
 async function play(frame: HTMLIFrameElement, steps: readonly Step[]) {
   const doc = frame.contentDocument
   if (doc) await find(doc, '.app > main > *')
-  await sleep(150)
+  await sleep(Limits.Board.settleMs)
   for (const step of steps) {
     const doc = frame.contentDocument
     if (!doc) return
-    if ('wait' in step) await sleep(step.wait * pace)
+    if ('wait' in step) await sleep(step.wait * Limits.Board.pace)
     if ('click' in step) (await find(doc, step.click))?.click()
     if ('scroll' in step) {
       const target = scroller(step.scroll === 'page' ? null : ((await find(doc, step.scroll)) ?? null), doc)
       target.scrollTo({ behavior: 'smooth', top: step.to === 'top' ? 0 : target.scrollHeight })
-      await sleep(300)
+      await sleep(Limits.Board.scrollMs)
     }
     if ('slide' in step) {
       const range = (await find(doc, step.slide[0])) as HTMLInputElement | undefined
@@ -224,7 +224,7 @@ async function play(frame: HTMLIFrameElement, steps: readonly Step[]) {
       proto && Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(field, step.type[1])
       field.dispatchEvent(new (view?.Event ?? Event)('input', { bubbles: true }))
     }
-    await sleep(80)
+    await sleep(Limits.Board.stepMs)
   }
 }
 
