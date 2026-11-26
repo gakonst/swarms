@@ -228,7 +228,6 @@ test/run.test.ts 1 pre-existing hand formatting
 test/run.ts 1 pre-existing hand formatting
 test/runner.test.ts 1 pre-existing hand formatting
 test/runs.test.ts 1 pre-existing hand formatting
-test/setup.test.ts 1 pre-existing hand formatting
 test/site.test.ts 1 pre-existing hand formatting
 test/sockets.test.ts 1 pre-existing hand formatting
 test/status.test.ts 1 pre-existing hand formatting
@@ -240,7 +239,6 @@ test/telegram.test.ts 1 pre-existing hand formatting
 test/threads.test.ts 1 pre-existing hand formatting
 test/trace.test.ts 1 pre-existing hand formatting
 test/trail.test.ts 1 pre-existing hand formatting
-test/tree.test.ts 1 pre-existing hand formatting
 test/triage.test.ts 1 pre-existing hand formatting
 test/turns.test.ts 1 pre-existing hand formatting
 test/unhand.test.ts 1 pre-existing hand formatting
