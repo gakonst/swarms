@@ -172,6 +172,10 @@ export const Hands = {
   limit: 32,
   unseenMs: 86_400_000,
   freshMs: 3_600_000,
+  suffixBytes: 3,
+  share: 5n,
+  payeeHead: 6,
+  payeeTail: 4,
 } as const
 
 export const Land = { attempts: 3 } as const
@@ -402,6 +406,9 @@ export const Runs = {
   lifeMs: 24 * 60 * 60_000,
   jobBytes: 4 * 1024 * 1024,
   tracking: 2,
+  pageMost: 500,
+  pageStandard: 100,
+  errorChars: 300,
 } as const
 
 export const Search = {
@@ -693,6 +700,30 @@ export const Turns = {
 
 export const Verify = {
   tailBytes: 4096,
+  hashBytes: 8,
+  refusalChars: 300,
+  zipEndBytes: 22,
+  zipEndScanBytes: 65_557,
+  zipEndSignature: 0x06054b50,
+  zipEndCountAt: 10,
+  zipEndOffsetAt: 16,
+  zipEntryBytes: 46,
+  zipEntrySignature: 0x02014b50,
+  zipEntryMethodAt: 10,
+  zipEntrySizeAt: 20,
+  zipEntryNameAt: 28,
+  zipEntryExtraAt: 30,
+  zipEntryCommentAt: 32,
+  zipEntryLocalAt: 42,
+  zipLocalSignature: 0x04034b50,
+  zipLocalBytes: 30,
+  zipLocalNameAt: 26,
+  zipLocalExtraAt: 28,
+  zipDeflate: 8,
+  leanCpu: 4,
+  leanMemory: 16_384,
+  commitCost: 5_000n,
+  createCost: 1_000_000n,
 } as const
 
 export const Watch = {
@@ -712,6 +743,7 @@ export const Wire = {
 export const Work = {
   serialPollMs: 50,
   serialWaitMs: 30_000,
+  renewsPerLease: 3,
 } as const
 
 export const WorkerGlyphs = {
@@ -971,4 +1003,9 @@ export const Held = {
 
 export const MachinePayment = {
   payingMs: 30_000,
+  suffixChars: 12,
+} as const
+
+export const MachineTree = {
+  rank: { checking: 2, quieted: 4, splitting: 3, told: 1 },
 } as const

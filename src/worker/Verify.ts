@@ -81,7 +81,7 @@ export function title(swarm: string, nid: string, sha: string, claim: Claim = 'p
 
 export async function hash(statement: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(statement))
-  return Array.from(new Uint8Array(digest).slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return Array.from(new Uint8Array(digest).slice(0, Limits.Verify.hashBytes), (byte) => byte.toString(Limits.Hex.radix).padStart(2, '0')).join('')
 }
 
 export function statementFile(nid: string, statement: string) {
@@ -165,16 +165,16 @@ export async function request(env: Env, ask: Ask): Promise<{ ok: true; run: numb
     headers: { 'content-type': 'application/json' },
     method: 'POST',
   })
-  if (!response.ok) return { detail: `GitHub refused the dispatch: ${response.status} ${(await response.text()).slice(0, 300)}`, ok: false }
+  if (!response.ok) return { detail: `GitHub refused the dispatch: ${response.status} ${(await response.text()).slice(0, Limits.Verify.refusalChars)}`, ok: false }
   return { ok: true, run: null }
 }
 
 async function signed(secret: string, body: string, signature: string | null) {
   if (!signature?.startsWith('sha256=')) return false
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { hash: 'SHA-256', name: 'HMAC' }, false, ['verify'])
-  const hex = signature.slice(7)
+  const hex = signature.slice('sha256='.length)
   if (!/^[0-9a-f]{64}$/.test(hex)) return false
-  const bytes = new Uint8Array(hex.match(/../g)?.map((pair) => parseInt(pair, 16)) ?? [])
+  const bytes = new Uint8Array(hex.match(/../g)?.map((pair) => parseInt(pair, Limits.Hex.radix)) ?? [])
   return crypto.subtle.verify('HMAC', key, bytes, new TextEncoder().encode(body))
 }
 
@@ -182,7 +182,8 @@ function ours(env: Env, run: Run) {
   const named = titlePattern.exec(run.display_title)
   if (!named) return null
   if (run.repository.full_name !== repo(env) || run.path !== workflow || run.head_branch !== 'main' || run.event !== 'workflow_dispatch') return null
-  return { claim: named[4] ? 'refutation' : 'proof', nid: named[2] as string, sha: named[3] as string, swarm: named[1] as string } satisfies Named
+  const [, swarm, nid, sha, refutation] = named
+  return { claim: refutation ? 'refutation' : 'proof', nid: nid as string, sha: sha as string, swarm: swarm as string } satisfies Named
 }
 
 export async function read(env: Env, incoming: Request): Promise<Read | null> {
@@ -265,36 +266,36 @@ export async function unzip(bytes: Uint8Array) {
   const files = new Map<string, string>()
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   let end = -1
-  for (let at = bytes.length - 22; at >= Math.max(0, bytes.length - 65_557); at--)
-    if (view.getUint32(at, true) === 0x06054b50) {
+  for (let at = bytes.length - Limits.Verify.zipEndBytes; at >= Math.max(0, bytes.length - Limits.Verify.zipEndScanBytes); at--)
+    if (view.getUint32(at, true) === Limits.Verify.zipEndSignature) {
       end = at
       break
     }
   if (end < 0) return files
-  const count = view.getUint16(end + 10, true)
-  let at = view.getUint32(end + 16, true)
-  for (let index = 0; index < count && at + 46 <= bytes.length; index++) {
-    if (view.getUint32(at, true) !== 0x02014b50) break
-    const method = view.getUint16(at + 10, true)
-    const size = view.getUint32(at + 20, true)
-    const nameLength = view.getUint16(at + 28, true)
-    const extra = view.getUint16(at + 30, true)
-    const comment = view.getUint16(at + 32, true)
-    const local = view.getUint32(at + 42, true)
-    const name = new TextDecoder().decode(bytes.subarray(at + 46, at + 46 + nameLength))
-    at += 46 + nameLength + extra + comment
-    if (view.getUint32(local, true) !== 0x04034b50) continue
-    const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true)
+  const count = view.getUint16(end + Limits.Verify.zipEndCountAt, true)
+  let at = view.getUint32(end + Limits.Verify.zipEndOffsetAt, true)
+  for (let index = 0; index < count && at + Limits.Verify.zipEntryBytes <= bytes.length; index++) {
+    if (view.getUint32(at, true) !== Limits.Verify.zipEntrySignature) break
+    const method = view.getUint16(at + Limits.Verify.zipEntryMethodAt, true)
+    const size = view.getUint32(at + Limits.Verify.zipEntrySizeAt, true)
+    const nameLength = view.getUint16(at + Limits.Verify.zipEntryNameAt, true)
+    const extra = view.getUint16(at + Limits.Verify.zipEntryExtraAt, true)
+    const comment = view.getUint16(at + Limits.Verify.zipEntryCommentAt, true)
+    const local = view.getUint32(at + Limits.Verify.zipEntryLocalAt, true)
+    const name = new TextDecoder().decode(bytes.subarray(at + Limits.Verify.zipEntryBytes, at + Limits.Verify.zipEntryBytes + nameLength))
+    at += Limits.Verify.zipEntryBytes + nameLength + extra + comment
+    if (view.getUint32(local, true) !== Limits.Verify.zipLocalSignature) continue
+    const start = local + Limits.Verify.zipLocalBytes + view.getUint16(local + Limits.Verify.zipLocalNameAt, true) + view.getUint16(local + Limits.Verify.zipLocalExtraAt, true)
     const data = bytes.subarray(start, start + size)
     if (method === 0) files.set(name, new TextDecoder().decode(data))
-    else if (method === 8) files.set(name, await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text())
+    else if (method === Limits.Verify.zipDeflate) files.set(name, await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text())
   }
   return files
 }
 
 export const machine = {
-  cpu: 4,
-  memory: 16_384,
+  cpu: Limits.Verify.leanCpu,
+  memory: Limits.Verify.leanMemory,
   seconds: 3_600,
   out: '/work/out',
 }
@@ -378,13 +379,13 @@ export async function template() {
   return files.sort((a, b) => (a.path < b.path ? -1 : 1))
 }
 
-export const cost = { commit: 5_000n, create: 1_000_000n }
+export const cost = { commit: Limits.Verify.commitCost, create: Limits.Verify.createCost }
 
 export const seedMessage = 'Lean project: pinned toolchain and Mathlib, definitions and the seed statements'
 
 export async function create(env: Cloudflare.Env, swarm: string): Promise<'created' | 'exists' | null> {
   const created = await gateway(env, '/v1/git/create', { name: project, public: true }, Credit.app(swarm))
-  return created.ok ? 'created' : created.status === 409 ? 'exists' : null
+  return created.ok ? 'created' : created.status === Limits.Http.conflict ? 'exists' : null
 }
 
 export async function commit(env: Cloudflare.Env, swarm: string, files: { path: string; text: string }[], message: string) {

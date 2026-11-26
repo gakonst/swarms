@@ -84,14 +84,14 @@ function filtered(view: Nodes.View, query: { depth: number; root: string; status
 
 export async function tree(self: Swarm, query: { depth: number; root: string; status: Tree.Status | undefined }): Promise<Answer<TreeView>> {
   const view = await Nodes.view(self)
-  if (!view.nodes.has(query.root)) return fail(404, 'No node has this id.')
+  if (!view.nodes.has(query.root)) return fail(Limits.Http.missing, 'No node has this id.')
   return { ok: true, value: { headline: Tree.headline([...view.nodes.values()]), nodes: filtered(view, query), seq: view.seq } }
 }
 
 export async function node(self: Swarm, nid: string): Promise<Answer<NodeView>> {
   const view = await Nodes.view(self)
   const shown = view.nodes.get(nid)
-  if (!shown) return fail(404, 'No node has this id.')
+  if (!shown) return fail(Limits.Http.missing, 'No node has this id.')
   const found = view.state
   const names = await Nodes.names(self, found)
   const runs: NodeRun[] = (found.runs.get(nid) ?? []).map((task) => {
@@ -118,9 +118,9 @@ export async function node(self: Swarm, nid: string): Promise<Answer<NodeView>> 
     .exec<{ at: number; text: string }>("SELECT at, text FROM tree_deltas WHERE node = ? AND event = 'steered' ORDER BY seq DESC LIMIT ?", nid, Limits.Riding.steersShown)
     .toArray()
     .map((row) => {
-      const money = String(row.text).match(/^\[\$([\d.]+) behind this, from @([^\]]+)\] ([\s\S]*)$/)
-      const handle = money?.[2] ?? 'rider'
-      return { amount: Memo.decimal(Memo.units(money?.[1] ?? '0')), at: Number(row.at), note: money?.[3] ?? String(row.text), who: { address: null, agent: null, handle } }
+      const [, amount, from, note] = String(row.text).match(/^\[\$([\d.]+) behind this, from @([^\]]+)\] ([\s\S]*)$/) ?? []
+      const handle = from ?? 'rider'
+      return { amount: Memo.decimal(Memo.units(amount ?? '0')), at: Number(row.at), note: note ?? String(row.text), who: { address: null, agent: null, handle } }
     })
   const { results } = await self.env.DB.prepare('select id, author, text, created_at from ideas where swarm = ? and parent = ? and node is null order by created_at desc limit ?')
     .bind(Nodes.swarm(self), nid, Limits.Riding.suggestionsShown)
@@ -132,7 +132,7 @@ export async function node(self: Swarm, nid: string): Promise<Answer<NodeView>> 
 
 export async function deltas(self: Swarm, input: { after: number; limit: number; nid: string | null }): Promise<Answer<NodeUpdates>> {
   const view = await Nodes.view(self)
-  if (input.nid !== null && !view.nodes.has(input.nid)) return fail(404, 'No node has this id.')
+  if (input.nid !== null && !view.nodes.has(input.nid)) return fail(Limits.Http.missing, 'No node has this id.')
   const rows = self.ctx.storage.sql
     .exec<{ at: number; event: Nodes.Event; node: string; seq: number; text: string }>(
       input.nid === null ? 'SELECT seq, at, node, event, text FROM tree_deltas WHERE seq > ? ORDER BY seq LIMIT ?' : 'SELECT seq, at, node, event, text FROM tree_deltas WHERE seq > ? AND node = ? ORDER BY seq LIMIT ?',
@@ -260,7 +260,7 @@ export async function steer(self: Swarm, input: { amount: bigint; contributor: s
   if (closed) return refuse(closed)
   if (input.amount > 0n) {
     const moved = await shift(self, { amount: input.amount, contributor, from: Flow.free, id: Payment.id('steer', input.nid, contributor, input.key), to: input.nid }, () => undefined)
-    if (moved.at !== 'paid') return fail(409, 'You have less free money in this swarm than that. Ride the node instead.')
+    if (moved.at !== 'paid') return fail(Limits.Http.conflict, 'You have less free money in this swarm than that. Ride the node instead.')
   }
   const after = await Nodes.state(self)
   const behind = after.ledger.funders.get(input.nid)?.get(contributor)?.amount ?? 0n
@@ -305,7 +305,7 @@ export async function move(self: Swarm, input: { amount: bigint; contributor: st
     if (input.to !== Flow.free) Nodes.emit(self, input.to, 'moved', '@' + handle + ' moved $' + trim(input.amount) + ' here')
     if (input.from !== Flow.free) Nodes.emit(self, input.from, 'moved', '@' + handle + ' moved $' + trim(input.amount) + ' away')
   })
-  if (moved.at !== 'paid') return fail(409, 'You have less uncommitted money there than that.')
+  if (moved.at !== 'paid') return fail(Limits.Http.conflict, 'You have less uncommitted money there than that.')
   await Runner.tick(self).then((next) => (next === null ? undefined : arm(self, next)))
   const view = await Nodes.view(self)
   return { ok: true, value: view.nodes.get(input.to === Flow.free ? input.from : input.to) ?? null }
@@ -372,7 +372,7 @@ export async function health(self: Swarm): Promise<Ledgered> {
 
 export async function review(self: Swarm, nid: string, by: string): Promise<Answer<boolean>> {
   const found = await Nodes.state(self)
-  if (!found.nodes.has(nid)) return fail(404, 'No node has this id.')
+  if (!found.nodes.has(nid)) return fail(Limits.Http.missing, 'No node has this id.')
   self.kv.put('reviewed:' + nid, Ride.reviewed(Date.now(), by))
   Nodes.changed(self)
   return { ok: true, value: true }

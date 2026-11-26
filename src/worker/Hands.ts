@@ -25,7 +25,7 @@ export function slug(label: string) {
 }
 
 function suffix() {
-  return Array.from(crypto.getRandomValues(new Uint8Array(3)), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return Array.from(crypto.getRandomValues(new Uint8Array(Limits.Hands.suffixBytes)), (byte) => byte.toString(Limits.Hex.radix).padStart(2, '0')).join('')
 }
 
 export const slot = { hands: 'lent' }
@@ -111,8 +111,8 @@ function retired(self: Swarm, name: string, by: 'evicted' | 'failed' | 'owner') 
 }
 
 async function retire(self: Swarm, swarm: string, name: string, by: 'evicted' | 'failed' | 'owner', resumed: boolean) {
-  const revoked = await Gateway.detach(self.env, swarm, name).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
-  if (!revoked.ok && revoked.status !== 404) {
+  const revoked = await Gateway.detach(self.env, swarm, name).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: Limits.Http.unavailable }))
+  if (!revoked.ok && revoked.status !== Limits.Http.missing) {
     if (by === 'owner' && !resumed) step(self, name, { at: Date.now(), kind: 'kept' })
     return revoked
   }
@@ -188,7 +188,7 @@ async function mint(self: Swarm, swarm: string, name: string, label: string, con
   await board.finish(task(name), claimed.claim, { failed: minted.detail })
   await self.env.DB.prepare('delete from hands where swarm = ? and name = ? and seen_at is null and returned_at is null').bind(swarm, name).run()
   retired(self, name, 'failed')
-  return minted.status === 409 ? 'again' : { detail: minted.detail, ok: false, reason: 'upstream' }
+  return minted.status === Limits.Http.conflict ? 'again' : { detail: minted.detail, ok: false, reason: 'upstream' }
 }
 
 export type Removed = { ok: true } | { ok: false; reason: 'missing' } | { detail: string; ok: false; reason: 'upstream' }
@@ -265,7 +265,7 @@ export async function evictable(board: Work.Board, listed: readonly Gateway.List
   return [...stale, ...spare.slice(0, holding - limit + 1)].map(named)
 }
 
-export const share = 5n
+export const share = Limits.Hands.share
 
 const symbols: Record<string, string> = { ousd: 'OUSD', usdce: 'USDC.e' }
 
@@ -285,14 +285,14 @@ export function terms(listed: Gateway.Listed | undefined): Terms {
     charged: count ? `${usd(charges?.usd)} for ${count} operation${count === 1 ? '' : 's'}` : null,
     earned: typeof earned === 'number' && earned > 0 ? `${usd(earned)}${typeof paid === 'number' ? `, ${usd(paid)} paid out` : ''}` : null,
     price: pricing
-      ? `${typeof pricing.describe === 'string' && pricing.describe ? pricing.describe : 'priced by its owner'}${typeof pricing.payee === 'string' ? ` (paid to ${pricing.payee.slice(0, 6)}…${pricing.payee.slice(-4)}${currency ? ` in ${currency}` : ''})` : ''}`
+      ? `${typeof pricing.describe === 'string' && pricing.describe ? pricing.describe : 'priced by its owner'}${typeof pricing.payee === 'string' ? ` (paid to ${pricing.payee.slice(0, Limits.Hands.payeeHead)}…${pricing.payee.slice(-Limits.Hands.payeeTail)}${currency ? ` in ${currency}` : ''})` : ''}`
       : null,
     requests: typeof listed?.['requests'] === 'number' ? listed['requests'] : 0,
   }
 }
 
 function usd(value: unknown) {
-  return '$' + (typeof value === 'number' ? Number(value.toFixed(6)) : 0)
+  return '$' + (typeof value === 'number' ? Number(value.toFixed(Limits.SharedMemo.decimals)) : 0)
 }
 
 export function lent(rows: readonly Row[], listed: readonly Gateway.Listed[] | undefined): Lent[] {

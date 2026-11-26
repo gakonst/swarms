@@ -1120,7 +1120,7 @@ export const canaries: Canary[] = [
     seeds: all,
   },
   {
-    flip: mutant('terms.payee', 'src/worker/Hands.ts', 'pricing.payee.slice(-4)', 'pricing.payee.slice(-6)'),
+    flip: mutant('terms.payee', 'src/worker/Hands.ts', 'pricing.payee.slice(-Limits.Hands.payeeTail)', 'pricing.payee.slice(-Limits.Hands.payeeHead)'),
     invariant: 'terms price',
     name: 'terms.payee',
     scenario: 'hands',

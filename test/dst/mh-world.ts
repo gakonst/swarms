@@ -822,14 +822,24 @@ export const canaries: Canary[] = [
     seeds: all,
   },
   {
-    flip: mutant('world.unhand.failed', 'src/worker/Hands.ts', 'if (!revoked.ok && revoked.status !== 404) {', 'if (!revoked.ok && revoked.status === 0) {'),
+    flip: mutant(
+      'world.unhand.failed',
+      'src/worker/Hands.ts',
+      'if (!revoked.ok && revoked.status !== Limits.Http.missing) {',
+      'if (!revoked.ok && revoked.status === 0) {',
+    ),
     invariant: 'revoke failure keeps hand',
     name: 'world.unhand.failed',
     scenario: 'world_unhand',
     seeds: all,
   },
   {
-    flip: mutant('world.unhand.gone', 'src/worker/Hands.ts', 'if (!revoked.ok && revoked.status !== 404) {', 'if (!revoked.ok && revoked.status !== 0) {'),
+    flip: mutant(
+      'world.unhand.gone',
+      'src/worker/Hands.ts',
+      'if (!revoked.ok && revoked.status !== Limits.Http.missing) {',
+      'if (!revoked.ok && revoked.status !== 0) {',
+    ),
     invariant: 'revoke gone removes',
     name: 'world.unhand.gone',
     scenario: 'world_unhand',

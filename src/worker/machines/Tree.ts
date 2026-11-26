@@ -1,4 +1,5 @@
 import * as Assert from '../../shared/Assert.ts'
+import * as Limits from '../../shared/Limits.ts'
 
 export type Refused = { ok: false; why: 'illegal' | 'replayed' | 'stale' }
 
@@ -18,7 +19,7 @@ export type Fold = { checking?: boolean; fresh?: string[]; quieted?: boolean; st
 
 export type FoldEvent = { kind: 'check' } | { fresh: string[]; kind: 'split' } | { kind: 'quiet' } | { kind: 'tell' }
 
-const rank: Record<FoldState, number> = { checking: 2, quieted: 4, splitting: 3, told: 1 }
+const rank: Record<FoldState, number> = Limits.MachineTree.rank
 
 const reaches = { check: 'checking', quiet: 'quieted', split: 'splitting', tell: 'told' } as const
 

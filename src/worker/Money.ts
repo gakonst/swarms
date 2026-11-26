@@ -22,7 +22,7 @@ export const guards = { fresh: true, lower: true }
 
 function earned(hand: Gateway.Listed) {
   const charges = hand['charges'] as { usd?: unknown } | null | undefined
-  return typeof charges?.usd === 'number' && charges.usd > 0 ? Memo.units(charges.usd.toFixed(6)) : 0n
+  return typeof charges?.usd === 'number' && charges.usd > 0 ? Memo.units(charges.usd.toFixed(Limits.SharedMemo.decimals)) : 0n
 }
 
 async function settle(self: Swarm, row: Store.Row, listed: Gateway.Backing[]) {

@@ -25,7 +25,7 @@ type Kept = { checked: number; complete: boolean; newest: number | null; older: 
 
 type Tailed = { checked: number; done: boolean; exit: number | null; offset: number }
 
-export const page = { most: 500, standard: 100 }
+export const page = { most: Limits.Runs.pageMost, standard: Limits.Runs.pageStandard }
 
 export const guards = { more: true, running: true, versioned: true }
 
@@ -262,7 +262,7 @@ function once(self: Swarm, key: string, run: () => Promise<string | null>) {
 }
 
 function reading(self: Swarm, swarm: string, sandbox: string, before: string | undefined): Promise<Gateway.Result<Gateway.Logged>> {
-  return Gateway.output(self.env, swarm, sandbox, { before, limit: lines }).catch((error: unknown) => ({ detail: error instanceof Error ? error.message : String(error), ok: false as const, status: 502 }))
+  return Gateway.output(self.env, swarm, sandbox, { before, limit: lines }).catch((error: unknown) => ({ detail: error instanceof Error ? error.message : String(error), ok: false as const, status: Limits.Http.upstream }))
 }
 
 async function refresh(self: Swarm, swarm: string, sandbox: string, machine: Fleet.Machine | undefined): Promise<string | null> {
@@ -289,7 +289,7 @@ async function refresh(self: Swarm, swarm: string, sandbox: string, machine: Fle
   for (let count = 0; count < pages; count++) {
     const read = await reading(self, swarm, sandbox, before)
     if (!read.ok) {
-      gone = read.status === 404
+      gone = read.status === Limits.Http.missing
       error = gone ? null : read.detail
       break
     }
@@ -306,7 +306,7 @@ async function refresh(self: Swarm, swarm: string, sandbox: string, machine: Fle
     for (let count = 0; count < pages && cursor; count++) {
       const read = await reading(self, swarm, sandbox, cursor)
       if (!read.ok) {
-        gone = read.status === 404
+        gone = read.status === Limits.Http.missing
         error = gone ? null : read.detail
         break
       }
@@ -352,8 +352,8 @@ async function follow(self: Swarm, swarm: string, sandbox: string, run: Run, tai
     if (!response) error = 'The gateway did not answer.'
     else if (!response.ok || !response.body) {
       const text = await response.text().catch(() => '')
-      if (response.status === 404) next.done = true
-      else error = text.slice(0, 300) || `The gateway answered ${response.status}.`
+      if (response.status === Limits.Http.missing) next.done = true
+      else error = text.slice(0, Limits.Runs.errorChars) || `The gateway answered ${response.status}.`
     } else {
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
       let buffer = ''

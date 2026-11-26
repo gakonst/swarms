@@ -92,7 +92,7 @@ function deliver(state: Transfer, delivery: Delivery): Transfer | null {
 }
 
 export function id(kind: Kind, scope: string, contributor: string, key: string | null | undefined) {
-  const suffix = guards.keyed && key ? 'k' + key : crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+  const suffix = guards.keyed && key ? 'k' + key : crypto.randomUUID().replace(/-/g, '').slice(0, Limits.MachinePayment.suffixChars)
   return kind + ':' + scope + ':' + contributor.toLowerCase() + ':' + suffix
 }
 

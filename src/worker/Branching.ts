@@ -7,7 +7,7 @@ import * as Limits from '../shared/Limits.ts'
 
 function unspent(branch: Gateway.Subagent) {
   if (branch.budget_usd === undefined) return null
-  const left = Memo.units(branch.budget_usd.toFixed(6)) - Memo.units((branch.spent_usd ?? 0).toFixed(6))
+  const left = Memo.units(branch.budget_usd.toFixed(Limits.SharedMemo.decimals)) - Memo.units((branch.spent_usd ?? 0).toFixed(Limits.SharedMemo.decimals))
   return left > 0n ? left : 0n
 }
 
@@ -23,7 +23,7 @@ export async function list(self: Swarm, swarm: string, agent: string): Promise<G
   const value = Gateway.subagents(self.env, swarm, agent).then((listed): Gateway.Result<{ agent: string | null; list: Gateway.Subagent[] }> => (listed.ok ? { ok: true, value: { agent, list: listed.value } } : listed))
   const flight = { agent, at: Date.now(), pending: true, value }
   self.listing = flight
-  const result = await value.catch((error: unknown) => ({ detail: error instanceof Error ? error.message : String(error), ok: false as const, status: 503 }))
+  const result = await value.catch((error: unknown) => ({ detail: error instanceof Error ? error.message : String(error), ok: false as const, status: Limits.Http.unavailable }))
   if (self.listing !== flight) return result
   self.listing = result.ok ? { ...flight, at: Date.now(), pending: false } : undefined
   if (result.ok && JSON.stringify(result.value.list).length < keptBytes) self.ctx.storage.kv.put('subagents', { agent, at: flight.at, list: result.value.list })
@@ -37,7 +37,7 @@ export function rebudget(self: Swarm, swarm: string, agent: string, branch: numb
     const money = await Store.funds(self.env, swarm, agent)
     const funded = [...(money.shares.get(branch)?.values() ?? [])].reduce((sum, amount) => sum + amount, 0n)
     const total = (money.bases.get(branch) ?? 0n) + funded
-    return Gateway.budget(self.env, swarm, agent, branch, Number(total > 0n ? total : 1n) / 1_000_000)
+    return Gateway.budget(self.env, swarm, agent, branch, Number(total > 0n ? total : 1n) / Limits.SharedSetup.microsPerDollar)
   })
 }
 
@@ -64,8 +64,8 @@ export const guards = { unread: true }
 
 export async function release(self: Swarm, swarm: string, current: string) {
   for (const old of await Store.replaced(self.env, swarm, current)) {
-    const listed = old.agent ? await Gateway.subagents(self.env, swarm, old.agent).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 })) : undefined
-    if (guards.unread && listed && !listed.ok && listed.status !== 404) throw new Error("The old agent's branches were not settled, since what they spent could not be read: " + listed.detail)
+    const listed = old.agent ? await Gateway.subagents(self.env, swarm, old.agent).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: Limits.Http.unavailable })) : undefined
+    if (guards.unread && listed && !listed.ok && listed.status !== Limits.Http.missing) throw new Error("The old agent's branches were not settled, since what they spent could not be read: " + listed.detail)
     for (const branch of old.branches) {
       const found = listed?.ok ? listed.value.find((agent) => agent.agent_id === branch) : undefined
       await settle(self, { agent: old.agent, branch, left: found ? unspent(found) : null, swarm })
