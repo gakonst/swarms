@@ -313,7 +313,7 @@ html[data-viewing] body { overflow:hidden; }
 .msg-who { display:flex; align-items:baseline; gap:8px; }
 .msg-who b { font-size:15px; font-weight:400; }
 .msg-who time { font:10.5px var(--mono); color:var(--faint); }
-.msg-bubble { font-size:16px; line-height:1.45; color:var(--fg); overflow-wrap:anywhere; white-space:pre-wrap; }
+.msg-bubble { max-width:100%; font-size:16px; line-height:1.45; color:var(--fg); overflow-wrap:anywhere; white-space:pre-wrap; }
 .msg[data-mentioned='true'] { background:var(--green-wash); box-shadow:inset 2px 0 0 var(--green); }
 .msg-bubble .markdown { max-width:none; padding:0; font-size:inherit; line-height:inherit; white-space:normal; }
 .msg-bubble .markdown :is(p, li) { white-space:pre-line; }

@@ -178,7 +178,7 @@ button.crew-bud:hover, .crew-row[data-open] .crew-bud { background:var(--wash); 
   .general-chat > .chat-list > .welcome:first-child { margin-top:0; }
   .general-chat > .chat-foot { width:100%; max-width:790px; }
   .general-chat .welcome-hot { display:none; }
-  .chat-list .msg-bubble { max-width:46em; }
+  .chat-list .msg-bubble { max-width:min(46em, 100%); }
 }
 
 @media (min-width:1280px) and (max-height:960px) {
