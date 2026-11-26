@@ -64,7 +64,7 @@ function useJson<value>(artifact: Artifact | undefined, parse: (text: string) =>
   return read.from === true || read.from === url ? read.value : undefined
 }
 
-const none: readonly never[] = []
+const none: readonly never[] = Object.freeze([])
 
 export function useWishes(list: readonly Artifact[] | undefined) {
   return Wishlist.open(useJson<readonly Wishlist.Wish[]>(list?.find(Wishlist.is), Wishlist.parse, none) ?? none)

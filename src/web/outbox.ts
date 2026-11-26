@@ -16,7 +16,7 @@ const listeners = new Map<string, Set<() => void>>()
 const lists = new Map<string, readonly Draft[]>()
 const senders = new Map<string, Sender>()
 const keys = new Map<string, string>()
-const none: readonly Draft[] = []
+const none: readonly Draft[] = Object.freeze([])
 
 function ping(place: string) {
   for (const listener of [...(listeners.get(place) ?? [])]) listener()

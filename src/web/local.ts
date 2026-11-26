@@ -318,7 +318,7 @@ export function pending(swarm: string, kind: string) {
   return [...queue.values()].filter((mutation) => mutation.swarm === swarm && mutation.kind === kind)
 }
 
-const none: readonly Mutation[] = []
+const none: readonly Mutation[] = Object.freeze([])
 const lists = new Map<string, readonly Mutation[]>()
 
 function listed(swarm: string, kind: string) {

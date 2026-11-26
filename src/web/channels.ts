@@ -34,7 +34,7 @@ const planted = new Map<string, { from: unknown; shape: Shape }>()
 
 const watchers = new Set<() => void>()
 
-const nothing: readonly (readonly [string, Shape])[] = []
+const nothing: readonly (readonly [string, Shape])[] = Object.freeze([])
 
 let every = nothing
 
