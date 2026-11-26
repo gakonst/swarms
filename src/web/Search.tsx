@@ -186,7 +186,7 @@ export function Results(props: { active: number; empty?: ReactNode; found: reado
   useEffect(() => {
     list.current?.querySelector('[data-active]')?.scrollIntoView({ block: 'nearest' })
   }, [props.active])
-  if (!props.found.length) return <>{props.empty}</>
+  if (!props.found.length) return props.listing ? <>{props.empty}</> : null
   const split = props.found.findIndex((each) => each.at !== 'problem')
   return (
     <ol aria-label={props.label} className="find-list" id={props.id} ref={list} role="listbox">
