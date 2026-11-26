@@ -569,8 +569,7 @@ export async function topUp(self: Swarm, run: string, spent: bigint) {
     const have = left(found, nid)
     const amount = have < want ? have : want
     if (amount < set.runMin) return null
-    const n = found.rows.filter((row) => row.run === run && row.kind === 'commit').length
-    if (!(await commit(self, found, nid, run, amount, 'commit:' + nid + ':' + kOf(run) + ':' + n))) return null
+    if (!(await commit(self, found, nid, run, amount, 'commit:' + nid + ':' + kOf(run) + ':' + total))) return null
     emit(self, nid, 'funded', '$' + Memo.decimal(amount).replace(/\.?0+$/, '') + ' more for run ' + kOf(run))
     return bucketTotal(found, run)
   })
