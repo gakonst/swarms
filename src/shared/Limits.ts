@@ -607,6 +607,32 @@ export const Work = {
   serialWaitMs: 30_000,
 } as const
 
+export const WorkerOpenApi = {
+  chatDefault: 100,
+  chatMost: 200,
+  feedDefault: 200,
+  feedMost: 200,
+  repliesDefault: 200,
+  repliesMost: 200,
+  searchDefault: 10,
+  searchMost: 50,
+  status: {
+    ok: 200,
+    badRequest: 400,
+    unauthorized: 401,
+    forbidden: 403,
+    notFound: 404,
+    conflict: 409,
+    gone: 410,
+    tooMany: 429,
+    badGateway: 502,
+    unavailable: 503,
+  },
+  updatesDefault: 50,
+  updatesMost: 200,
+  waitDefaultSeconds: 45,
+} as const
+
 export const Telemetry = {
   failedStatus: 500,
   flagsRadix: 16,
