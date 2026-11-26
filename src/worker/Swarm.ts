@@ -162,6 +162,8 @@ const rowMs = Limits.Swarm.rowMs
 
 const stillMs = Limits.Swarm.stillMs
 
+export const guards = { listed: true }
+
 export class Swarm extends DurableObject<Cloudflare.Env> {
   declare ctx: DurableObjectState<{}>
   declare env: Cloudflare.Env
@@ -365,7 +367,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const stuck = Turns.stuck(this)
     const projected = Phase.project(run, run.state === 'starting' || run.state === 'working' ? run.n : this.turned(), stuck)
     const waiting = Phase.waiting(run, stuck, stuck && Turns.sponsorless(Follow.recalled(this)?.message))
-    const changed = projected.status !== row.status || projected.why !== (row.why ?? null) || waiting !== (row.waiting ?? null)
+    const changed = (guards.listed && projected.status !== row.status) || projected.why !== (row.why ?? null) || waiting !== (row.waiting ?? null)
     if (changed || Object.keys(fields).length) {
       await Store.update(this.env, row.id, { ...(changed ? { ...projected, waiting } : {}), ...fields })
       row.status = projected.status

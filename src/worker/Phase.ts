@@ -175,7 +175,7 @@ export function waking(run: Run, now: number) {
 
 export function project(run: Run, n: number, stuck = false): Lifecycle {
   const pause = paused(run)
-  if (pause) return n ? { status: 'paused', why: pause.why } : { status: 'funding', why: pause.why }
+  if (pause) return n && guards.listed ? { status: 'paused', why: pause.why } : { status: 'funding', why: pause.why }
   if (run.state === 'new' || (run.state === 'waiting' && n === 0)) return { status: 'funding', why: null }
   return { status: 'running', why: stuck ? 'stuck' : null }
 }
@@ -194,7 +194,7 @@ export function reason(pause: Pause) {
   return short(pause)
 }
 
-export const guards = { exact: true, patience: true }
+export const guards = { exact: true, listed: true, patience: true }
 
 export function stuck(failure: Failure | null, sponsor: boolean) {
   if (sponsor) return reasons.sponsor

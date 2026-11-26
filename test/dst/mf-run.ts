@@ -180,6 +180,7 @@ let harness: typeof HarnessModule
 let Phase: typeof PhaseModule
 let Turns: typeof TurnsModule
 let Swarm: typeof SwarmModule.Swarm
+let Swarms: typeof SwarmModule
 let Follow: typeof FollowModule
 let Operations: typeof OperationsModule
 let Branching: typeof BranchingModule
@@ -193,7 +194,8 @@ async function load() {
     harness = await import('../run.ts')
     Phase = await import('../../src/worker/Phase.ts')
     Turns = await import('../../src/worker/Turns.ts')
-    Swarm = (await import('../../src/worker/Swarm.ts')).Swarm
+    Swarms = await import('../../src/worker/Swarm.ts')
+    Swarm = Swarms.Swarm
     Follow = await import('../../src/worker/Follow.ts')
     Operations = await import('../../src/worker/Operations.ts')
     Branching = await import('../../src/worker/Branching.ts')
@@ -949,7 +951,7 @@ function failures() {
     }
   }
 
-  function unguarded(key: 'gone') {
+  function unguarded(key: 'fresh' | 'gone' | 'ordered') {
     return () => {
       const guards = Turns.guards as Record<string, boolean>
       guards[key] = false
@@ -1013,6 +1015,11 @@ function failures() {
       },
   )
 
+  const listless = () => {
+    Swarms.guards.listed = false
+    return () => void (Swarms.guards.listed = true)
+  }
+
   const unstepped = patched(
     'project',
     (project) =>
@@ -1073,13 +1080,13 @@ function failures() {
     { flip: () => retried('maxAttempts', (n) => n + 1)(), invariant: 'eight tries', name: 'mf-run.refused.tries', scenario: 'mf-run.failures', seeds },
     { flip: () => errorless(), invariant: 'exhausted told', name: 'mf-run.refused.told', scenario: 'mf-run.failures', seeds },
     { flip: () => clinging(), invariant: 'agent dropped', name: 'mf-run.refused.dropped', scenario: 'mf-run.failures', seeds },
-    { flip: () => retried('maxAttempts', (n) => n + 1)(), invariant: 'new agent', name: 'mf-run.refused.fresh', scenario: 'mf-run.failures', seeds },
+    { flip: () => unguarded('fresh')(), invariant: 'new agent', name: 'mf-run.refused.fresh', scenario: 'mf-run.failures', seeds },
     { flip: () => unprojected(), invariant: 'paused money', name: 'mf-run.uncreated.projected', scenario: 'mf-run.failures', seeds },
     { flip: () => remembered(), invariant: 'retrying', name: 'mf-run.uncreated.from', scenario: 'mf-run.failures', seeds },
     { flip: () => remembered(), invariant: 'no reason', name: 'mf-run.uncreated.reason', scenario: 'mf-run.failures', seeds },
     { flip: () => seconds(), invariant: 'one error row', name: 'mf-run.uncreated.quiet', scenario: 'mf-run.failures', seeds },
-    { flip: () => unprojected(), invariant: 'running', name: 'mf-run.writes.started', scenario: 'mf-run.writes', seeds },
-    { flip: () => unprojected(), invariant: 'stale list', name: 'mf-run.writes.stale', scenario: 'mf-run.writes', seeds },
+    { flip: () => listless(), invariant: 'running', name: 'mf-run.writes.started', scenario: 'mf-run.writes', seeds },
+    { flip: () => unguarded('ordered')(), invariant: 'stale list', name: 'mf-run.writes.stale', scenario: 'mf-run.writes', seeds },
     { flip: () => unstepped(), invariant: 'written again', name: 'mf-run.writes.again', scenario: 'mf-run.writes', seeds },
     { flip: () => unsettled(), invariant: 'settled once', name: 'mf-run.pause.settled', scenario: 'mf-run.writes', seeds },
     { flip: () => unguarded('gone')(), invariant: 'gone at once', name: 'mf-run.pause.gone', scenario: 'mf-run.writes', seeds },
@@ -1635,30 +1642,14 @@ function money() {
     },
     { flip: () => guarded(Turns.guards, 'known')(), invariant: 'unread holds', name: 'mf-run.money.unread', scenario: 'mf-run.money', seeds: ['1', '2', '3'] },
     {
-      flip: patched(
-        'alarm',
-        (was) =>
-          async function (this: Self, ...args: unknown[]) {
-            const out = await was.apply(this, args)
-            if (this.stream.state === 'streaming' && this.stream.fails > 0) this.stream = { retry: Date.now() + limits.money.clock.minute, state: 'polling' }
-            return out
-          },
-      ),
+      flip: () => guarded(Follow.guards, 'twice')(),
       invariant: 'listens twice',
       name: 'mf-run.live.twice',
       scenario: 'mf-run.live',
       seeds: ['1', '2', '3'],
     },
     {
-      flip: patched(
-        'alarm',
-        (was) =>
-          async function (this: Self, ...args: unknown[]) {
-            const out = await was.apply(this, args)
-            if (this.stream.state === 'polling') this.stream = { retry: Infinity, state: 'polling' }
-            return out
-          },
-      ),
+      flip: () => guarded(Follow.guards, 'again')(),
       invariant: 'listens again',
       name: 'mf-run.live.again',
       scenario: 'mf-run.live',
@@ -1715,7 +1706,7 @@ function money() {
     },
     { flip: () => lenient(), invariant: 'done refused', name: 'mf-run.api.lenient', scenario: 'mf-run.api', seeds: ['1', '2', '3'] },
     {
-      flip: () => stored(Operations.statuses, (items) => void items.pop())(),
+      flip: () => guarded(Phase.guards, 'listed')(),
       invariant: 'projected statuses',
       name: 'mf-run.api.dropped',
       scenario: 'mf-run.api',

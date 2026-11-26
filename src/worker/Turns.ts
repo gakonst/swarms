@@ -90,7 +90,7 @@ export const retry: Work.Retry = { backoffMs: 15_000, maxAttempts: 8 }
 
 export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: retry.maxAttempts }
 
-export const guards = { gone: true, known: true }
+export const guards = { fresh: true, gone: true, known: true, ordered: true }
 
 export const sponsorWaitMs = Limits.Turns.sponsorWaitMs
 
@@ -149,7 +149,7 @@ async function posted(self: Swarm, n: number) {
   for (let k = 0; ; k++) {
     const id = k ? `turn:${n}.${k}` : `turn:${n}`
     const found = await self.board.task(id)
-    if (found && Work.terminal(found.phase)) continue
+    if (guards.fresh && found && Work.terminal(found.phase)) continue
     if (!found) await Work.ensure(self.board, { id, labels: { kind: 'turn' }, spec: `turn ${n}`, terms: { retry } })
     return id
   }
@@ -794,10 +794,11 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause, exp
   if (telling && (pause.why === 'rest' || pause.why === 'idle')) await sweep(self, row)
   const shown = Phase.paused(run)
   const at = Date.now()
+  if (!guards.ordered) await self.moved(row)
   self.set({ at, pause, ...(pause.why === 'unfunded' ? { settled: at } : {}), state: 'paused' }, expect)
   if (telling && self.turned() && !(Phase.again(run) && Phase.refused(pause))) Chat.announce(self, text)
   if (shown?.why !== pause.why) self.log('status', text)
-  await self.moved(row)
+  if (guards.ordered) await self.moved(row)
   const alarm = await self.ctx.storage.getAlarm()
   if (alarm === null || alarm > Date.now() + settleMs) await self.ctx.storage.setAlarm(Date.now() + settleMs)
 }

@@ -45,7 +45,7 @@ export type Stream = { fails: number; state: 'streaming' } | { retry: number; st
 
 export const streaming: Stream = { fails: 0, state: 'streaming' }
 
-export const guards = { stall: true }
+export const guards = { again: true, stall: true, twice: true }
 
 const streamFails = Limits.Follow.streamFails
 
@@ -64,13 +64,13 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   let ended = false
   let down = false
   const stream = self.stream
-  const tried = stream.state === 'streaming' || Date.now() >= stream.retry
+  const tried = stream.state === 'streaming' || (guards.again && Date.now() >= stream.retry)
   const window = tried ? await listen(self, row, agent, run) : undefined
   if (window) {
     self.stream = streaming
     ended = window.ended
   } else {
-    if (tried) self.stream = stream.state === 'streaming' && stream.fails + 1 < streamFails ? { fails: stream.fails + 1, state: 'streaming' } : { retry: Date.now() + Clock.minuteMs, state: 'polling' }
+    if (tried) self.stream = stream.state === 'streaming' && guards.twice && stream.fails + 1 < streamFails ? { fails: stream.fails + 1, state: 'streaming' } : { retry: Date.now() + Clock.minuteMs, state: 'polling' }
     let cursor = agent.cursor
     for (let page = 0; page < 5; page++) {
       const read = await Gateway.events(self.env, row.id, agent.id, cursor)
