@@ -11,6 +11,7 @@ const update = process.argv.includes('--update')
 const seed = process.argv.includes('--seed')
 const only = process.argv.find((arg) => arg.startsWith('--rule='))?.slice('--rule='.length)
 const codeRoots = ['src', 'cli/src']
+const commentRoots = ['scripts', 'test/dst']
 const skipped = new Set(['node_modules', 'dist', '.git', '.wrangler', 'output'])
 const limitsFile = 'src/shared/Limits.ts'
 const timers = new Set(['setTimeout', 'setInterval', 'sleep', 'wait', 'delay', 'pause'])
@@ -261,11 +262,36 @@ const sources = files.map((file) => ({
     file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   ),
 }))
+const parsed = (file: string) => ({
+  file,
+  source: ts.createSourceFile(
+    file,
+    readFileSync(join(root, file), 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  ),
+})
+const commented = commentRoots.flatMap((dir) => walk(dir, (path) => /\.tsx?$/.test(path) && !path.endsWith('.d.ts'))).map(parsed)
+const shells = walk('scripts', (path) => !/\.tsx?$/.test(path))
+function shellComments(): Hit[] {
+  return shells.flatMap((file) =>
+    readFileSync(join(root, file), 'utf8')
+      .split('\n')
+      .flatMap((text, at) => (at > 0 && /^\s*#/.test(text) ? [{ file, line: at + 1, text: text.trim().slice(0, 100) }] : [])),
+  )
+}
+function scan(rule: Rule): Hit[] {
+  if (rule.name === 'unit-tests') return unitTests()
+  const own = sources.flatMap(({ file, source }) => rule.scan(file, source))
+  if (rule.name !== 'comments') return own
+  return [...own, ...commented.flatMap(({ file, source }) => comments(file, source)), ...shellComments()]
+}
 let red = 0
 for (const rule of rules) {
   if (only && rule.name !== only) continue
   const start = performance.now()
-  const hits = rule.name === 'unit-tests' ? unitTests() : sources.flatMap(({ file, source }) => rule.scan(file, source))
+  const hits = scan(rule)
   const found = byFile(hits)
   const allowed = allowances(rule.name)
   if (update) {

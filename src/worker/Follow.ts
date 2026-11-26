@@ -76,8 +76,6 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
         down = read.status >= 500
         break
       }
-      // Fold only events past the saved cursor, and save the cursor in the
-      // same step as the rows they wrote, before the next await.
       const page = Cursor.fresh(read.value.events, cursor)
       for (const event of page.events) ended = digest(self, event, run.turn) || ended
       const next = Math.max(page.cursor, read.value.next_cursor)

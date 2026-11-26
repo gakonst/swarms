@@ -494,9 +494,6 @@ function logged(task: Promise<unknown>) {
 
 type Shape = { excerpts?: boolean; feed?: number; pushed?: boolean; texts?: boolean }
 
-// A Worker and its objects can be one version apart for minutes after a
-// deploy, so a call to an object method newer than the previous release falls
-// back to the method it replaces. List each in test/rpc-older.json fallbacks.
 async function older<T>(call: () => T | Promise<T>, fallback: () => T | Promise<T>, why: string): Promise<Awaited<T>> {
   try {
     return await call()

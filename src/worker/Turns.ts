@@ -449,11 +449,6 @@ export async function instructed(self: Swarm, row: Store.Row, agent: Lead): Prom
   return given
 }
 
-// A turn's end. The run moves working -> ending in one write with the report
-// it ends on, before any effect of the end; every effect is then marked done in
-// the run record (machines/Run.ts), and the run leaves ending only once they
-// all ran. A restart, a second report for the same turn or a past life of the
-// object resumes from the record and repeats nothing that landed.
 export async function finish(self: Swarm, row: Store.Row, run: Turning, report: Gateway.Report) {
   if (Run.kind(self.run()) === 'working') {
     Relay.ended(self)
@@ -476,8 +471,6 @@ export async function ended(self: Swarm, row: Store.Row, n: number): Promise<num
   try {
     return await ending(self, row, n)
   } catch (thrown) {
-    // The turn moved on while this end awaited: another life of the object
-    // (or a newer step) owns it now, and this one stops writing.
     if (thrown instanceof Run.Refused && thrown.kind === 'Stale') return Date.now() + Clock.retryMs
     throw thrown
   }
@@ -649,8 +642,6 @@ export async function sweep(self: Swarm, row: Store.Row, why = ', which was stil
   }
 }
 
-// Pause the run. The announcement and the feed line are written in the same
-// synchronous step as the transition, after it, so a pause is told once.
 export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause, expect?: number) {
   const run = self.run()
   if (run.state === 'paused' && Phase.same(run.pause, pause)) return

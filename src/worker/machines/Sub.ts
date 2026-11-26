@@ -1,11 +1,3 @@
-// What the gateway last said about one subagent, folded so it never goes back.
-//
-// The subagent list can answer an older state than one already read (a
-// directory snapshot served from the session, a per-isolate listing promise
-// that resolves after a newer one), so each read is folded into this record
-// and the record, not the read, is what a run's watch, its fold, its spend and
-// its late charge use. A state only rises (unknown < running < ended), an
-// ended state never changes, and spend is the most any read reported.
 
 import * as Memo from '../../shared/Memo.ts'
 import * as Flow from '../Flow.ts'
@@ -15,8 +7,6 @@ import * as Assert from '../../shared/Assert.ts'
 
 export const version = 1
 
-// Guards the tests turn off to check that the simulation catches each broken
-// invariant. Never changed outside tests.
 export const guards = { monotonic: true }
 
 export type Seen = { spent: string; sub: Gateway.Subagent; v: typeof version }

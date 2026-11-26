@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# scripts/check: every check below in parallel, one green/red line each with its time, then GREEN or RED.
-#   scripts/check            fmt, lint, typecheck, tidy, build + size, dst (pass jobs and canaries)
-#   scripts/check --no-dst   everything but the simulator
-#   scripts/check --seeds N  seeds per DST pass job (passed to pnpm dst)
-# Logs: output/check/<check>.log. Allowances: tidy/*.txt (path count why; counts only fall).
 set -uo pipefail
+usage="scripts/check: every check below in parallel, one green/red line each with its time, then GREEN or RED.
+  scripts/check            fmt, lint, typecheck, tidy, build + size, dst (pass jobs and canaries)
+  scripts/check --no-dst   everything but the simulator
+  scripts/check --seeds N  seeds per DST pass job (passed to pnpm dst)
+Logs: output/check/<check>.log. Allowances: tidy/*.txt (path count why; counts only fall)."
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 cd "$root"
-case " $* " in *" -h "* | *" --help "*) sed -n '2,6p' "$0"; exit 0 ;; esac
+case " $* " in *" -h "* | *" --help "*) echo "$usage"; exit 0 ;; esac
 dst=1 seeds=""
 while [ $# -gt 0 ]; do
   case "$1" in

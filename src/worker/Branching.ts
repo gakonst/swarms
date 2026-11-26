@@ -32,8 +32,6 @@ export async function list(self: Swarm, swarm: string, agent: string): Promise<G
 
 const budgetLeaseMs = Limits.Branching.budgetLeaseMs
 
-// Budgets are set one at a time, each from the funds as they stand once its
-// turn comes, so a later write never lands under an earlier one.
 export function rebudget(self: Swarm, swarm: string, agent: string, branch: number) {
   return Work.serial(self.board, 'budgeting', budgetLeaseMs, async () => {
     const money = await Store.funds(self.env, swarm, agent)

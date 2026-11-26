@@ -127,7 +127,6 @@ function migrate(storage: DurableObjectStorage, from: number) {
   if (from < 3 && !kv.get<Lead>('agent')?.instructed) kv.delete('instructions')
   if (from < 4) kv.delete('settled')
   if (from < 5) kv.delete('progressed')
-  // The board's own tables replace the ones Work.local kept.
   if (from < 6) for (const table of ['work_tasks', 'work_keys', 'work_steers']) sql.exec(`DROP TABLE IF EXISTS ${table}`)
   kv.put('v', version)
 }
@@ -346,8 +345,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     return Number(this.ctx.storage.sql.exec<{ n: number | null }>('SELECT MAX(n) AS n FROM turns').one().n ?? 0)
   }
 
-  // The run's one writer: a typed transition (machines/Run.ts), fenced on the
-  // rev the caller read when it passes 'expect'.
   set(run: Phase.Run, expect?: number) {
     return Run.write(Run.kv(this.kv), run, expect)
   }
@@ -357,7 +354,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     await this.moved(row, fields)
   }
 
-  // What follows a write of the run: waiters, the D1 projection and the lobby.
   async moved(row: Store.Row, fields: Store.Fields = {}) {
     for (const waiter of [...this.waiters]) waiter()
     await this.project(row, fields)
@@ -729,10 +725,6 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       return
     }
     const indexing = Feed.indexed(this)
-    // The alarm is the agent swarm's only stepper: alarms do not overlap, and
-    // requests only move the alarm, so no claim is held across the step's
-    // gateway calls and stream window. A past life still stepping is fenced by
-    // the run's rev (machines/Run.ts).
     const stepped = await Turns.step(this).catch((error: unknown) => Turns.threw(this, error))
     const next = indexing && this.run().state === 'paused' ? Math.min(stepped ?? Infinity, Date.now() + Feed.indexMs) : stepped
     if (next === null) return

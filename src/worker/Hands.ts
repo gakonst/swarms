@@ -28,14 +28,6 @@ function suffix() {
   return Array.from(crypto.getRandomValues(new Uint8Array(3)), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-// A lent hand is a claim on the swarm's board: the task `hand:<name>`,
-// labelled `hands: lent` and claimed with a cap of `limit` on that label, so
-// the swarm's own locks and turns never take a hand's slot. It is leased for
-// `unseenMs`, renewed each time the swarm sees the machine used. A lease that
-// lapses is a stale hand, which no longer takes a slot; so is an open task, a
-// hand adopted already stale. Returning a hand finishes its task, so a name is never issued twice.
-// The D1 `hands` rows are the read model: written when the claim lands and
-// when its task finishes.
 export const slot = { hands: 'lent' }
 
 export const cap: Work.Cap = { label: ['hands', slot.hands], max: limit }
@@ -48,7 +40,6 @@ function named(task: Work.Task) {
   return task.id.slice('hand:'.length)
 }
 
-// Every hand not yet returned, holding its slot or stale.
 async function slots(board: Work.Board) {
   return (await board.tasks()).filter((found) => found.labels['hands'] === slot.hands && (found.phase === 'open' || found.phase === 'claimed'))
 }
@@ -57,8 +48,6 @@ function holds(found: Work.Task, now: number) {
   return found.phase === 'claimed' && (found.untilMs ?? 0) > now
 }
 
-// Rows lent before hands were claims hold their slot as a claim whose lease
-// runs from when the swarm last saw them; one already past it is stale.
 async function adopt(board: Work.Board, rows: readonly Row[], now: number) {
   for (const row of rows) {
     if (row.returned_at !== null || (await board.task(task(row.name)))) continue
@@ -170,7 +159,6 @@ export async function issue(self: Swarm, swarm: string, label: string, contribut
   for (let attempt = 0; attempt < Limits.Hands.nameTries; attempt++) {
     if ((await slots(board)).filter((found) => holds(found, Date.now())).length >= limit) return { ok: false, reason: 'full' }
     const name = `${slug(label)}-${suffix()}`
-    // A name returned before hands moved onto the swarm's board has no task here, only its row.
     if (all.some((row) => row.name === name)) continue
     const tried = await guarded(self, name, () => mint(self, swarm, name, label, contributor))
     if (tried !== 'again') return tried
@@ -226,8 +214,6 @@ export async function list(env: Cloudflare.Env, swarm: string) {
   return results
 }
 
-// Return a hand: its D1 row first, then its task, so a write that fails
-// leaves the claim held and the next issue returns it again.
 export async function free(self: Swarm, swarm: string, name: string) {
   const board = self.board
   const found = await board.task(task(name))
@@ -244,7 +230,6 @@ export function used(hand: Gateway.Listed | undefined) {
   return !!hand && (hand.connected || (typeof hand['requests'] === 'number' && hand['requests'] > 0))
 }
 
-// The swarm saw these hands used: renew their claims and mark their rows.
 export async function seen(self: Swarm, swarm: string, rows: readonly Row[], listed: readonly Gateway.Listed[] | undefined) {
   const board = self.board
   const now = Date.now()
@@ -263,8 +248,6 @@ export async function seen(self: Swarm, swarm: string, rows: readonly Row[], lis
   return rows.map((row) => (names.includes(row.name) ? { ...row, seen_at: now } : row))
 }
 
-// Hands to return before issuing one: every idle hand whose lease lapsed, and
-// while the claims still fill the cap, the idle ones seen longest ago.
 export async function evictable(board: Work.Board, listed: readonly Gateway.Listed[] | undefined, now: number) {
   if (!listed) return []
   const all = await slots(board)

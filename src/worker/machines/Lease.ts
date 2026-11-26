@@ -1,16 +1,5 @@
 import * as Assert from '../../shared/Assert.ts'
 
-// A lease on one board task, held by one holder: the nanocode lease.
-//
-//   Unowned -> Claiming -> Owned { claim, epoch, until } -> Draining -> Released
-//                                  \-> Lost  (a renew or a fenced write was refused, or 'until' passed unrenewed)
-//
-// The epoch is the board's seq for the claim (Claimed.seq, Task.claimSeq),
-// which rises with every claim of the task, a takeover included, so a write
-// made under an older claim, by this holder or another, is told apart from
-// one under the current claim. A transport error (a
-// renew that threw rather than answered) changes nothing: ownership is lost
-// only when the board refuses, or when the lease runs out (rule 5).
 
 export type State =
   | { kind: 'Unowned'; epoch: number }
@@ -33,8 +22,6 @@ export type Event =
 
 export const unowned: State = { epoch: 0, kind: 'Unowned' }
 
-// Guards the tests turn off to check that the simulation catches each broken
-// invariant. Never changed outside tests.
 export const guards = { expiry: true, lost: true }
 
 export class Illegal extends Error {}
@@ -58,7 +45,6 @@ function move(state: State, event: Event): State {
       if (state.kind === 'Claiming') return { epoch: state.epoch, kind: 'Unowned' }
       break
     case 'renewed':
-      // A renew that answers after the lease was lost or let go revives nothing.
       if (state.kind === 'Owned') return { ...state, until: Math.max(state.until, event.until) }
       return state
     case 'refused':
@@ -81,7 +67,6 @@ function move(state: State, event: Event): State {
   throw new Illegal(state.kind + ' cannot take ' + event.type)
 }
 
-// Whether a write under 'epoch' may land now.
 export function writable(state: State, epoch: number, now: number) {
   return state.kind === 'Owned' && state.epoch === epoch && now < state.until
 }

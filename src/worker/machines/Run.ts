@@ -1,35 +1,15 @@
-// The agent swarm's run, as one record with typed transitions.
-//
-// The record lives in the object's kv under 'run' and is written only here.
-// Every write bumps 'rev', and a writer that read an older rev is refused
-// ('Stale'), so a past life of the object (or a step that awaited while a
-// newer one moved the run) cannot overwrite a newer state. A turn's end is the
-// 'ending' state: entered in one write with the report it ends on, before the
-// first effect of the end, and each effect is marked done in the record, so a
-// restart replays only the effects that did not land and the turn is folded
-// exactly once.
-//
-// Rollback: 'ending' is stored as state 'working' with an 'ending' field, a
-// shape the previous Worker reads as a turn still running (it would follow the
-// turn and end it again, as before), and 'rev'/'v' are extra fields the
-// previous code ignores. A record it writes back drops 'rev', which reads as 0
-// here: older than any rev this code holds, so a fenced write refuses rather
-// than overwrite it.
 
 import * as Assert from '../../shared/Assert.ts'
 import * as Phase from '../Phase.ts'
 
 export const version = 2
 
-// The effects of a turn's end, in the order they run.
 export const effects = ['turned', 'heard', 'attempted', 'reported', 'logged', 'published', 'announced', 'exposed'] as const
 
 export type Effect = (typeof effects)[number]
 
 export type Report = { error?: string | undefined; message: string | null; status: 'cancelled' | 'completed' | 'failed' }
 
-// What the end decided, kept once the 'turned' effect lands, so a replay acts
-// on the same figures rather than reading them again.
 export type Facts = {
   attempts?: number | undefined
   balance: string
@@ -53,8 +33,6 @@ export type Stored = Phase.Run & { ending?: Ending | undefined; rev?: number | u
 
 export type Store = { get(): Stored | undefined; put(run: Stored): void }
 
-// Every legal transition. 'working' leaves only through 'ending', so every
-// turn is ended by the one path that folds it once.
 export const next: Record<Kind, readonly Kind[]> = {
   ending: ['ending', 'waiting', 'paused'],
   new: ['waiting', 'starting', 'paused'],
@@ -64,8 +42,6 @@ export const next: Record<Kind, readonly Kind[]> = {
   working: ['working', 'ending'],
 }
 
-// Guards the tests turn off one at a time to check that the simulation
-// catches each broken invariant. Never changed outside tests.
 export const guards = { fence: true, legal: true, once: true, resume: true }
 
 export class Refused extends Error {
@@ -93,7 +69,6 @@ export function rev(run: Stored) {
   return run.rev ?? 0
 }
 
-// Write the run. 'expect' fences the write on the rev the writer read.
 export function write(store: Store, run: Phase.Run | Stored, expect?: number): Stored {
   const now = read(store)
   if (guards.legal && !can(kind(now), kind(run))) throw new Refused('Illegal', kind(now) + ' -> ' + kind(run))
@@ -105,8 +80,6 @@ export function write(store: Store, run: Phase.Run | Stored, expect?: number): S
   return stored
 }
 
-// working -> ending, with the report it ends on. A second delivery of a
-// report for a turn already ending keeps the first (its done effects stay).
 export function end(store: Store, n: number, report: Report, unpaid?: Ending['unpaid']): Stored {
   const now = read(store)
   if (now.state !== 'working' || now.n !== n) throw new Refused('Stale', 'turn ' + n + ' is not running (' + kind(now) + ')')
@@ -133,8 +106,6 @@ function mark(store: Store, n: number, effect: Effect, facts?: Partial<Facts>) {
   write(store, { ...now, ending: { ...now.ending, done: [...now.ending.done, effect], ...(kept ? { facts: kept } : {}) } }, rev(now))
 }
 
-// A synchronous effect (a feed row, a room line): checked, done and marked in
-// one step with no await, so it lands exactly once.
 export function once(store: Store, n: number, effect: Effect, work: () => Partial<Facts> | void): boolean {
   if (done(ending(store, n), effect)) return false
   const facts = work()
@@ -142,9 +113,6 @@ export function once(store: Store, n: number, effect: Effect, work: () => Partia
   return true
 }
 
-// An effect that awaits (a gateway or D1 call). It is keyed by its caller so
-// that repeating it changes nothing; a restart between the call and the mark
-// repeats it, and a life whose turn moved on while it awaited is refused.
 export async function step(store: Store, n: number, effect: Effect, work: () => Promise<Partial<Facts> | void>): Promise<boolean> {
   if (done(ending(store, n), effect)) return false
   const facts = await work()
@@ -153,7 +121,6 @@ export async function step(store: Store, n: number, effect: Effect, work: () => 
   return true
 }
 
-// ending -> waiting | paused.
 export function close(store: Store, n: number, to: Phase.Run): Stored {
   const now = ending(store, n)
   if (to.state !== 'waiting' && to.state !== 'paused') throw new Refused('Illegal', 'ending -> ' + to.state)

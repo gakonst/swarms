@@ -8,7 +8,6 @@ function units(value: string) {
   return BigInt(whole) * 1_000_000n + BigInt((part + '000000').slice(0, 6))
 }
 
-// A title that already ends in punctuation ("Solve P = NP.") reads as one question, not "NP.?".
 export function asked(title: string) {
   return title.trim().replace(/[\s.,;:!?…]+$/u, '') || title.trim()
 }

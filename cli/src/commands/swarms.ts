@@ -31,7 +31,6 @@ function stood(swarm: Told, head?: Headline): Status.Stood {
   return { ...swarm, inFlight: head?.inFlight, status: swarm.status as Status.Stood['status'] }
 }
 
-// The same words the page's pill and status line use (src/shared/Status.ts), never the CLI's own.
 export function state(swarm: Told, head?: Headline) {
   return Status.badge(stood(swarm, head))
 }
