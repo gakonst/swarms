@@ -81,9 +81,13 @@ const labels: Record<State, string> = { stuck: 'Stuck', blocked: 'Blocked', chec
 
 export const graceMs = 2_000
 
+export function plain(text: string) {
+  return /^over_limit:/.test(text) ? 'It used all the money committed to this run.' : text
+}
+
 export function line(node: Node, now: number, title: (nid: string) => { title: string; status: Status } | undefined): Line {
   const last = node.last ?? null
-  const base = { agent: null, at: last?.at ?? null, budget: null, run: null, spent: null, text: last?.text ?? '' }
+  const base = { agent: null, at: last?.at ?? null, budget: null, run: null, spent: null, text: plain(last?.text ?? '') }
   const make = (state: State, rest: Partial<Line> = {}): Line => ({ ...base, ...rest, label: labels[state], state })
   if (node.status === 'proven') return make('done', node.proof ? { at: node.proof.at || base.at, text: 'Checked by Lean at ' + node.proof.commit.slice(0, 7) } : {})
   if (node.status === 'dead end') return make('dead', node.end ? { at: node.end.at || base.at, text: node.end.why || node.end.kind } : {})
@@ -97,7 +101,7 @@ export function line(node: Node, now: number, title: (nid: string) => { title: s
   const waiting = node.needs.map(title).find((need) => need && need.status !== 'proven')
   if (waiting) return make('blocked', { at: null, text: 'Waits on ' + waiting.title })
   if (node.paused !== null) return make('paused', { text: node.paused + ' runs without a result' })
-  if (node.status === 'proposed' && node.ran && (node.ran.outcome === 'stuck' || node.ran.outcome === 'failed')) return make('stuck', { run: node.ran.k, text: node.ran.summary || base.text })
+  if (node.status === 'proposed' && node.ran && (node.ran.outcome === 'stuck' || node.ran.outcome === 'failed')) return make('stuck', { run: node.ran.k, text: plain(node.ran.summary) || base.text })
   return make(node.status === 'funded' ? 'queued' : 'open')
 }
 
