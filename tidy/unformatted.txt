@@ -207,7 +207,6 @@ test/nickname.test.ts 1 pre-existing hand formatting
 test/nodes.test.ts 1 pre-existing hand formatting
 test/og.test.ts 1 pre-existing hand formatting
 test/page-server.test.ts 1 pre-existing hand formatting
-test/pages.test.ts 1 pre-existing hand formatting
 test/pay.test.ts 1 pre-existing hand formatting
 test/progress.test.ts 1 pre-existing hand formatting
 test/relay.test.ts 1 pre-existing hand formatting
@@ -216,7 +215,6 @@ test/riders.test.ts 1 pre-existing hand formatting
 test/run.test.ts 1 pre-existing hand formatting
 test/run.ts 1 pre-existing hand formatting
 test/runner.test.ts 1 pre-existing hand formatting
-test/site.test.ts 1 pre-existing hand formatting
 test/sockets.test.ts 1 pre-existing hand formatting
 test/status.test.ts 1 pre-existing hand formatting
 test/store.test.ts 1 pre-existing hand formatting

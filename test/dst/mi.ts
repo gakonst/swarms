@@ -25,9 +25,9 @@ export const limits = {
   words: 12,
 }
 
-type Rng = { chance: (p: number) => boolean; int: (lo: number, hi: number) => number; next: () => number; pick: <T>(items: readonly T[]) => T }
+export type Rng = { chance: (p: number) => boolean; int: (lo: number, hi: number) => number; next: () => number; pick: <T>(items: readonly T[]) => T }
 
-function rng(...parts: (number | string)[]): Rng {
+export function rng(...parts: (number | string)[]): Rng {
   const digest = createHash('sha256').update(parts.join(':')).digest()
   let a = digest.readUInt32LE(0)
   let b = digest.readUInt32LE(4)
@@ -50,7 +50,11 @@ function rng(...parts: (number | string)[]): Rng {
   }
 }
 
-function recorder() {
+function shown(value: unknown) {
+  return JSON.stringify(value, (_, one: unknown) => (typeof one === 'bigint' ? one + 'n' : one))
+}
+
+export function recorder() {
   const violations: Violation[] = []
   let steps = 0
   const fail = (invariant: string, detail: string) => {
@@ -58,7 +62,7 @@ function recorder() {
   }
   const same = (invariant: string, got: unknown, want: unknown, what: string) => {
     steps++
-    if (JSON.stringify(got) !== JSON.stringify(want)) fail(invariant, what + ' gave ' + JSON.stringify(got) + ', wanted ' + JSON.stringify(want))
+    if (shown(got) !== shown(want)) fail(invariant, what + ' gave ' + shown(got) + ', wanted ' + shown(want))
   }
   const holds = (invariant: string, ok: boolean, detail: string) => {
     steps++

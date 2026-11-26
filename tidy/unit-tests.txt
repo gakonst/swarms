@@ -1,7 +1,6 @@
 # No test files outside test/dst: the DST sim is the only test.
-# path count why; 80 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 65 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 examples/board-swarm/test/swarm.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/about.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/answer.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/api-tree.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/artifact.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
@@ -40,18 +39,14 @@ test/nickname.test.ts 1 pre-existing unit test; port what it checks to a test/ds
 test/nodes.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/og.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/page-server.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/pages.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/pay.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/problems.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/progress.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/rail.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/relay.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/repo.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/riders.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/room.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/run.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/runner.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/site.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/sockets.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/status.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/store.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
@@ -65,7 +60,6 @@ test/triage.test.ts 1 pre-existing unit test; port what it checks to a test/dst 
 test/turns.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/unhand.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/vault.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/viewed.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/watch.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/wire.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/wishlist.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
