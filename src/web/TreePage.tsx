@@ -71,6 +71,7 @@ export function TreePage(props: { config: Config | undefined; detail: Detail; id
   const now = useNow(30_000)
   const [filter, setFilter] = useState<Grove.Filter>(() => chosen(here().searchParams.get('filter')))
   const [detail, redetail] = usePoll(() => Api.swarm(id, false), null, id)
+  Wire.useListed(detail.data)
   const [tree, retree] = usePoll(() => Api.tree(id, { depth: 2 }), () => (Wire.state(id, 'room') === 'down' ? downMs : null), `tree:${id}`)
   const [grove, setGrove] = useState<Grove.Grove | undefined>(() => tree.data && Grove.grow(tree.data))
   const [node, review] = usePoll(() => Api.node(id, selected), null, `node:${id}:${selected}`)

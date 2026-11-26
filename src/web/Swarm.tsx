@@ -95,6 +95,7 @@ export function Swarm(props: { config: Config | undefined; id: string; view: Tab
   const heard = useCallback((_said: readonly Said[], _me: Me | null, list: readonly Member[]) => setMembers(list), [])
 
   useShown(detail.data)
+  Wire.useListed(detail.data)
   Pay.useKept(id, () => setRiding((current) => current ?? {}))
 
   const steer = (text: string, anchor?: HTMLElement) => {

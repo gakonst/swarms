@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
-import type { Chatter, Detail, Lobby, Part, Pulse, Said } from '../shared/Api.ts'
+import type { Chatter, Detail, Listing, Lobby, Part, Pulse, Said, Summary } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import { usePoll } from './hooks.ts'
 import * as Local from './local.ts'
@@ -259,6 +259,26 @@ export function useSwarms() {
   })
   const [list, reload, set] = usePoll(() => Api.swarms(), lobby === 'down' ? listMs : null, 'swarms')
   return list
+}
+
+export function summed(detail: Detail): Summary {
+  const { answer, archivedAt, form, balance, contributors, cover, createdAt, goal, id, machines, nickname, pool, problem, remaining, setup, spent, status, steering, title, updatedAt, why } = detail
+  return { answer, archivedAt, form, balance, contributors, cover, createdAt, goal, id, machines, nickname, pool, problem, remaining, setup, spent, status, steering, title, updatedAt, why, ...(detail.ai !== undefined ? { ai: detail.ai } : {}), ...(detail.picture !== undefined ? { picture: detail.picture } : {}), ...(detail.waiting !== undefined ? { waiting: detail.waiting } : {}) }
+}
+
+const listed = ['archivedAt', 'balance', 'contributors', 'nickname', 'remaining', 'spent', 'status', 'title', 'updatedAt'] as const
+
+export function listedWith(list: Listing, detail: Detail): Listing {
+  const known = list.swarms.find((swarm) => swarm.id === detail.id)
+  if (known && ((known.updatedAt > detail.updatedAt && Number(known.balance) >= Number(detail.balance)) || listed.every((key) => known[key] === detail[key]))) return list
+  const fresh = summed(detail)
+  return { ...list, swarms: known ? list.swarms.map((swarm) => (swarm.id === detail.id ? { ...swarm, ...fresh } : swarm)) : [fresh, ...list.swarms] }
+}
+
+export function useListed(detail: Detail | undefined) {
+  useEffect(() => {
+    if (detail) Local.patch<Listing>('swarms', (list) => listedWith(list, detail))
+  }, [detail])
 }
 
 export function pulsed(detail: Detail | undefined, pulse: Pulse): Detail | undefined {
