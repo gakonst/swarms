@@ -202,7 +202,6 @@ test/host.ts 1 pre-existing hand formatting
 test/hosts.test.ts 1 pre-existing hand formatting
 test/instructions.test.ts 1 pre-existing hand formatting
 test/launch.test.ts 1 pre-existing hand formatting
-test/ledger.test.ts 1 pre-existing hand formatting
 test/lending.test.ts 1 pre-existing hand formatting
 test/lent.test.ts 1 pre-existing hand formatting
 test/load/hook.ts 1 pre-existing hand formatting

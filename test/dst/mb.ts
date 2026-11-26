@@ -12,6 +12,19 @@ type Violation = { detail: string; invariant: string }
 type Outcome = { steps: number; violations: Violation[] }
 
 export const limits = {
+  branch: {
+    branches: 5,
+    breaks: 0.15,
+    jump: 0.05,
+    limitUnits: 30,
+    notes: ['n1', 'n2', 'n3'],
+    ops: 150,
+    startMs: 1_000_000,
+    tickMs: 1000,
+    unit: 500_000n,
+    units: 12,
+    windowMs: 30 * 24 * 60 * 60 * 1000,
+  },
   backing: { floors: 8, racers: 4, reach: [9_000_000n, 7_000_000n, 6_000_000n, 4_000_000n], refreshes: 2 },
   flow: { contributors: 3, ops: 60, parts: 3 },
   overdraw: { after: 3, before: 2, ended: 0.5, limitLeast: 2, limitMost: 40, overMost: 10, slackMost: 3 },
@@ -807,9 +820,346 @@ async function overdraw(seed: string): Promise<Outcome> {
   return { steps, violations }
 }
 
+type Gift = { amount: bigint; channel: string | null; contributor: Address; id: string; note: string | null }
+
+type Steer = { amount: bigint; at: number; branch: number | null; budget: number; contributor: Address; id: string; note: string }
+
+const agent = 'agt'
+
+function show(value: unknown) {
+  return JSON.stringify(value, (_, each: unknown) => (typeof each === 'bigint' ? String(each) : each))
+}
+
+async function settledTakeBack(random: Rng, fail: (invariant: string, detail: string) => void) {
+  const L = limits.branch
+  const d1 = open()
+  d1.sqlite
+    .prepare(
+      "insert into swarms (id, title, goal, status, rounds, hidden, created_at, updated_at) values ('s', 'Swarm', 'The goal of the swarm', 'paused', 0, 0, 1, 1)",
+    )
+    .run()
+  const c = riders[0] as Address
+  const paid = BigInt(random.int(2, L.units)) * L.unit
+  await Store.give(d1.env, { amount: String(paid), channel: '0xkk', contributor: c, id: 'backing:0xkk', note: null, note_id: null, swarm: 's', token: 'mach' })
+  const behind = BigInt(random.int(1, Number(paid / L.unit))) * L.unit
+  await Store.steer(d1.env, {
+    amount: behind,
+    branch: { agent, id: L.branches + 1 },
+    contributor: c,
+    id: 'f',
+    note: 'branch',
+    note_id: 'branch:' + (L.branches + 1),
+    swarm: 's',
+  })
+  const left = BigInt(random.int(0, Number(behind / L.unit) - 1)) * L.unit
+  await Store.settle(d1.env, { agent, branch: L.branches + 1, left, swarm: 's' })
+  const before = (await Store.funds(d1.env, 's', agent)).shares.get(L.branches + 1)?.get(c)
+  const taken = await Store.lower(d1.env, 's', 'backing:0xkk', '0', String(paid))
+  const after = (await Store.funds(d1.env, 's', agent)).shares.get(L.branches + 1)?.get(c)
+  if (taken === null || taken.length || before !== after)
+    fail('lowered', 'lowering a backing behind a settled branch took back ' + show(taken) + ', held ' + before + ' then ' + after)
+}
+
+async function branchMoney(seed: string): Promise<Outcome> {
+  const random = rng(seed, 'branch_money')
+  const { fail, violations } = recorder()
+  const L = limits.branch
+  const d1 = open()
+  d1.sqlite
+    .prepare(
+      "insert into swarms (id, title, goal, status, rounds, hidden, created_at, updated_at) values ('s', 'Swarm', 'The goal of the swarm', 'paused', 0, 0, 1, 1)",
+    )
+    .run()
+  const env = d1.env
+  const batch = env.DB.batch.bind(env.DB)
+  const failing = { next: false }
+  ;(env.DB as { batch: unknown }).batch = async (statements: D1PreparedStatement[]) => {
+    if (!failing.next) return batch(statements)
+    failing.next = false
+    return batch([...statements, env.DB.prepare('select * from nothing')])
+  }
+  const real = Date.now
+  let now = L.startMs
+  Date.now = () => now
+  const gifts = new Map<string, Gift>()
+  const steers: Steer[] = []
+  const settled = new Set<number>()
+  const lefts = new Map<number, bigint | null>()
+  const groups: string[][] = []
+  const of = (c: Address) => [...gifts.values()].filter((gift) => gift.contributor === c)
+  const own = (c: Address) => Flow.sum(steers.filter((each) => each.contributor === c && each.budget === 0).map((each) => each.amount))
+  const unnoted = (c: Address) =>
+    Flow.sum(
+      of(c)
+        .filter((gift) => gift.note === null)
+        .map((gift) => gift.amount),
+    )
+  const free = (c: Address) => unnoted(c) - own(c)
+  const raised = () => Flow.sum([...gifts.values()].map((gift) => gift.amount))
+  const live = (branch: number | null) => branch === null || !settled.has(branch)
+  const branchOf = (branch: number | null) => (branch === null ? {} : { branch: { agent, id: branch } })
+  const refunds = (branch: number, left: bigint | null) => {
+    const held = new Map<string, { amount: bigint; budget: number; contributor: Address; since: number | null }>()
+    for (const each of steers.filter((row) => row.branch === branch)) {
+      const key = each.contributor + '/' + each.budget
+      const found = held.get(key) ?? { amount: 0n, budget: each.budget, contributor: each.contributor, since: null }
+      found.amount += each.amount
+      if (each.amount > 0n) found.since = found.since === null ? each.at : Math.min(found.since, each.at)
+      held.set(key, found)
+    }
+    const nets = new Map<string, { net: bigint; positive: bigint }>()
+    for (const each of held.values()) {
+      const found = nets.get(each.contributor) ?? { net: 0n, positive: 0n }
+      found.net += each.amount
+      if (each.amount > 0n) found.positive += each.amount
+      nets.set(each.contributor, found)
+    }
+    const total = Flow.sum([...nets.values()].map((each) => (each.net > 0n ? each.net : 0n)))
+    const scale = left === null || left > total ? total : left
+    const out: { amount: bigint; at: number; budget: number; contributor: Address }[] = []
+    for (const each of held.values()) {
+      const net = nets.get(each.contributor) ?? { net: 0n, positive: 0n }
+      if (net.net <= 0n || each.amount <= 0n || total <= 0n) continue
+      const amount = (((scale * net.net) / total) * each.amount) / net.positive
+      if (amount > 0n) out.push({ amount, at: each.budget === 1 ? (each.since ?? now) : now, budget: each.budget, contributor: each.contributor })
+    }
+    return out
+  }
+  const takeBack = (c: Address, step: number) => {
+    const excess = own(c) - unnoted(c)
+    const held = new Map<string, { at: number; branch: number | null; net: bigint; note: string }>()
+    for (const each of steers.filter((row) => row.contributor === c && row.budget === 0 && live(row.branch))) {
+      const key = each.note + '/' + each.branch
+      const found = held.get(key) ?? { at: each.at, branch: each.branch, net: 0n, note: each.note }
+      found.net += each.amount
+      found.at = Math.max(found.at, each.at)
+      held.set(key, found)
+    }
+    const ranked = [...held.values()].filter((each) => each.net > 0n).sort((a, b) => b.at - a.at || (a.note < b.note ? -1 : a.note > b.note ? 1 : 0))
+    const branches: number[] = []
+    let before = 0n
+    for (const each of ranked) {
+      if (excess > before) {
+        const take = each.net < excess - before ? each.net : excess - before
+        steers.push({ amount: -take, at: now, branch: each.branch, budget: 0, contributor: c, id: 'lower:' + step + ':' + each.note, note: each.note })
+        if (each.branch !== null) branches.push(each.branch)
+      }
+      before += each.net
+    }
+    return branches
+  }
+  const compare = async (what: string) => {
+    const members = (await Store.members(env, 's')).map((member) => [member.address, member.backed, member.steered, member.available]).sort()
+    const wantMembers = riders
+      .filter((c) => of(c).length)
+      .map((c) => {
+        const backed = Flow.sum(of(c).map((gift) => gift.amount))
+        const steered = backed - unnoted(c) + own(c)
+        return [c, Flow.usd(backed), Flow.usd(steered), Flow.usd(backed > steered ? backed - steered : 0n)]
+      })
+      .sort()
+    if (show(members) !== show(wantMembers)) fail('members', what + ' ' + show(members) + ' expected ' + show(wantMembers))
+    const money = await Store.funds(env, 's', agent)
+    const shares = [...money.shares].flatMap(([branch, each]) => [...each].map(([c, amount]) => [branch, c, String(amount)])).sort()
+    const wantShares = new Map<string, bigint>()
+    for (const each of steers) if (each.branch !== null) add(wantShares, each.branch + '/' + each.contributor, each.amount)
+    const expect = [...wantShares].map(([key, amount]) => [Number(key.split('/')[0]), key.split('/')[1], String(amount)]).sort()
+    if (show(shares) !== show(expect)) fail('shares', what + ' ' + show(shares) + ' expected ' + show(expect))
+    if (show([...money.settled].sort()) !== show([...settled].sort()))
+      fail('settled', what + ' ' + show([...money.settled]) + ' expected ' + show([...settled]))
+    const since = now - L.windowMs
+    const allotted = [...(await Store.allotted(env, 's', since))].sort()
+    const wantAllotted = new Map<string, bigint>()
+    for (const each of steers) if (each.budget === 1 && each.at > since) add(wantAllotted, each.contributor, each.amount)
+    if (show(allotted) !== show([...wantAllotted].sort())) fail('allotted', what + ' ' + show(allotted) + ' expected ' + show([...wantAllotted].sort()))
+    const notes = (await Store.notes(env, 's', raised(), new Set())).map((note) => [note.id, note.weight, note.share]).sort()
+    const weights = new Map<string, bigint>()
+    for (const gift of gifts.values()) if (gift.note !== null) add(weights, gift.note, gift.amount)
+    for (const each of steers) if (each.branch === null) add(weights, each.note, each.amount)
+    const wantNotes = [...weights]
+      .filter(([, weight]) => weight > 0n)
+      .map(([id, weight]) => [id, Flow.usd(weight), raised() > 0n ? Number((weight * 10_000n) / raised()) / 10_000 : 0])
+      .sort()
+    if (show(notes) !== show(wantNotes)) fail('notes', what + ' ' + show(notes) + ' expected ' + show(wantNotes))
+    const replaced = await Store.replaced(env, 's', 'next')
+    const open = [...new Set(steers.flatMap((each) => (each.branch !== null && !settled.has(each.branch) ? [each.branch] : [])))].sort()
+    const got = replaced.map((each) => [each.agent, [...each.branches].sort()])
+    if (show(got) !== show(open.length ? [[agent, open]] : [])) fail('replaced', what + ' ' + show(got) + ' expected ' + show(open))
+  }
+  let steps = 0
+  try {
+    for (; steps < L.ops; steps++) {
+      now += random.chance(L.jump) ? L.windowMs : random.int(1, L.tickMs)
+      const c = random.pick(riders)
+      const op = random.pick([
+        'give',
+        'give',
+        'steer',
+        'fund',
+        'fund',
+        'allot',
+        'shift',
+        'shift',
+        'settle',
+        'unsteer',
+        'lower',
+        'lower',
+        'lower',
+        'annotate',
+      ] as const)
+      const branch = random.int(1, L.branches)
+      const amount = BigInt(random.int(1, L.units)) * L.unit
+      const what = op + ' at ' + steps + ' by ' + c.slice(0, 4)
+      if (op === 'give') {
+        const backing = random.chance(0.5)
+        const id = backing ? 'backing:0xk' + steps : '0xg' + steps
+        const note = !backing && random.chance(0.25) ? random.pick(L.notes) : null
+        const channel = backing ? (`0xk${steps}` as const) : null
+        const gift = await Store.give(env, {
+          amount: String(amount),
+          channel,
+          contributor: c,
+          id,
+          note: note && 'idea ' + note,
+          note_id: note,
+          swarm: 's',
+          token: backing ? 'mach' : 'ousd',
+        })
+        if (!gift) fail('given', what + ' ' + id + ' not counted')
+        gifts.set(id, { amount, channel, contributor: c, id, note })
+      }
+      if (op === 'steer' || op === 'fund' || op === 'allot') {
+        const placed = steers.filter((each) => each.id.startsWith('x'))
+        const id = placed.length && random.chance(0.1) ? random.pick(placed).id : 'x' + steps
+        const target = op === 'fund' || (op === 'allot' && random.chance(0.5)) ? branch : null
+        const note = target === null ? random.pick(L.notes) : 'branch:' + target
+        const fresh = !steers.some((each) => each.id === id)
+        const limit = random.chance(0.5) ? null : BigInt(random.int(1, L.limitUnits)) * L.unit
+        const since = now - L.windowMs
+        const used = Flow.sum(steers.filter((each) => each.contributor === c && each.budget === 1 && each.at > since).map((each) => each.amount))
+        const want = op === 'allot' ? fresh && used + amount <= (limit ?? raised()) && live(target) : fresh && free(c) >= amount && live(target)
+        const got =
+          op === 'allot'
+            ? await Store.allot(env, { amount, ...branchOf(target), contributor: c, id, limit, note: 'idea', note_id: note, since, swarm: 's' })
+            : await Store.steer(env, { amount, ...branchOf(target), contributor: c, id, note: 'idea', note_id: note, swarm: 's' })
+        if (got !== want)
+          fail(op === 'allot' ? 'allot' : 'steer', what + ' ' + show({ amount, free: free(c), fresh, limit, raised: raised(), target, used }) + ' got ' + got)
+        if (got) {
+          steers.push({ amount, at: now, branch: target, budget: op === 'allot' ? 1 : 0, contributor: c, id, note })
+          if (target !== null) groups.push([id])
+        }
+      }
+      if (op === 'shift') {
+        const to = random.pick(Array.from({ length: L.branches }, (_, n) => n + 1).filter((each) => each !== branch))
+        const from = steers.filter((each) => each.contributor === c && each.branch === branch)
+        const mine = Flow.sum(from.filter((each) => each.budget === 0).map((each) => each.amount))
+        const team = from.filter((each) => each.budget === 1 && each.amount > 0n).map((each) => each.at)
+        const ok = Flow.sum(from.map((each) => each.amount)) >= amount && live(branch) && live(to)
+        const first = mine < 0n ? 0n : mine < amount ? mine : amount
+        const legs = ok
+          ? (
+              [
+                [0, first, now],
+                [1, amount - first, team.length ? Math.min(...team) : now],
+              ] as const
+            ).flatMap(([budget, part, at]) => (part > 0n ? [branch + '/' + budget + '/' + -part + '/' + at, to + '/' + budget + '/' + part + '/' + at] : []))
+          : []
+        const ids = await Store.shift(env, { agent, amount, contributor: c, from: branch, swarm: 's', to })
+        const rows = ids.length
+          ? d1.sqlite.prepare('select id, branch, budget, amount, created_at from steers where id in (' + ids.map(() => '?').join(', ') + ')').all(...ids)
+          : []
+        const got = rows.map((row) => row['branch'] + '/' + row['budget'] + '/' + row['amount'] + '/' + row['created_at']).sort()
+        if (show(got) !== show([...legs].sort())) fail('shift', what + ' ' + branch + '>' + to + ' ' + amount + ' got ' + show(got) + ' expected ' + show(legs))
+        for (const row of rows)
+          steers.push({
+            amount: BigInt(String(row['amount'])),
+            at: Number(row['created_at']),
+            branch: Number(row['branch']),
+            budget: Number(row['budget']),
+            contributor: c,
+            id: String(row['id']),
+            note: 'branch:' + row['branch'],
+          })
+        if (ids.length) groups.push(ids)
+      }
+      if (op === 'settle') {
+        const drawn = random.chance(0.25) ? null : BigInt(random.int(0, 2 * L.units)) * L.unit + (random.chance(0.3) ? 1n : 0n)
+        const left = lefts.has(branch) ? (lefts.get(branch) ?? null) : drawn
+        const breaking = random.chance(L.breaks)
+        const want = settled.has(branch) ? [] : refunds(branch, left)
+        failing.next = breaking
+        const got = await Store.settle(env, { agent, branch, left, swarm: 's' }).then(
+          (rows) => rows,
+          () => null,
+        )
+        failing.next = false
+        if (breaking && got !== null) fail('settle atomic', what + ' a failed settle returned ' + show(got))
+        if (!breaking) {
+          const shown = (got ?? []).map((each) => each.contributor + '/' + each.budget + '/' + each.amount).sort()
+          const expect = want.map((each) => each.contributor + '/' + each.budget + '/' + each.amount).sort()
+          if (show(shown) !== show(expect)) fail('settle', what + ' branch ' + branch + ' left ' + left + ' got ' + show(shown) + ' expected ' + show(expect))
+          for (const each of want)
+            steers.push({
+              amount: -each.amount,
+              at: each.at,
+              branch,
+              budget: each.budget,
+              contributor: each.contributor,
+              id: 'settle:' + branch + ':' + each.contributor + ':' + each.budget,
+              note: 'branch:' + branch,
+            })
+          settled.add(branch)
+          if (!lefts.has(branch)) lefts.set(branch, left)
+        }
+      }
+      if (op === 'unsteer' && groups.length) {
+        const group = random.pick(groups)
+        const blocked = steers.some((each) => group.includes(each.id) && each.branch !== null && settled.has(each.branch))
+        await Store.unsteer(env, group)
+        if (!blocked) steers.splice(0, steers.length, ...steers.filter((each) => !group.includes(each.id)))
+      }
+      const backings = [...gifts.values()].filter((gift) => gift.channel !== null)
+      if (op === 'lower' && backings.length) {
+        const gift = random.pick(backings)
+        const stale = random.chance(0.2)
+        const was = stale ? gift.amount + L.unit : gift.amount
+        const to = BigInt(random.int(0, Number(gift.amount / L.unit))) * L.unit
+        const got = await Store.lower(env, 's', gift.id, String(to), String(was))
+        if (stale && got !== null) fail('lowered', what + ' a stale lower of ' + gift.id + ' from ' + was + ' landed')
+        if (!stale) {
+          gift.amount = to
+          const want = takeBack(gift.contributor, steps)
+          if (show((got ?? []).map((each) => each.branch).sort()) !== show(want.sort()))
+            fail('lowered', what + ' ' + gift.id + ' to ' + to + ' took back from ' + show(got) + ' expected ' + show(want))
+        }
+      }
+      const plain = [...gifts.values()].filter((gift) => gift.note === null)
+      if (op === 'annotate' && plain.length) {
+        const gift = random.pick(plain)
+        const note = random.pick(L.notes)
+        const want = free(gift.contributor) >= gift.amount
+        if (await Store.annotate(env, 'other', gift.id, { note: 'idea ' + note, note_id: note }))
+          fail('annotate', what + ' ' + gift.id + ' noted from another swarm')
+        const got = await Store.annotate(env, 's', gift.id, { note: 'idea ' + note, note_id: note })
+        if (!!got !== want) fail('annotate', what + ' ' + gift.id + ' free ' + free(gift.contributor) + ' got ' + !!got)
+        if (got) gift.note = note
+        const logged = d1.log.findLast((entry) => /update contributions set note/.test(entry.query))
+        const plan = logged ? d1.plan(logged).join('; ') : ''
+        if (!plan.includes('contributions_backing (swarm=? AND contributor=?)')) fail('indexed', what + ' ' + plan)
+      }
+      await compare(what)
+    }
+    await settledTakeBack(random, fail)
+  } finally {
+    Date.now = real
+  }
+  return { steps, violations }
+}
+
 export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = {
   gateway_overdraw: overdraw,
   backing_lower: backingLower,
+  branch_money: branchMoney,
   flow_ledger: flowLedger,
   flow_pay: flowPay,
   pay_steps: paySteps,
@@ -841,6 +1191,7 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
   { flip: flag(Payment.guards, 'closed'), invariant: 'effects once', name: 'mb.pay.closed', scenario: 'flow_pay', seeds: ['1', '2', '3'] },
   { flip: flag(Payment.guards, 'keyed'), invariant: 'keyed id', name: 'mb.steps.keyed', scenario: 'pay_steps', seeds: ['1', '2', '3'] },
   { flip: flag(Payment.guards, 'told'), invariant: 'told once', name: 'mb.transfer.told', scenario: 'transfer_once', seeds: ['1', '2', '3'] },
+  { flip: flag(Payment.guards, 'fenced'), invariant: 'lowered', name: 'mb.branch.fenced', scenario: 'branch_money', seeds: ['1', '2', '3'] },
   { flip: flag(Payment.guards, 'fenced'), invariant: 'lower only', name: 'mb.backing.fenced', scenario: 'backing_lower', seeds: ['1', '2', '3'] },
   { flip: flag(order, 'fresh'), invariant: 'remaining', name: 'mb.overdraw.stale', scenario: 'gateway_overdraw', seeds: ['1', '2', '3'] },
 ]

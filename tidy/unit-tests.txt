@@ -41,7 +41,6 @@ test/hello.test.ts 1 pre-existing unit test; port what it checks to a test/dst i
 test/hosts.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/instructions.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/launch.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/ledger.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/lending.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/lent.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/local.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
