@@ -186,6 +186,5 @@ test/mock/model.ts 1 pre-existing hand formatting
 test/page-server.test.ts 1 pre-existing hand formatting
 test/pay.test.ts 1 pre-existing hand formatting
 test/run.ts 1 pre-existing hand formatting
-test/sweep.test.ts 1 pre-existing hand formatting
 test/wire.test.ts 1 pre-existing hand formatting
 test/workerd-board.test.ts 1 pre-existing hand formatting
