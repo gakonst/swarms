@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -26,12 +26,6 @@ export const jobs: Job[] = [
   { name: 'swarm_money', options: { ...small, faults: ['stranded', 'chainLag', 'lag', 'retry', 'move', 'dup'] } },
   { name: 'swarm_net', options: { ...small, faults: ['partition', 'skew', 'evict', 'crash'] } },
   { name: 'swarm_wide', options: { activeMs: 45 * 60_000, children: 6, pledges: 6, swarms: 3, tailMs: 3 * 60 * 60_000 } },
-  { name: 'run', scenario: 'run' },
-  { name: 'lease', scenario: 'lease' },
-  { name: 'cursor', scenario: 'cursor' },
-  { name: 'payment', scenario: 'payment' },
-  { name: 'hand', scenario: 'hand' },
-  { name: 'fold', scenario: 'fold' },
 ]
 
 export const canaries: Canary[] = [
@@ -45,30 +39,30 @@ const here = dirname(fileURLToPath(import.meta.url))
 
 const seedsFile = join(here, 'seeds.json')
 
-const machinesFile = join(here, 'machines.ts')
-
 export const limits = { canarySeeds: 8, huntMinutesMost: 24 * 60, outputBytes: 64 * 1024 * 1024, seedsMost: 100_000 }
 
-type Machines = {
+type Module = {
   canaries: { flip: () => () => void; invariant: string; name: string; scenario: string; seeds: string[] }[]
   scenarios: Record<string, (seed: string) => Promise<{ steps: number; violations: { detail: string; invariant: string }[] }>>
 }
 
-async function machines(): Promise<Machines | null> {
-  if (!existsSync(machinesFile)) return null
-  return (await import(pathToFileURL(machinesFile).href)) as Machines
+async function modules(): Promise<Module[]> {
+  const files = readdirSync(here)
+    .filter((file) => file.endsWith('.ts') && file !== 'main.ts')
+    .sort()
+  const loaded = await Promise.all(files.map(async (file) => (await import(pathToFileURL(join(here, file)).href)) as Partial<Module>))
+  return loaded.filter((found): found is Module => !!found.scenarios && !!found.canaries)
+}
+
+export async function allJobs(): Promise<Job[]> {
+  const scenarios = (await modules()).flatMap((found) => Object.keys(found.scenarios))
+  return [...jobs, ...scenarios.map((name) => ({ name, scenario: name }))]
 }
 
 export async function allCanaries(): Promise<Canary[]> {
-  const found = await machines()
-  const scenarioCanaries = (found?.canaries ?? []).map((one) => ({
-    flag: '',
-    invariant: one.invariant,
-    job: jobs.find((job) => job.scenario === one.scenario)?.name ?? one.scenario,
-    module: '',
-    name: one.name,
-    seeds: one.seeds,
-  }))
+  const scenarioCanaries = (await modules()).flatMap((found) =>
+    found.canaries.map((one) => ({ flag: '', invariant: one.invariant, job: one.scenario, module: '', name: one.name, seeds: one.seeds })),
+  )
   return [...canaries, ...scenarioCanaries]
 }
 
@@ -79,10 +73,10 @@ export function seeds(): Seed[] {
 async function one(job: Job, seed: string, canary: string | null): Promise<Outcome> {
   const began = performance.now()
   if (job.scenario) {
-    const found = await machines()
-    const scenario = found?.scenarios[job.scenario]
-    if (!found || !scenario) throw new Error('No scenario ' + job.scenario)
-    const flipped = canary ? found.canaries.find((one) => one.name === canary) : undefined
+    const all = await modules()
+    const scenario = all.find((found) => found.scenarios[job.scenario as string])?.scenarios[job.scenario]
+    if (!scenario) throw new Error('No scenario ' + job.scenario)
+    const flipped = canary ? all.flatMap((found) => found.canaries).find((one) => one.name === canary) : undefined
     if (canary && !flipped) throw new Error('No canary ' + canary)
     const restore = flipped?.flip()
     try {
@@ -245,16 +239,18 @@ async function main() {
   })
   if (values.one) {
     const asked = JSON.parse(values.one) as { canary: string | null; job: string; seed: string }
-    const job = jobs.find((one) => one.name === asked.job)
-    if (!job) throw new Error('No job ' + asked.job + '; pick from ' + jobs.map((one) => one.name).join(','))
+    const known = await allJobs()
+    const job = known.find((one) => one.name === asked.job)
+    if (!job) throw new Error('No job ' + asked.job + '; pick from ' + known.map((one) => one.name).join(','))
     process.stdout.write(JSON.stringify(await one(job, asked.seed, asked.canary)) + '\n')
     process.exit(0)
   }
   const width = values.width ? Number(values.width) : Math.max(1, Math.floor(availableParallelism() / 2))
-  const named = values.job ? values.job.split(',') : jobs.map((one) => one.name)
+  const known = await allJobs()
+  const named = values.job ? values.job.split(',') : known.map((one) => one.name)
   for (const name of named)
-    if (!jobs.some((one) => one.name === name)) throw new Error('No job ' + name + '; pick from ' + jobs.map((one) => one.name).join(','))
-  const available = (await machines()) ? named : named.filter((name) => !jobs.find((one) => one.name === name)?.scenario)
+    if (!known.some((one) => one.name === name)) throw new Error('No job ' + name + '; pick from ' + known.map((one) => one.name).join(','))
+  const available = named
   let bad = 0
   if (values.hunt) bad += await hunt(Number(values.minutes ?? '10'), width, available)
   else if (values.canary)
