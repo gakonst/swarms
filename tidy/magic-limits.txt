@@ -1,5 +1,5 @@
 # No numeric literal outside src/shared/Limits.ts but 0, 1, 2 and the unit conversions 24, 60, 1000, 1024 and 3600.
-# path count why; 942 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
+# path count why; 802 allowed. Counts only fall: pnpm tidy --update lowers them; raising one is a reviewed edit with its why.
 src/web/api.ts 4 pre-existing; move it into src/shared/Limits.ts
 src/web/App.tsx 2 pre-existing; move it into src/shared/Limits.ts
 src/web/Art.tsx 33 pre-existing; move it into src/shared/Limits.ts
@@ -49,7 +49,3 @@ src/web/TreePage.tsx 7 pre-existing; move it into src/shared/Limits.ts
 src/web/Username.tsx 3 pre-existing; move it into src/shared/Limits.ts
 src/web/wallet.ts 7 pre-existing; move it into src/shared/Limits.ts
 src/web/wire.ts 1 pre-existing; move it into src/shared/Limits.ts
-src/worker/Page.ts 65 pre-existing; move it into src/shared/Limits.ts
-src/worker/Runner.ts 32 pre-existing; move it into src/shared/Limits.ts (three are HTTP statuses, protocol values: 404 on a subagent close, 409 and 500 on a spawn)
-src/worker/Swarm.ts 26 pre-existing; move it into src/shared/Limits.ts
-src/worker/Turns.ts 17 pre-existing; move it into src/shared/Limits.ts

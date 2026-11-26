@@ -320,7 +320,12 @@ export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = { i
 
 export const canaries: { flip: () => () => void; invariant: string; name: string; scenario: string; seeds: string[] }[] = [
   {
-    flip: mutant('instructions.turns', 'src/worker/Turns.ts', 'if (!patched.ok && patched.status !== 409) {', 'if (!patched.ok && patched.status === 409) {'),
+    flip: mutant(
+      'instructions.turns',
+      'src/worker/Turns.ts',
+      'if (!patched.ok && patched.status !== Limits.Http.conflict) {',
+      'if (!patched.ok && patched.status === Limits.Http.conflict) {',
+    ),
     invariant: 'a lead whose instructions the gateway refuses to give tries again next turn',
     name: 'instructions.turns',
     scenario: 'instructions',

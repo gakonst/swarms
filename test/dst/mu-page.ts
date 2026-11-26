@@ -143,7 +143,12 @@ export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = { '
 
 export const canaries: { flip: () => () => void; invariant: string; name: string; scenario: string; seeds: string[] }[] = [
   {
-    flip: mutant('page-server.budget', 'src/worker/Page.ts', 'within(Operations.config(env), 2500)', 'within(Operations.config(env), 25000)'),
+    flip: mutant(
+      'page-server.budget',
+      'src/worker/Page.ts',
+      'within(Operations.config(env), Limits.Page.slowMs)',
+      'within(Operations.config(env), Limits.Page.slowMs * 10)',
+    ),
     invariant: 'a slow configuration read cannot hold the server-rendered page past its data budget',
     name: 'page-server.budget',
     scenario: 'page-server',

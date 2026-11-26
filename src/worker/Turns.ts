@@ -28,7 +28,7 @@ import * as Provider from './Provider.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
 import * as Limits from '../shared/Limits.ts'
 
-const repoCost = 1_100_000n
+const repoCost = Limits.Turns.repoCost
 
 export function repoed(repo: { name: string; state: 'none' | 'ready' }, left: bigint) {
   if (repo.state === 'ready') return `The swarm's git repository is ${repo.name}.`
@@ -76,7 +76,7 @@ export function broke(message: string | null) {
 function grown(told: bigint | null | undefined, weight: bigint) {
   if (told === undefined) return true
   if (told === null) return false
-  return weight >= told + (told / 4n > 100_000n ? told / 4n : 100_000n)
+  return weight >= told + (told / Limits.Turns.reweighDivisor > Limits.Turns.reweighLeast ? told / Limits.Turns.reweighDivisor : Limits.Turns.reweighLeast)
 }
 
 export function weighed(note: Note) {
@@ -221,7 +221,10 @@ function leased(self: Swarm, task: string, untilMs: number) {
 export function progress(self: Swarm, run: Turning) {
   const lease = self.kv.get<{ task: string; untilMs: number }>('lease')
   const until = lease && lease.task === run.task ? lease.untilMs : undefined
-  return { progressed: Math.max(until === undefined ? 0 : until - leaseMs, run.started), stalled: until !== undefined && until - Date.now() <= leaseMs / 3 }
+  return {
+    progressed: Math.max(until === undefined ? 0 : until - leaseMs, run.started),
+    stalled: until !== undefined && until - Date.now() <= leaseMs / Limits.Turns.stallDivisor,
+  }
 }
 
 export const failsToStick = Limits.Turns.failsToStick
@@ -398,13 +401,13 @@ export async function advance(self: Swarm, found: Store.Row) {
   await self.move(money.row, start)
   const credentials = money.row.ai ? Gateway.subject(money.row.ai) : undefined
   const sent = await Gateway.prompt(self.env, row.id, agent.id, { ...(credentials ? { credentials } : {}), id: claim, prompt, steer: false })
-  if (!sent.ok && credentials && sent.status === 400) {
+  if (!sent.ok && credentials && sent.status === Limits.Http.invalid) {
     await unhost(self, money.row, sent.detail)
     return Date.now()
   }
-  if (!sent.ok && sent.status !== 409) {
-    if (sent.status === 404) self.kv.delete('agent')
-    if (sent.status < 500) return fail(self, money.row, task, claim, 'The gateway did not take the next message for the agent.', sent.detail)
+  if (!sent.ok && sent.status !== Limits.Http.conflict) {
+    if (sent.status === Limits.Http.missing) self.kv.delete('agent')
+    if (sent.status < Limits.Http.failed) return fail(self, money.row, task, claim, 'The gateway did not take the next message for the agent.', sent.detail)
     failed(self, 'The gateway did not take the next message for the agent.', sent.detail)
     const until = Date.now() + Clock.retryMs
     await self.move(money.row, { sent: { id: claim, prompt, told: start.told }, since, state: 'waiting', until })
@@ -491,7 +494,7 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
       self.kv.put('agent', moved)
       return instructed(self, row, moved)
     }
-    if (patched.status !== 404) return { detail: patched.detail, error: "The gateway did not move the agent to the swarm's backers." }
+    if (patched.status !== Limits.Http.missing) return { detail: patched.detail, error: "The gateway did not move the agent to the swarm's backers." }
     self.kv.delete('agent')
   }
 
@@ -515,7 +518,7 @@ export async function instructed(self: Swarm, row: Store.Row, agent: Lead): Prom
   if (agent.instructed) return agent
   const instructions = Persona.frozen(self.kv, Store.setup(row))
   const patched = await Gateway.instruct(self.env, row.id, agent.id, instructions)
-  if (!patched.ok && patched.status !== 409) {
+  if (!patched.ok && patched.status !== Limits.Http.conflict) {
     console.error("Giving the agent the swarm's own instructions failed", patched.status, patched.detail)
     return agent
   }
@@ -584,7 +587,7 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
     const outage = !short && Provider.decisive(down) ? { message: down.message, name: down.provider, spent: down.spent, tries: 1 } : undefined
     const refused = outage !== undefined || (status !== 'completed' && (short || ((broke(message) || unpaidBy !== undefined) && !grew)))
     const pushed = commits.length ? ` and pushed ${commits.length} commit${commits.length === 1 ? '' : 's'} to ${repo.state === 'ready' ? repo.name : ''}` : ''
-    const lines = commits.map((commit) => `${commit.sha.slice(0, 7)} ${commit.message.split('\n')[0]}`)
+    const lines = commits.map((commit) => `${commit.sha.slice(0, Limits.SharedTree.shortSha)} ${commit.message.split('\n')[0]}`)
     Run.once(store, n, 'turned', () => {
       if (commits[0]) Repo.saw(self, commits[0].sha)
       self.ctx.storage.sql.exec(
@@ -645,7 +648,7 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
   })
   self.changed('detail')
   Run.once(store, n, 'announced', () => {
-    if (answer?.text) Chat.announce(self, `Update: ${Answer.brief(answer.text, 280)}`)
+    if (answer?.text) Chat.announce(self, `Update: ${Answer.brief(answer.text, Limits.Turns.updateChars)}`)
   })
   await Run.step(store, n, 'exposed', async () => {
     const stored = self.ctx.storage.sql
@@ -716,7 +719,7 @@ async function projected(self: Swarm, swarm: string, answer: ReturnType<typeof A
 
 export function settledUsd(report: Gateway.Report | undefined) {
   const usd = report?.spent_usd
-  return typeof usd === 'number' && Number.isFinite(usd) && usd >= 0 ? Memo.units(usd.toFixed(6)) : undefined
+  return typeof usd === 'number' && Number.isFinite(usd) && usd >= 0 ? Memo.units(usd.toFixed(Limits.SharedMemo.decimals)) : undefined
 }
 
 async function charged(self: Swarm, row: Store.Row, run: Turning) {
@@ -730,7 +733,7 @@ async function quiet(self: Swarm, row: Store.Row) {
   const agent = self.agent()?.id
   if (!agent) return true
   const listed = await Gateway.subagents(self.env, row.id, agent)
-  if (!listed.ok) return guards.gone && listed.status < 500
+  if (!listed.ok) return guards.gone && listed.status < Limits.Http.failed
   return listed.value.every((subagent) => !['pending', 'queued', 'running'].includes(subagent.status.state))
 }
 
@@ -779,7 +782,7 @@ export async function expose(self: Swarm, row: Store.Row, kinds: ReadonlySet<'bu
   ] as const) {
     if (!kinds.has(kind)) continue
     let cursor: string | null = null
-    for (let pages = 0; pages < 20; pages++) {
+    for (let pages = 0; pages < Limits.Turns.listPages; pages++) {
       const found: { cursor: string | null; items: { key: string; public: boolean }[] } | undefined = await page(cursor)
       if (!found) break
       for (const item of found.items) if (!item.public) hidden.push([kind, item.key])

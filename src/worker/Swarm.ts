@@ -86,7 +86,7 @@ export type Lead = { briefed: boolean; cursor: number; id: string; instructed?: 
 
 export type Turning = Extract<Phase.Run, { state: 'working' }>
 
-const version = 6
+const version = Limits.Swarm.version
 
 
 const dead = ['turn', 'started', 'since', 'paused', 'why', 'failures', 'wanted', 'checked', 'n', 'fresh', 'unreachable', 'url', 'persona', 'cursor', 'shelved', 'terms', 'left', 'expected', 'poolKey', 'poolAgent', 'poolChannel', 'poolSpent', 'round', 'resting', 'stuck', 'kicked', 'rechecked', 'retired', 'retiring', 'tallied', 'workers', 'refundAt', 'refunded', 'closing', 'returning', 'open', 'source', 'pledge', 'swept']
@@ -124,10 +124,10 @@ function migrate(storage: DurableObjectStorage, from: number) {
     const last = sql.exec<{ seq: number | null }>('SELECT MAX(seq) AS seq FROM feed').one().seq
     if (last !== null) kv.put('unindexed', Number(last))
   }
-  if (from < 3 && !kv.get<Lead>('agent')?.instructed) kv.delete('instructions')
-  if (from < 4) kv.delete('settled')
-  if (from < 5) kv.delete('progressed')
-  if (from < 6) for (const table of ['work_tasks', 'work_keys', 'work_steers']) sql.exec(`DROP TABLE IF EXISTS ${table}`)
+  if (from < Limits.Swarm.instructedFormat && !kv.get<Lead>('agent')?.instructed) kv.delete('instructions')
+  if (from < Limits.Swarm.settledFormat) kv.delete('settled')
+  if (from < Limits.Swarm.progressedFormat) kv.delete('progressed')
+  if (from < Limits.Swarm.workTablesFormat) for (const table of ['work_tasks', 'work_keys', 'work_steers']) sql.exec(`DROP TABLE IF EXISTS ${table}`)
   kv.put('v', version)
 }
 
@@ -173,7 +173,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   reported: Gateway.Report | undefined
   memos = new Map<string, { at: number; epoch: number; marked: number; value: unknown }>()
   marked = 0
-  boot = crypto.randomUUID().slice(0, 8)
+  boot = crypto.randomUUID().slice(0, Limits.Swarm.bootChars)
   touches = 0
   stamped = { at: 0, tuple: '' }
   kept: SyncKvStorage | undefined
@@ -474,7 +474,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.cue('hands')
     const listed = await Gateway.hands(this.env, swarm)
     if (listed.ok && listed.value.hands.some((hand) => hand.name === name))
-      return { detail: 'A hand of the swarm already has this name.', ok: false, status: 409 }
+      return { detail: 'A hand of the swarm already has this name.', ok: false, status: Limits.Http.conflict }
     return Gateway.hand(this.env, swarm, name)
   }
 
@@ -533,7 +533,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const stamp = this.stamp()
     this.tend()
     const sql = this.ctx.storage.sql
-    const limit = shape.feed ?? 200
+    const limit = shape.feed ?? Limits.Swarm.feedDefault
     const feed = limit > 0
       ? sql
           .exec<Record<string, SqlStorageValue>>('SELECT seq, at, kind, text, detail, who, event FROM feed ORDER BY seq DESC LIMIT ?', limit)
@@ -575,7 +575,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   recent(limit: number): { updates: Update[]; working: Working | null } {
-    return { updates: Feed.updates(Feed.rows(this, Feed.lastTurns, limit + 10)).slice(-limit), working: this.working() }
+    return { updates: Feed.updates(Feed.rows(this, Feed.lastTurns, limit + Limits.Swarm.feedSlack)).slice(-limit), working: this.working() }
   }
 
   why(): Why | null {
@@ -617,7 +617,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       .exec<Record<string, SqlStorageValue>>(
         `SELECT seq, at, kind, text, detail, who, event FROM feed WHERE ${where.join(' AND ')} ORDER BY seq ${filter.before === undefined ? '' : 'DESC '}LIMIT ?`,
         ...values,
-        filter.limit ?? 200,
+        filter.limit ?? Limits.Swarm.feedDefault,
       )
       .toArray()
     return (filter.before === undefined ? rows : rows.reverse()).map(Feed.entry)
@@ -789,7 +789,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.changed('detail')
     this.log(
       'steer',
-      `Steered the agent toward "${clip(note.note, 120)}"`,
+      `Steered the agent toward "${clip(note.note, Limits.Swarm.steerChars)}"`,
       `${Words.dollars(Memo.units(note.weight))} behind it, ${Words.percent(note.share)} of everything contributed`,
     )
     return note
@@ -902,8 +902,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     input: { agent: string; branch: number; said: string | null; steer?: { note: string; text: string; who: string }; usd: number | null; wake: string | null },
   ): Promise<Gateway.Result<Gateway.Subagent | null>> {
     const agent = this.agent()?.id
-    if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
-    if (agent !== input.agent) return { detail: "The swarm started a new agent since its branches were listed; list them again.", ok: false, status: 409 }
+    if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: Limits.Http.conflict }
+    if (agent !== input.agent) return { detail: "The swarm started a new agent since its branches were listed; list them again.", ok: false, status: Limits.Http.conflict }
     const set = input.usd === null ? undefined : await Branching.rebudget(this, swarm, agent, input.branch)
     if (set && !set.ok) return set
 
@@ -934,8 +934,8 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   async halt(swarm: string, input: { agent: string; branch: number; said: string }): Promise<Gateway.Result<Gateway.Subagent[]>> {
     const agent = this.agent()?.id
-    if (!agent) return { detail: 'The swarm has no agent yet.', ok: false, status: 409 }
-    if (agent !== input.agent) return { detail: "The swarm started a new agent since its branches were listed; list them again.", ok: false, status: 409 }
+    if (!agent) return { detail: 'The swarm has no agent yet.', ok: false, status: Limits.Http.conflict }
+    if (agent !== input.agent) return { detail: "The swarm started a new agent since its branches were listed; list them again.", ok: false, status: Limits.Http.conflict }
     const closed = await Gateway.close(this.env, swarm, agent, input.branch)
     if (!closed.ok) return closed
     if (this.turn())
@@ -964,17 +964,17 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   async btw(input: { address: Address; branch?: number; prompt: string; question: string; swarm: string }): Promise<Gateway.Result<string>> {
     this.kv.put('id', input.swarm)
     const agent = this.agent()?.id
-    if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: 409 }
+    if (!agent) return { detail: 'The swarm has no agent yet: it starts once money arrives.', ok: false, status: Limits.Http.conflict }
     const now = Date.now()
     const key = 'btw:' + input.address.toLowerCase()
     const recent = (this.kv.get<number[]>(key) ?? []).filter((at) => at > now - Clock.hourMs)
     const oldest = recent[0]
     if (recent.length >= Btw.perHour && oldest !== undefined)
-      return { detail: `At most ${Btw.perHour} side questions an hour; the next one opens at ${Words.clock(oldest + Clock.hourMs)} UTC.`, ok: false, status: 429 }
+      return { detail: `At most ${Btw.perHour} side questions an hour; the next one opens at ${Words.clock(oldest + Clock.hourMs)} UTC.`, ok: false, status: Limits.Http.tooMany }
     const everyone = (this.kv.get<number[]>('btw:*') ?? []).filter((at) => at > now - Clock.hourMs)
     const first = everyone[0]
     if (everyone.length >= Btw.perSwarmHour && first !== undefined)
-      return { detail: `This swarm answers at most ${Btw.perSwarmHour} side questions an hour, from everyone; the next one opens at ${Words.clock(first + Clock.hourMs)} UTC.`, ok: false, status: 429 }
+      return { detail: `This swarm answers at most ${Btw.perSwarmHour} side questions an hour, from everyone; the next one opens at ${Words.clock(first + Clock.hourMs)} UTC.`, ok: false, status: Limits.Http.tooMany }
     this.kv.put(key, [...recent, now])
     this.kv.put('btw:*', [...everyone, now])
 
@@ -986,7 +986,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
     const answer = redact(answered.value.text)
     const sealed = 'answered:' + input.address.toLowerCase()
-    this.kv.put(sealed, [...(this.kv.get<string[]>(sealed) ?? []), await Btw.seal({ answer, question: input.question })].slice(-200))
+    this.kv.put(sealed, [...(this.kv.get<string[]>(sealed) ?? []), await Btw.seal({ answer, question: input.question })].slice(-Limits.Swarm.sealedKept))
     return { ok: true, value: answer }
   }
 
@@ -1100,7 +1100,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     }
     request.signal.addEventListener('abort', drop, { once: true })
     this.ctx.waitUntil(
-      Riding.deltas(this, { after, limit: 500, nid: null })
+      Riding.deltas(this, { after, limit: Limits.Swarm.deltasPage, nid: null })
         .then(async (backlog) => {
           if (backlog.ok) for (const delta of backlog.value.deltas) await writer.write(encoder.encode('id: ' + delta.seq + '\ndata: ' + JSON.stringify(delta) + '\n\n'))
           if (!request.signal.aborted) this.treeWatchers.add(writer)
@@ -1111,11 +1111,11 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   }
 
   socket(request: Request) {
-    if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('Open the room as a WebSocket.', { status: 426 })
+    if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('Open the room as a WebSocket.', { status: Limits.Http.upgrade })
     const asked = new URL(request.url).searchParams
     const watching = asked.get('watch') === '1'
     const watched = this.ctx.getWebSockets('watch').length
-    if (watching ? watched >= Chat.streamsMost : this.ctx.getWebSockets().length - watched >= Chat.socketsMost) return new Response('This room is full right now; read it over HTTP.', { status: 503 })
+    if (watching ? watched >= Chat.streamsMost : this.ctx.getWebSockets().length - watched >= Chat.socketsMost) return new Response('This room is full right now; read it over HTTP.', { status: Limits.Http.unavailable })
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket]
     const listening = watching || asked.get('listen') === '1'
     this.ctx.acceptWebSocket(server, watching ? ['listen', 'watch'] : listening ? ['listen'] : [])
@@ -1123,7 +1123,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     server.serializeAttachment({ address: null })
     server.send(JSON.stringify({ type: 'welcome', version: this.stamp().version } satisfies Chatter))
     if (!listening) Chat.presence(this)
-    return new Response(null, { status: 101, webSocket: client })
+    return new Response(null, { status: Limits.Http.switching, webSocket: client })
   }
 
   override async webSocketMessage(socket: WebSocket, data: string | ArrayBuffer) {
@@ -1139,7 +1139,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     if (event.type === 'hello') {
       if (now - (state.hello ?? 0) < Chat.helloMs || this.ctx.getTags(socket).includes('listen')) return
       socket.serializeAttachment({ ...state, hello: now })
-      const token = typeof event.token === 'string' ? event.token.slice(0, 200) : ''
+      const token = typeof event.token === 'string' ? event.token.slice(0, Limits.Swarm.tokenChars) : ''
       const known = this.holders.get(token)
       const address = known && now - known.at < Chat.holderMs ? known.address : token ? await Sessions.holder(this.env, token) : undefined
       if (token) this.holders.set(token, { address, at: now })
@@ -1157,7 +1157,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
 
   override async webSocketClose(socket: WebSocket, code: number) {
     try {
-      socket.close(code === 1005 || code === 1006 ? 1000 : code, 'Closed')
+      socket.close(code === Limits.Swarm.closeNoStatus || code === Limits.Swarm.closeAbnormal ? 1000 : code, 'Closed')
     } catch {}
     Chat.presence(this, socket)
   }

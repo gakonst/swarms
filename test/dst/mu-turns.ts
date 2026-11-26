@@ -231,8 +231,8 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
     flip: mutant(
       'turns.turns',
       'src/worker/Turns.ts',
-      "return typeof usd === 'number' && Number.isFinite(usd) && usd >= 0 ? Memo.units(usd.toFixed(6)) : undefined",
-      "return typeof usd !== 'number' && Number.isFinite(usd) && usd >= 0 ? Memo.units(usd.toFixed(6)) : undefined",
+      "return typeof usd === 'number' && Number.isFinite(usd) && usd >= 0 ? Memo.units(usd.toFixed(Limits.SharedMemo.decimals)) : undefined",
+      "return typeof usd !== 'number' && Number.isFinite(usd) && usd >= 0 ? Memo.units(usd.toFixed(Limits.SharedMemo.decimals)) : undefined",
     ),
     invariant: "settledUsd reads the turn's settled spend from the gateway's turn report",
     name: 'turns.turns',

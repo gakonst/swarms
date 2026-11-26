@@ -110,25 +110,25 @@ export function json(text: string | undefined): Record<string, unknown> | null {
 
 const outcomes = new Set(['proved', 'refuted', 'split', 'progress', 'stuck'])
 
-function text(value: unknown, most = 4000) {
+function text(value: unknown, most: number = Limits.Runner.textMost) {
   return typeof value === 'string' && value.trim() ? clip(value.trim(), most) : null
 }
 
 export function result(raw: string | undefined, fallback: string): Nodes.Result {
   const value = json(raw)
-  if (!value) return { children: [], commit: null, outcome: raw?.trim() ? 'progress' : 'stuck', summary: clip(raw?.trim() || fallback, 200), theorem: null, why: null }
+  if (!value) return { children: [], commit: null, outcome: raw?.trim() ? 'progress' : 'stuck', summary: clip(raw?.trim() || fallback, Limits.Runner.summaryChars), theorem: null, why: null }
   const outcome = typeof value['outcome'] === 'string' && outcomes.has(value['outcome']) ? (value['outcome'] as Nodes.Result['outcome']) : 'progress'
   const children = Array.isArray(value['children'])
     ? value['children'].flatMap((child: unknown) => {
         if (!child || typeof child !== 'object') return []
         const one = child as Record<string, unknown>
-        const title = text(one['title'], 200)
+        const title = text(one['title'], Limits.Runner.titleChars)
         if (!title) return []
-        return [{ needs: guards.needs && Array.isArray(one['needs']) ? one['needs'].filter((need): need is string => typeof need === 'string').slice(0, 20) : [], spec: text(one['spec']) ?? '', statement: text(one['statement']), title }]
+        return [{ needs: guards.needs && Array.isArray(one['needs']) ? one['needs'].filter((need): need is string => typeof need === 'string').slice(0, Limits.Runner.needsMost) : [], spec: text(one['spec']) ?? '', statement: text(one['statement']), title }]
       })
     : []
-  const commit = text(value['commit'], 64)?.toLowerCase() ?? null
-  return { children, commit, outcome, summary: text(value['summary'], 200) ?? fallback, theorem: text(value['theorem'], 200), why: text(value['why']) }
+  const commit = text(value['commit'], Limits.Runner.commitChars)?.toLowerCase() ?? null
+  return { children, commit, outcome, summary: text(value['summary'], Limits.Runner.summaryChars) ?? fallback, theorem: text(value['theorem'], Limits.Runner.theoremChars), why: text(value['why']) }
 }
 
 function leased(self: Swarm) {
@@ -139,7 +139,7 @@ export function list(self: Swarm, swarm: string, agent: string, fresh = false) {
   const rt = runtime(self)
   const kept = rt.listing
   if (!fresh && kept && kept.agent === agent && Date.now() - kept.at < timing.listMs) return kept.value
-  const value = Gateway.subagents(self.env, swarm, agent).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: 503 }))
+  const value = Gateway.subagents(self.env, swarm, agent).catch((error: unknown) => ({ detail: String(error), ok: false as const, status: Limits.Http.unavailable }))
   rt.listing = { agent, at: Date.now(), value }
   return value
 }
@@ -185,12 +185,12 @@ function counted(self: Swarm, agent: string) {
 
 async function spawnKey(run: string) {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(run)))
-  return 'run-' + [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  return 'run-' + [...digest].map((byte) => byte.toString(Limits.Hex.radix).padStart(2, '0')).join('')
 }
 
 function spawning(made: { detail: string; status: number }): 'dispatcher' | 'refused' | 'starting' {
-  if (made.status === 404 || made.status === 405) return 'dispatcher'
-  if (made.status !== 409) return 'refused'
+  if (made.status === Limits.Http.missing || made.status === Limits.Http.notAllowed) return 'dispatcher'
+  if (made.status !== Limits.Http.conflict) return 'refused'
   if (made.detail.includes('no conversation to spawn from')) return 'dispatcher'
   if (made.detail.includes('already starting')) return 'starting'
   return 'refused'
@@ -208,7 +208,7 @@ async function spawn(self: Swarm, swarm: string, agent: string, args: Gateway.Sp
   if (spawning(made) !== 'dispatcher') return made
   self.kv.put('prompted:' + run, claim)
   const sent = await Gateway.prompt(self.env, swarm, agent, { id: claim, prompt: 'Spawn this subagent:\n' + JSON.stringify(args), steer: false })
-  if (!sent.ok && sent.status !== 409) return sent
+  if (!sent.ok && sent.status !== Limits.Http.conflict) return sent
   follow(self, swarm, agent)
   while (Date.now() < until && !signal.aborted) {
     const listed = await list(self, swarm, agent, true)
@@ -216,7 +216,7 @@ async function spawn(self: Swarm, swarm: string, agent: string, args: Gateway.Sp
     if (found) return { ok: true, value: { sub: found.agent_id, turn: claim } }
     await wait(timing.listMs, self, signal)
   }
-  return { detail: 'The dispatcher did not start the subagent in time.', ok: false, status: 504 }
+  return { detail: 'The dispatcher did not start the subagent in time.', ok: false, status: Limits.Http.timeout }
 }
 
 export function picked(answer: string | undefined, models: readonly string[], fallback: string): Omit<Nodes.Pick, 'spent' | 'turn'> {
@@ -224,16 +224,16 @@ export function picked(answer: string | undefined, models: readonly string[], fa
   const asked = typeof value?.['model'] === 'string' && models.includes(value['model']) ? value['model'] : undefined
   const model = asked ?? fallback
   const harness = asked && Setup.harnesses.some((one) => one === value?.['harness']) ? String(value?.['harness']) : Setup.harnessOf(model)
-  return { harness, model, why: asked ? text(value?.['why'], 200) : null }
+  return { harness, model, why: asked ? text(value?.['why'], Limits.Runner.whyChars) : null }
 }
 
 async function ask(self: Swarm, swarm: string, agent: string, question: string, id: string, signal: AbortSignal): Promise<{ spent: bigint; text: string; turn?: string } | undefined> {
   const side = await Gateway.side(self.env, swarm, agent, question)
   if (side.ok) return { spent: Flow.micro(side.value.usage?.estimated_cost?.total_usd), text: side.value.text }
-  if (side.status !== 409) return undefined
+  if (side.status !== Limits.Http.conflict) return undefined
   follow(self, swarm, agent)
   const sent = await Gateway.prompt(self.env, swarm, agent, { id, prompt: question, steer: false })
-  if (!sent.ok && sent.status !== 409) return undefined
+  if (!sent.ok && sent.status !== Limits.Http.conflict) return undefined
   const until = Date.now() + timing.spawnMs
   while (Date.now() < until && !signal.aborted) {
     const report = await Gateway.turn(self.env, swarm, agent, id)
@@ -272,8 +272,8 @@ async function strays(self: Swarm, swarm: string, agent: string) {
 }
 
 async function refusal(self: Swarm, task: Work.Task, lease: Board.PoolLease, failure: { detail: string; status: number }): Promise<never> {
-  const transient = failure.status === 409 || failure.status >= 500
-  if (failure.status !== 402 && !transient) throw new Error(failure.detail)
+  const transient = failure.status === Limits.Http.conflict || failure.status >= Limits.Http.failed
+  if (failure.status !== Limits.Http.paymentRequired && !transient) throw new Error(failure.detail)
   const counter = (transient ? 'unready:' : 'paid:') + task.id
   const tries = (self.kv.get<number>(counter) ?? 0) + 1
   const wait = transient ? Math.min(Limits.Runner.followBackoffMostMs, Limits.Runner.followBackoffMs * 2 ** Math.min(tries, Limits.Runner.followBackoffDoublings)) : Work.delay(paying, tries)
@@ -308,7 +308,7 @@ async function brief(self: Swarm, found: Nodes.State, nid: string, steers: strin
   const parent = node ? Nodes.parentOf(node) : null
   const siblings = [...found.nodes.values()]
     .filter((one) => one.id !== node?.id && parent !== null && Nodes.parentOf(one) === parent)
-    .slice(0, 30)
+    .slice(0, Limits.Runner.siblingsShown)
     .map((one) => {
       const last = self.ctx.storage.sql.exec<{ text: string }>("SELECT text FROM tree_deltas WHERE node = ? AND event IN ('progress', 'proven', 'ended') ORDER BY seq DESC LIMIT 1", Nodes.nidOf(one.id)).toArray()[0]
       return Nodes.parse(one.spec).title + (last ? ': ' + last.text : '')
@@ -379,7 +379,7 @@ async function running(self: Swarm, task: Work.Task, lease: Board.PoolLease): Pr
       if (!budgeted) {
         const room = budget - (await dispatched(self, swarm, spawned))
         const set = await Gateway.budget(self.env, swarm, spawned.agent, spawned.sub, Flow.number(room > 0n ? room : 0n))
-        if (!set.ok && set.status === 402) return await refusal(self, task, lease, set)
+        if (!set.ok && set.status === Limits.Http.paymentRequired) return await refusal(self, task, lease, set)
       }
       await strays(self, swarm, spawned.agent)
       Nodes.emit(self, nid, 'started', 'Run ' + k + ' started' + (spawned.pick ? ' on ' + Setup.name(spawned.pick.model) : ''))
@@ -434,7 +434,7 @@ function stepped(self: Swarm, agent: string, block: string) {
     text = step ? named(step) : undefined
   }
   if (!text) return
-  self.treeDoing.set(held.task, { at: event.created_at ?? Date.now(), text: clip(redact(text), 120) })
+  self.treeDoing.set(held.task, { at: event.created_at ?? Date.now(), text: clip(redact(text), Limits.Runner.doingChars) })
   const due = held.sent + timing.doingMs - Date.now()
   if (due <= 0) {
     held.sent = Date.now()
@@ -495,7 +495,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   const ended = sub ? finished.has(state) : true
   if (!sub || !ended || state === 'completed') {
     const closed = await Gateway.close(self.env, swarm, spawned.agent, spawned.sub)
-    if (!closed.ok && closed.status !== 404) throw new Error('Closing run ' + task.id + ' failed, so its budget stays committed: ' + closed.detail)
+    if (!closed.ok && closed.status !== Limits.Http.missing) throw new Error('Closing run ' + task.id + ' failed, so its budget stays committed: ' + closed.detail)
     sub = await observed(self, swarm, spawned, await list(self, swarm, spawned.agent, true), sub)
   }
   const final = sub?.status.state ?? 'gone'
@@ -512,7 +512,7 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
     await Nodes.consider(self)
     return { done }
   }
-  const outcome = final === 'completed' ? result(sub?.result, why) : { ...result(sub?.result, why), outcome: 'stuck' as const, summary: clip(why, 200) }
+  const outcome = final === 'completed' ? result(sub?.result, why) : { ...result(sub?.result, why), outcome: 'stuck' as const, summary: clip(why, Limits.Runner.summaryChars) }
   if (final === 'failed' && /over_limit/.test(sub?.status.error ?? '')) self.kv.put('bounded:' + nid, Date.now())
   else self.kv.delete('bounded:' + nid)
   await Nodes.ran(self, task.id, outcome, (node, sha, theorem, refutes) => postVerify(self, node, sha, theorem, refutes))
@@ -602,18 +602,18 @@ async function checking(self: Swarm, task: Work.Task, lease: Board.PoolLease): P
   )
   if (waited.kind === 'refused') return { failed: 'The verifier did not take the check: ' + waited.detail }
   if (waited.kind === 'expired') {
-    await self.board.steer(Nodes.nodeId(nid), 'The Lean check of ' + sha.slice(0, 7) + ' did not come back in time.', { key: 'expired:' + vid })
-    Nodes.emit(self, nid, 'progress', 'Lean check expired for ' + sha.slice(0, 7))
+    await self.board.steer(Nodes.nodeId(nid), 'The Lean check of ' + sha.slice(0, Limits.SharedTree.shortSha) + ' did not come back in time.', { key: 'expired:' + vid })
+    Nodes.emit(self, nid, 'progress', 'Lean check expired for ' + sha.slice(0, Limits.SharedTree.shortSha))
     await Nodes.consider(self)
     return { failed: 'The check did not come back in time.' }
   }
   const outcome = waited.outcome
   if ('failed' in outcome || !trusted(outcome, sha, node.labels['stmt'])) {
     const log = 'failed' in outcome ? outcome.failed : 'The check did not match the commit or the frozen statement.'
-    await self.board.steer(Nodes.nodeId(nid), 'The Lean check of ' + sha.slice(0, 7) + ' failed:\n' + log.slice(-2000), { key: 'failed:' + vid })
-    Nodes.emit(self, nid, 'progress', 'Lean check failed for ' + sha.slice(0, 7))
+    await self.board.steer(Nodes.nodeId(nid), 'The Lean check of ' + sha.slice(0, Limits.SharedTree.shortSha) + ' failed:\n' + log.slice(-Limits.Runner.steerLogChars), { key: 'failed:' + vid })
+    Nodes.emit(self, nid, 'progress', 'Lean check failed for ' + sha.slice(0, Limits.SharedTree.shortSha))
     await Nodes.consider(self)
-    return { failed: log.slice(-4096) }
+    return { failed: log.slice(-Limits.Runner.failedLogChars) }
   }
   if (refutes) await Nodes.end(self, nid, { at: outcome.at, check: outcome, into: null, kind: 'refuted', why: 'Its negation was checked in Lean.' }, halt)
   else await Nodes.proven(self, nid, outcome, halt)
@@ -850,7 +850,7 @@ export async function tick(self: Swarm): Promise<number | null> {
   if (open.length) ensure(self)
   const rests = open.map((task) => self.kv.get<number>('rest:' + task.id) ?? 0).filter((at) => at > now)
   const leases = open.flatMap((task) => (task.untilMs && task.untilMs > now ? [task.untilMs + 1000] : []))
-  const due = [...rests, ...leases, Triage.due(self, now), open.length || Nodes.gitDue(self) ? now + 60_000 : Infinity]
+  const due = [...rests, ...leases, Triage.due(self, now), open.length || Nodes.gitDue(self) ? now + Limits.Clock.minuteMs : Infinity]
   const next = Math.min(...due)
   return Number.isFinite(next) ? next : null
 }

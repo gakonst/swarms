@@ -341,6 +341,12 @@ export const Operations = {
 
 export const Page = {
   firstChat: 30,
+  quickMs: 1500,
+  slowMs: 2500,
+  handleMost: 40,
+  nameChars: 40,
+  emailMost: 254,
+  firstUpdates: 30,
 } as const
 
 export const Pay = {
@@ -427,6 +433,17 @@ export const Runner = {
     streamUpMs: 120_000,
     verifyMs: 60_000,
   },
+  textMost: 4000,
+  summaryChars: 200,
+  titleChars: 200,
+  needsMost: 20,
+  commitChars: 64,
+  theoremChars: 200,
+  whyChars: 200,
+  siblingsShown: 30,
+  doingChars: 120,
+  steerLogChars: 2000,
+  failedLogChars: 4096,
 } as const
 
 export const Runs = {
@@ -704,6 +721,20 @@ export const Swarm = {
   stillMs: 2_000,
   maxWaitMs: 60_000,
   coalesceMs: 2_000,
+  version: 6,
+  instructedFormat: 3,
+  settledFormat: 4,
+  progressedFormat: 5,
+  workTablesFormat: 6,
+  bootChars: 8,
+  feedDefault: 200,
+  feedSlack: 10,
+  steerChars: 120,
+  sealedKept: 200,
+  deltasPage: 500,
+  tokenChars: 200,
+  closeNoStatus: 1005,
+  closeAbnormal: 1006,
 } as const
 
 export const Team = {
@@ -739,6 +770,12 @@ export const Turns = {
   failsToStick: 2,
   retry: { backoffMs: 15_000, maxAttempts: 8 },
   tasksPerTurn: 1024,
+  repoCost: 1_100_000n,
+  reweighDivisor: 4n,
+  reweighLeast: 100_000n,
+  stallDivisor: 3,
+  updateChars: 280,
+  listPages: 20,
 } as const
 
 export const Verify = {
@@ -938,6 +975,9 @@ export const Http = {
   partial: 206,
   rangeUnsatisfiable: 416,
   preconditionRequired: 428,
+  found: 302,
+  paymentRequired: 402,
+  timeout: 504,
 } as const
 
 export const WorkerCards = {
