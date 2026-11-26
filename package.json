@@ -22,7 +22,6 @@
     "tidy": "node --experimental-strip-types --no-warnings scripts/tidy.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.2",
     "@pierre/diffs": "1.7.1",
     "@pierre/highlights": "0.5.2",
     "@pierre/trees": "1.0.0",

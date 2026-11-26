@@ -1,8 +1,8 @@
 import * as assert from 'node:assert/strict'
 import { createHash, randomBytes } from 'node:crypto'
+import * as readline from 'node:readline'
+import { PassThrough } from 'node:stream'
 import { after, before, test } from 'node:test'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import * as Local from '../../cli/src/mcp.ts'
 import * as Dev from './dev.ts'
 import { type Rider, rider } from './rider.ts'
@@ -299,11 +299,30 @@ test('every tool and resource, signed in with OAuth, on mocks', { timeout: 600_0
 
 test('swarms mcp: the local stdio server proxies every tool and resource with the CLI token', { timeout: 300_000 }, async () => {
   const run = async (token?: string) => {
-    const [inside, outside] = InMemoryTransport.createLinkedPair()
-    const served = await Local.serve({ token, url: dev.url }, inside)
-    const client = new Client({ name: 'e2e', version: '1' })
-    await client.connect(outside)
-    return { client, close: async () => { await client.close(); await served.close() } }
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const served = await Local.serve({ token, url: dev.url }, { input, output })
+    const waiting = new Map<number, (value: Record<string, unknown>) => void>()
+    readline.createInterface({ input: output }).on('line', (line) => {
+      const message = JSON.parse(line) as { error?: unknown; id: number; result?: Record<string, unknown> }
+      waiting.get(message.id)?.(message.result ?? { error: message.error })
+    })
+    let next = 0
+    const send = (method: string, params: Record<string, unknown> = {}) => {
+      next += 1
+      const sent = next
+      input.write(JSON.stringify({ id: sent, jsonrpc: '2.0', method, params }) + '\n')
+      return new Promise<Record<string, unknown>>((resolve) => waiting.set(sent, resolve))
+    }
+    const initialized = await send('initialize', { capabilities: {}, clientInfo: { name: 'e2e', version: '1' }, protocolVersion: '2025-06-18' })
+    const client = {
+      callTool: async (params: Record<string, unknown>) => (await send('tools/call', params)) as { content: unknown; isError?: boolean },
+      getInstructions: () => initialized['instructions'] as string | undefined,
+      listResourceTemplates: async () => (await send('resources/templates/list')) as { resourceTemplates: unknown[] },
+      listTools: async () => (await send('tools/list')) as { tools: { name: string }[] },
+      readResource: async (params: Record<string, unknown>) => (await send('resources/read', params)) as { contents: unknown[] },
+    }
+    return { client, close: async () => { await served.close(); input.end() } }
   }
   const signed = await run(ana.token)
   const remote = ((await rpc('tools/list', {})).body.result?.['tools'] as { name: string }[]).map((each) => each.name).sort()

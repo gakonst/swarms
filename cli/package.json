@@ -13,9 +13,6 @@
   "engines": {
     "node": ">=20"
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.2"
-  },
   "license": "MIT",
   "repository": {
     "type": "git",
