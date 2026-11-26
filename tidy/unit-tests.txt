@@ -12,8 +12,6 @@ test/check-life.test.ts 1 pre-existing unit test; port what it checks to a test/
 test/cli.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/cold.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/connect.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/crew.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/door.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/e2e/cli.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/e2e/endpoints.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/e2e/fund.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
@@ -27,13 +25,10 @@ test/e2e/tree.test.ts 1 pre-existing unit test; port what it checks to a test/ds
 test/edge.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/edit.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/endpoints-entry.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/fleet.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/follow.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/funding.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/general.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/grove.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/hands.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/hello.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/hosts.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/instructions.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/launch.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
@@ -51,7 +46,6 @@ test/problems.test.ts 1 pre-existing unit test; port what it checks to a test/ds
 test/progress.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/rail.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/relay.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
-test/replica.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/repo.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/riders.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
 test/room.test.ts 1 pre-existing unit test; port what it checks to a test/dst invariant with a canary and delete it
