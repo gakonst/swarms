@@ -132,7 +132,7 @@ export async function start(options: Options = {}) {
   const errors: string[] = []
   const settings = { codeStorage: options.codeStorage ?? 'paid', credentialRoute: options.credentialRoute ?? true, dispatcherBudget: options.dispatcherBudget, dispatcherUsd: options.dispatcherUsd ?? 0.0005, spawnRoute: options.spawnRoute ?? true, unsolicited: options.unsolicited ?? false }
   const keyed = new Map<string, number>()
-  const owned = new Map<string, { antigravity: string; claude: string; keys: Map<string, { added_at: number; hint: string }> }>()
+  const owned = new Map<string, { antigravity: string; claude: string; codex: string; codexCode: string; keys: Map<string, { added_at: number; hint: string }> }>()
   let agentCount = 0
   let closing = false
 
@@ -425,6 +425,18 @@ export async function start(options: Options = {}) {
     }
 
     if (path === '/mock/rpc' && method === 'POST') return chain.rpc(body)
+    const signing = /^\/mock\/plan\/(claude|codex|antigravity)(\/approve)?$/.exec(path)
+    if (signing) {
+      const which = signing[1] ?? ''
+      const userCode = url.searchParams.get('user_code') ?? ''
+      const approving = [...owned.values()].find((each) => each.codexCode && each.codexCode === userCode)
+      if (signing[2] && approving) approving.codex = 'authenticated'
+      const shown = which === 'claude' ? '<p>Your code</p><code>mock-code#state</code>' : which === 'antigravity' ? '<p>You landed on</p><code>https://antigravity.google/oauth-callback?code=mock-code&amp;state=s</code>' : signing[2] ? '<p>Approved. You can close this window.</p>' : '<p>Code</p><code>' + userCode + '</code><p><a id="approve" href="/mock/plan/codex/approve?user_code=' + encodeURIComponent(userCode) + '">Continue</a></p>'
+      response.writeHead(200, { 'content-type': 'text/html' })
+      response.end('<!doctype html><title>Mock ' + which + ' sign-in</title><body style="font:16px system-ui;padding:24px"><h1>Mock ' + which + ' sign-in</h1>' + shown + '</body>')
+      return streaming
+    }
+
     if (path === '/mock/transfer' && method === 'POST') {
       const tag = (typeof body['tag'] === 'string' ? body['tag'] : '0x' + '0'.repeat(32)) as Chain.Hex
       const memo = (typeof body['memo'] === 'string' ? body['memo'] : Chain.memo(String(body['owner'] ?? wallet), String(body['app'] ?? ''), tag)) as Chain.Hex
@@ -495,10 +507,10 @@ export async function start(options: Options = {}) {
       return { backings: found.backings, left: '0.000000', spent: '0.000000' }
     }
 
-    const credential = /^\/v1\/credentials\/([^/]+)(\/keys\/(anthropic|openai)|\/plans\/(claude|antigravity)(\/complete)?)?$/.exec(path)
+    const credential = /^\/v1\/credentials\/([^/]+)(\/keys\/(anthropic|openai)|\/plans\/(claude|codex|antigravity)(\/complete)?)?$/.exec(path)
     if (credential) {
       const subject = decodeURIComponent(credential[1] ?? '')
-      const own = owned.get(subject) ?? { antigravity: 'signed_out', claude: 'none', keys: new Map() }
+      const own = owned.get(subject) ?? { antigravity: 'signed_out', claude: 'none', codex: 'signed_out', codexCode: '', keys: new Map() }
       owned.set(subject, own)
       const provider = credential[3]
       if (provider && method === 'PUT') {
@@ -509,23 +521,32 @@ export async function start(options: Options = {}) {
         return { ...kept, provider }
       }
       if (provider && method === 'DELETE') return { deleted: own.keys.delete(provider) }
-      const plan = credential[4] === 'antigravity' ? 'antigravity' : 'claude'
+      const plan = credential[4] === 'antigravity' ? 'antigravity' : credential[4] === 'codex' ? 'codex' : 'claude'
+      const device = () => ({ expires_at: Date.now() + 600_000, poll_after_ms: 500, state: 'pending', user_code: own.codexCode, verification_url: 'http://' + String(headers['host']) + '/mock/plan/codex' })
       if (credential[5] && method === 'POST') {
+        if (plan === 'codex') throw new Problem(404, 'not_found', 'No route answers ' + method + ' ' + path + '.')
         const code = typeof body['code'] === 'string' ? body['code'] : ''
-        if (plan === 'antigravity' ? !/(^|[?&]code=)mock-code($|&)/.test(code) : code !== 'mock-code') throw new Problem(400, 'invalid_request', 'That code is not the one the sign-in page showed.')
+        if (plan === 'antigravity' ? !/(^|[?&]code=)mock-code($|&)/.test(code) : code.split('#')[0] !== 'mock-code') throw new Problem(400, 'invalid_request', 'That code is not the one the sign-in page showed.')
         own[plan] = 'authenticated'
         return { state: own[plan] }
       }
       if (credential[2] && method === 'POST') {
+        if (plan === 'codex') {
+          own.codex = 'pending'
+          own.codexCode = 'MOCK-' + (++agentCount).toString(36).toUpperCase().padStart(4, '0')
+          return { provider: 'codex', status: device() }
+        }
         if (plan === 'antigravity') own.antigravity = 'pending'
-        return plan === 'antigravity' ? { authorization_url: 'https://accounts.google.com/o/oauth2/v2/auth?mock=1', expires_at: Date.now() + 600_000, provider: 'antigravity' } : { authorization_url: 'https://claude.ai/oauth/authorize?mock=1', expires_at: Date.now() + 600_000 }
+        return { authorization_url: 'http://' + String(headers['host']) + '/mock/plan/' + plan, expires_at: Date.now() + 600_000, ...(plan === 'antigravity' ? { provider: 'antigravity' } : {}) }
       }
       if (credential[2] && method === 'DELETE') {
-        own[plan] = plan === 'antigravity' ? 'signed_out' : 'none'
+        own[plan] = plan === 'claude' ? 'none' : 'signed_out'
+        if (plan === 'codex') own.codexCode = ''
         return { deleted: true }
       }
       const antigravity = own.antigravity === 'authenticated' ? { account_id: 'mock-account', email: 'ana@gmail.com', expires_at: Date.now() + 3_600_000, project: 'mock-project', state: own.antigravity } : { state: own.antigravity }
-      return { keys: [...own.keys].map(([each, kept]) => ({ ...kept, provider: each })), plans: { antigravity, claude: { state: own.claude } }, subject }
+      const codex = own.codex === 'pending' ? device() : own.codex === 'authenticated' ? { expires_at: Date.now() + 3_600_000, state: own.codex } : { state: own.codex }
+      return { keys: [...own.keys].map(([each, kept]) => ({ ...kept, provider: each })), plans: { antigravity, claude: { state: own.claude }, codex }, subject }
     }
 
     if (path === '/v1/teams/create') return { address: Chain.address('team:' + String(body['name'])) }

@@ -944,7 +944,7 @@ const own: OwnAi = {
 
 const pages: Record<Plan, { code?: string; url: string }> = {
   antigravity: { url: 'https://accounts.google.com/o/oauth2/v2/auth?fixture=1' },
-  codex: { code: 'K7QF-3XWM', url: 'https://auth.openai.com/codex/device?fixture=1' },
+  codex: { code: 'K7QF-3XWM', url: 'https://auth.openai.com/codex/device' },
   claude: { url: 'https://claude.ai/oauth/authorize?fixture=1' },
 }
 
@@ -957,7 +957,13 @@ function owned<T = OwnAi>(who: `0x${string}` | undefined, answer: (who: `0x${str
   return Promise.resolve(structuredClone(answer(who)))
 }
 
+let approving = 0
+
 export function ownAi(who: `0x${string}` | undefined) {
+  if (approving && Date.now() >= approving) {
+    approving = 0
+    own.plans.codex = { state: 'authenticated' }
+  }
   return owned(who)
 }
 
@@ -973,7 +979,12 @@ export function ownDrop(provider: 'anthropic' | 'openai', who: `0x${string}` | u
 
 export function ownSignIn(plan: Plan, who: `0x${string}` | undefined) {
   const soon = offered(plan)
-  return soon ? Promise.reject(soon) : owned(who, () => pages[plan])
+  if (soon) return Promise.reject(soon)
+  if (who && plan === 'codex') {
+    own.plans.codex = { state: 'pending' }
+    approving = Date.now() + Limits.Fixture.codexApproveMs
+  }
+  return owned(who, () => ({ ...pages[plan], expires_at: Date.now() + Limits.OwnAiFlow.signInMs, poll_after_ms: Limits.Fixture.readMs }))
 }
 
 export function ownSignedIn(plan: Plan, code: string, who: `0x${string}` | undefined) {

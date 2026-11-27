@@ -24,6 +24,7 @@ const key = z.looseObject({ added_at: z.number(), hint: z.string(), provider: z.
 const planned = z.looseObject({
   email: z.string().min(1).optional(),
   expires_at: z.number().optional(),
+  poll_after_ms: z.number().optional(),
   state: z.string(),
   user_code: z.string().min(1).optional(),
   verification_url: z.string().min(1).optional(),
@@ -36,18 +37,33 @@ const answer = z.looseObject({
 })
 
 const started = z.union([
-  z.looseObject({ authorization_url: z.string().min(1), expires_at: z.number() }).transform((read) => ({ url: read.authorization_url })),
   z
-    .looseObject({ status: z.looseObject({ user_code: z.string().min(1), verification_url: z.string().min(1) }) })
-    .transform((read) => ({ code: read.status.user_code, url: read.status.verification_url })),
+    .looseObject({ authorization_url: z.string().min(1), expires_at: z.number() })
+    .transform((read) => ({ expires_at: read.expires_at, url: read.authorization_url })),
+  z
+    .looseObject({
+      status: z.looseObject({
+        expires_at: z.number().optional(),
+        poll_after_ms: z.number().optional(),
+        user_code: z.string().min(1),
+        verification_url: z.string().min(1),
+      }),
+    })
+    .transform((read) => ({
+      code: read.status.user_code,
+      expires_at: read.status.expires_at,
+      poll_after_ms: read.status.poll_after_ms,
+      url: read.status.verification_url,
+    })),
 ])
 
 function state(plan: z.infer<typeof planned>): PlanState {
-  const { email, expires_at, state, user_code, verification_url } = plan
+  const { email, expires_at, poll_after_ms, state, user_code, verification_url } = plan
   return {
     state,
     ...(email === undefined ? {} : { email }),
     ...(expires_at === undefined ? {} : { expires_at }),
+    ...(poll_after_ms === undefined ? {} : { poll_after_ms }),
     ...(user_code === undefined ? {} : { user_code }),
     ...(verification_url === undefined ? {} : { verification_url }),
   }

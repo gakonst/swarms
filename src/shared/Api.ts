@@ -47,7 +47,7 @@ export const plans = ['claude', 'codex', 'antigravity'] as const
 
 export type Plan = (typeof plans)[number]
 
-export type PlanState = { email?: string; expires_at?: number; state: string; user_code?: string; verification_url?: string }
+export type PlanState = { email?: string; expires_at?: number; poll_after_ms?: number; state: string; user_code?: string; verification_url?: string }
 
 export type OwnAi = {
   keys: { added_at: number; hint: string; provider: 'anthropic' | 'openai' }[]
@@ -55,7 +55,7 @@ export type OwnAi = {
   subject: string
 }
 
-export type SignIn = { code?: string | undefined; url: string }
+export type SignIn = { code?: string | undefined; expires_at?: number | undefined; poll_after_ms?: number | undefined; url: string }
 
 export type Listing = { funders: Record<string, Tree.Funder[]>; heads: Record<string, Tree.Headline>; riders: number; swarms: Summary[] }
 

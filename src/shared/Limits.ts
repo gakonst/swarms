@@ -65,6 +65,15 @@ export const Cli = {
   mcpLongestMs: 330_000,
 } as const
 
+export const OwnAiFlow = {
+  popupWidth: 520,
+  popupHeight: 720,
+  pollMs: 5000,
+  pollBackoff: 1.5,
+  pollCeilingMs: 30_000,
+  signInMs: 900_000,
+} as const
+
 export const Client = {
   codeReadMs: 20_000,
   configRetryMs: 3000,
@@ -132,6 +141,7 @@ export const Feedback = {
 } as const
 
 export const Fixture = {
+  codexApproveMs: 4000,
   askMs: 600,
   beatMs: 4000,
   chatterJitterMs: 9000,

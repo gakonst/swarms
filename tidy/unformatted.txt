@@ -2,7 +2,6 @@
 # path count why; 266 allowed. The list only shrinks.
 cli/src/auth.ts 1 pre-existing hand formatting
 cli/src/commands/account.ts 1 pre-existing hand formatting
-cli/src/commands/ai.ts 1 pre-existing hand formatting
 cli/src/commands/completion.ts 1 pre-existing hand formatting
 cli/src/commands/fund.ts 1 pre-existing hand formatting
 cli/src/commands/hands.ts 1 pre-existing hand formatting

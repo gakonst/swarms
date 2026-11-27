@@ -573,10 +573,10 @@ export function document(origin: string) {
       },
       '/v1/me/ai/{plan}': {
         post: {
-          description: "Start connecting a subscription: claude (Claude plan), codex (ChatGPT plan) or antigravity (Antigravity). Answers url, the plan's sign-in page, and for a device sign-in code, the code to enter there. Open it, sign in, then POST /v1/me/ai/{plan}/complete with the code the page showed (claude), the address Google lands on or its code (antigravity) or none (codex). 404 while the gateway does not take that plan yet.",
+          description: "Start connecting a subscription: claude (Claude plan), codex (ChatGPT plan) or antigravity (Antigravity). Answers url, the sign-in page, and expires_at; codex also answers code and poll_after_ms: open url?user_code=<code> and poll GET /v1/me/ai every poll_after_ms until plans.codex is authenticated. For claude and antigravity, POST /v1/me/ai/{plan}/complete with the code the Claude page shows or the address Google lands on. 404 while the gateway does not take that plan yet.",
           operationId: 'ownSignIn',
           parameters: [parameter('plan', 'path', string, 'claude, codex or antigravity.')],
-          responses: { ...ok(object({ code: string, url: string }), 'The sign-in page.'), ...failures(badRequest, unauthorized, notFound, badGateway, unavailable) },
+          responses: { ...ok(object({ code: string, expires_at: integer, poll_after_ms: integer, url: string }), 'The sign-in page.'), ...failures(badRequest, unauthorized, notFound, badGateway, unavailable) },
           summary: 'Connect a subscription',
         },
         delete: {
