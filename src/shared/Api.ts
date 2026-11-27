@@ -47,7 +47,7 @@ export const plans = ['claude', 'codex', 'antigravity'] as const
 
 export type Plan = (typeof plans)[number]
 
-export type PlanState = { expires_at?: number; state: string; user_code?: string; verification_url?: string }
+export type PlanState = { email?: string; expires_at?: number; state: string; user_code?: string; verification_url?: string }
 
 export type OwnAi = {
   keys: { added_at: number; hint: string; provider: 'anthropic' | 'openai' }[]

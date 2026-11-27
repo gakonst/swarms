@@ -1,7 +1,7 @@
 import { ask, type Context, Failure, swarm } from '../context.ts'
 import * as Limits from '../../../src/shared/Limits.ts'
 
-type OwnAi = { keys: { added_at: number; hint: string; provider: string }[]; plans: Partial<Record<string, { state: string }>> }
+type OwnAi = { keys: { added_at: number; hint: string; provider: string }[]; plans: Partial<Record<string, { email?: string; state: string }>> }
 
 const actions = new Set(['status', 'set', 'rm', 'connect', 'finish', 'signout', 'on', 'off'])
 
@@ -13,7 +13,7 @@ const plans = [
 
 function shown(read: OwnAi) {
   const keys = read.keys.length ? read.keys.map((each) => `${each.provider.padEnd(Limits.Cli.providerPad)} …${each.hint}`) : ['No keys yet. Add one with swarms byok set anthropic|openai.']
-  return [...keys, ...plans.map(([plan]) => `${plan.padEnd(Limits.Cli.providerPad)} ${read.plans[plan]?.state ?? 'coming soon'}`)].join('\n')
+  return [...keys, ...plans.map(([plan]) => `${plan.padEnd(Limits.Cli.providerPad)} ${read.plans[plan]?.state ?? 'coming soon'}${read.plans[plan]?.email ? ' as ' + read.plans[plan]?.email : ''}`)].join('\n')
 }
 
 export async function byok(ctx: Context) {
@@ -33,7 +33,7 @@ export async function byok(ctx: Context) {
   if (action === 'connect') {
     const plan = ctx.need(2, 'the plan, claude, codex or antigravity')
     const started = await ctx.api<{ code?: string; url: string }>('POST', `/v1/me/ai/${encodeURIComponent(plan)}`, {})
-    const finish = plan === 'claude' ? `then swarms byok finish ${plan} <the code it shows>` : `then swarms byok finish ${plan}`
+    const finish = plan === 'codex' ? `then swarms byok finish ${plan}` : plan === 'antigravity' ? `then swarms byok finish ${plan} '<the address Google lands on>'` : `then swarms byok finish ${plan} <the code it shows>`
     return ctx.out(started, [`Open ${started.url}`, ...(started.code ? [`and enter ${started.code}`] : []), finish].join('\n'))
   }
   let read: OwnAi

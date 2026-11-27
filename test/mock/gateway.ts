@@ -132,7 +132,7 @@ export async function start(options: Options = {}) {
   const errors: string[] = []
   const settings = { codeStorage: options.codeStorage ?? 'paid', credentialRoute: options.credentialRoute ?? true, dispatcherBudget: options.dispatcherBudget, dispatcherUsd: options.dispatcherUsd ?? 0.0005, spawnRoute: options.spawnRoute ?? true, unsolicited: options.unsolicited ?? false }
   const keyed = new Map<string, number>()
-  const owned = new Map<string, { claude: string; keys: Map<string, { added_at: number; hint: string }> }>()
+  const owned = new Map<string, { antigravity: string; claude: string; keys: Map<string, { added_at: number; hint: string }> }>()
   let agentCount = 0
   let closing = false
 
@@ -495,10 +495,10 @@ export async function start(options: Options = {}) {
       return { backings: found.backings, left: '0.000000', spent: '0.000000' }
     }
 
-    const credential = /^\/v1\/credentials\/([^/]+)(\/keys\/(anthropic|openai)|\/plans\/claude(\/complete)?)?$/.exec(path)
+    const credential = /^\/v1\/credentials\/([^/]+)(\/keys\/(anthropic|openai)|\/plans\/(claude|antigravity)(\/complete)?)?$/.exec(path)
     if (credential) {
       const subject = decodeURIComponent(credential[1] ?? '')
-      const own = owned.get(subject) ?? { claude: 'none', keys: new Map() }
+      const own = owned.get(subject) ?? { antigravity: 'signed_out', claude: 'none', keys: new Map() }
       owned.set(subject, own)
       const provider = credential[3]
       if (provider && method === 'PUT') {
@@ -509,17 +509,23 @@ export async function start(options: Options = {}) {
         return { ...kept, provider }
       }
       if (provider && method === 'DELETE') return { deleted: own.keys.delete(provider) }
-      if (credential[4] && method === 'POST') {
-        if (body['code'] !== 'mock-code') throw new Problem(400, 'invalid_request', 'That code is not the one Claude showed.')
-        own.claude = 'authenticated'
-        return { state: own.claude }
+      const plan = credential[4] === 'antigravity' ? 'antigravity' : 'claude'
+      if (credential[5] && method === 'POST') {
+        const code = typeof body['code'] === 'string' ? body['code'] : ''
+        if (plan === 'antigravity' ? !/(^|[?&]code=)mock-code($|&)/.test(code) : code !== 'mock-code') throw new Problem(400, 'invalid_request', 'That code is not the one the sign-in page showed.')
+        own[plan] = 'authenticated'
+        return { state: own[plan] }
       }
-      if (credential[2] && method === 'POST') return { authorization_url: 'https://claude.ai/oauth/authorize?mock=1', expires_at: Date.now() + 600_000 }
+      if (credential[2] && method === 'POST') {
+        if (plan === 'antigravity') own.antigravity = 'pending'
+        return plan === 'antigravity' ? { authorization_url: 'https://accounts.google.com/o/oauth2/v2/auth?mock=1', expires_at: Date.now() + 600_000, provider: 'antigravity' } : { authorization_url: 'https://claude.ai/oauth/authorize?mock=1', expires_at: Date.now() + 600_000 }
+      }
       if (credential[2] && method === 'DELETE') {
-        own.claude = 'none'
+        own[plan] = plan === 'antigravity' ? 'signed_out' : 'none'
         return { deleted: true }
       }
-      return { keys: [...own.keys].map(([each, kept]) => ({ ...kept, provider: each })), plans: { claude: { state: own.claude } }, subject }
+      const antigravity = own.antigravity === 'authenticated' ? { account_id: 'mock-account', email: 'ana@gmail.com', expires_at: Date.now() + 3_600_000, project: 'mock-project', state: own.antigravity } : { state: own.antigravity }
+      return { keys: [...own.keys].map(([each, kept]) => ({ ...kept, provider: each })), plans: { antigravity, claude: { state: own.claude } }, subject }
     }
 
     if (path === '/v1/teams/create') return { address: Chain.address('team:' + String(body['name'])) }

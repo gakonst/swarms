@@ -573,7 +573,7 @@ export function document(origin: string) {
       },
       '/v1/me/ai/{plan}': {
         post: {
-          description: "Start connecting a subscription: claude (Claude plan), codex (ChatGPT plan) or antigravity (Antigravity). Answers url, the plan's sign-in page, and for a device sign-in code, the code to enter there. Open it, sign in, then POST /v1/me/ai/{plan}/complete with the code the page showed (claude) or none. 404 while the gateway does not take that plan yet.",
+          description: "Start connecting a subscription: claude (Claude plan), codex (ChatGPT plan) or antigravity (Antigravity). Answers url, the plan's sign-in page, and for a device sign-in code, the code to enter there. Open it, sign in, then POST /v1/me/ai/{plan}/complete with the code the page showed (claude), the address Google lands on or its code (antigravity) or none (codex). 404 while the gateway does not take that plan yet.",
           operationId: 'ownSignIn',
           parameters: [parameter('plan', 'path', string, 'claude, codex or antigravity.')],
           responses: { ...ok(object({ code: string, url: string }), 'The sign-in page.'), ...failures(badRequest, unauthorized, notFound, badGateway, unavailable) },
@@ -589,7 +589,7 @@ export function document(origin: string) {
       },
       '/v1/me/ai/{plan}/complete': {
         post: {
-          description: 'Finish connecting a subscription, with the code its sign-in page showed for claude.',
+          description: 'Finish connecting a subscription: claude takes the code its sign-in page showed, antigravity the address Google lands on or its code.',
           operationId: 'ownSignedIn',
           parameters: [parameter('plan', 'path', string, 'claude, codex or antigravity.')],
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.ownCode.omit({ plan: true })) } }, required: false },

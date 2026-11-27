@@ -77,7 +77,7 @@ const routes = [
   ['PUT', '/v1/me/ai/keys/:provider', 'Attach an anthropic or openai API key. The gateway checks it with the provider, keeps it encrypted and never shows it again.', '{ key }'],
   ['DELETE', '/v1/me/ai/keys/:provider', 'Remove a key.', ''],
   ['POST', '/v1/me/ai/:plan', 'Start connecting claude, codex or antigravity: answers the sign-in page to open, and for a device sign-in the code to enter there.', '{}'],
-  ['POST', '/v1/me/ai/:plan/complete', 'Finish, with the code the Claude page shows for claude.', '{ code? }'],
+  ['POST', '/v1/me/ai/:plan/complete', 'Finish: claude takes the code the Claude page shows, antigravity the address Google lands on.', '{ code? }'],
   ['DELETE', '/v1/me/ai/:plan', 'Sign out of a subscription.', ''],
   ['POST', '/v1/swarms/:id/ai', "Run a swarm you ride on your own AI, so its agent's model calls cost the swarm nothing, or hand it back.", '{ on }'],
   ['GET', '/v1/config', 'Where rides go: the gateway credit recipient and owner.', ''],

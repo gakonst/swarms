@@ -22,6 +22,7 @@ export type Parsed<value> = { ok: true; value: value } | { detail: string; ok: f
 const key = z.looseObject({ added_at: z.number(), hint: z.string(), provider: z.string() })
 
 const planned = z.looseObject({
+  email: z.string().min(1).optional(),
   expires_at: z.number().optional(),
   state: z.string(),
   user_code: z.string().min(1).optional(),
@@ -42,9 +43,10 @@ const started = z.union([
 ])
 
 function state(plan: z.infer<typeof planned>): PlanState {
-  const { expires_at, state, user_code, verification_url } = plan
+  const { email, expires_at, state, user_code, verification_url } = plan
   return {
     state,
+    ...(email === undefined ? {} : { email }),
     ...(expires_at === undefined ? {} : { expires_at }),
     ...(user_code === undefined ? {} : { user_code }),
     ...(verification_url === undefined ? {} : { verification_url }),
