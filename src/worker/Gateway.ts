@@ -1,4 +1,4 @@
-import type { OwnAi } from '../shared/Api.ts'
+import type { OwnAi, Plan, SignIn } from '../shared/Api.ts'
 import * as Credit from '../shared/Credit.ts'
 import * as Setup from '../shared/Setup.ts'
 import { redact } from '../shared/Trail.ts'
@@ -302,17 +302,17 @@ export function unattach(env: Cloudflare.Env, rider: string, provider: 'anthropi
   return send<{ deleted: boolean }>(env, credentials(rider) + '/keys/' + provider, { method: 'DELETE' })
 }
 
-export async function signIn(env: Cloudflare.Env, rider: string): Promise<Result<{ authorization_url: string; expires_at: number }>> {
-  const answered = await send<unknown>(env, credentials(rider) + '/plans/claude', { body: {} })
+export async function signIn(env: Cloudflare.Env, rider: string, plan: Plan): Promise<Result<SignIn>> {
+  const answered = await send<unknown>(env, credentials(rider) + '/plans/' + plan, { body: {} })
   return answered.ok ? Key.signIn(answered.value) : answered
 }
 
-export function signedIn(env: Cloudflare.Env, rider: string, code: string) {
-  return send<{ state: string }>(env, credentials(rider) + '/plans/claude/complete', { body: { code } })
+export function signedIn(env: Cloudflare.Env, rider: string, plan: Plan, code: string) {
+  return send<{ state: string }>(env, credentials(rider) + '/plans/' + plan + '/complete', { body: { code } })
 }
 
-export function signOut(env: Cloudflare.Env, rider: string) {
-  return send<{ deleted: boolean }>(env, credentials(rider) + '/plans/claude', { method: 'DELETE' })
+export function signOut(env: Cloudflare.Env, rider: string, plan: Plan) {
+  return send<{ deleted: boolean }>(env, credentials(rider) + '/plans/' + plan, { method: 'DELETE' })
 }
 
 export function side(env: Cloudflare.Env, swarm: string, agent: string, question: string) {

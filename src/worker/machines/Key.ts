@@ -1,6 +1,6 @@
 import type { Address } from 'viem'
 import { z } from 'zod'
-import type { OwnAi } from '../../shared/Api.ts'
+import { plans as named, type OwnAi, type Plan as Named, type PlanState, type SignIn } from '../../shared/Api.ts'
 import { never } from '../../shared/Assert.ts'
 import type * as Setup from '../../shared/Setup.ts'
 import * as Limits from '../../shared/Limits.ts'
@@ -13,7 +13,7 @@ export type Gate = { at: 'unsigned' } | { at: 'offline' } | { at: 'open'; rider:
 
 export type Plan = { at: 'signed-in'; expires: number | null } | { at: 'signed-out'; state: string }
 
-export type Access = { keys: ReadonlySet<Provider>; plan: Plan }
+export type Access = { keys: ReadonlySet<Provider>; plans: ReadonlyMap<Named, Plan> }
 
 export type Host = { at: 'swarm' } | { at: 'rider'; rider: Address }
 
@@ -21,13 +21,35 @@ export type Parsed<value> = { ok: true; value: value } | { detail: string; ok: f
 
 const key = z.looseObject({ added_at: z.number(), hint: z.string(), provider: z.string() })
 
+const planned = z.looseObject({
+  expires_at: z.number().optional(),
+  state: z.string(),
+  user_code: z.string().min(1).optional(),
+  verification_url: z.string().min(1).optional(),
+})
+
 const answer = z.looseObject({
   keys: z.array(key),
-  plans: z.looseObject({ claude: z.looseObject({ expires_at: z.number().optional(), state: z.string() }) }),
+  plans: z.looseObject({ antigravity: planned.optional(), codex: planned.optional(), claude: planned }),
   subject: z.string(),
 })
 
-const started = z.looseObject({ authorization_url: z.string().min(1), expires_at: z.number() })
+const started = z.union([
+  z.looseObject({ authorization_url: z.string().min(1), expires_at: z.number() }).transform((read) => ({ url: read.authorization_url })),
+  z
+    .looseObject({ status: z.looseObject({ user_code: z.string().min(1), verification_url: z.string().min(1) }) })
+    .transform((read) => ({ code: read.status.user_code, url: read.status.verification_url })),
+])
+
+function state(plan: z.infer<typeof planned>): PlanState {
+  const { expires_at, state, user_code, verification_url } = plan
+  return {
+    state,
+    ...(expires_at === undefined ? {} : { expires_at }),
+    ...(user_code === undefined ? {} : { user_code }),
+    ...(verification_url === undefined ? {} : { verification_url }),
+  }
+}
 
 function known(provider: string): provider is Provider {
   return (providers as readonly string[]).includes(provider)
@@ -45,16 +67,18 @@ export function ownAi(raw: unknown): Parsed<OwnAi> {
     console.error('Skipping an own AI key of an unknown provider', provider)
     return []
   })
-  const { expires_at, ...claude } = parsed.data.plans.claude
-  const plans = { ...parsed.data.plans, claude: expires_at === undefined ? claude : { ...claude, expires_at } }
-  return { ok: true, value: { ...parsed.data, keys, plans } }
+  const read = parsed.data.plans
+  const plans: OwnAi['plans'] = { claude: state(read.claude) }
+  if (read.codex) plans.codex = state(read.codex)
+  if (read.antigravity) plans.antigravity = state(read.antigravity)
+  return { ok: true, value: { keys, plans, subject: parsed.data.subject } }
 }
 
-export function signIn(raw: unknown): Parsed<{ authorization_url: string; expires_at: number }> {
+export function signIn(raw: unknown): Parsed<SignIn> {
   const parsed = started.safeParse(raw)
   if (parsed.success) return { ok: true, value: parsed.data }
-  console.error('The gateway answered a Claude sign-in with an unreadable record', parsed.error.issues)
-  return { detail: 'The gateway answered with an unreadable Claude sign-in.', ok: false, status: Limits.Http.upstream }
+  console.error('The gateway answered a plan sign-in with an unreadable record', parsed.error.issues)
+  return { detail: 'The gateway answered with an unreadable plan sign-in.', ok: false, status: Limits.Http.upstream }
 }
 
 export function gate(address: Address | undefined, credentialed: boolean): Gate {
@@ -63,17 +87,24 @@ export function gate(address: Address | undefined, credentialed: boolean): Gate 
 }
 
 export function access(own: OwnAi): Access {
-  const claude = own.plans.claude
-  const plan: Plan = claude.state === 'authenticated' ? { at: 'signed-in', expires: claude.expires_at ?? null } : { at: 'signed-out', state: claude.state }
-  return { keys: new Set(own.keys.map((one) => one.provider)), plan }
+  const plans = named.flatMap((name): [Named, Plan][] => {
+    const plan = own.plans[name]
+    if (!plan) return []
+    return [[name, plan.state === 'authenticated' ? { at: 'signed-in', expires: plan.expires_at ?? null } : { at: 'signed-out', state: plan.state }]]
+  })
+  return { keys: new Set(own.keys.map((one) => one.provider)), plans: new Map(plans) }
+}
+
+function signedIn(access: Access, plan: Named) {
+  return access.plans.get(plan)?.at === 'signed-in'
 }
 
 export function runsOn(access: Access, harness: Setup.Harness) {
   switch (harness) {
     case 'claude':
-      return access.plan.at === 'signed-in' || access.keys.has('anthropic')
+      return signedIn(access, 'claude') || access.keys.has('anthropic')
     case 'codex':
-      return access.keys.has('openai')
+      return signedIn(access, 'codex') || access.keys.has('openai')
     default:
       return never(harness, 'harness')
   }

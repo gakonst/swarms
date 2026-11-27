@@ -1,6 +1,6 @@
 import * as Answer from '../shared/Answer.ts'
 import * as Shelf from '../shared/Artifact.ts'
-import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Hall, Heard, Kind, Lent, OwnAi, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Reacted, Reaction, Replied, Replies, Room, Roster, Said, Shouted, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Hall, Heard, Kind, Lent, OwnAi, Plan, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Reacted, Reaction, Replied, Replies, Room, Roster, Said, Shouted, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Limits from '../shared/Limits.ts'
 import * as Mention from '../shared/Mention.ts'
@@ -938,8 +938,18 @@ export async function rider(who: string): Promise<Profile> {
 
 const own: OwnAi = {
   keys: scene.has('own') ? [{ added_at: Date.now(), hint: 'a4f2', provider: 'anthropic' }] : [],
-  plans: { claude: { state: scene.has('own') ? 'authenticated' : 'signed_out' } },
+  plans: { claude: { state: scene.has('own') ? 'authenticated' : 'signed_out' }, ...(scene.has('soon') ? {} : { codex: { state: 'signed_out' } }) },
   subject: visitor,
+}
+
+const pages: Record<Plan, { code?: string; url: string }> = {
+  antigravity: { url: 'https://accounts.google.com/o/oauth2/auth?fixture=1' },
+  codex: { code: 'K7QF-3XWM', url: 'https://auth.openai.com/codex/device?fixture=1' },
+  claude: { url: 'https://claude.ai/oauth/authorize?fixture=1' },
+}
+
+function offered(plan: Plan) {
+  return own.plans[plan] ? undefined : fail(Limits.Http.missing, 'not_found', 'Connecting this subscription is coming soon: the gateway does not take it yet.')
 }
 
 function owned<T = OwnAi>(who: `0x${string}` | undefined, answer: (who: `0x${string}`) => T = (signed) => ({ ...own, subject: signed }) as T): Promise<T> {
@@ -961,26 +971,32 @@ export function ownDrop(provider: 'anthropic' | 'openai', who: `0x${string}` | u
   return owned(who)
 }
 
-export function ownSignIn(who: `0x${string}` | undefined) {
-  return owned(who, () => ({ url: 'https://claude.ai/oauth/authorize?fixture=1' }))
+export function ownSignIn(plan: Plan, who: `0x${string}` | undefined) {
+  const soon = offered(plan)
+  return soon ? Promise.reject(soon) : owned(who, () => pages[plan])
 }
 
-export function ownSignedIn(code: string, who: `0x${string}` | undefined) {
-  if (!code) return Promise.reject(fail(Limits.Http.invalid, 'invalid_request', 'Paste the code the Claude page shows.'))
-  if (who) own.plans.claude = { state: 'authenticated' }
+export function ownSignedIn(plan: Plan, code: string, who: `0x${string}` | undefined) {
+  const soon = offered(plan)
+  if (soon) return Promise.reject(soon)
+  if (!code && !pages[plan].code) return Promise.reject(fail(Limits.Http.invalid, 'invalid_request', 'Paste the code the sign-in page shows.'))
+  if (who) own.plans[plan] = { state: 'authenticated' }
   return owned(who)
 }
 
-export function ownSignOut(who: `0x${string}` | undefined) {
-  if (who) own.plans.claude = { state: 'signed_out' }
+export function ownSignOut(plan: Plan, who: `0x${string}` | undefined) {
+  const soon = offered(plan)
+  if (soon) return Promise.reject(soon)
+  if (who) own.plans[plan] = { state: 'signed_out' }
   return owned(who)
 }
 
 export async function hostAi(id: string, on: boolean, who: `0x${string}` | undefined): Promise<Summary> {
   const swarm = await find(id)
   const harness = swarm.setup?.harness ?? 'claude'
-  const runs = harness === 'claude' ? own.plans.claude.state === 'authenticated' || own.keys.some((kept) => kept.provider === 'anthropic') : own.keys.some((kept) => kept.provider === 'openai')
-  if (who && on && !runs) throw fail(Limits.Http.conflict, 'conflict', `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect an Anthropic key or your Claude plan' : 'Codex: connect an OpenAI key'} under Use your own AI first.`)
+  const [plan, provider] = harness === 'claude' ? (['claude', 'anthropic'] as const) : (['codex', 'openai'] as const)
+  const runs = own.plans[plan]?.state === 'authenticated' || own.keys.some((kept) => kept.provider === provider)
+  if (who && on && !runs) throw fail(Limits.Http.conflict, 'conflict', `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect your Claude plan or an Anthropic key' : 'Codex: connect your ChatGPT plan or an OpenAI key'} under Use your own AI first.`)
   if (who) swarm.ai = on ? { address: who, handle: called(who) } : null
   return owned(who, () => summary(swarm))
 }

@@ -1,4 +1,4 @@
-import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Hall, Heard, Issued, Lent, Listing, Live, Lobby, Named, NodeUpdates, NodeView, OwnAi, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Reacted, Replied, Room, Roster, Shouted, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
+import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Hall, Heard, Issued, Lent, Listing, Live, Lobby, Named, NodeUpdates, NodeView, OwnAi, Plan, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Reacted, Replied, Room, Roster, Shouted, SignIn, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
@@ -290,16 +290,16 @@ export function ownDrop(provider: 'anthropic' | 'openai') {
   return signed(() => (fixture ? staged((fixtures) => fixtures.ownDrop(provider, who())) : request<OwnAi>('/api/me/ai/keys/' + provider, undefined, 'DELETE')))
 }
 
-export function ownSignIn() {
-  return signed(() => (fixture ? staged((fixtures) => fixtures.ownSignIn(who())) : request<{ url: string }>('/api/me/ai/claude', {})))
+export function ownSignIn(plan: Plan) {
+  return signed(() => (fixture ? staged((fixtures) => fixtures.ownSignIn(plan, who())) : request<SignIn>('/api/me/ai/' + plan, {})))
 }
 
-export function ownSignedIn(code: string) {
-  return signed(() => (fixture ? staged((fixtures) => fixtures.ownSignedIn(code, who())) : request<OwnAi>('/api/me/ai/claude/complete', { code })))
+export function ownSignedIn(plan: Plan, code: string) {
+  return signed(() => (fixture ? staged((fixtures) => fixtures.ownSignedIn(plan, code, who())) : request<OwnAi>('/api/me/ai/' + plan + '/complete', { code })))
 }
 
-export function ownSignOut() {
-  return signed(() => (fixture ? staged((fixtures) => fixtures.ownSignOut(who())) : request<OwnAi>('/api/me/ai/claude', undefined, 'DELETE')))
+export function ownSignOut(plan: Plan) {
+  return signed(() => (fixture ? staged((fixtures) => fixtures.ownSignOut(plan, who())) : request<OwnAi>('/api/me/ai/' + plan, undefined, 'DELETE')))
 }
 
 export function hostAi(swarm: string, on: boolean) {

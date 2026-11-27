@@ -49,6 +49,7 @@ export const Cli = {
   providerPad: 10,
   fundLeast: 10_000n,
   subjectArg: 3,
+  planCodeArg: 3,
   minuteTimeChars: 16,
   daySeconds: 86_400,
   isoClockFrom: 11,

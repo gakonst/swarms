@@ -45,14 +45,17 @@ import type {
   NodeUpdates,
   NodeView,
   OwnAi,
+  Plan,
   ProgressView,
   ProofsView,
   Proposed,
+  SignIn,
   Profile,
   Standing as Rider,
   Suggested,
   TreeView,
 } from '../shared/Api.ts'
+import { plans } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Nodes from './Nodes.ts'
 import type * as Riding from './Riding.ts'
@@ -111,6 +114,14 @@ export const maxWait = Limits.Operations.maxWait
 const id = z.string().trim().min(1).max(Limits.Operations.idChars).describe('The swarm id, the last part of its page URL /s/<id>.')
 
 const providers = z.enum(['anthropic', 'openai']).describe('Whose API key: anthropic or openai.')
+
+const plan = z.enum(plans).describe('Which subscription: claude (Claude plan), codex (ChatGPT plan) or antigravity (Antigravity).')
+
+const planNames: Record<Plan, string> = { antigravity: 'Antigravity', codex: 'ChatGPT plan', claude: 'Claude plan' }
+
+export function needs(harness: Setup.Harness) {
+  return `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect your Claude plan or an Anthropic key' : 'Codex: connect your ChatGPT plan or an OpenAI key'} under Use your own AI first.`
+}
 
 const nid = z.string().trim().regex(/^(root|triage|[0-9a-f]{10})$/, 'A node id is root, triage or 10 hex characters.').describe('A node id, as in /s/<id>/n/<nid>.')
 
@@ -454,7 +465,11 @@ export const schema = {
   }),
   nodeEnd: z.object({ node: nid, swarm: id, why: z.string().trim().min(1).max(Limits.Operations.whyChars) }),
   ownAi: z.object({ on: z.boolean().describe("true runs the swarm's agent on your own AI from now on, false hands it back to the swarm's money."), swarm: id }),
-  ownCode: z.object({ code: z.string().trim().min(1).max(Limits.Operations.ownCodeChars).describe('The code the Claude sign-in page shows.') }),
+  ownCode: z.object({
+    code: z.string().trim().max(Limits.Operations.ownCodeChars).default('').describe("The code the plan's sign-in page shows: needed for claude, empty for a plan whose page took the code the sign-in answered."),
+    plan,
+  }),
+  ownPlan: z.object({ plan }),
   ownKey: z.object({ key: z.string().trim().min(1).max(Limits.Operations.ownKeyChars).describe('An Anthropic or OpenAI API key. It is checked with the provider, kept encrypted by the gateway and never shown again.'), provider: providers }),
   ownProvider: z.object({ provider: providers }),
   triage: z.object({ action: z.record(z.string(), z.unknown()).describe('One triage action: approve, adopt, merge, reject, grant or restate, as the triage node returns them.'), swarm: id }),
@@ -979,27 +994,49 @@ export async function ownDrop(env: Cloudflare.Env, input: Input<'ownProvider'>, 
   return ownAi(env, address)
 }
 
-export async function ownSignIn(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<{ url: string }>> {
+function soon(plan: Plan) {
+  return Problem.fail(Limits.Http.missing, 'not_found', `Connecting your ${planNames[plan]} is coming soon: the gateway does not take it yet.`)
+}
+
+function unrouted<T>(plan: Plan, result: Problem.Result<T>): Problem.Result<T> {
+  return !result.ok && result.status === Limits.Http.missing ? soon(plan) : result
+}
+
+export async function ownSignIn(env: Cloudflare.Env, input: Input<'ownPlan'>, address?: Address): Promise<Problem.Result<SignIn>> {
+  const parsed = parse(schema.ownPlan, input)
+  if (!parsed.ok) return parsed
   const gate = await door(env, address)
   if (gate.at !== 'open') return shut(gate)
-  const started = relayed(await Gateway.signIn(env, gate.rider))
-  return started.ok ? Problem.ok({ url: started.value.authorization_url }) : started
+  if (parsed.value.plan === 'antigravity') return soon(parsed.value.plan)
+  return unrouted(parsed.value.plan, relayed(await Gateway.signIn(env, gate.rider, parsed.value.plan)))
 }
 
 export async function ownSignedIn(env: Cloudflare.Env, input: Input<'ownCode'>, address?: Address): Promise<Problem.Result<OwnAi>> {
   const parsed = parse(schema.ownCode, input)
   if (!parsed.ok) return parsed
+  if (parsed.value.plan === 'claude' && !parsed.value.code) return Problem.fail(Limits.Http.invalid, 'invalid_request', 'Paste the code the Claude page shows.')
   const gate = await door(env, address)
   if (gate.at !== 'open') return shut(gate)
-  const done = relayed(await Gateway.signedIn(env, gate.rider, parsed.value.code))
+  if (parsed.value.plan === 'antigravity') return soon(parsed.value.plan)
+  if (parsed.value.plan === 'codex') {
+    const read = await ownAi(env, address)
+    if (!read.ok) return read
+    const state = read.value.plans.codex?.state
+    if (!state) return soon(parsed.value.plan)
+    return state === 'authenticated' ? read : Problem.fail(Limits.Http.conflict, 'conflict', 'Not connected yet: enter the code on the ChatGPT page, then Finish again.')
+  }
+  const done = unrouted(parsed.value.plan, relayed(await Gateway.signedIn(env, gate.rider, parsed.value.plan, parsed.value.code)))
   if (!done.ok) return done
   return ownAi(env, address)
 }
 
-export async function ownSignOut(env: Cloudflare.Env, address?: Address): Promise<Problem.Result<OwnAi>> {
+export async function ownSignOut(env: Cloudflare.Env, input: Input<'ownPlan'>, address?: Address): Promise<Problem.Result<OwnAi>> {
+  const parsed = parse(schema.ownPlan, input)
+  if (!parsed.ok) return parsed
   const gate = await door(env, address)
   if (gate.at !== 'open') return shut(gate)
-  const done = relayed(await Gateway.signOut(env, gate.rider))
+  if (parsed.value.plan === 'antigravity') return soon(parsed.value.plan)
+  const done = unrouted(parsed.value.plan, relayed(await Gateway.signOut(env, gate.rider, parsed.value.plan)))
   if (!done.ok) return done
   return ownAi(env, address)
 }
@@ -1033,7 +1070,7 @@ export async function hostAi(env: Cloudflare.Env, input: Input<'ownAi'>, address
   if (!own.ok) return relayed(own)
   const harness = Store.setup(row)?.harness ?? 'claude'
   if (!runsOn(own.value, harness))
-    return Problem.fail(Limits.Http.conflict, 'conflict', `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect an Anthropic key or your Claude plan' : 'Codex: connect an OpenAI key'} under Use your own AI first.`)
+    return Problem.fail(Limits.Http.conflict, 'conflict', needs(harness))
   await Store.host(env, row.id, rider)
   await stub(env, row.id).hosted(row.id, true)
   return Problem.ok(Store.summary({ ...row, ai: rider, ai_name: (await Store.account(env, rider)).name }))

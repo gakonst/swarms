@@ -43,11 +43,19 @@ export type Summary = {
 
 export type Steering = 'open' | 'team'
 
+export const plans = ['claude', 'codex', 'antigravity'] as const
+
+export type Plan = (typeof plans)[number]
+
+export type PlanState = { expires_at?: number; state: string; user_code?: string; verification_url?: string }
+
 export type OwnAi = {
   keys: { added_at: number; hint: string; provider: 'anthropic' | 'openai' }[]
-  plans: { claude: { expires_at?: number; state: string } }
+  plans: { claude: PlanState } & Partial<Record<Exclude<Plan, 'claude'>, PlanState>>
   subject: string
 }
+
+export type SignIn = { code?: string | undefined; url: string }
 
 export type Listing = { funders: Record<string, Tree.Funder[]>; heads: Record<string, Tree.Headline>; riders: number; swarms: Summary[] }
 

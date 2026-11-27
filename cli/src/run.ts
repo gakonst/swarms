@@ -51,7 +51,7 @@ export const usage: Record<string, [string, string]> = {
   machines: ['swarms machines <swarm>', "The swarm's machines: sandboxes, browsers and hands."],
   edit: ['swarms edit <swarm> title|slug|pfp <value>', "Change a swarm's title, its address (slug) or its picture (a file, or none)."],
   archive: ['swarms archive <swarm> [--yes]', 'Archive a swarm you admin: it stops and takes no more rides.'],
-  byok: ['swarms byok [set|rm <provider>] [on|off <swarm>]', 'Run swarms on your own AI keys (alias: env).'],
+  byok: ['swarms byok [set|rm <provider>] [connect|finish|signout <plan>] [on|off <swarm>]', 'Run swarms on your own AI keys or subscriptions (alias: env).'],
   completion: ['swarms completion bash|zsh|fish', 'Print a shell completion script.'],
   mcp: ['swarms mcp', 'Serve the Swarms MCP tools over stdio, signed in as you: claude mcp add swarms -- swarms mcp.'],
   help: ['swarms help [command]', 'This help.'],

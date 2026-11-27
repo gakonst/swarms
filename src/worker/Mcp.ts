@@ -644,10 +644,12 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
     'swarm_byok',
     {
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true, readOnlyHint: false },
-      description: "Your own AI, as swarms byok does: status lists your API keys (by hint) and Claude plan; set adds an Anthropic or OpenAI API key (checked with the provider, kept encrypted by the gateway, never shown again); remove drops one; use runs a swarm's agent on your own AI from now on, and stop hands it back to the swarm's money. Never echo the key back.",
+      description: "Your own AI, as swarms byok does: status lists your API keys (by hint) and subscriptions (claude, codex, antigravity; one the gateway does not take yet is absent, coming soon); set adds an Anthropic or OpenAI API key (checked with the provider, kept encrypted by the gateway, never shown again); remove drops one; connect starts a subscription sign-in and answers the page to open (and a code to enter there for a device sign-in); finish completes it with the code the page showed (claude) or none; signout forgets it; use runs a swarm's agent on your own AI from now on, and stop hands it back to the swarm's money. A swarm on Claude runs on the Claude plan or an Anthropic key, one on Codex on the ChatGPT plan or an OpenAI key. Never echo the key back.",
       inputSchema: {
-        action: z.enum(['status', 'set', 'remove', 'use', 'stop']).describe('What to do.'),
+        action: z.enum(['status', 'set', 'remove', 'connect', 'finish', 'signout', 'use', 'stop']).describe('What to do.'),
+        code: Operations.schema.ownCode.shape.code.optional().describe('finish: the code the sign-in page showed.'),
         key: Operations.schema.ownKey.shape.key.optional().describe('set: the API key.'),
+        plan: Operations.schema.ownPlan.shape.plan.optional().describe('connect, finish and signout: claude, codex or antigravity.'),
         provider: Operations.schema.ownKey.shape.provider.optional().describe('set and remove: anthropic or openai.'),
         swarm: Operations.schema.swarm.shape.swarm.optional().describe('use and stop: the swarm.'),
       },
@@ -655,6 +657,9 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
     async (input) => {
       if (input.action === 'set') return reply(await Operations.ownKey(env, { key: input.key, provider: input.provider }, address))
       if (input.action === 'remove') return reply(await Operations.ownDrop(env, { provider: input.provider }, address))
+      if (input.action === 'connect') return reply(await Operations.ownSignIn(env, { plan: input.plan }, address))
+      if (input.action === 'finish') return reply(await Operations.ownSignedIn(env, { code: input.code, plan: input.plan }, address))
+      if (input.action === 'signout') return reply(await Operations.ownSignOut(env, { plan: input.plan }, address))
       if (input.action === 'use' || input.action === 'stop') return reply(await Operations.hostAi(env, { on: input.action === 'use', swarm: input.swarm }, address))
       return reply(await Operations.ownAi(env, address))
     },

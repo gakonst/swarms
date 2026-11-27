@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useState } from 'react'
-import type { Config, OwnAi as Read } from '../shared/Api.ts'
+import type { Config, Plan, OwnAi as Read, SignIn } from '../shared/Api.ts'
 import * as Api from './api.ts'
 import * as Attempt from './attempt.ts'
 import { useAttempt, useWallet } from './hooks.ts'
@@ -7,6 +7,12 @@ import { Lost } from './Lost.tsx'
 import { Link } from './router.tsx'
 import * as Wallet from './wallet.ts'
 import * as Limits from '../shared/Limits.ts'
+
+const plans = [
+  ['claude', 'Claude plan', 'Claude', 'Pro or Max, for swarms on Claude'],
+  ['codex', 'ChatGPT plan', 'ChatGPT', 'Plus or Pro, for swarms on Codex'],
+  ['antigravity', 'Antigravity', 'Antigravity', 'Google AI plan, for swarms on Gemini'],
+] as const
 
 const providers = [
   ['anthropic', 'Anthropic', 'sk-ant-…'],
@@ -21,7 +27,7 @@ export function OwnAi(props: { config: Config | undefined }) {
   const busy = Attempt.busy(attempt)
   const error = Attempt.error(attempt)
   const [typed, setTyped] = useState<Record<string, string>>({})
-  const [link, setLink] = useState<string>()
+  const [link, setLink] = useState<SignIn & { plan: Plan }>()
   const [code, setCode] = useState('')
   const [gone, setGone] = useState(false)
   const address = wallet.address
@@ -53,7 +59,6 @@ export function OwnAi(props: { config: Config | undefined }) {
         <button className="lost-row" onClick={() => { const config = props.config; if (config) void enter(() => Wallet.signIn(config)) }} type="button">Sign in <span aria-hidden="true">→</span></button>
       </Lost>
     )
-  const plan = read?.plans.claude.state
   const add = (provider: (typeof providers)[number][0]) => (event: FormEvent) => {
     event.preventDefault()
     const key = typed[provider]?.trim()
@@ -64,11 +69,11 @@ export function OwnAi(props: { config: Config | undefined }) {
       return next
     })
   }
-  const complete = (event: FormEvent) => {
+  const complete = (pending: SignIn & { plan: Plan }) => (event: FormEvent) => {
     event.preventDefault()
-    if (!code.trim()) return
+    if (!pending.code && !code.trim()) return
     act(async () => {
-      const next = await Api.ownSignedIn(code.trim())
+      const next = await Api.ownSignedIn(pending.plan, code.trim())
       setLink(undefined)
       setCode('')
       return next
@@ -78,28 +83,41 @@ export function OwnAi(props: { config: Config | undefined }) {
     <div aria-busy={busy || !read || undefined} className="page rider own">
       <header className="rider-name">
         <h1>Your own AI</h1>
-        <p className="rider-address">Run the swarms you ride on your Claude plan or your API keys: their model calls then cost the swarm nothing.</p>
+        <p className="rider-address">Run the swarms you ride on your subscription or your API keys: their model calls then cost the swarm nothing.</p>
       </header>
       {error && <p className="own-error" role="alert">{error}</p>}
       <section aria-labelledby="own-plan" className="rider-band">
         <h2 id="own-plan">Subscription</h2>
         <div className="rider-list">
-          <div className="rider-row own-row">
-            <span className="rider-title">Claude plan</span>
-            <span className="rider-meta">{plan === 'authenticated' ? 'Connected' : 'Pro or Max, for swarms on Claude'}</span>
-            {plan === 'authenticated' ? (
-              <button className="btn btn-medium own-act" disabled={busy} onClick={() => act(Api.ownSignOut)} type="button">Disconnect</button>
-            ) : (
-              !link && <button className="btn btn-medium own-act" disabled={busy || !read} onClick={() => act(async () => { setLink((await Api.ownSignIn()).url); return undefined })} type="button">Connect</button>
-            )}
-          </div>
-          {link && plan !== 'authenticated' && (
-            <form className="own-form" onSubmit={complete}>
-              <a className="own-link" href={link} rel="noopener noreferrer" target="_blank">Open the Claude sign-in page ↗</a>
-              <input aria-label="Code from the Claude page" autoComplete="off" className="own-input" onChange={(event) => setCode(event.target.value)} placeholder="Paste the code it shows" value={code} />
-              <button className="btn btn-medium own-act" disabled={busy || !code.trim()} type="submit">Finish</button>
-            </form>
-          )}
+          {plans.map(([plan, title, brand, meta]) => {
+            const state = read?.plans[plan]
+            const connected = state?.state === 'authenticated'
+            const pending = link?.plan === plan && !connected ? link : state?.state === 'pending' && state.verification_url ? { code: state.user_code, plan, url: state.verification_url } : undefined
+            return (
+              <div className="own-plan" key={plan}>
+                <div className="rider-row own-row">
+                  <span className="rider-title">{title}</span>
+                  <span className="rider-meta">{connected ? 'Connected' : read && !state ? 'Coming soon' : meta}</span>
+                  {connected ? (
+                    <button className="btn btn-medium own-act" disabled={busy} onClick={() => act(() => Api.ownSignOut(plan))} type="button">Sign out</button>
+                  ) : (
+                    state && !pending && <button className="btn btn-medium own-act" disabled={busy || !read} onClick={() => act(async () => { setCode(''); setLink({ ...(await Api.ownSignIn(plan)), plan }); return undefined })} type="button">Connect your {brand}</button>
+                  )}
+                </div>
+                {pending && (
+                  <form className="own-form" onSubmit={complete(pending)}>
+                    <a className="own-link" href={pending.url} rel="noopener noreferrer" target="_blank">Open the {brand} sign-in page ↗</a>
+                    {pending.code ? (
+                      <span className="own-code">Enter <code>{pending.code}</code> there</span>
+                    ) : (
+                      <input aria-label={'Code from the ' + brand + ' page'} autoComplete="off" className="own-input" onChange={(event) => setCode(event.target.value)} placeholder="Paste the code it shows" value={code} />
+                    )}
+                    <button className="btn btn-medium own-act" disabled={busy || (!pending.code && !code.trim())} type="submit">Finish</button>
+                  </form>
+                )}
+              </div>
+            )
+          })}
         </div>
       </section>
       <section aria-labelledby="own-keys" className="rider-band">
@@ -123,7 +141,7 @@ export function OwnAi(props: { config: Config | undefined }) {
           })}
         </div>
       </section>
-      <p className="rider-none">Keys are checked with the provider, kept encrypted by the Tempo gateway and never shown again. Pick Run on my own AI when you ride a swarm: one on Claude needs the plan or an Anthropic key, one on Codex an OpenAI key.</p>
+      <p className="rider-none">Keys are checked with the provider, kept encrypted by the Tempo gateway and never shown again. Pick Run on my own AI when you ride a swarm: one on Claude runs on your Claude plan or an Anthropic key, one on Codex on your ChatGPT plan or an OpenAI key. Antigravity, for swarms on Gemini, is coming soon.</p>
       <Link className="own-back" to="/ideas">Ride a swarm <span aria-hidden="true">→</span></Link>
     </div>
   )

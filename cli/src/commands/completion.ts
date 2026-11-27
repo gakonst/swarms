@@ -1,7 +1,7 @@
 import { type Context, Failure } from '../context.ts'
 import { aliases, usage } from '../run.ts'
 
-const subcommands: Record<string, string[]> = { byok: ['set', 'rm', 'on', 'off'], completion: ['bash', 'zsh', 'fish'], hands: ['ls', 'add', 'rm'], ideas: ['add'] }
+const subcommands: Record<string, string[]> = { byok: ['set', 'rm', 'connect', 'finish', 'signout', 'on', 'off'], completion: ['bash', 'zsh', 'fish'], hands: ['ls', 'add', 'rm'], ideas: ['add'] }
 
 const flags = ['--json', '--yes', '--host', '--help', '--no-browser', '--goal', '--title', '--amount', '--form', '--template', '--status', '--all', '--limit', '--timeout', '--kind', '--who', '--follow', '--depth', '--root', '--parent', '--note', '--node', '--token', '--hash', '--label', '--key']
 

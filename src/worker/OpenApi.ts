@@ -548,7 +548,7 @@ export function document(origin: string) {
       },
       '/v1/me/ai': {
         get: {
-          description: "The signed-in rider's own AI: the Anthropic and OpenAI API keys they attached, each shown only by its last four characters, and the state of their Claude plan sign-in. The Tempo gateway keeps them encrypted.",
+          description: "The signed-in rider's own AI: the Anthropic and OpenAI API keys they attached, each shown only by its last four characters, and the state of each subscription sign-in under plans (claude, and codex and antigravity once the gateway takes them; an absent plan is coming soon). The Tempo gateway keeps them encrypted.",
           operationId: 'ownAi',
           responses: { ...ok(object({ keys: { items: object({ added_at: integer, hint: string, provider: string }), type: 'array' }, plans: { type: 'object' }, subject: string }), 'Your own AI.'), ...failures(unauthorized, badGateway, unavailable) },
           summary: 'Your own AI',
@@ -571,32 +571,35 @@ export function document(origin: string) {
           summary: 'Remove an API key',
         },
       },
-      '/v1/me/ai/claude': {
+      '/v1/me/ai/{plan}': {
         post: {
-          description: 'Start connecting your Claude plan: answers url, the Claude sign-in page. Open it, sign in and send the code it shows to POST /v1/me/ai/claude/complete.',
+          description: "Start connecting a subscription: claude (Claude plan), codex (ChatGPT plan) or antigravity (Antigravity). Answers url, the plan's sign-in page, and for a device sign-in code, the code to enter there. Open it, sign in, then POST /v1/me/ai/{plan}/complete with the code the page showed (claude) or none. 404 while the gateway does not take that plan yet.",
           operationId: 'ownSignIn',
-          responses: { ...ok(object({ url: string }), 'The sign-in page.'), ...failures(unauthorized, badGateway, unavailable) },
-          summary: 'Connect your Claude plan',
+          parameters: [parameter('plan', 'path', string, 'claude, codex or antigravity.')],
+          responses: { ...ok(object({ code: string, url: string }), 'The sign-in page.'), ...failures(badRequest, unauthorized, notFound, badGateway, unavailable) },
+          summary: 'Connect a subscription',
         },
         delete: {
-          description: 'Disconnect your Claude plan.',
+          description: 'Sign out of a subscription.',
           operationId: 'ownSignOut',
-          responses: { ...ok({ type: 'object' }, 'Your own AI.'), ...failures(unauthorized, badGateway, unavailable) },
-          summary: 'Disconnect your Claude plan',
+          parameters: [parameter('plan', 'path', string, 'claude, codex or antigravity.')],
+          responses: { ...ok({ type: 'object' }, 'Your own AI.'), ...failures(badRequest, unauthorized, notFound, badGateway, unavailable) },
+          summary: 'Sign out of a subscription',
         },
       },
-      '/v1/me/ai/claude/complete': {
+      '/v1/me/ai/{plan}/complete': {
         post: {
-          description: 'Finish connecting your Claude plan with the code its sign-in page showed.',
+          description: 'Finish connecting a subscription, with the code its sign-in page showed for claude.',
           operationId: 'ownSignedIn',
-          requestBody: { content: { 'application/json': { schema: input(Operations.schema.ownCode) } }, required: true },
-          responses: { ...ok({ type: 'object' }, 'Your own AI.'), ...failures(badRequest, unauthorized, badGateway, unavailable) },
-          summary: 'Finish connecting your Claude plan',
+          parameters: [parameter('plan', 'path', string, 'claude, codex or antigravity.')],
+          requestBody: { content: { 'application/json': { schema: input(Operations.schema.ownCode.omit({ plan: true })) } }, required: false },
+          responses: { ...ok({ type: 'object' }, 'Your own AI.'), ...failures(badRequest, unauthorized, notFound, badGateway, unavailable) },
+          summary: 'Finish connecting a subscription',
         },
       },
       '/v1/swarms/{id}/ai': {
         post: {
-          description: "Run a swarm you ride or started on your own AI: from its next turn its agent's model calls use your Claude plan or API key and cost the swarm nothing, while its tools are paid from its money as before. on: false hands it back. A swarm on Claude needs the plan or an Anthropic key, one on Codex an OpenAI key; if they are gone at a turn, the swarm runs on its money again.",
+          description: "Run a swarm you ride or started on your own AI: from its next turn its agent's model calls use your subscription or API key and cost the swarm nothing, while its tools are paid from its money as before. on: false hands it back. A swarm on Claude needs the Claude plan or an Anthropic key, one on Codex the ChatGPT plan or an OpenAI key; if they are gone at a turn, the swarm runs on its money again.",
           operationId: 'hostAi',
           parameters: [parameter('id', 'path', string, 'The swarm id.')],
           requestBody: { content: { 'application/json': { schema: input(Operations.schema.ownAi.omit({ swarm: true })) } }, required: true },
