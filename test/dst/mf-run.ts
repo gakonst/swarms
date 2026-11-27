@@ -1778,8 +1778,9 @@ function pauses() {
       const later = random.int(L.laterMinutesLeast, L.laterMinutesMost)
       w.pass((later - first) * limits.pause.minute)
       await w.viewed()
-      if (w.alarm() !== Date.now())
-        fail('pause patience', 'viewed ' + later + ' minutes in, the alarm stayed at ' + w.alarm() + ' for a wake ' + (wake - at) + 'ms ahead')
+      const alarm = w.alarm()
+      if (alarm === null || alarm > Date.now() + limits.pause.minute)
+        fail('pause patience', 'viewed ' + later + ' minutes in, the alarm stayed at ' + alarm + ' for a wake ' + (wake - at) + 'ms ahead')
       await w.ring()
       if (w.swarm.run().state !== 'working') fail('pause patience', 'viewed ' + later + ' minutes in with money there, the pause stayed ' + w.swarm.run().state)
       return 4

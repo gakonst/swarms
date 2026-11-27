@@ -215,5 +215,12 @@
     "invariant": "ledger drift",
     "found": "2026-11-27 by the mf-nodes.lag.final canary: a subagent list that hid a settled run for three sweeps past Runner.lateMs dropped its charged record, so the 1.952392 the gateway charged after settlement was never booked",
     "fix": "fix(runner): keep a late charge tracked until the gateway shows the run ended"
+  },
+  {
+    "job": "mf-run.pause",
+    "seed": "h018688488b9f",
+    "invariant": "pause patience",
+    "found": "2026-11-27 by pnpm dst --hunt: viewed 119 minutes into a pause whose wake was 120 minutes out, the alarm was left a minute ahead because heal() keeps an alarm due within a minute; the test wanted it moved to now (harness bound, not a Swarms bug)",
+    "fix": "test(dst): pause patience accepts an alarm already due within a minute"
   }
 ]
