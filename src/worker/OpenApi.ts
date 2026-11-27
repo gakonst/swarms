@@ -143,11 +143,15 @@ const schemas = {
   Check: check,
   TreeNode: treeNode,
   Delta: delta,
-  TreeView: object({
-    headline,
-    nodes: { items: treeNode, type: 'array' },
-    seq: { description: 'The newest delta seq: drop deltas at or below it.', type: 'integer' },
-  }),
+  TreeView: optional(
+    object({
+      headline,
+      maxText: { description: "The swarm's board text limit in characters (Unicode code points): a node's text or a steer longer than this is refused with its length and the limit. Absent when the board sets none.", type: 'integer' },
+      nodes: { items: treeNode, type: 'array' },
+      seq: { description: 'The newest delta seq: drop deltas at or below it.', type: 'integer' },
+    }),
+    ['maxText'],
+  ),
   NodeView: {
     allOf: [
       treeNode,

@@ -342,7 +342,7 @@ export type Chatter =
   | { delta: Tree.Delta; type: 'delta' }
   | { entry: Entry; type: 'entry' }
 
-export type TreeView = { headline: Tree.Headline; nodes: Tree.Node[]; seq: number }
+export type TreeView = { headline: Tree.Headline; maxText?: number; nodes: Tree.Node[]; seq: number }
 
 export type NodeRun = {
   budget: string

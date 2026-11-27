@@ -2,6 +2,7 @@ import type { Address } from 'viem'
 import type { Bucket, Ledgered, NodeRun, NodeSteer, NodeUpdates, NodeView, ProofsView, Standing, Suggestion, TreeView } from '../shared/Api.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Setup from '../shared/Setup.ts'
+import * as Texts from '../shared/Texts.ts'
 import * as Tree from '../shared/Tree.ts'
 import { clip, redact } from '../shared/Trail.ts'
 import * as Chat from './Chat.ts'
@@ -85,7 +86,8 @@ function filtered(view: Nodes.View, query: { depth: number; root: string; status
 export async function tree(self: Swarm, query: { depth: number; root: string; status: Tree.Status | undefined }): Promise<Answer<TreeView>> {
   const view = await Nodes.view(self)
   if (!view.nodes.has(query.root)) return fail(Limits.Http.missing, 'No node has this id.')
-  return { ok: true, value: { headline: Tree.headline([...view.nodes.values()]), nodes: filtered(view, query), seq: view.seq } }
+  const most = Texts.most(await self.board.maxText())
+  return { ok: true, value: { headline: Tree.headline([...view.nodes.values()]), nodes: filtered(view, query), seq: view.seq, ...(most === null ? {} : { maxText: most }) } }
 }
 
 export async function node(self: Swarm, nid: string): Promise<Answer<NodeView>> {
@@ -195,6 +197,8 @@ export async function propose(self: Swarm, nid: string, proposal: Proposal): Pro
   const found = await Nodes.state(self)
   const refused = Ride.proposable(phase(found.nodes.get(proposal.parent)), proposal.parent, Nodes.triage)
   if (refused) return refuse(refused)
+  const long = Texts.over(Nodes.spec(proposal), await self.board.maxText())
+  if (long) return fail(Limits.Http.invalid, Texts.detail("The node's text", long))
   self.kv.put('proposal:' + nid, Ride.stored(proposal))
   return { ok: true, value: nid }
 }
@@ -258,6 +262,10 @@ export async function steer(self: Swarm, input: { amount: bigint; contributor: s
   const found = await Nodes.state(self)
   const closed = Ride.steerable(phase(found.nodes.get(input.nid)), input.nid === Nodes.triage)
   if (closed) return refuse(closed)
+  const handle = (await Store.account(self.env, contributor as Address)).handle
+  const said = (behind: bigint) => '[$' + trim(behind) + ' behind this, from @' + handle + '] ' + input.note
+  const long = Texts.over(said((found.ledger.funders.get(input.nid)?.get(contributor)?.amount ?? 0n) + input.amount), await self.board.maxText())
+  if (long) return fail(Limits.Http.invalid, Texts.detail('The steer', long))
   if (input.amount > 0n) {
     const moved = await shift(self, { amount: input.amount, contributor, from: Flow.free, id: Payment.id('steer', input.nid, contributor, input.key), to: input.nid }, () => undefined)
     if (moved.at !== 'paid') return fail(Limits.Http.conflict, 'You have less free money in this swarm than that. Ride the node instead.')
@@ -267,11 +275,12 @@ export async function steer(self: Swarm, input: { amount: bigint; contributor: s
   const unbacked = Ride.backed(behind)
   if (unbacked) return refuse(unbacked)
   assert(behind > 0n, 'a steering rider has money on the node', behind)
-  const handle = (await Store.account(self.env, contributor as Address)).handle
-  const text = '[$' + trim(behind) + ' behind this, from @' + handle + '] ' + input.note
+  const text = said(behind)
   const run = (after.runs.get(input.nid) ?? []).find((one) => !Work.terminal(one.phase) && one.phase === 'claimed')
   const steered = await self.board.steer(run ? run.id : Nodes.nodeId(input.nid), text)
-  if (!steered.ok) await self.board.steer(Nodes.nodeId(input.nid), text)
+  const landed = steered.ok ? steered : await self.board.steer(Nodes.nodeId(input.nid), text)
+  const refusal = landed.ok ? null : Texts.refused('The steer', landed.rejection)
+  if (refusal) return fail(Limits.Http.invalid, refusal)
   Nodes.emit(self, input.nid, 'steered', text)
   Runner.wake(self)
   if (input.amount > 0n) await Runner.tick(self).then((next) => (next === null ? undefined : arm(self, next)))

@@ -712,10 +712,10 @@ async function pick(seed: string): Promise<Outcome> {
     const wait = waiter(D, fail)
     const told = mode + ' answering ' + model + ' on ' + harness
     try {
-      const stuck = random.chance(0.5)
+      const note = random.chance(0.5) ? 'Use model ' + random.int(0, 99) + ' for this one.' : null
+      const stuck = note !== null || random.chance(0.5)
       if (stuck) w.swarm.kv.put('stuck:root', Nodes.stuckRuns)
       await w.swarm.treePledge(D.id, { amount: '12', contributor: D.ana, hash: hash(random), nid: null })
-      const note = random.chance(0.5) ? 'Use model ' + random.int(0, 99) + ' for this one.' : null
       if (note) await w.swarm.treeSteer(D.id, { amount: '0', contributor: D.ana, nid: 'root', note })
       if (stuck) {
         if (g.subs.length !== 0) fail('pick', told + ': a stuck node spawned')

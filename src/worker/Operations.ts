@@ -267,7 +267,7 @@ export const schema = {
           key: z.string().trim().min(1).max(Limits.Operations.seedKeyChars),
           needs: z.array(z.string().trim().min(1).max(Limits.Operations.seedKeyChars)).max(Limits.Operations.seedNeeds).default([]),
           parent: z.string().trim().min(1).max(Limits.Operations.seedKeyChars).default('root'),
-          spec: z.string().max(Limits.Operations.specChars).default(''),
+          spec: z.string().default(''),
           statement: lean.nullable().optional(),
           title: z.string().trim().min(Limits.Operations.nodeTitleLeastChars).max(Limits.Operations.nodeTitleChars),
         }),
@@ -448,7 +448,10 @@ export const schema = {
     form: z.enum(['program', 'approach', 'lemma', 'idea']).default('lemma'),
     parent: nid.default('root').describe('The node it goes under.'),
     said: z.string().trim().min(1).max(Mention.maxText).optional().describe("Your message to the room, posted under your name once the node is made: the node's thread, where its runs post their updates as replies."),
-    spec: z.string().max(Limits.Operations.specChars).default('').describe('The proposal in words: what it claims and why it helps.'),
+    spec: z
+      .string()
+      .default('')
+      .describe("The proposal in words: what it claims and why it helps. Swarms sets no length of its own; when the swarm's board has a text limit (maxText in GET /v1/swarms/:id/tree), a longer node is refused with its length and that limit, and nothing is cut."),
     statement: lean.nullable().optional().describe('For a lemma: its Lean statement, frozen once the node is posted.'),
     swarm: id,
     title: z.string().trim().min(Limits.Operations.nodeTitleLeastChars).max(Limits.Operations.nodeTitleChars).describe('One line; the same title under the same parent is the same node.'),

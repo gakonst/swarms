@@ -1,5 +1,6 @@
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
+import * as Texts from '../shared/Texts.ts'
 import * as Tree from '../shared/Tree.ts'
 import { redact } from '../shared/Trail.ts'
 import * as Chat from './Chat.ts'
@@ -298,7 +299,7 @@ export async function post(self: Swarm, input: Posting) {
     return { created: !posted.found, nid: id }
   }
   if (posted.rejection.kind === 'Exists') return { created: false, nid: id }
-  throw new Error('Posting node ' + id + ' was refused: ' + posted.rejection.kind)
+  throw new Error('Posting node ' + id + ' was refused: ' + (Texts.refused("The node's text", posted.rejection) ?? posted.rejection.kind))
 }
 
 function told(self: Swarm, nid: string) {

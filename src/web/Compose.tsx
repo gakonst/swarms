@@ -28,11 +28,11 @@ export function Compose(props: { config: Config | undefined; full?: boolean; hea
       </label>
       <label className="compose-field">
         <span className="sr-only">What and why</span>
-        <textarea className="compose-detail" disabled={busy} maxLength={Limits.WebCompose.detailChars} onChange={(event) => setSpec(event.target.value)} placeholder="What and why (optional)" rows={2} value={spec} />
+        <textarea className="compose-detail" disabled={busy} onChange={(event) => setSpec(event.target.value)} placeholder="What and why (optional)" rows={2} value={spec} />
       </label>
       {props.full && (
         <>
-          <label className="node-field"><span>Lean statement (optional)</span><textarea className="mono" disabled={busy} maxLength={Limits.WebCompose.detailChars} onChange={(event) => setStatement(event.target.value)} placeholder="theorem parity_not_ac0 : ..." rows={2} value={statement} /></label>
+          <label className="node-field"><span>Lean statement (optional)</span><textarea className="mono" disabled={busy} maxLength={Limits.Operations.leanChars} onChange={(event) => setStatement(event.target.value)} placeholder="theorem parity_not_ac0 : ..." rows={2} value={statement} /></label>
           <label className="node-field"><span>Kind</span>
             <select disabled={busy} onChange={(event) => setForm(event.target.value as Tree.Form)} value={form}>
               <option value="lemma">Lemma</option>

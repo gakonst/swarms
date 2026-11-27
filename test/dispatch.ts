@@ -111,7 +111,7 @@ export function github(env: Cloudflare.Env) {
   Object.assign(env, { GITHUB: { fetch: async (request: Request) => (request.method === 'GET' ? Response.json({ workflow_runs: [] }) : new Response(null, { status: 204 })) }, SWARMS_GITHUB_TOKEN: 't' })
 }
 
-export async function planted(route: Parameters<typeof world>[0], triageShare = 0, statement: string | null = null, setup: Setup.Setup | null = null) {
+export async function planted(route: Parameters<typeof world>[0], triageShare = 0, statement: string | null = null, setup: Setup.Setup | null = null, words = 'The question.') {
   const w = world(route)
   github(w.env)
   await Store.insert(w.env, { creator: null, form: 'tree', goal: 'g', id, problem: null, setup: null, steering: 'open', title: 'Tree' })
@@ -119,7 +119,7 @@ export async function planted(route: Parameters<typeof world>[0], triageShare = 
     dispatcher: 'spawn',
     reviewed: false,
     rules: 'rules',
-    root: { statement, title: 'Does P = NP?', words: 'The question.' },
+    root: { statement, title: 'Does P = NP?', words },
     seed: [],
     settings: { ...Nodes.defaults, triageShare },
     setup,

@@ -29,7 +29,7 @@ export function until(verdict: Verdict) {
   return typeof renewed?.until_ms === 'number' ? renewed.until_ms : undefined
 }
 
-const methods = ['cancel', 'charter', 'checkpoint', 'claim', 'close', 'finish', 'grant', 'group', 'heed', 'held', 'opened', 'post', 'ready', 'refresh', 'release', 'renew', 'reply', 'revoke', 'steer', 'steers', 'submit', 'task', 'tasks', 'work'] as const satisfies readonly Exclude<keyof Board, 'actor' | 'scope'>[]
+const methods = ['cancel', 'charter', 'checkpoint', 'claim', 'close', 'finish', 'grant', 'group', 'heed', 'held', 'maxText', 'opened', 'post', 'ready', 'refresh', 'release', 'renew', 'reply', 'revoke', 'setTextLimit', 'steer', 'steers', 'submit', 'task', 'tasks', 'work'] as const satisfies readonly Exclude<keyof Board, 'actor' | 'scope'>[]
 
 export function opening(scope: string, actor: string, open: () => Promise<Board>): Board {
   let opened: Promise<Board> | undefined

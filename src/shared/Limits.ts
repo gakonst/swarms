@@ -310,7 +310,6 @@ export const Operations = {
   seedKeyChars: 64,
   seedNeeds: 20,
   seedNodes: 2000,
-  specChars: 8000,
   nodeTitleLeastChars: 3,
   nodeTitleChars: 200,
   messageLeastChars: 3,
@@ -1319,7 +1318,6 @@ export const WebCode = {
 
 export const WebCompose = {
   cutChars: 119,
-  detailChars: 2000,
   titleChars: 120,
 } as const
 
