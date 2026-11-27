@@ -27,7 +27,7 @@
     "@pierre/trees": "1.0.0",
     "@pierre/words": "0.3.0",
     "@resvg/resvg-wasm": "2.6.2",
-    "accounts": "1.12.20261127005353",
+    "accounts": "1.13.20261127025712",
     "hono": "^4.13.14",
     "nanocode-ts": "https://github.com/nanocodexyz/nanocode-ts/releases/download/build-ce85934/nanocode-ts-ce85934.tgz",
     "react": "19.3.1",

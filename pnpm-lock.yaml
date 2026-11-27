@@ -24,8 +24,8 @@ importers:
         specifier: 2.6.2
         version: 2.6.2
       accounts:
-        specifier: 1.12.20261127005353
-        version: 1.12.20261127005353(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.58.8)(zod@4.6.7)
+        specifier: 1.13.20261127025712
+        version: 1.13.20261127025712(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.58.8)(zod@4.6.7)
       hono:
         specifier: ^4.13.14
         version: 4.13.14
@@ -834,8 +834,8 @@ packages:
       react-native-get-random-values:
         optional: true
 
-  accounts@1.12.20261127005353:
-    resolution: {integrity: sha512-k3vaayf+LZ5/+lKqCPcKG28GeCVbjO7X0VexMGwjobaZHpoQAqngnhghDB+V6FU+gssqlqCaNY7FFHrTKq70Bg==}
+  accounts@1.13.20261127025712:
+    resolution: {integrity: sha512-TCtReAcYwfuglX+ZLA/QjyOp+jHtAstE00a1tIY2595k0glNc4QzuFFQa2i+/ITunF06zZjn6TVbQ9f8hhp0vw==}
     peerDependencies:
       '@playwright/test': '>=1.43'
       '@wagmi/core': ^3.6.7
@@ -2502,7 +2502,7 @@ snapshots:
       - typescript
       - zod
 
-  accounts@1.12.20261127005353(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.58.8)(zod@4.6.7):
+  accounts@1.13.20261127025712(mppx@0.20.1)(react@19.3.1)(typescript@6.0.2)(viem@2.58.8)(zod@4.6.7):
     dependencies:
       jose: 6.2.17
       mppx: 0.20.1(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7))(express@5.3.0(supports-color@10.2.2))(hono@4.13.14)(typescript@6.0.2)(viem@2.58.8)
