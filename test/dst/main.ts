@@ -88,6 +88,7 @@ async function one(job: Job, seed: string, canary: string | null, log = false): 
   }
   const flipped = canary ? canaries.find((one) => one.name === canary) : undefined
   if (canary && !flipped) throw new Error('No canary ' + canary)
+  if (flipped) await import('../load/hook.ts')
   const guards = flipped
     ? ((await import(pathToFileURL(join(here, '..', '..', 'src', 'worker', flipped.module + '.ts')).href)) as { guards: Record<string, boolean> }).guards
     : undefined
