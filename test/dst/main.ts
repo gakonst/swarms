@@ -23,6 +23,7 @@ export const jobs: Job[] = [
   { name: 'swarm_calm', options: { ...small, faults: [] } },
   { name: 'swarm_crash', options: { ...small, faults: ['crash', ...holding] } },
   { name: 'swarm_list', options: { ...small, faults: ['staleList', 'lag'] } },
+  { name: 'swarm_frozen', options: { ...small, deadlineMs: 60 * 60_000, faults: ['staleLong', 'staleList'] } },
   { name: 'swarm_money', options: { ...small, faults: ['stranded', 'chainLag', 'lag', 'retry', 'move', 'dup'] } },
   { name: 'swarm_net', options: { ...small, faults: ['partition', 'skew', 'evict', 'crash'] } },
   { name: 'swarm_wide', options: { activeMs: 45 * 60_000, children: 6, pledges: 6, swarms: 3, tailMs: 3 * 60 * 60_000 } },
@@ -30,6 +31,8 @@ export const jobs: Job[] = [
 
 export const canaries: Canary[] = [
   { flag: 'monotonic', invariant: 'illegal transition', job: 'swarm_list', module: 'machines/Sub', name: 'swarm.sub.monotonic', seeds: ['1', '2', '3'] },
+  { flag: 'hold', invariant: 'overspent', job: 'swarm_frozen', module: 'Runner', name: 'swarm.runner.hold', seeds: ['90', '3', '33'] },
+  { flag: 'reappear', invariant: 'lost result', job: 'swarm_frozen', module: 'Runner', name: 'swarm.runner.reappear', seeds: ['93'] },
   { flag: 'covered', invariant: 'negative balance', job: 'swarm', module: 'Flow', name: 'swarm.flow.covered', seeds: ['2', '5', '6'] },
   { flag: 'closed', invariant: 'duplicate payment', job: 'swarm', module: 'machines/Payment', name: 'swarm.payment.closed', seeds: ['1', '3', '6'] },
   { flag: 'keyed', invariant: 'duplicate payment', job: 'swarm', module: 'machines/Payment', name: 'swarm.payment.keyed', seeds: ['3'] },

@@ -577,7 +577,7 @@ export async function topUp(self: Swarm, run: string, spent: bigint) {
   })
 }
 
-export async function settleRun(self: Swarm, run: string, spent: bigint) {
+export async function settleRun(self: Swarm, run: string, spent: bigint, hold = false) {
   const nid = Flow.runNode(run)
   const ran = await once(self, settleId(run), run, () =>
     budgeting(self, async () => {
@@ -587,13 +587,27 @@ export async function settleRun(self: Swarm, run: string, spent: bigint) {
       const held = Flow.shares(rows, bucket)
       await Flow.write(self.env, { from: bucket, id: 'settle:' + run + ':spend', kind: 'spend', parts: Flow.split(held, spent), swarm: id, to: null })
       rows = await Flow.rows(self.env, id)
-      await Flow.write(self.env, { from: bucket, id: 'settle:' + run + ':settle', kind: 'settle', parts: [...Flow.shares(rows, bucket)], swarm: id, to: { node: nid, run: null } })
+      if (!hold) await Flow.write(self.env, { from: bucket, id: 'settle:' + run + ':settle', kind: 'settle', parts: [...Flow.shares(rows, bucket)], swarm: id, to: { node: nid, run: null } })
       self.kv.delete('live:' + run)
       changed(self)
       return Flow.sum(held.values())
     }),
   )
   return ran.ran
+}
+
+export async function release(self: Swarm, run: string) {
+  const nid = Flow.runNode(run)
+  await budgeting(self, async () => {
+    const id = swarm(self)
+    const bucket = { node: nid, run }
+    const found = await state(self)
+    const node = found.nodes.get(nid)
+    const parts = [...Flow.shares(found.rows, bucket)]
+    if (node && Work.terminal(node.phase)) await Flow.write(self.env, { from: bucket, id: 'settle:' + run + ':settle', kind: 'return', parts, swarm: id, to: { node: Flow.free, run: null } })
+    else await Flow.write(self.env, { from: bucket, id: 'settle:' + run + ':settle', kind: 'settle', parts, swarm: id, to: { node: nid, run: null } })
+    changed(self)
+  })
 }
 
 export async function settleNode(self: Swarm, nid: string) {

@@ -222,5 +222,33 @@
     "invariant": "pause patience",
     "found": "2026-11-27 by pnpm dst --hunt: viewed 119 minutes into a pause whose wake was 120 minutes out, the alarm was left a minute ahead because heal() keeps an alarm due within a minute; the test wanted it moved to now (harness bound, not a Swarms bug)",
     "fix": "test(dst): pause patience accepts an alarm already due within a minute"
+  },
+  {
+    "job": "swarm_frozen",
+    "seed": "3",
+    "invariant": "overspent",
+    "found": "2026-11-27 by pnpm dst --job swarm_frozen --seeds 96: a subagent list frozen 11-25 minutes hid a run; it settled at its last seen spend, its unspent budget went to the next run, and the gateway booked more on the closed run before the late charge landed",
+    "fix": "fix(runner): hold a hidden run open until the gateway shows it ended"
+  },
+  {
+    "job": "swarm_frozen",
+    "seed": "33",
+    "invariant": "overspent",
+    "found": "2026-11-27 by pnpm dst --job swarm_frozen --seeds 96: a subagent list frozen 11-25 minutes hid a run; it settled at its last seen spend, its unspent budget went to the next run, and the gateway booked more on the closed run before the late charge landed",
+    "fix": "fix(runner): hold a hidden run open until the gateway shows it ended"
+  },
+  {
+    "job": "swarm_frozen",
+    "seed": "90",
+    "invariant": "overspent",
+    "found": "2026-11-27 by pnpm dst --job swarm_frozen --seeds 96: a subagent list frozen 11-25 minutes hid a run; it settled at its last seen spend, its unspent budget went to the next run, and the gateway booked more on the closed run before the late charge landed",
+    "fix": "fix(runner): hold a hidden run open until the gateway shows it ended"
+  },
+  {
+    "job": "swarm_frozen",
+    "seed": "93",
+    "invariant": "lost result",
+    "found": "2026-11-27 by pnpm dst --job swarm_frozen --seeds 96: a run finished while a frozen list hid it, settled as gone, and its output was never folded when it reappeared completed",
+    "fix": "fix(runner): hold a hidden run open until the gateway shows it ended"
   }
 ]

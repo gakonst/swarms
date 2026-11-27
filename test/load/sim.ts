@@ -35,17 +35,19 @@ const HandMachine: typeof HandModule = await import('../../src/worker/machines/H
 const Run: typeof RunModule2 = await import('../../src/worker/machines/Run.ts')
 const older = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'rpc-older.json'), 'utf8')) as { methods: string[] }
 
-export const faultNames = ['evict', 'crash', 'dup', 'reorder', 'stale', 'staleList', 'retry', 'move', 'refuse', 'partition', 'lag', 'skew', 'stranded', 'chainLag'] as const
+export const faultNames = ['evict', 'crash', 'dup', 'reorder', 'stale', 'staleList', 'staleLong', 'retry', 'move', 'refuse', 'partition', 'lag', 'skew', 'stranded', 'chainLag'] as const
 
 export type Fault = (typeof faultNames)[number]
 
-export const rates: Record<Fault, number> = { chainLag: 0.3, crash: 0.004, dup: 0.2, evict: 0.04, lag: 0.1, move: 0.3, partition: 0.03, refuse: 0.05, reorder: 0.2, retry: 0.3, skew: 0.3, stale: 0.1, staleList: 0.05, stranded: 0.15 }
+export const rates: Record<Fault, number> = { chainLag: 0.3, crash: 0.004, dup: 0.2, evict: 0.04, lag: 0.1, move: 0.3, partition: 0.03, refuse: 0.05, reorder: 0.2, retry: 0.3, skew: 0.3, stale: 0.1, staleList: 0.05, staleLong: 0.02, stranded: 0.15 }
 
 export const limits = { attempts: 120, chainLagMs: 60_000, partitionMostMs: 5 * 60_000, partitionLeastMs: 20_000, retryMostMs: 10_000, retryLeastMs: 500 }
 
 export type Options = { log?: boolean; activeMs: number; children: number; deadlineMs: number; faults: readonly Fault[]; offset: number; pledges: number; seed: string; swarms: number; tailMs: number }
 
-export const defaults: Options = { activeMs: 45 * 60_000, children: 6, deadlineMs: 15 * 60_000, faults: faultNames, offset: 0, pledges: 6, seed: '1', swarms: 4, tailMs: 4 * 60 * 60_000 }
+export const frozenMs = { least: 11 * 60_000, most: 25 * 60_000 }
+
+export const defaults: Options = { activeMs: 45 * 60_000, children: 6, deadlineMs: 15 * 60_000, faults: faultNames.filter((fault) => fault !== 'staleLong'), offset: 0, pledges: 6, seed: '1', swarms: 4, tailMs: 4 * 60 * 60_000 }
 
 export type Invariant =
   | 'duplicate fold'
@@ -259,6 +261,7 @@ type SimSwarm = {
   children: number
   evictions: { at: number; why: string }[]
   frames: Map<string, string[]>
+  frozen: Map<string, { agents: string; until: number }>
   history: Map<string, string[]>
   id: string
   inc: Incarnation
@@ -855,6 +858,13 @@ async function gateway(sim: Sim, sw: SimSwarm, inc: Incarnation | null, request:
   if (agent && path === `/v1/agents/${agent}/subagents` && lagging) return Response.json({ code: 'unavailable', detail: 'The subagent list is behind' }, { status: 503 })
   if (agent && path === `/v1/agents/${agent}/subagents`) {
     const history = sw.history.get(agent) ?? []
+    const frozen = sw.frozen.get(agent)
+    if (frozen && sim.clock.now < frozen.until) return Response.json({ agents: JSON.parse(frozen.agents) as unknown[] })
+    if (faults.includes('staleLong') && history.length > 1 && sw.random.faults.chance(sim.rate.staleLong)) {
+      const agents = sw.random.faults.pick(history.slice(0, -1))
+      sw.frozen.set(agent, { agents, until: sim.clock.now + sw.random.faults.int(frozenMs.least, frozenMs.most) })
+      return Response.json({ agents: JSON.parse(agents) as unknown[] })
+    }
     if (faults.includes('staleList') && history.length > 1 && sw.random.faults.chance(sim.rate.staleList)) return Response.json({ agents: JSON.parse(sw.random.faults.pick(history.slice(0, -1))) as unknown[] })
     return Response.json({ agents: JSON.parse(listing(sw, agent)) as unknown[] })
   }
@@ -1165,6 +1175,7 @@ export async function simulate(input: Partial<Options> = {}): Promise<Report> {
         children: 0,
         evictions: [],
         frames: new Map(),
+        frozen: new Map(),
         history: new Map(),
         id: createHash('sha256').update(`${options.seed}:swarm:${index}`).digest('hex').slice(0, 12),
         index,

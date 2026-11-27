@@ -23,7 +23,7 @@ export const rotateAfter = Limits.Runner.rotateAfter
 
 export const verifiers = Limits.Runner.verifiers
 
-export const guards = { adopt: true, bound: true, claims: true, final: true, folded: true, halt: true, heard: true, kick: true, late: true, needs: true, relay: true, rest: true, rotate: true, stray: true, topped: true }
+export const guards = { adopt: true, bound: true, claims: true, final: true, folded: true, halt: true, heard: true, hold: true, kick: true, late: true, needs: true, reappear: true, relay: true, rest: true, rotate: true, stray: true, topped: true }
 
 export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: Limits.Runner.payingAttempts }
 
@@ -503,8 +503,9 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
   const used = ran + (await dispatched(self, swarm, spawned))
   for (const steer of await lease.steers().catch(() => [])) if (steer.seq > relayed) await self.board.steer(Nodes.nodeId(nid), steer.body, { key: 'relay:' + task.id + ':' + steer.seq })
   const why = !sub ? 'The run is gone from the gateway.' : !ended ? 'The run stalled and was stopped.' : (sub.status.error ?? 'The run ' + final + '.')
-  await Nodes.settleRun(self, task.id, used)
-  charged(self, task.id, spawned, ran)
+  const shown = Sub.done(Sub.get(self.kv, spawned.agent, spawned.sub))
+  await Nodes.settleRun(self, task.id, used, guards.hold && !shown)
+  charged(self, task.id, spawned, ran, { fold: !shown && nid !== Nodes.triage, held: guards.hold && !shown })
   if (nid === Nodes.triage) {
     const actions = Triage.parse(sub?.result)
     const applied = await Triage.apply(self, actions, 'agent:n:triage', task.id, halt)
@@ -513,13 +514,26 @@ async function watch(self: Swarm, swarm: string, task: Work.Task, lease: Board.P
     await Nodes.consider(self)
     return { done }
   }
-  const outcome = final === 'completed' ? result(sub?.result, why) : { ...result(sub?.result, why), outcome: 'stuck' as const, summary: clip(why, Limits.Runner.summaryChars) }
-  if (final === 'failed' && /over_limit/.test(sub?.status.error ?? '')) self.kv.put('bounded:' + nid, Date.now())
-  else self.kv.delete('bounded:' + nid)
-  await Nodes.ran(self, task.id, outcome, (node, sha, theorem, refutes) => postVerify(self, node, sha, theorem, refutes))
-  Machine.settle(self.kv, task.id, JSON.stringify(outcome))
-  await Nodes.consider(self)
+  const outcome = outcomeOf(sub, why)
+  if (!shown) {
+    await Nodes.consider(self)
+    return { done: JSON.stringify(outcome) }
+  }
+  await folding(self, task.id, sub, outcome)
   return { done: JSON.stringify(outcome) }
+}
+
+function outcomeOf(sub: Gateway.Subagent | undefined, why: string): Nodes.Result {
+  return sub?.status.state === 'completed' ? result(sub.result, why) : { ...result(sub?.result, why), outcome: 'stuck', summary: clip(why, Limits.Runner.summaryChars) }
+}
+
+async function folding(self: Swarm, run: string, sub: Gateway.Subagent | undefined, outcome: Nodes.Result) {
+  const nid = Flow.runNode(run)
+  if (sub?.status.state === 'failed' && /over_limit/.test(sub.status.error ?? '')) self.kv.put('bounded:' + nid, Date.now())
+  else self.kv.delete('bounded:' + nid)
+  await Nodes.ran(self, run, outcome, (node, sha, theorem, refutes) => postVerify(self, node, sha, theorem, refutes))
+  Machine.settle(self.kv, run, JSON.stringify(outcome))
+  await Nodes.consider(self)
 }
 
 async function observed(self: Swarm, swarm: string, spawned: Nodes.Spawned, listed: Gateway.Result<Gateway.Subagent[]>, last: Gateway.Subagent | undefined): Promise<Gateway.Subagent | undefined> {
@@ -641,22 +655,23 @@ export async function halt(self: Swarm, run: string) {
   const spawned = self.kv.get<Nodes.Spawned>('run:' + run)
   const spent = await spentOf(self, run, guards.halt)
   if (spent === null) return
-  await Nodes.settleRun(self, run, spent)
-  if (spawned) charged(self, run, spawned, spent - (await dispatched(self, Nodes.swarm(self), spawned)))
+  const hold = guards.hold && !!spawned && !Sub.done(Sub.get(self.kv, spawned.agent, spawned.sub))
+  await Nodes.settleRun(self, run, spent, hold)
+  if (spawned) charged(self, run, spawned, spent - (await dispatched(self, Nodes.swarm(self), spawned)), { held: hold })
   else {
     const agent = self.kv.get<Dispatcher>('dispatcher')?.id
     if (agent && self.kv.get<string>('prompted:' + run)) charged(self, run, { agent, at: 0, sub: 0 }, 0n)
   }
 }
 
-export type Charged = { agent: string; at: number; final?: number; spent: string; sub: number }
+export type Charged = { agent: string; at: number; final?: number; fold?: true; held?: true; spent: string; sub: number }
 
 export const lateMs = Limits.Runner.lateMs
 
 export const lateMostMs = Limits.Runner.lateMostMs
 
-function charged(self: Swarm, run: string, spawned: Nodes.Spawned, spent: bigint) {
-  self.kv.put('charged:' + run, { agent: spawned.agent, at: Date.now(), spent: Memo.decimal(spent), sub: spawned.sub } satisfies Charged)
+function charged(self: Swarm, run: string, spawned: Nodes.Spawned, spent: bigint, pending: { fold?: boolean; held?: boolean } = {}) {
+  self.kv.put('charged:' + run, { agent: spawned.agent, at: Date.now(), ...(pending.fold ? { fold: true } : {}), ...(pending.held ? { held: true } : {}), spent: Memo.decimal(spent), sub: spawned.sub } satisfies Charged)
   setTimeout(() => void late(self).catch(() => undefined), Limits.Runner.chargeAfterMs)
 }
 
@@ -670,41 +685,44 @@ export function late(self: Swarm): Promise<void> {
 
 async function charge(self: Swarm) {
   const swarm = Nodes.swarm(self)
-  for (const [key, held] of [...self.kv.list<Charged>({ prefix: 'charged:' })]) {
-    const run = key.slice('charged:'.length)
-    const age = Date.now() - held.at
-    if (guards.final ? held.final !== undefined && Date.now() - held.final > lateMs : age > lateMs) {
-      self.kv.delete(key)
-      if (held.sub) self.kv.delete(Sub.key(held.agent, held.sub))
-      continue
-    }
-    if (age > lateMostMs) {
-      const text = 'The gateway never showed run ' + run + ' ended within ' + lateMostMs / Limits.Clock.minuteMs + ' minutes of its settling; what it charged past ' + Flow.usd(Memo.units(held.spent)) + ' is not booked.'
-      console.error(text)
-      Nodes.emit(self, Flow.runNode(run), 'progress', text)
-      self.kv.delete(key)
-      if (held.sub) self.kv.delete(Sub.key(held.agent, held.sub))
-      continue
-    }
-    const listed = await list(self, swarm, held.agent, true)
-    const role = 'n:' + Flow.runNode(run) + '#' + Nodes.kOf(run)
-    const sub = listed.ok ? listed.value.find((one) => (held.sub ? one.agent_id === held.sub : one.parent_agent_id === null && one.role === role)) : undefined
-    if (!sub) continue
-    const kept = Sub.observe(self.kv, held.agent, sub)
-    if (!held.sub && !Sub.done(kept)) await Gateway.close(self.env, swarm, held.agent, sub.agent_id)
-    const now = Sub.spent(kept)
-    const final = held.final ?? (Sub.done(kept) ? Date.now() : undefined)
-    const extra = now - (guards.late ? Memo.units(held.spent) : 0n)
-    if (extra <= 0n) {
-      if (final !== held.final) self.kv.put(key, { ...held, ...(final === undefined ? {} : { final }), sub: sub.agent_id } satisfies Charged)
-      continue
-    }
-    const nid = Flow.runNode(run)
+  for (const [key, held] of [...self.kv.list<Charged>({ prefix: 'charged:' })]) await sweep(self, swarm, key, held)
+}
+
+async function sweep(self: Swarm, swarm: string, key: string, held: Charged) {
+  const run = key.slice('charged:'.length)
+  const age = Date.now() - held.at
+  if (guards.final ? held.final !== undefined && Date.now() - held.final > lateMs : age > lateMs) {
+    self.kv.delete(key)
+    if (held.sub) self.kv.delete(Sub.key(held.agent, held.sub))
+    return
+  }
+  if (age > lateMostMs) {
+    const text = 'The gateway never showed run ' + run + ' ended within ' + lateMostMs / Limits.Clock.minuteMs + ' minutes of its settling; what it charged past ' + Flow.usd(Memo.units(held.spent)) + ' is not booked.'
+    console.error(text)
+    Nodes.emit(self, Flow.runNode(run), 'progress', text)
+    if (held.held) await Nodes.release(self, run)
+    if (held.fold) await folding(self, run, undefined, outcomeOf(undefined, 'The run is gone from the gateway.'))
+    self.kv.delete(key)
+    if (held.sub) self.kv.delete(Sub.key(held.agent, held.sub))
+    return
+  }
+  const listed = await list(self, swarm, held.agent, true)
+  const role = 'n:' + Flow.runNode(run) + '#' + Nodes.kOf(run)
+  const sub = listed.ok ? listed.value.find((one) => (held.sub ? one.agent_id === held.sub : one.parent_agent_id === null && one.role === role)) : undefined
+  if (!sub) return
+  const kept = Sub.observe(self.kv, held.agent, sub)
+  if (!held.sub && !Sub.done(kept)) await Gateway.close(self.env, swarm, held.agent, sub.agent_id)
+  const now = Sub.spent(kept)
+  const done = Sub.done(kept)
+  const final = held.final ?? (done ? Date.now() : undefined)
+  const extra = now - (guards.late ? Memo.units(held.spent) : 0n)
+  const nid = Flow.runNode(run)
+  if (extra > 0n)
     await Nodes.budgeting(self, async () => {
       const rows = await Flow.rows(self.env, swarm)
       const funders = new Set(rows.filter((row) => row.run === run && row.kind === 'commit').map((row) => row.contributor))
       const runs = [...new Set(rows.filter((row) => row.node === nid && row.run !== null && row.run !== run).map((row) => row.run as string))]
-      const buckets: Flow.Bucket[] = [{ node: nid, run: null }, ...runs.map((other) => ({ node: nid, run: other })), { node: Flow.free, run: null }]
+      const buckets: Flow.Bucket[] = [{ node: nid, run }, { node: nid, run: null }, ...runs.map((other) => ({ node: nid, run: other })), { node: Flow.free, run: null }]
       for (const bucket of buckets) {
         const held = new Map([...Flow.shares(rows, bucket)].filter(([contributor]) => bucket.node !== Flow.free || funders.has(contributor)))
         if (Flow.sum(held.values()) < extra) continue
@@ -712,9 +730,16 @@ async function charge(self: Swarm) {
         break
       }
     })
-    self.kv.put(key, { ...held, ...(final === undefined ? {} : { final }), spent: Memo.decimal(now), sub: sub.agent_id } satisfies Charged)
-    Nodes.changed(self)
+  if (done && held.held) await Nodes.release(self, run)
+  if (done && held.fold && guards.reappear) {
+    const view = Sub.view(kept)
+    await folding(self, run, view, outcomeOf(view, view.status.error ?? 'The run ' + view.status.state + '.'))
   }
+  const { fold, held: holding, ...rest } = held
+  const settled = done && (fold !== undefined || holding !== undefined)
+  if (extra <= 0n && final === held.final && !settled) return
+  self.kv.put(key, { ...(done ? rest : held), ...(final === undefined ? {} : { final }), spent: Memo.decimal(extra > 0n ? now : Memo.units(held.spent)), sub: sub.agent_id } satisfies Charged)
+  if (extra > 0n || settled) Nodes.changed(self)
 }
 
 export async function dispatched(self: Swarm, swarm: string, spawned: Nodes.Spawned) {
