@@ -9,9 +9,9 @@ import * as Wallet from './wallet.ts'
 import * as Limits from '../shared/Limits.ts'
 
 const plans = [
-  ['claude', 'Claude plan', 'Claude', 'Pro or Max, for swarms on Claude'],
-  ['codex', 'ChatGPT plan', 'ChatGPT', 'Plus or Pro, for swarms on Codex'],
-  ['antigravity', 'Antigravity', 'Antigravity', 'Google AI plan, for swarms on Gemini'],
+  ['claude', 'Claude plan', 'Claude', 'Claude', 'Pro or Max, for swarms on Claude', 'Paste the code it shows'],
+  ['codex', 'ChatGPT plan', 'ChatGPT', 'ChatGPT', 'Plus or Pro, for swarms on Codex', 'Paste the code it shows'],
+  ['antigravity', 'Antigravity', 'Antigravity', 'Google', 'Gemini, gemini-4-neon by default', 'Paste the address it lands on'],
 ] as const
 
 const providers = [
@@ -89,28 +89,29 @@ export function OwnAi(props: { config: Config | undefined }) {
       <section aria-labelledby="own-plan" className="rider-band">
         <h2 id="own-plan">Subscription</h2>
         <div className="rider-list">
-          {plans.map(([plan, title, brand, meta]) => {
+          {plans.map(([plan, title, brand, page, meta, paste]) => {
             const state = read?.plans[plan]
             const connected = state?.state === 'authenticated'
+            const soon = read && (!state || state.state === 'unavailable')
             const pending = link?.plan === plan && !connected ? link : state?.state === 'pending' && state.verification_url ? { code: state.user_code, plan, url: state.verification_url } : undefined
             return (
               <div className="own-plan" key={plan}>
                 <div className="rider-row own-row">
                   <span className="rider-title">{title}</span>
-                  <span className="rider-meta">{connected ? 'Connected' : read && !state ? 'Coming soon' : meta}</span>
+                  <span className="rider-meta">{connected ? (state.email ? 'Connected as ' + state.email : 'Connected') : soon ? 'Coming soon' : meta}</span>
                   {connected ? (
                     <button className="btn btn-medium own-act" disabled={busy} onClick={() => act(() => Api.ownSignOut(plan))} type="button">Sign out</button>
                   ) : (
-                    state && !pending && <button className="btn btn-medium own-act" disabled={busy || !read} onClick={() => act(async () => { setCode(''); setLink({ ...(await Api.ownSignIn(plan)), plan }); return undefined })} type="button">Connect your {brand}</button>
+                    state && !soon && !pending && <button className="btn btn-medium own-act" disabled={busy || !read} onClick={() => act(async () => { setCode(''); setLink({ ...(await Api.ownSignIn(plan)), plan }); return undefined })} type="button">Connect your {brand}</button>
                   )}
                 </div>
                 {pending && (
                   <form className="own-form" onSubmit={complete(pending)}>
-                    <a className="own-link" href={pending.url} rel="noopener noreferrer" target="_blank">Open the {brand} sign-in page ↗</a>
+                    <a className="own-link" href={pending.url} rel="noopener noreferrer" target="_blank">Open the {page} sign-in page ↗</a>
                     {pending.code ? (
                       <span className="own-code">Enter <code>{pending.code}</code> there</span>
                     ) : (
-                      <input aria-label={'Code from the ' + brand + ' page'} autoComplete="off" className="own-input" onChange={(event) => setCode(event.target.value)} placeholder="Paste the code it shows" value={code} />
+                      <input aria-label={'Code from the ' + page + ' page'} autoComplete="off" className="own-input" onChange={(event) => setCode(event.target.value)} placeholder={paste} value={code} />
                     )}
                     <button className="btn btn-medium own-act" disabled={busy || (!pending.code && !code.trim())} type="submit">Finish</button>
                   </form>
@@ -141,7 +142,7 @@ export function OwnAi(props: { config: Config | undefined }) {
           })}
         </div>
       </section>
-      <p className="rider-none">Keys are checked with the provider, kept encrypted by the Tempo gateway and never shown again. Pick Run on my own AI when you ride a swarm: one on Claude runs on your Claude plan or an Anthropic key, one on Codex on your ChatGPT plan or an OpenAI key. Antigravity, for swarms on Gemini, is coming soon.</p>
+      <p className="rider-none">Keys are checked with the provider, kept encrypted by the Tempo gateway and never shown again. Pick Run on my own AI when you ride a swarm: one on Claude runs on your Claude plan or an Anthropic key, one on Codex on your ChatGPT plan or an OpenAI key. Antigravity runs Gemini, gemini-4-neon by default: after Google's sign-in, paste the address the page lands on.</p>
       <Link className="own-back" to="/ideas">Ride a swarm <span aria-hidden="true">→</span></Link>
     </div>
   )

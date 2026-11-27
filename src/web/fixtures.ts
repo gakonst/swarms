@@ -938,12 +938,12 @@ export async function rider(who: string): Promise<Profile> {
 
 const own: OwnAi = {
   keys: scene.has('own') ? [{ added_at: Date.now(), hint: 'a4f2', provider: 'anthropic' }] : [],
-  plans: { claude: { state: scene.has('own') ? 'authenticated' : 'signed_out' }, ...(scene.has('soon') ? {} : { codex: { state: 'signed_out' } }) },
+  plans: { claude: { state: scene.has('own') ? 'authenticated' : 'signed_out' }, ...(scene.has('soon') ? {} : { antigravity: { state: 'signed_out' }, codex: { state: 'signed_out' } }) },
   subject: visitor,
 }
 
 const pages: Record<Plan, { code?: string; url: string }> = {
-  antigravity: { url: 'https://accounts.google.com/o/oauth2/auth?fixture=1' },
+  antigravity: { url: 'https://accounts.google.com/o/oauth2/v2/auth?fixture=1' },
   codex: { code: 'K7QF-3XWM', url: 'https://auth.openai.com/codex/device?fixture=1' },
   claude: { url: 'https://claude.ai/oauth/authorize?fixture=1' },
 }
@@ -980,7 +980,7 @@ export function ownSignedIn(plan: Plan, code: string, who: `0x${string}` | undef
   const soon = offered(plan)
   if (soon) return Promise.reject(soon)
   if (!code && !pages[plan].code) return Promise.reject(fail(Limits.Http.invalid, 'invalid_request', 'Paste the code the sign-in page shows.'))
-  if (who) own.plans[plan] = { state: 'authenticated' }
+  if (who) own.plans[plan] = plan === 'antigravity' ? { email: 'ada@gmail.com', state: 'authenticated' } : { state: 'authenticated' }
   return owned(who)
 }
 

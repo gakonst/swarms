@@ -466,7 +466,7 @@ export const schema = {
   nodeEnd: z.object({ node: nid, swarm: id, why: z.string().trim().min(1).max(Limits.Operations.whyChars) }),
   ownAi: z.object({ on: z.boolean().describe("true runs the swarm's agent on your own AI from now on, false hands it back to the swarm's money."), swarm: id }),
   ownCode: z.object({
-    code: z.string().trim().max(Limits.Operations.ownCodeChars).default('').describe("The code the plan's sign-in page shows: needed for claude, empty for a plan whose page took the code the sign-in answered."),
+    code: z.string().trim().max(Limits.Operations.ownCodeChars).default('').describe("The code the plan's sign-in page shows: for claude its code, for antigravity the whole address Google lands on (or its code), empty for codex, whose page took the code the sign-in answered."),
     plan,
   }),
   ownPlan: z.object({ plan }),
@@ -1007,7 +1007,6 @@ export async function ownSignIn(env: Cloudflare.Env, input: Input<'ownPlan'>, ad
   if (!parsed.ok) return parsed
   const gate = await door(env, address)
   if (gate.at !== 'open') return shut(gate)
-  if (parsed.value.plan === 'antigravity') return soon(parsed.value.plan)
   return unrouted(parsed.value.plan, relayed(await Gateway.signIn(env, gate.rider, parsed.value.plan)))
 }
 
@@ -1015,9 +1014,9 @@ export async function ownSignedIn(env: Cloudflare.Env, input: Input<'ownCode'>, 
   const parsed = parse(schema.ownCode, input)
   if (!parsed.ok) return parsed
   if (parsed.value.plan === 'claude' && !parsed.value.code) return Problem.fail(Limits.Http.invalid, 'invalid_request', 'Paste the code the Claude page shows.')
+  if (parsed.value.plan === 'antigravity' && !parsed.value.code) return Problem.fail(Limits.Http.invalid, 'invalid_request', 'Paste the address Google lands on after you sign in, or its code.')
   const gate = await door(env, address)
   if (gate.at !== 'open') return shut(gate)
-  if (parsed.value.plan === 'antigravity') return soon(parsed.value.plan)
   if (parsed.value.plan === 'codex') {
     const read = await ownAi(env, address)
     if (!read.ok) return read
@@ -1035,7 +1034,6 @@ export async function ownSignOut(env: Cloudflare.Env, input: Input<'ownPlan'>, a
   if (!parsed.ok) return parsed
   const gate = await door(env, address)
   if (gate.at !== 'open') return shut(gate)
-  if (parsed.value.plan === 'antigravity') return soon(parsed.value.plan)
   const done = unrouted(parsed.value.plan, relayed(await Gateway.signOut(env, gate.rider, parsed.value.plan)))
   if (!done.ok) return done
   return ownAi(env, address)
