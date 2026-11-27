@@ -3,6 +3,9 @@ import { DatabaseSync } from 'node:sqlite'
 import type { Plan } from '../../src/shared/Api.ts'
 import type * as SharedDrive from '../../src/shared/Drive.ts'
 import type * as DriveModule from '../../src/worker/Drive.ts'
+import type * as OperationsModule from '../../src/worker/Operations.ts'
+import type * as SwarmModule from '../../src/worker/Swarm.ts'
+import type * as RunModule from '../run.ts'
 import * as Machine from '../../src/worker/machines/Drive.ts'
 import * as Limits from '../../src/shared/Limits.ts'
 import { applied, limits as kit, load, mutant, pin, recorder, rng, type Canary, type Outcome, type Rng } from './mh-kit.ts'
@@ -518,12 +521,89 @@ async function drive(seed: string, mode: 'day' | 'stuck' | 'steer'): Promise<Out
   return { steps, violations }
 }
 
+const states = ['new', 'money', 'provider', 'held', 'working'] as const
+
+const reopened = {
+  format: 'an object reopened at an older format backfills its Board',
+  served: 'a viewed agent swarm shows its Board',
+  tree: 'a tree swarm has no Board',
+}
+
+async function backfill(seed: string): Promise<Outcome> {
+  const random = rng('drive', 'backfill', seed)
+  const { fail, violations } = recorder()
+  let steps = 0
+  const Run = await load<typeof RunModule>('test/run.ts')
+  const Operations = await load<typeof OperationsModule>('src/worker/Operations.ts')
+  const Swarms = await load<typeof SwarmModule>('src/worker/Swarm.ts')
+  const Drive = await load<typeof DriveModule>('src/worker/Drive.ts')
+  applied()
+  const w = Run.world(() => undefined)
+  try {
+    const state = random.pick(states)
+    const tree = random.chance(0.2)
+    await w.seed(random.pick(['0', '1000000']))
+    for (let k = 0; k < random.int(0, limits.backfillMessages); k++)
+      w.sql.exec('INSERT INTO chat (at, author, text) VALUES (?, ?, ?)', Date.now(), '0xabc', 'earlier ' + k)
+    const kv = w.swarm.ctx.storage.kv
+    if (tree) kv.put('form', 'tree')
+    const at = Date.now()
+    const run =
+      state === 'new'
+        ? undefined
+        : state === 'working'
+          ? { from: 0, n: 1, since: at, started: at, state: 'working', turn: 'agt_1:1' }
+          : {
+              at,
+              pause:
+                state === 'held'
+                  ? { why: 'idle' }
+                  : { left: '0', wake: null, why: 'money', ...(state === 'provider' ? { gateway: { message: 'HTTP 503', tries: 1 } } : {}) },
+              state: 'paused',
+            }
+    if (run) kv.put('run', run)
+    let object = w.swarm
+    const env = w.env as unknown as Record<string, unknown>
+    env['SWARMS'] = { get: () => object, idFromName: (name: string) => name }
+    const read = async (why: string) => {
+      steps += 1
+      const got = await Operations.get(w.env, { swarm: Run.id })
+      if (!got.ok) return fail(reopened.served, why + ': the read failed ' + JSON.stringify(got).slice(0, 200))
+      const board = got.value.board
+      if (tree) {
+        if (board) fail(reopened.tree, why + ': a tree swarm shows a Board')
+        return
+      }
+      if (!board) fail(reopened.served, why + ': a ' + state + ' agent swarm read board ' + JSON.stringify(board))
+    }
+    await read('first read of a new object')
+    for (let k = 0; k < random.int(1, limits.ensureTries); k++) {
+      kv.put('v', Limits.Swarm.boardFormat - 1)
+      if (random.chance(0.5)) kv.delete('board')
+      object = new Swarms.Swarm(w.swarm.ctx as never, w.env)
+      steps += 1
+      if (!tree && Drive.lifecycle(object).state === 'unboarded')
+        fail(reopened.format, 'reopen ' + k + ' of a ' + state + ' swarm left it unboarded before any view')
+      if (random.chance(0.5)) await read('read after reopen ' + k)
+    }
+    await read('last read')
+    const roots = Number(w.sql.exec("SELECT COUNT(*) AS n FROM chat WHERE node = 'board' AND parent IS NULL").one()?.['n'] ?? 0)
+    if (roots !== (tree ? 0 : 1)) fail(tree ? reopened.tree : named.board, roots + ' Board roots in a ' + (tree ? 'tree' : 'agent') + ' swarm')
+  } catch (error) {
+    fail('crashed', String((error as Error)?.stack ?? error).slice(0, 300))
+  } finally {
+    w.restore()
+  }
+  return { steps, violations }
+}
+
 const flip = (key: keyof typeof Machine.guards) => () => {
   Machine.guards[key] = false
   return () => void (Machine.guards[key] = true)
 }
 
 export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = {
+  drive_backfill: backfill,
   drive_day: (seed) => drive(seed, 'day'),
   drive_steer: (seed) => drive(seed, 'steer'),
   drive_stuck: (seed) => drive(seed, 'stuck'),
@@ -532,6 +612,32 @@ export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = {
 const seeds = ['1', '2', '3', '4', '5', '6', '7', '8']
 
 export const canaries: Canary[] = [
+  {
+    flip: mutant('drive.reopen', 'src/worker/Swarm.ts', 'if (from < Limits.Swarm.boardFormat &&', 'if (from > Limits.Swarm.boardFormat &&'),
+    invariant: reopened.format,
+    name: 'drive.reopen',
+    scenario: 'drive_backfill',
+    seeds,
+  },
+  {
+    flip: mutant(
+      'drive.viewed',
+      'src/worker/Swarm.ts',
+      "if (id && !this.kv.get<number>('archivedAt')) Drive.ensure(this)",
+      "if (id && this.kv.get<number>('archivedAt')) Drive.ensure(this)",
+    ),
+    invariant: reopened.served,
+    name: 'drive.viewed',
+    scenario: 'drive_backfill',
+    seeds,
+  },
+  {
+    flip: mutant('drive.served', 'src/worker/Operations.ts', 'return view.board === undefined ? {} : { board: view.board }', 'return { board: null }'),
+    invariant: reopened.served,
+    name: 'drive.served',
+    scenario: 'drive_backfill',
+    seeds,
+  },
   { flip: flip('flight'), invariant: named.flight, name: 'drive.flight', scenario: 'drive_steer', seeds },
   { flip: flip('hourly'), invariant: named.hourly, name: 'drive.hourly', scenario: 'drive_day', seeds },
   { flip: flip('dedupe'), invariant: named.dedupe, name: 'drive.dedupe', scenario: 'drive_day', seeds },

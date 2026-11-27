@@ -496,6 +496,10 @@ function stub(env: Cloudflare.Env, id: string): DurableObjectStub<Swarm> {
   return Timing.object(env.SWARMS.get(env.SWARMS.idFromName(id)))
 }
 
+function boarded(view: Pick<View, 'board'>) {
+  return view.board === undefined ? {} : { board: view.board }
+}
+
 function missing() {
   return Problem.fail(Limits.Http.missing, 'not_found', 'No swarm has this id.')
 }
@@ -684,7 +688,7 @@ export async function stamped(env: Cloudflare.Env, input: Input<'swarm'>, feed =
   const detail: Detail = {
     ...Store.summary(row),
     about: view.about,
-    board: view.board ?? null,
+    ...boarded(view),
     code: view.code,
     contributions: ledger.contributions,
     failure: view.failure ?? null,
@@ -710,7 +714,7 @@ export async function get(env: Cloudflare.Env, input: Input<'swarm'>): Promise<P
   return Problem.ok({
     ...Store.summary(row),
     about: view.about,
-    board: view.board ?? null,
+    ...boarded(view),
     code: view.code,
     contributions: ledger.contributions,
     failure: view.failure ?? null,

@@ -223,6 +223,7 @@ export type Lifecycle = { status: 'funding'; why: Halt | null } | { status: 'pau
 
 export type Overview = Summary & {
   about: string | null
+  board?: Board | null
   code: Code | null
   contributions: Contribution[]
   failure: Failure | null

@@ -278,5 +278,12 @@
     "invariant": "human items go first",
     "found": "2026-11-27 by pnpm dst --job drive_stuck: the turn's items went to the lead in id order, so the creator's answer to a stuck question came after older lead items",
     "fix": "feat(board): a turn lists riders' items first"
+  },
+  {
+    "job": "drive_backfill",
+    "seed": "1",
+    "invariant": "a viewed agent swarm shows its Board",
+    "found": "2026-11-27 on swarms.new, not by the sim: after the deploy every agent swarm read board null because the objects still ran the previous version, whose view has no board; this seed reads a new agent swarm through GET /v1/swarms/:id before and after reopening it at format 6, and expects its Board each time",
+    "fix": "fix(board): a read omits board when the object predates it"
   }
 ]
