@@ -100,6 +100,7 @@ function world(kit: Kit, operator: string, swarm: string, options: { creator: Ad
     paced: async () => true,
     rostered: async (roster: Roster) => void told.push(roster),
     say: async (input: { author: string; text: string }) => ({ author: input.author, text: input.text }),
+    textLimit: async () => ({ by: 'none' }),
   }
   const env = {
     ...db.env,

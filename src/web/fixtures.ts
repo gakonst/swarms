@@ -2,7 +2,7 @@ import * as Answer from '../shared/Answer.ts'
 import * as Shelf from '../shared/Artifact.ts'
 import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Hall, Heard, Kind, Lent, OwnAi, Plan, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Reacted, Reaction, Replied, Replies, Room, Roster, Said, Shouted, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
 import * as Drive from '../shared/Drive.ts'
-import { decimal, maxNote, units } from '../shared/Memo.ts'
+import { decimal, units } from '../shared/Memo.ts'
 import * as Limits from '../shared/Limits.ts'
 import * as Mention from '../shared/Mention.ts'
 import { problems } from '../shared/ResearchBrief.ts'
@@ -1280,7 +1280,7 @@ export async function say(key: string, input: { artifact?: boolean; parent?: num
   let steer: Said['steer'] = null
   if (Mention.steers(text)) {
     const note = Mention.idea(text)
-    if (note.length < Limits.Operations.steerLeastChars || note.length > maxNote) throw fail(Limits.Http.invalid, 'invalid_request', 'Say what the swarm should do after @swarm, in at most 280 characters.')
+    if (note.length < Limits.Operations.steerLeastChars) throw fail(Limits.Http.invalid, 'invalid_request', 'Say what the swarm should do after @swarm.')
     if (!input.steer) throw fail(Limits.Http.invalid, 'invalid_request', '@swarm steers the swarm with money: say how much of your backing goes behind it.')
     if (seated ? units(input.steer) > units(seated.left) : units(input.steer) > units(self.available)) throw fail(Limits.Http.conflict, 'insufficient_balance', `You have ${usd(self.available)} of backing not yet behind a note. Put new money behind this idea instead.`)
     swarm.steers.push({ amount: decimal(units(input.steer)), contributor: who, note })

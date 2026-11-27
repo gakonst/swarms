@@ -2,7 +2,7 @@ import { type KeyboardEvent, memo, type ReactNode, useCallback, useEffect, useLa
 import type { Config, Detail, Me, Member, Reaction, Replies, Room as RoomState, Said } from '../shared/Api.ts'
 import * as Answer from '../shared/Answer.ts'
 import * as Chatter from '../shared/Chatter.ts'
-import { maxNote, units } from '../shared/Memo.ts'
+import { units } from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Limits from '../shared/Limits.ts'
@@ -520,7 +520,6 @@ export const Room = memo(function Room(props: {
     if (steering) {
       if (!helm) return setProblem({ text: 'Only the riders who steer this swarm tell the AI what to do.' })
       if (idea.length < Limits.Operations.steerLeastChars) return setProblem({ text: 'Say what the AI should try.' })
-      if (idea.length > maxNote) return setProblem({ text: `Keep it under ${maxNote} characters.` })
       if (typeof door === 'object' && door.at === 'open' && door.from === 'team') return tell(idea, door.left)
       setProblem(undefined)
       setText('')
@@ -675,7 +674,6 @@ export const Room = memo(function Room(props: {
         <textarea
           aria-label={steering ? (asks ? 'What should the swarm do?' : 'What should the AI try?') : 'Message'}
           enterKeyHint="send"
-          maxLength={Mention.maxText}
           onChange={(event) => {
             setText(event.target.value)
             setCaret(event.target.selectionStart)

@@ -1,6 +1,4 @@
 import * as Limits from './Limits.ts'
-export const maxText = Limits.SharedMention.maxText
-
 export const maxName = Limits.SharedMention.maxName
 
 export const smallestSteer = Limits.SharedMention.smallestSteer

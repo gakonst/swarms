@@ -305,7 +305,6 @@ export const Operations = {
   transferLeastUnits: 10_000n,
   steerMostUnits: 100_000_000n,
   goalLeastChars: 10,
-  goalChars: 12_000,
   modelChars: 200,
   seedKeyChars: 64,
   seedNeeds: 20,
@@ -315,7 +314,6 @@ export const Operations = {
   messageLeastChars: 3,
   steerLeastChars: 3,
   suggestionLeastChars: 3,
-  suggestionChars: 2000,
   handLabelChars: 32,
   whoChars: 160,
   nameChars: 64,
@@ -340,8 +338,6 @@ export const Operations = {
   errorChars: 300,
   resultChars: 4000,
   taskChars: 2000,
-  quotedChars: 140,
-  clippedChars: 200,
   excerptChars: 240,
   excerptLeadShare: 3,
   pictureChunk: 0x8000,
@@ -491,6 +487,10 @@ export const Signin = {
   messageMost: 4096,
 } as const
 
+export const Sqlite = {
+  valueBytes: 2_000_000,
+} as const
+
 export const Telegram = {
   sendMessageChars: 4096,
 } as const
@@ -565,13 +565,11 @@ export const SharedFleet = {
 } as const
 
 export const SharedMemo = {
-  maxNote: 280,
   unit: 1_000_000n,
   decimals: 6,
 } as const
 
 export const SharedMention = {
-  maxText: 1000,
   maxName: 24,
   smallestSteer: 10_000n,
   wordHexEnd: 10,
@@ -1147,10 +1145,6 @@ export const WorkerOg = {
   cacheSeconds: 300,
 } as const
 
-export const WorkerPersona = {
-  specChars: 2000,
-} as const
-
 export const WorkerPhase = {
   restFailures: 3,
 } as const
@@ -1417,7 +1411,6 @@ export const WebLocal = {
 
 export const WebNew = {
   free: 3,
-  questionChars: 10_000,
   rows: 3,
 } as const
 

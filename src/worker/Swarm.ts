@@ -10,6 +10,7 @@ import * as Shelf from '../shared/Artifact.ts'
 import * as Site from '../shared/Site.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Reaction from '../shared/Reaction.ts'
+import type * as Texts from '../shared/Texts.ts'
 import * as About from './About.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
@@ -797,7 +798,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     this.log(
       'steer',
       `Steered the agent toward "${clip(note.note, Limits.Swarm.steerChars)}"`,
-      `${Words.dollars(Memo.units(note.weight))} behind it, ${Words.percent(note.share)} of everything contributed`,
+      `${note.note}\n\n${Words.dollars(Memo.units(note.weight))} behind it, ${Words.percent(note.share)} of everything contributed`,
     )
     return note
   }
@@ -847,6 +848,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
   chat(query: { after: number; before?: number | undefined; limit: number }) {
     const stamp = this.stamp()
     return { messages: Chat.messages(this, query), stamp }
+  }
+
+  async textLimit(): Promise<Texts.Limit> {
+    return this.board.maxText()
   }
 
   async say(input: Spoken): Promise<Said | null> {

@@ -109,7 +109,7 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
     seeds: ['1', '2', '3'],
   },
   {
-    flip: mutant('text.precheck', 'src/worker/Riding.ts', '  if (long) return fail(Limits.Http.invalid, Texts.detail("The node\'s text", long))\n', ''),
+    flip: mutant('text.precheck', 'src/worker/Riding.ts', '  if (long) return fail(Limits.Http.invalid, long)\n', ''),
     invariant: 'a node text counts code points as the board does',
     name: 'text.precheck',
     scenario: 'text',

@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Config, Currency } from '../shared/Api.ts'
-import { decimal, maxNote, units } from '../shared/Memo.ts'
+import { decimal, units } from '../shared/Memo.ts'
 import { here } from './boot.ts'
 import { mach, short, usd } from './format.ts'
 import { message, useWallet } from './hooks.ts'
@@ -38,7 +38,7 @@ export function asked(): Prefill {
   const amount = query.get('amount')?.trim()
   return {
     amount: amount && /^\d+(\.\d{1,6})?$/.test(amount) ? amount : '5',
-    note: query.get('note')?.slice(0, maxNote) ?? '',
+    note: query.get('note') ?? '',
     token: token && (preferred as readonly string[]).includes(token) ? (token as Currency) : undefined,
   }
 }
@@ -153,7 +153,7 @@ export function Fuel(props: {
   const floor = props.least ?? smallest
   const ok = valid(amount, floor)
   const signed = !!wallet.session
-  const ready = ok && props.note.length <= maxNote && !!props.config && !busy && !props.locked && !props.ended && act.at !== 'owed' && !funding
+  const ready = ok && !!props.config && !busy && !props.locked && !props.ended && act.at !== 'owed' && !funding
   const text = props.note.trim()
   const least = Math.ceil(Number(floor) * Limits.Web.centsPerDollar) / Limits.Web.centsPerDollar
   const marks = grown(least > stops[0] ? [least, ...stops.filter((stop) => stop > least)] : stops, amount)
@@ -212,7 +212,7 @@ export function Fuel(props: {
       </div>
       {floor !== smallest && !ok && <p className="fuel-least" data-bad={amount.trim() !== ''}>At least {dollars(floor)}</p>}
       {props.extra}
-      {!props.first && props.steers !== false && <input aria-label={props.ask ?? 'What should it try next?'} className="fuel-steer" disabled={busy} maxLength={maxNote} onChange={(event) => props.onNote(event.target.value)} placeholder={`${props.ask ?? 'What should it try next?'} (optional)`} ref={steer} value={props.note} />}
+      {!props.first && props.steers !== false && <input aria-label={props.ask ?? 'What should it try next?'} className="fuel-steer" disabled={busy} onChange={(event) => props.onNote(event.target.value)} placeholder={`${props.ask ?? 'What should it try next?'} (optional)`} ref={steer} value={props.note} />}
       <button aria-busy={busy || undefined} className="btn btn-high fuel-go" disabled={!ready} onClick={() => void submit()} type="button">
         {busy ? working[act.at as keyof typeof working] : funding ? 'Adding funds…' : props.ended ? 'Ended' : props.locked && props.wants ? props.wants : ok ? `${said} · ${dollars(amount)}` : said}
       </button>

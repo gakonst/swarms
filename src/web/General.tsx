@@ -198,7 +198,7 @@ export function General(props: { config: Config | undefined }) {
     <Username why="Pick a name to chat." />
   ) : (
     <div className="chat-bar">
-      <textarea aria-label="Message #general" enterKeyHint="send" maxLength={Mention.maxText} onChange={(event) => setText(event.target.value)} onKeyDown={keys} placeholder="Message #general" ref={area} rows={1} value={text} />
+      <textarea aria-label="Message #general" enterKeyHint="send" onChange={(event) => setText(event.target.value)} onKeyDown={keys} placeholder="Message #general" ref={area} rows={1} value={text} />
       <button aria-label="Send" className="chat-send" disabled={!text.trim()} onClick={post} type="button">↑</button>
     </div>
   )

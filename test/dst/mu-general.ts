@@ -124,6 +124,18 @@ async function general(seed: string): Promise<Outcome> {
         )
       },
     ],
+    [
+      'a #general message is stored and read back whole, however long',
+      async (_t) => {
+        const room = general()
+        await named(room.env, ana, 'ada')
+        const text = Array.from({ length: 4_000 }, () => random.pick(['lemma', 'cache', 'é', '中', '😀', 'the'])).join(' ')
+        const posted = await Operations.shout(room.env, { text }, ana)
+        a.ok(posted.ok && posted.value.message.text === text, 'the shout answers the whole message')
+        const read = await Operations.general(room.env, {})
+        a.ok(read.ok && read.value.messages.some((message) => message.text === text), '#general holds the whole message')
+      },
+    ],
   ]
   for (const [dstName, dstRun] of [...dstCases].sort(() => random.next() - 0.5)) {
     a.as(dstName)
@@ -142,11 +154,18 @@ export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = { g
 
 export const canaries: { flip: () => () => void; invariant: string; name: string; scenario: string; seeds: string[] }[] = [
   {
+    flip: mutant('general.whole', 'src/worker/Lobby.ts', 'const text = redact(input.text)', 'const text = redact(input.text).slice(0, 1000)'),
+    invariant: 'a #general message is stored and read back whole, however long',
+    name: 'general.whole',
+    scenario: 'general',
+    seeds: ['1', '2', '3'],
+  },
+  {
     flip: mutant(
       'general.named',
       'src/worker/Operations.ts',
-      '  if (!account.name) return unnamed()\n  const message = await Lobby.hall',
-      '  if (false) return unnamed()\n  const message = await Lobby.hall',
+      "  if (!account.name) return unnamed()\n  const long = Texts.beyond('The message', parsed.value.text",
+      "  if (false) return unnamed()\n  const long = Texts.beyond('The message', parsed.value.text",
     ),
     invariant: '#general takes a message from anyone with a username and reads it back with their name',
     name: 'general.named',

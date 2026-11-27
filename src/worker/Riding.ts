@@ -197,8 +197,9 @@ export async function propose(self: Swarm, nid: string, proposal: Proposal): Pro
   const found = await Nodes.state(self)
   const refused = Ride.proposable(phase(found.nodes.get(proposal.parent)), proposal.parent, Nodes.triage)
   if (refused) return refuse(refused)
-  const long = Texts.over(Nodes.spec(proposal), await self.board.maxText())
-  if (long) return fail(Limits.Http.invalid, Texts.detail("The node's text", long))
+  const limit = await self.board.maxText()
+  const long = Texts.beyond("The node's text", Nodes.spec(proposal), limit, Limits.Sqlite.valueBytes) ?? (proposal.said ? Texts.beyond('The message', proposal.said.text, limit, Limits.Sqlite.valueBytes) : null)
+  if (long) return fail(Limits.Http.invalid, long)
   self.kv.put('proposal:' + nid, Ride.stored(proposal))
   return { ok: true, value: nid }
 }
@@ -264,8 +265,8 @@ export async function steer(self: Swarm, input: { amount: bigint; contributor: s
   if (closed) return refuse(closed)
   const handle = (await Store.account(self.env, contributor as Address)).handle
   const said = (behind: bigint) => '[$' + trim(behind) + ' behind this, from @' + handle + '] ' + input.note
-  const long = Texts.over(said((found.ledger.funders.get(input.nid)?.get(contributor)?.amount ?? 0n) + input.amount), await self.board.maxText())
-  if (long) return fail(Limits.Http.invalid, Texts.detail('The steer', long))
+  const long = Texts.beyond('The steer', said((found.ledger.funders.get(input.nid)?.get(contributor)?.amount ?? 0n) + input.amount), await self.board.maxText(), Limits.Sqlite.valueBytes)
+  if (long) return fail(Limits.Http.invalid, long)
   if (input.amount > 0n) {
     const moved = await shift(self, { amount: input.amount, contributor, from: Flow.free, id: Payment.id('steer', input.nid, contributor, input.key), to: input.nid }, () => undefined)
     if (moved.at !== 'paid') return fail(Limits.Http.conflict, 'You have less free money in this swarm than that. Ride the node instead.')

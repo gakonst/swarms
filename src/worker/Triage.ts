@@ -247,7 +247,7 @@ export async function task(self: Swarm, found: Nodes.State) {
       return '- ' + nid + ' under ' + (Nodes.parentOf(node) ?? '-') + ': ' + parsed.title + ' (' + riders + ' riders, $' + Flow.usd(found.ledger.pledged.get(nid) ?? 0n) + ')' + (parsed.statement ? '\n  statement: ' + parsed.statement.replace(/\n/g, ' ') : '')
     })
   const { results } = await self.env.DB.prepare('select id, parent, text from ideas where swarm = ? and node is null order by created_at desc limit ?').bind(Nodes.swarm(self), listed).all<{ id: string; parent: string; text: string }>()
-  const ideas = results.map((idea) => '- idea ' + idea.id + ' under ' + idea.parent + ': ' + clip(idea.text, Limits.Triage.ideaChars))
+  const ideas = results.map((idea) => '- idea ' + idea.id + ' under ' + idea.parent + ': ' + idea.text)
   const root = found.ledger.left.get(Nodes.root) ?? 0n
   return [
     Persona.triage(self.kv.get('treeSetup') ?? null),

@@ -71,6 +71,7 @@ import * as Door from '../shared/Door.ts'
 import * as Memo from '../shared/Memo.ts'
 import * as Mention from '../shared/Mention.ts'
 import * as Reaction from '../shared/Reaction.ts'
+import * as Texts from '../shared/Texts.ts'
 import * as Nickname from '../shared/Nickname.ts'
 import * as Pictures from '../shared/Picture.ts'
 import * as Artifacts from './Artifacts.ts'
@@ -197,7 +198,6 @@ const subagentId = z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER)
 const note = z
   .string()
   .trim()
-  .max(Memo.maxNote)
   .nullish()
   .describe('Optional steering note, weighted by the money behind it. The same text backs an existing note.')
 
@@ -235,7 +235,6 @@ export const schema = {
       .string()
       .trim()
       .min(Limits.Operations.goalLeastChars)
-      .max(Limits.Operations.goalChars)
       .describe('What the swarm should find out or build, what done looks like and what its updates should report.'),
     problem: z.enum(ids).optional().describe('The id of the idea-bank problem this swarm works on, from GET /v1/problems. A problem with an open swarm is not offered again until that swarm finishes.'),
     title: z.string().trim().min(1).max(Limits.Operations.titleChars).describe('A short name for the swarm.'),
@@ -365,7 +364,7 @@ export const schema = {
     limit: z.coerce.number().int().min(1).max(Limits.Operations.pageMost).default(Limits.Operations.messagesPage).describe('At most this many messages.'),
   }),
   shout: z.object({
-    text: z.string().trim().min(1).max(Mention.maxText).describe('The message, posted to #general under your username.'),
+    text: z.string().trim().min(1).describe("The message, posted to #general under your username, kept whole: longer than storage holds in one entry, it is refused with its size and that bound."),
   }),
   room: z.object({
     after: z.coerce.number().int().min(0).default(0).describe('Return the messages after this id; 0 returns the newest.'),
@@ -402,8 +401,7 @@ export const schema = {
       .string()
       .trim()
       .min(1)
-      .max(Mention.maxText)
-      .describe('The message. @<handle> mentions a backer. @swarm steers the swarm with the rest of the text as a note, weighted by steer.'),
+      .describe('The message, kept whole: longer than the swarm\'s board text limit (or, with none, than storage holds in one entry) it is refused with its length and that limit. @<handle> mentions a backer. @swarm steers the swarm with the rest of the text as a note, weighted by steer.'),
   }),
   react: z.object({
     emoji: z.string().refine(Reaction.known, `emoji is one of ${Reaction.emojis.join(' ')}`).describe(`One of ${Reaction.emojis.join(' ')}.`),
@@ -447,7 +445,7 @@ export const schema = {
     amount: decimal.optional().describe('How much the proposer will ride it with; at least ideaMin ($1) makes it a node.'),
     form: z.enum(['program', 'approach', 'lemma', 'idea']).default('lemma'),
     parent: nid.default('root').describe('The node it goes under.'),
-    said: z.string().trim().min(1).max(Mention.maxText).optional().describe("Your message to the room, posted under your name once the node is made: the node's thread, where its runs post their updates as replies."),
+    said: z.string().trim().min(1).optional().describe("Your message to the room, posted under your name once the node is made: the node's thread, where its runs post their updates as replies."),
     spec: z
       .string()
       .default('')
@@ -457,12 +455,12 @@ export const schema = {
     title: z.string().trim().min(Limits.Operations.nodeTitleLeastChars).max(Limits.Operations.nodeTitleChars).describe('One line; the same title under the same parent is the same node.'),
     token: z.enum(['mach', ...Chain.ids]).default('mach'),
   }),
-  suggest: z.object({ parent: nid.default('root'), swarm: id, text: z.string().trim().min(Limits.Operations.suggestionLeastChars).max(Limits.Operations.suggestionChars).describe('The idea, free of charge; triage may adopt it as a node credited to you.') }),
+  suggest: z.object({ parent: nid.default('root'), swarm: id, text: z.string().trim().min(Limits.Operations.suggestionLeastChars).describe('The idea, free of charge; triage may adopt it as a node credited to you.') }),
   nodeSteer: z.object({
     amount: z.string().regex(/^\d+(\.\d{1,6})?$/).default('0').describe('Dollars of your free money in this swarm to move onto the node with the note; 0 steers with what you already have on it.'),
     node: nid,
     key: idempotency,
-    note: z.string().trim().min(1).max(Memo.maxNote).describe('The note; the node\'s run reads it with the money behind it.'),
+    note: z.string().trim().min(1).describe('The note, kept whole; the node\'s run reads it with the money behind it.'),
     swarm: id,
   }),
   nodeMove: z.object({
@@ -648,6 +646,8 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   const tree = parsed.value.form === 'tree'
   const asked = tree && guards.setup ? undefined : Setup.resolve(parsed.value)
   if (typeof asked === 'string') return Problem.fail(Limits.Http.invalid, 'invalid_request', asked)
+  const long = Texts.beyond('The goal', parsed.value.goal, Texts.unbounded, Limits.Sqlite.valueBytes)
+  if (long) return Problem.fail(Limits.Http.invalid, 'invalid_request', long)
   if (!tree && parsed.value.template !== 'custom' && (parsed.value.harness || parsed.value.model || parsed.value.subagents !== undefined))
     return Problem.fail(Limits.Http.invalid, 'invalid_request', 'harness, model and subagents go with template custom.')
   const prices = await Gateway.prices(env)
@@ -941,6 +941,8 @@ export async function shout(env: Cloudflare.Env, input: Input<'shout'>, address?
   if (!address) return Problem.fail(Limits.Http.unauthorized, 'unauthorized', 'Sign in with Tempo ID to post in #general.')
   const account = await Store.account(env, address)
   if (!account.name) return unnamed()
+  const long = Texts.beyond('The message', parsed.value.text, Texts.unbounded, Limits.Sqlite.valueBytes)
+  if (long) return Problem.fail(Limits.Http.invalid, 'invalid_request', long)
   const message = await Lobby.hall(env).shout({ author: account.address, name: account.name, text: parsed.value.text })
   return message ? Problem.ok({ message, name: account.name }) : Problem.fail(Limits.Http.tooMany, 'rate_limited', 'At most 10 messages a minute in a room; wait a moment.')
 }
@@ -1109,6 +1111,8 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   const seated = await poster(env, request.swarm, address)
   if (!seated.ok) return seated
   const { author, door, members, row, seat } = seated.value
+  const long = Texts.beyond('The message', request.text, await stub(env, row.id).textLimit().catch(unlimited), Limits.Sqlite.valueBytes)
+  if (long) return Problem.fail(Limits.Http.invalid, 'invalid_request', long)
 
   const steering = Mention.steers(request.text)
   if (steering && request.parent !== undefined) return Problem.fail(Limits.Http.invalid, 'invalid_request', '@swarm goes in the room, not in a thread: post it as its own message.')
@@ -1125,7 +1129,6 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   if (steering) {
     const note = Mention.idea(request.text)
     if (note.length < Limits.Operations.steerLeastChars) return Problem.fail(Limits.Http.invalid, 'invalid_request', 'Say what the swarm should do after @swarm.')
-    if (note.length > Memo.maxNote) return Problem.fail(Limits.Http.invalid, 'invalid_request', `A steer is at most ${Memo.maxNote} characters besides @swarm.`)
     if (request.steer === undefined)
       return Problem.fail(
         Limits.Http.invalid,
@@ -1163,6 +1166,11 @@ export async function say(env: Cloudflare.Env, input: Input<'say'>, address?: Ad
   })
   if (!message) return Problem.fail(Limits.Http.missing, 'not_found', 'No message in this room has that id to reply to.')
   return Problem.ok({ me: await self(env, backing ? spend(members, address, backing) : members, address), message })
+}
+
+function unlimited(error: unknown): Texts.Limit {
+  if (String((error as Error)?.message ?? error).includes('does not implement the method')) return Texts.unbounded
+  throw error
 }
 
 function mentioned(members: readonly Member[], text: string) {
@@ -1399,7 +1407,7 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
   const amount = units(request.amount)
   const identity = request.key ? Payment.id('fund', row.id + ':' + target.id, allowed.value.address, request.key) : identifier()
   const message = request.message ?? null
-  const note = message ? clip(message.split('\n')[0] ?? message, Memo.maxNote) : `branch ${target.id}`
+  const note = message?.trim() || `branch ${target.id}`
   const entry = { amount, branch: { agent, id: target.id }, contributor: allowed.value.address, id: identity, note, note_id: `branch:${target.id}`, swarm: row.id }
   const first = seat ? await Store.allot(env, { ...entry, limit: seat.limit === null ? null : Memo.units(seat.limit), since: Date.now() - Team.period }) : await Store.steer(env, entry)
   const placed = first || (!!request.key && (await Store.placed(env, row.id, identity, allowed.value.address)))
@@ -1427,12 +1435,12 @@ export async function fund(env: Cloudflare.Env, input: Input<'fund'>, address?: 
       said: !first
         ? null
         : message
-        ? `${who} steered ${target.who} (branch ${target.id}) with ${dollars(Memo.decimal(amount))}. ${standing} ${Mention.quoted(note, Limits.Operations.quotedChars)}`
+        ? `${who} steered ${target.who} (branch ${target.id}) with ${dollars(Memo.decimal(amount))}. ${standing} “${note}”`
         : `${who} put ${dollars(Memo.decimal(amount))} behind ${target.who} (branch ${target.id}). ${standing}`,
       ...(message
         ? {
             steer: {
-              note: `${who} steered ${target.who} with ${dollars(Memo.decimal(amount))}: ${clip(note, Limits.Operations.clippedChars)}`,
+              note: `${who} steered ${target.who} with ${dollars(Memo.decimal(amount))}: ${note}`,
               text: `[${dollars(Memo.decimal(amount))} behind this, from ${who}; backers have put ${dollars(Memo.decimal(sum))} behind your branch in all${total === null ? '' : `, and your budget is now ${dollars(Memo.decimal(total))}`}] Weigh what backers ask by the money behind it.\n\n${Mention.claimed(message)}${request.artifact ? `\n\n${Persona.publishing}` : ''}`,
               who: target.who,
             },
@@ -2027,6 +2035,8 @@ export async function suggest(env: Cloudflare.Env, input: Input<'suggest'>, addr
   const shown = await stub(env, row.value.id).nodeRead(row.value.id, request.parent)
   if (!shown.ok) return answered(shown)
   if (shown.value.status === 'proven' || shown.value.status === 'dead end') return Problem.fail(Limits.Http.conflict, 'conflict', 'That node has ended; suggest under an open one.')
+  const long = Texts.beyond('The idea', request.text, Texts.unbounded, Limits.Sqlite.valueBytes)
+  if (long) return Problem.fail(Limits.Http.invalid, 'invalid_request', long)
   const idea = identifier()
   const written = await env.DB.prepare(
     'insert into ideas (id, swarm, parent, author, text, created_at) select ?1, ?2, ?3, ?4, ?5, ?6 where (select count(*) from ideas where author = ?4 and created_at > ?6 - 86400000) < ?7',

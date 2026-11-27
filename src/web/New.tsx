@@ -76,7 +76,7 @@ function useLaunch(slot: string, title: string, goal: string, problem: string | 
   const input = { steering, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}), ...(nickname ? { nickname } : {}), ...(engine === 'antigravity' ? { template: 'antigravity' as const } : {}) }
   return {
     busy: Pay.busy(Pay.useFlow(slot)),
-    locked: !(input.title.length >= 1 && input.title.length <= Limits.Operations.titleChars && input.goal.length >= Limits.Operations.goalLeastChars && input.goal.length <= Limits.Operations.goalChars),
+    locked: !(input.title.length >= 1 && input.title.length <= Limits.Operations.titleChars && input.goal.length >= Limits.Operations.goalLeastChars),
     target: () => launch(input, () => {}),
   }
 }
@@ -172,7 +172,7 @@ function Own(props: { config: Config | undefined; name: string | undefined }) {
       <Address name={props.name} />
       <label className="own-ask">
         <span className="sr-only">Your problem</span>
-        <textarea autoFocus disabled={launch.busy} id="question" maxLength={Limits.WebNew.questionChars} onChange={(event) => setQuestion(event.target.value)} placeholder="e.g. Find the cheapest way to make clean drinking water at home" rows={Limits.WebNew.rows} value={question} />
+        <textarea autoFocus disabled={launch.busy} id="question" onChange={(event) => setQuestion(event.target.value)} placeholder="e.g. Find the cheapest way to make clean drinking water at home" rows={Limits.WebNew.rows} value={question} />
       </label>
       <div className="own-box">
         <Box

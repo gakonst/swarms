@@ -1,4 +1,3 @@
-import * as Memo from './Memo.ts'
 import * as Limits from './Limits.ts'
 
 export type Exchange = { answer: string; question: string }
@@ -62,8 +61,7 @@ export function ask(thread: readonly Exchange[], question: string) {
 
 export function note(thread: readonly Exchange[], asked = false) {
   const first = thread[0]?.question.trim().split('\n')[0]?.trim() ?? ''
-  const full = `${asked ? requested : collapsed}: ${first}`
-  return full.length > Memo.maxNote ? full.slice(0, Memo.maxNote - 1).trimEnd() + '…' : full
+  return `${asked ? requested : collapsed}: ${first}`
 }
 
 export function collapse(thread: readonly Exchange[], asked = false) {

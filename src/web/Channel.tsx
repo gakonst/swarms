@@ -1,6 +1,5 @@
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Config, NodeView } from '../shared/Api.ts'
-import { maxNote } from '../shared/Memo.ts'
 import * as Tree from '../shared/Tree.ts'
 import { Compose } from './Compose.tsx'
 import { ago, day, minute, spent, usd } from './format.ts'
@@ -153,7 +152,7 @@ export function Composer(props: { autoFocus?: boolean; config: Config | undefine
       ) : (
         <>
           <div className="chat-bar">
-            <textarea aria-label={props.label} enterKeyHint="send" maxLength={maxNote} onChange={(event) => { setText(event.target.value); setSent(false) }} onKeyDown={keys} placeholder={props.placeholder} ref={area} rows={1} value={text} />
+            <textarea aria-label={props.label} enterKeyHint="send" onChange={(event) => { setText(event.target.value); setSent(false) }} onKeyDown={keys} placeholder={props.placeholder} ref={area} rows={1} value={text} />
             <button aria-label="Send" className="chat-send" disabled={!text.trim() || sending} onClick={() => void post()} type="button">↑</button>
           </div>
           {props.fine && <p className="talk-fine" role={sent ? 'status' : undefined}>{sent ? 'Posted.' : props.fine}</p>}
