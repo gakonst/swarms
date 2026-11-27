@@ -27,7 +27,19 @@ let ready: Awaited<ReturnType<typeof load>> | undefined
 async function load(config: Config) {
   verifyUrl = new URL(Site.at(config.auth), location.href).href
   const [{ Accounts }, { dialog, siwe }] = await Promise.all([import('accounts'), import('accounts/plugins')])
-  return Accounts.create({ chain: config.chainId, fetch: primed, plugins: [dialog(), siwe({ auth: Site.at(config.auth) })] })
+  return Accounts.create({ chain: config.chainId, fetch: primed, guest: true, plugins: [dialog(), siwe({ auth: Site.at(config.auth) })] })
+}
+
+let guestInstance: ReturnType<typeof loadGuest> | undefined
+
+async function loadGuest(config: Config) {
+  const [{ Accounts }, { dialog }] = await Promise.all([import('accounts'), import('accounts/plugins')])
+  return Accounts.create({ chain: config.chainId, guest: true, plugins: [dialog()] })
+}
+
+function guests(config: Config) {
+  guestInstance ??= loadGuest(config)
+  return guestInstance
 }
 
 let verifyUrl: string | undefined
@@ -226,6 +238,7 @@ function declined(error: unknown): never {
 export function warm(config: Config) {
   if (fixture || server) return
   void wallet(config)
+  void guests(config)
 }
 
 let renewing: Promise<string> | undefined
@@ -250,13 +263,13 @@ export async function signIn(config: Config) {
   }
   const accounts = await wallet(config)
   const signed = await accounts.dialog.signIn().catch(declined)
-  void accounts.signOut().catch(() => {})
+  if (signed.kind !== 'guest') void accounts.signOut().catch(() => {})
   const token = (signed.auth as { token?: unknown } | undefined)?.token
   if (!signed.address || typeof token !== 'string') throw new Error('Tempo ID returned no sign-in.')
   const session = { address: signed.address, token }
   Api.authorize(token)
   const [account, held] = await Promise.all([Api.account().catch(() => undefined), holdings(config, lower(signed.address)).catch(() => undefined)])
-  set({ account, address: signed.address, ...held, email: signed.user.email, pending: false, session })
+  set({ account, address: signed.address, ...held, email: signed.user?.email, pending: false, session })
   if (!account) void identify()
   return session
 }
@@ -330,6 +343,7 @@ export function signOut() {
 export function disconnect() {
   signOut()
   set({ address: undefined, balance: undefined, balances: {}, email: undefined, pending: false })
+  void guestInstance?.then((accounts) => accounts.signOut()).catch(() => {})
 }
 
 export async function send(config: Config, input: { amount: bigint; memo: Hex; to: Address; token: Currency }) {
@@ -345,23 +359,21 @@ export async function send(config: Config, input: { amount: bigint; memo: Hex; t
       owed -= taken
     }
     void refresh(config)
-    if (!state.session) set({ address: visitor, pending: false, session: { address: visitor, token: 'fixture' } })
+    if (!state.session) set({ address: visitor, pending: false })
     return hash
   }
   const token = config.tokens.find((item) => item.id === input.token)
   if (!token) throw new Error('That token is not offered.')
   const payment = { amount: decimal(input.amount), memo: input.memo, to: input.to, token: token.address }
   const accounts = await wallet(config)
-  if (state.session) {
+  if (state.session && lower(await accounts.guest.get()) !== state.session.address) {
     const { transaction } = await accounts.pay({ ...payment, account: state.session.address }).catch(declined)
     void refresh(config).catch(() => {})
     return transaction
   }
-  const paid = await accounts.pay(payment).catch(declined)
+  const paid = await (await guests(config)).pay(payment).catch(declined)
   const switched = paid.address.toLowerCase() !== state.address
-  const issued = (paid.auth as { token?: unknown } | undefined)?.token
-  set({ ...(switched ? { account: undefined, balance: undefined, balances: {}, email: undefined } : {}), address: paid.address, pending: false, ...(typeof issued === 'string' ? { session: { address: paid.address, token: issued } } : {}) })
-  if (typeof issued === 'string') void identify()
+  set({ ...(switched ? { account: undefined, balance: undefined, balances: {}, email: undefined } : {}), address: paid.address, pending: false })
   void refresh(config).catch(() => {})
   return paid.transaction
 }
