@@ -547,6 +547,8 @@ const tree = {
   extraMost: 4_000_000,
   gapParts: 2,
   lateRounds: 3,
+  lagOver: 3,
+  lagTold: 0.25,
   lemmas: 4,
   orphans: 3,
   quietMost: 4,
@@ -559,6 +561,7 @@ const tree = {
 
 const nodeMutants = {
   adopt: false,
+  final: false,
   inherit: false,
   late: false,
   orphan: false,
@@ -619,7 +622,7 @@ async function planted(seed: string, name: string, body: (t: Tree) => Promise<nu
   const Runner = await import('../../src/worker/Runner.ts')
   const was = { nodes: { ...Nodes.guards }, required: [...((Runner.output as { required?: string[] }).required ?? [])], runner: { ...Runner.guards } }
   for (const key of ['inherit', 'orphan', 'quiet', 'step', 'told'] as const) Nodes.guards[key] = !nodeMutants[key]
-  for (const key of ['adopt', 'late', 'rest', 'rotate', 'stray'] as const) Runner.guards[key] = !nodeMutants[key]
+  for (const key of ['adopt', 'final', 'late', 'rest', 'rotate', 'stray'] as const) Runner.guards[key] = !nodeMutants[key]
   const required = (Runner.output as { required?: string[] }).required
   if (nodeMutants.schema && required) required.splice(required.indexOf('outcome'), 1)
   const g = D.gateway()
@@ -868,6 +871,83 @@ const charged = (seed: string) =>
       if (now - theirs !== spent) t.fail('late once', 'round ' + i + ' charged root ' + Memo.decimal(now) + ' for a run that spent ' + Memo.decimal(spent))
     }
     return rounds
+  })
+
+const lagged = (seed: string) =>
+  planted(seed, 'mf-nodes.lag', async (t) => {
+    const { D, Flow, Memo, Nodes, Runner, g, random, w } = t
+    const step = Memo.units(Nodes.defaults.runStep)
+    await w.swarm.treePledge(D.id, { amount: Memo.decimal(step), contributor: random.pick([D.ana, D.bo]), hash: t.hash(), nid: null })
+    await t.waited(() => g.subs.length >= 1)
+    const run = g.subs[0]
+    if (!run) throw new Error('the run never started')
+    const seen = BigInt(random.int(0, Number(step) / 2))
+    run.spent_usd = Flow.number(seen)
+    Runner.wake(w.swarm)
+    if (!(await t.waited(() => w.swarm.kv.get<{ spent: string }>('live:r:root:1')?.spent === Flow.usd(seen))))
+      throw new Error('live never showed ' + Flow.usd(seen) + ': ' + JSON.stringify(w.swarm.kv.get('live:r:root:1')))
+    g.subs.splice(g.subs.indexOf(run), 1)
+    const spent = seen + BigInt(random.int(1, Number(step - seen)))
+    run.spent_usd = Flow.number(spent)
+    run.status = { output: { children: [], commit: null, outcome: 'progress', summary: 'Some way in', theorem: null, why: null }, state: 'completed' }
+    Runner.wake(w.swarm)
+    if (!(await t.waited(() => w.swarm.kv.get('charged:r:root:1') !== undefined))) throw new Error('the hidden run never settled')
+    const real = Date.now
+    let ahead = 0
+    Date.now = () => real() + ahead
+    try {
+      const told = random.chance(tree.lagTold)
+      const rounds = random.int(1, tree.lagOver)
+      for (let i = 0; i < rounds; i++) {
+        ahead += Runner.lateMs + random.int(1, Runner.lateMs)
+        await Runner.late(w.swarm)
+      }
+      if (told) {
+        ahead += Runner.lateMostMs
+        await Runner.late(w.swarm)
+        const said = w.swarm.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM tree_deltas WHERE text LIKE '%r:root:1%is not booked.'").one().n
+        if (Number(said) !== 1 || w.swarm.kv.get('charged:r:root:1') !== undefined)
+          t.fail(
+            'unbooked told',
+            'a run the gateway hid past ' +
+              Runner.lateMostMs +
+              ' ms was told ' +
+              said +
+              ' times and is ' +
+              (w.swarm.kv.get('charged:r:root:1') ? 'still tracked' : 'dropped'),
+          )
+        return rounds
+      }
+      g.subs.unshift(run)
+      for (let n = random.int(1, 2); n > 0; n--) await Runner.late(w.swarm)
+      const booked = Flow.fold(await Flow.rows(w.env, D.id)).spent.get('root') ?? 0n
+      const { results } = await w.env.DB.prepare(
+        "select coalesce(-sum(amount), 0) as amount from flows where swarm = ?1 and kind = 'spend' and node = 'root' and run is not null and run != 'r:root:1' and id not like ?1 || ':late:r:root:1:%'",
+      )
+        .bind(D.id)
+        .all<{ amount: number }>()
+      const drift = booked - BigInt(results[0]?.amount ?? 0) - spent
+      if (drift !== 0n)
+        t.fail(
+          'ledger drift',
+          'after the list hid the run ' +
+            rounds +
+            ' sweeps past ' +
+            Runner.lateMs +
+            ' ms, the ledger is ' +
+            Memo.decimal(drift) +
+            ' off the ' +
+            Memo.decimal(spent) +
+            ' the gateway charged',
+        )
+      ahead += Runner.lateMs + 1
+      await Runner.late(w.swarm)
+      if (w.swarm.kv.get('charged:r:root:1') !== undefined)
+        t.fail('ledger drift', 'a run the gateway showed ended is still tracked past ' + Runner.lateMs + ' ms')
+      return rounds
+    } finally {
+      Date.now = real
+    }
   })
 
 const quieted = (seed: string) =>
@@ -1276,6 +1356,7 @@ async function api(seed: string): Promise<Outcome> {
 export const scenarios: Record<string, (seed: string) => Promise<Outcome>> = {
   'mf-nodes.api': api,
   'mf-nodes.flow': flow,
+  'mf-nodes.lag': lagged,
   'mf-nodes.late': charged,
   'mf-nodes.quiet': quieted,
   'mf-nodes.reconcile': reconciled,
@@ -1303,6 +1384,7 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
   { flip: nodeMutant('schema'), invariant: 'output schema', name: 'mf-nodes.topup.schema', scenario: 'mf-nodes.topup', seeds: ['1', '2', '3'] },
   { flip: nodeMutant('rotate'), invariant: 'rotated', name: 'mf-nodes.rotate.rotate', scenario: 'mf-nodes.rotate', seeds: ['1', '2', '3', '4', '5', '6'] },
   { flip: nodeMutant('late'), invariant: 'late once', name: 'mf-nodes.late.late', scenario: 'mf-nodes.late', seeds: ['1', '2', '3'] },
+  { flip: nodeMutant('final'), invariant: 'ledger drift', name: 'mf-nodes.lag.final', scenario: 'mf-nodes.lag', seeds: ['1', '2', '3'] },
   { flip: nodeMutant('quiet'), invariant: 'quiet pause', name: 'mf-nodes.quiet.quiet', scenario: 'mf-nodes.quiet', seeds: ['1', '2', '3'] },
   { flip: nodeMutant('told'), invariant: 'repost once', name: 'mf-nodes.repost.told', scenario: 'mf-nodes.repost', seeds: ['1', '2', '3'] },
   { flip: apiMutant('reviewed'), invariant: 'tree created', name: 'mf-nodes.api.reviewed', scenario: 'mf-nodes.api', seeds: ['1', '2', '3', '4', '5', '6'] },

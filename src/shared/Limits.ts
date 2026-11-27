@@ -419,6 +419,7 @@ export const Runner = {
   rotateAfter: 200,
   verifiers: 4,
   lateMs: 10 * 60_000,
+  lateMostMs: 6 * 60 * 60_000,
   chargeAfterMs: 2_000,
   payingAttempts: 8,
   timing: {

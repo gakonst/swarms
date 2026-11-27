@@ -208,5 +208,12 @@
     "invariant": "overspent",
     "found": "2026-11-26 by pnpm dst --hunt: a stale subagent list hid a run seconds after its spawn, so it settled at 0 and was never tracked for a late charge; the 0.091769 the gateway charged was never booked and that money was budgeted again, past what was raised",
     "fix": "fix(runner): track a late charge for a run the gateway no longer lists"
+  },
+  {
+    "job": "mf-nodes.lag",
+    "seed": "1",
+    "invariant": "ledger drift",
+    "found": "2026-11-27 by the mf-nodes.lag.final canary: a subagent list that hid a settled run for three sweeps past Runner.lateMs dropped its charged record, so the 1.952392 the gateway charged after settlement was never booked",
+    "fix": "fix(runner): keep a late charge tracked until the gateway shows the run ended"
   }
 ]

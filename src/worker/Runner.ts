@@ -23,7 +23,7 @@ export const rotateAfter = Limits.Runner.rotateAfter
 
 export const verifiers = Limits.Runner.verifiers
 
-export const guards = { adopt: true, bound: true, claims: true, folded: true, halt: true, heard: true, kick: true, late: true, needs: true, relay: true, rest: true, rotate: true, stray: true, topped: true }
+export const guards = { adopt: true, bound: true, claims: true, final: true, folded: true, halt: true, heard: true, kick: true, late: true, needs: true, relay: true, rest: true, rotate: true, stray: true, topped: true }
 
 export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: Limits.Runner.payingAttempts }
 
@@ -649,9 +649,11 @@ export async function halt(self: Swarm, run: string) {
   }
 }
 
-export type Charged = { agent: string; at: number; spent: string; sub: number }
+export type Charged = { agent: string; at: number; final?: number; spent: string; sub: number }
 
 export const lateMs = Limits.Runner.lateMs
+
+export const lateMostMs = Limits.Runner.lateMostMs
 
 function charged(self: Swarm, run: string, spawned: Nodes.Spawned, spent: bigint) {
   self.kv.put('charged:' + run, { agent: spawned.agent, at: Date.now(), spent: Memo.decimal(spent), sub: spawned.sub } satisfies Charged)
@@ -670,7 +672,16 @@ async function charge(self: Swarm) {
   const swarm = Nodes.swarm(self)
   for (const [key, held] of [...self.kv.list<Charged>({ prefix: 'charged:' })]) {
     const run = key.slice('charged:'.length)
-    if (Date.now() - held.at > lateMs) {
+    const age = Date.now() - held.at
+    if (guards.final ? held.final !== undefined && Date.now() - held.final > lateMs : age > lateMs) {
+      self.kv.delete(key)
+      if (held.sub) self.kv.delete(Sub.key(held.agent, held.sub))
+      continue
+    }
+    if (age > lateMostMs) {
+      const text = 'The gateway never showed run ' + run + ' ended within ' + lateMostMs / Limits.Clock.minuteMs + ' minutes of its settling; what it charged past ' + Flow.usd(Memo.units(held.spent)) + ' is not booked.'
+      console.error(text)
+      Nodes.emit(self, Flow.runNode(run), 'progress', text)
       self.kv.delete(key)
       if (held.sub) self.kv.delete(Sub.key(held.agent, held.sub))
       continue
@@ -682,8 +693,12 @@ async function charge(self: Swarm) {
     const kept = Sub.observe(self.kv, held.agent, sub)
     if (!held.sub && !Sub.done(kept)) await Gateway.close(self.env, swarm, held.agent, sub.agent_id)
     const now = Sub.spent(kept)
+    const final = held.final ?? (Sub.done(kept) ? Date.now() : undefined)
     const extra = now - (guards.late ? Memo.units(held.spent) : 0n)
-    if (extra <= 0n) continue
+    if (extra <= 0n) {
+      if (final !== held.final) self.kv.put(key, { ...held, ...(final === undefined ? {} : { final }), sub: sub.agent_id } satisfies Charged)
+      continue
+    }
     const nid = Flow.runNode(run)
     await Nodes.budgeting(self, async () => {
       const rows = await Flow.rows(self.env, swarm)
@@ -697,7 +712,7 @@ async function charge(self: Swarm) {
         break
       }
     })
-    self.kv.put(key, { ...held, spent: Memo.decimal(now), sub: sub.agent_id })
+    self.kv.put(key, { ...held, ...(final === undefined ? {} : { final }), spent: Memo.decimal(now), sub: sub.agent_id } satisfies Charged)
     Nodes.changed(self)
   }
 }
@@ -851,7 +866,7 @@ export async function tick(self: Swarm): Promise<number | null> {
   if (open.length) ensure(self)
   const rests = open.map((task) => self.kv.get<number>('rest:' + task.id) ?? 0).filter((at) => at > now)
   const leases = open.flatMap((task) => (task.untilMs && task.untilMs > now ? [task.untilMs + 1000] : []))
-  const due = [...rests, ...leases, Triage.due(self, now), open.length || Nodes.gitDue(self) ? now + Limits.Clock.minuteMs : Infinity]
+  const due = [...rests, ...leases, Triage.due(self, now), open.length || Nodes.gitDue(self) || [...self.kv.list({ limit: 1, prefix: 'charged:' })].length ? now + Limits.Clock.minuteMs : Infinity]
   const next = Math.min(...due)
   return Number.isFinite(next) ? next : null
 }
