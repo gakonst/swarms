@@ -134,7 +134,6 @@ src/worker/Signin.ts 1 pre-existing hand formatting
 src/worker/Store.ts 1 pre-existing hand formatting
 src/worker/Swarm.ts 1 pre-existing hand formatting
 src/worker/Team.ts 1 pre-existing hand formatting
-src/worker/Telegram.ts 1 pre-existing hand formatting
 src/worker/Timing.ts 1 pre-existing hand formatting
 src/worker/Triage.ts 1 pre-existing hand formatting
 src/worker/Verify.ts 1 pre-existing hand formatting

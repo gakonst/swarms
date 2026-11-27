@@ -285,5 +285,12 @@
     "invariant": "a viewed agent swarm shows its Board",
     "found": "2026-11-27 on swarms.new, not by the sim: after the deploy every agent swarm read board null because the objects still ran the previous version, whose view has no board; this seed reads a new agent swarm through GET /v1/swarms/:id before and after reopening it at format 6, and expects its Board each time",
     "fix": "fix(board): a read omits board when the object predates it"
+  },
+  {
+    "job": "mirror",
+    "seed": "2",
+    "invariant": "mirror whole notice",
+    "found": "2026-11-27 by pnpm dst --seeds: a node title clipped for the X intent ended on half of an emoji, and encodeURIComponent threw on the lone surrogate, so announcing the node crashed",
+    "fix": "fix(share): clip a notice on a whole character"
   }
 ]

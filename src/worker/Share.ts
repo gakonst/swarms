@@ -1,6 +1,7 @@
 import * as Answer from '../shared/Answer.ts'
 import type { Summary } from '../shared/Api.ts'
 import * as Nickname from '../shared/Nickname.ts'
+import * as Pieces from '../shared/Pieces.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
 import { open, problems } from '../shared/ResearchBrief.ts'
 import * as Status from '../shared/Status.ts'
@@ -232,10 +233,10 @@ export function describe(subject: Subject) {
   return blurb
 }
 
-export type Notice = { frame: string; intent: string; text: string; url: string }
+export type Notice = { frame: string; intent: string; text: string; url: string; whole: string }
 
 function clip(text: string, most: number) {
-  return text.length > most ? `${text.slice(0, most - 1).trimEnd()}…` : text
+  return text.length > most ? `${Pieces.head(text, most - 1).trimEnd()}…` : text
 }
 
 export function announce(origin: string, swarm: string, title: string, delta: Tree.Delta): Notice | undefined {
@@ -248,9 +249,10 @@ export function notice(origin: string, swarm: string, title: string, value: Tree
   const subject = node(swarm, title, value)
   if (subject.kind !== 'node') return undefined
   const said = value.status === 'proven' ? `Proven, checked by Lean${subject.item.checked ? ` at ${subject.item.checked}` : ''}: ${value.title}` : `Dead end, kept in the tree: ${value.title}. ${subject.item.why}`
-  const text = clip(`${title}\n${said}`, Limits.Share.textChars)
+  const whole = `${title}\n${said}`
+  const text = clip(whole, Limits.Share.textChars)
   const frame = playing(origin, subject) ?? `${origin}${path(subject)}`
-  return { frame, intent: `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(frame)}`, text, url: `${origin}${path(subject)}` }
+  return { frame, intent: `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(frame)}`, text, url: `${origin}${path(subject)}`, whole }
 }
 
 function escape(value: string) {

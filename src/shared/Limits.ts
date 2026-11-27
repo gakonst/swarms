@@ -490,6 +490,10 @@ export const Signin = {
   messageMost: 4096,
 } as const
 
+export const Telegram = {
+  sendMessageChars: 4096,
+} as const
+
 export const Share = {
   look: 3,
   card: { height: 630, width: 1200 },

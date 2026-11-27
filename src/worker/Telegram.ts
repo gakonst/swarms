@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import * as Site from '../shared/Site.ts'
 import type * as Tree from '../shared/Tree.ts'
+import * as Pieces from '../shared/Pieces.ts'
 import * as Filled from './Filled.ts'
 import * as Share from './Share.ts'
 import * as Words from './Words.ts'
@@ -41,11 +42,19 @@ export function answer(body: unknown, origin: string) {
   if (!message || message.chat.type !== 'private') return undefined
   const [, given = ''] = (message.text ?? '').trim().split(/\s+/)
   const asked = opened(given)
-  const path = asked?.node ? `/tg/s/${encodeURIComponent(asked.swarm)}/n/${asked.node}` : asked ? `/tg/s/${encodeURIComponent(asked.swarm)}` : views.includes(given) ? `/tg?view=${given}` : '/tg'
+  const path = asked?.node
+    ? `/tg/s/${encodeURIComponent(asked.swarm)}/n/${asked.node}`
+    : asked
+      ? `/tg/s/${encodeURIComponent(asked.swarm)}`
+      : views.includes(given)
+        ? `/tg?view=${given}`
+        : '/tg'
   return {
     chat_id: message.chat.id,
     method: 'sendMessage',
-    reply_markup: { inline_keyboard: [[{ text: asked?.node ? 'Open this node' : asked ? 'Open this swarm' : 'Open Swarms', web_app: { url: `${origin}${path}` } }]] },
+    reply_markup: {
+      inline_keyboard: [[{ text: asked?.node ? 'Open this node' : asked ? 'Open this swarm' : 'Open Swarms', web_app: { url: `${origin}${path}` } }]],
+    },
     text: asked?.node
       ? 'See where this node stands, what it spent and, once Lean checks it, its proof. Ride it with a few dollars.'
       : asked
@@ -54,30 +63,49 @@ export function answer(body: unknown, origin: string) {
   }
 }
 
-export function notice(origin: string, bot: string | undefined, swarm: string, title: string, delta: Tree.Delta) {
+export type Message = { disable_web_page_preview: boolean; reply_markup?: { inline_keyboard: { text: string; url: string }[][] }; text: string }
+
+export function notice(origin: string, bot: string | undefined, swarm: string, title: string, delta: Tree.Delta): Message[] | undefined {
   const found = Share.announce(origin, swarm, title, delta)
   if (!found) return undefined
   const open = bot ? `https://t.me/${bot}?startapp=${encodeURIComponent(swarm)}__${delta.node.id}` : found.url
-  return {
-    disable_web_page_preview: false,
-    reply_markup: { inline_keyboard: [[{ text: delta.node.status === 'proven' ? 'See the proof' : 'See the dead end', url: open }]] },
-    text: `${found.text}\n${found.url}`,
-  }
+  const pieces = Pieces.split(`${found.whole}\n${found.url}`, Limits.Telegram.sendMessageChars)
+  const last = pieces.length - 1
+  return pieces.map((text, at) =>
+    at === last
+      ? {
+          disable_web_page_preview: false,
+          reply_markup: { inline_keyboard: [[{ text: delta.node.status === 'proven' ? 'See the proof' : 'See the dead end', url: open }]] },
+          text,
+        }
+      : { disable_web_page_preview: true, text },
+  )
+}
+
+async function sendInOrder(token: string, channel: string, messages: readonly Message[]): Promise<boolean> {
+  const [first, ...rest] = messages
+  if (!first) return true
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    body: JSON.stringify({ chat_id: channel, ...first }),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  }).catch(() => undefined)
+  return (response?.ok ?? false) && sendInOrder(token, channel, rest)
 }
 
 export async function announce(env: Posting, swarm: string, title: string, delta: Tree.Delta) {
   const token = await Filled.secret(env, 'TELEGRAM_BOT_TOKEN')
   const channel = env.TELEGRAM_CHANNEL
   if (!token || !channel) return false
-  const message = notice(Site.home(env), env.TELEGRAM_BOT, swarm, title, delta)
-  if (!message) return false
-  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { body: JSON.stringify({ chat_id: channel, ...message }), headers: { 'content-type': 'application/json' }, method: 'POST' }).catch(() => undefined)
-  return response?.ok ?? false
+  const messages = notice(Site.home(env), env.TELEGRAM_BOT, swarm, title, delta)
+  if (!messages) return false
+  return sendInOrder(token, channel, messages)
 }
 
 export async function hook(env: Hooked, request: Request) {
   const secret = await Filled.secret(env, 'TELEGRAM_WEBHOOK_SECRET')
-  if (!secret || !Words.same(request.headers.get('x-telegram-bot-api-secret-token') ?? '', secret)) return new Response('Forbidden', { status: Limits.Http.forbidden })
+  if (!secret || !Words.same(request.headers.get('x-telegram-bot-api-secret-token') ?? '', secret))
+    return new Response('Forbidden', { status: Limits.Http.forbidden })
   const reply = answer(await request.json().catch(() => null), Site.home(env))
   return reply ? Response.json(reply) : new Response(null, { status: Limits.Http.ok })
 }

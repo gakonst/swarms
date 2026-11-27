@@ -211,7 +211,7 @@ async function relay(seed: string): Promise<Outcome> {
   return { steps: steps(), violations }
 }
 
-const node = (status: 'proven' | 'in flight') => ({
+export const node = (status: 'proven' | 'in flight') => ({
   by: { address: null, agent: null, handle: 'ana' },
   children: [],
   counts: { 'dead end': 0, funded: 0, 'in flight': 0, proposed: 0, proven: 1 },
@@ -309,17 +309,19 @@ async function telegram(seed: string): Promise<Outcome> {
       [undefined, undefined],
       'groups and edits',
     )
-    const message = Telegram.notice('https://swarms.example', 'TempoSwarmsBot', 'pnp', 'Does P = NP?', {
+    const messages = Telegram.notice('https://swarms.example', 'TempoSwarmsBot', 'pnp', 'Does P = NP?', {
       at: 1,
       event: 'proven',
       node: node('proven'),
       seq: 1,
       text: '',
     } as never)
+    const message = messages?.at(-1)
     same(
       'notice',
-      [message?.text, message?.reply_markup.inline_keyboard[0]?.[0]],
+      [messages?.length, message?.text, message?.reply_markup?.inline_keyboard[0]?.[0]],
       [
+        1,
         'Does P = NP?\nProven, checked by Lean at abc1234: Parity is not in AC0\nhttps://swarms.example/s/pnp/t/3fa91c2b0d',
         { text: 'See the proof', url: 'https://t.me/TempoSwarmsBot?startapp=pnp__3fa91c2b0d' },
       ],
