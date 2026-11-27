@@ -1,4 +1,7 @@
 import * as Feed from './Feed.ts'
+import * as Drive from './Drive.ts'
+import * as Machine from './machines/Drive.ts'
+import type * as Board from '../shared/Drive.ts'
 import type { Hand, Note } from '../shared/Api.ts'
 import { redact } from '../shared/Trail.ts'
 import * as Answer from '../shared/Answer.ts'
@@ -134,7 +137,7 @@ export async function step(self: Swarm) {
       if (agent && run.turn) await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
       return Follow.follow(self, row, await adopted(self, run))
     }
-    if (run.state !== 'paused') await pause(self, row, { why: 'idle' })
+    if (run.state !== 'paused') await hold(self, row, { why: 'idle' })
     return Date.now() + heldMs
   }
   if (run.state === 'paused') {
@@ -332,7 +335,10 @@ export async function advance(self: Swarm, found: Store.Row) {
   const row = remodeled
   const worked = self.turned()
   const money = await Money.refresh(self, row, { credit: true, hands: Follow.handsDue(self, Date.now()) })
-  if (run.state !== 'starting' && money.left < Store.reserveOf(money.row)) {
+  const choice = await choose(self, money.row, money.left)
+  const planned = 'source' in choice && choice.source === 'plan'
+  if ('halt' in choice) return halting(self, money.row, run, choice.halt)
+  if (run.state !== 'starting' && !planned && money.left < Store.reserveOf(money.row)) {
     if (!money.known)
       return stumble(
         self,
@@ -341,7 +347,7 @@ export async function advance(self: Swarm, found: Store.Row) {
         'The gateway did not say how much money the swarm has.',
         'Reading its credit and backings failed, so the last figures were not taken as the answer.',
       )
-    await pause(
+    await hold(
       self,
       money.row,
       worked || money.row.contributors
@@ -357,6 +363,9 @@ export async function advance(self: Swarm, found: Store.Row) {
     )
     return null
   }
+  const n = run.state === 'starting' ? run.n : worked + 1
+  const ordered = Drive.order(self, { choice, n, now: Date.now() })
+  if ('halt' in ordered) return halting(self, money.row, run, ordered.halt)
   const taken = await take(self, run)
   const later = held(self, run, taken)
   if (later !== undefined || !('claim' in taken)) return later ?? null
@@ -366,7 +375,6 @@ export async function advance(self: Swarm, found: Store.Row) {
   const agent = await lead(self, row)
   if ('error' in agent) return fail(self, money.row, task, claim, agent.error, agent.detail)
 
-  const n = run.state === 'starting' ? run.n : worked + 1
   const since = Phase.since(run)
   const notes = await self.notes(money.row)
   const seen = self.kv.get<string>('seen')
@@ -374,14 +382,15 @@ export async function advance(self: Swarm, found: Store.Row) {
     repo.state !== 'ready' ? null : seen && !Follow.cued(self, 'git', self.kv.get<number>('seenAt') ?? 0) ? seen : await Repo.head(self, row.id, repo.name)
   if (base) Repo.saw(self, base)
   else self.kv.delete('seen')
-  const told = self.told()
+  const weights = self.told()
   const waiting = await pending(self)
-  const included = agent.briefed ? notes.filter((note) => waiting.has(note.id) || grown(told.get(note.id), Memo.units(note.weight))) : notes
+  const included = agent.briefed ? notes.filter((note) => waiting.has(note.id) || grown(weights.get(note.id), Memo.units(note.weight))) : notes
   const repoLine = repoed(repo, money.left)
   const room = roomed(Site.home(self.env), row.id)
-  const text = agent.briefed
+  const told = agent.briefed
     ? next(self.tell(included), repo.state === 'ready' ? '' : repoLine, Persona.frozen(self.kv, Store.setup(row)).includes(Persona.roomless) ? room : '')
     : brief(money.row, self.tell(notes), repoLine, room)
+  const text = [told, ordered.text].filter(Boolean).join('\n\n')
   const tried = Phase.sent(run)
   const again = tried?.id === claim ? tried : undefined
   const start: Extract<Phase.Run, { state: 'starting' }> =
@@ -399,9 +408,15 @@ export async function advance(self: Swarm, found: Store.Row) {
         }
   const prompt = start.prompt ?? text
   await self.move(money.row, start)
-  const credentials = money.row.ai ? Gateway.subject(money.row.ai) : undefined
+  const credentials = money.row.ai ? Gateway.subject(money.row.ai) : planned && money.row.creator ? Gateway.subject(money.row.creator) : undefined
   const sent = await Gateway.prompt(self.env, row.id, agent.id, { ...(credentials ? { credentials } : {}), id: claim, prompt, steer: false })
-  if (!sent.ok && credentials && sent.status === Limits.Http.invalid) {
+  const stopped = !sent.ok && planned ? Drive.refused(self, { detail: sent.detail, now: Date.now(), status: sent.status }) : null
+  if (stopped) {
+    await self.move(money.row, { sent: { id: claim, prompt, told: start.told }, since, state: 'waiting', until: Date.now() })
+    await hold(self, money.row, { drive: stopped, why: 'idle' })
+    return null
+  }
+  if (!sent.ok && money.row.ai && sent.status === Limits.Http.invalid) {
     await unhost(self, money.row, sent.detail)
     return Date.now()
   }
@@ -418,7 +433,7 @@ export async function advance(self: Swarm, found: Store.Row) {
     }
     const tries = stall.tries + 1
     self.kv.put('gateway', { ...stall, count: 0, tries })
-    await pause(self, money.row, {
+    await hold(self, money.row, {
       gateway: { message: stall.message, tries },
       left: String(money.left),
       wake: Date.now() + Provider.later(tries),
@@ -443,7 +458,7 @@ export async function advance(self: Swarm, found: Store.Row) {
     base,
   )
   await heed(self, start.told)
-  for (const note of notes.filter((found) => told.get(found.id) === null))
+  for (const note of notes.filter((found) => weights.get(found.id) === null))
     self.ctx.storage.sql.exec('UPDATE steered SET weight = ? WHERE note = ? AND weight IS NULL', String(Memo.units(note.weight)), note.id)
   self.touch()
   await self.move(
@@ -596,7 +611,7 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
     ])
     const spent = charge ?? BigInt(money.row.spent) - BigInt(found?.spent_before ?? '0')
     const grew = run.balance !== undefined && BigInt(money.row.balance) > BigInt(run.balance)
-    const short = money.known && money.left < Store.reserveOf(money.row)
+    const short = !Drive.planned(self) && money.known && money.left < Store.reserveOf(money.row)
     const down = run.ending.provider
     const outage = !short && Provider.decisive(down) ? { message: down.message, name: down.provider, spent: down.spent, tries: 1 } : undefined
     const refused = outage !== undefined || (status !== 'completed' && (short || ((broke(message) || unpaidBy !== undefined) && !grew)))
@@ -677,9 +692,21 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
 
   const closing = Run.ending(store, n)
   const { attempts, balance, due, left, needs, provider, refused, remaining, short, sponsor } = facts()
+  const drive = Drive.ended(self, {
+    creator: fresh.creator ? Mention.short(fresh.creator) : null,
+    message,
+    n,
+    now: Date.now(),
+    status,
+    text: status === 'completed' ? (message ?? '') : '',
+  })
+  if (drive && !provider) {
+    await hold(self, fresh, { drive, why: 'idle' }, Run.rev(closing))
+    return null
+  }
   if (status !== 'completed' && fresh.ai && aiRefused(message)) fresh = await unhost(self, fresh, message)
   if (refused) {
-    await pause(
+    await hold(
       self,
       fresh,
       {
@@ -836,7 +863,7 @@ export async function sweep(self: Swarm, row: Store.Row, why = ', which was stil
   }
 }
 
-export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause, expect?: number) {
+export async function hold(self: Swarm, row: Store.Row, pause: Phase.Pause, expect?: number) {
   const run = self.run()
   if (run.state === 'paused' && Phase.same(run.pause, pause)) return
   const text = Phase.reason(pause)
@@ -846,6 +873,9 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause, exp
   const at = Date.now()
   if (!guards.ordered) await self.moved(row)
   self.set({ at, pause, ...(pause.why === 'unfunded' ? { settled: at } : {}), state: 'paused' }, expect)
+  const drive = Phase.driven(pause)
+  if (drive) Drive.halted(self, drive)
+  else if ((shown ? Phase.halt(shown) : undefined) !== Phase.halt(pause)) Drive.noted(self, text)
   if (telling && self.turned() && !(Phase.again(run) && Phase.refused(pause))) Chat.announce(self, text)
   if ((shown ? Phase.halt(shown) : undefined) !== Phase.halt(pause)) self.log('status', text)
   if (Phase.outaged(pause)) self.kv.delete('provider')
@@ -855,6 +885,8 @@ export async function pause(self: Swarm, row: Store.Row, pause: Phase.Pause, exp
 }
 
 export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
+  const drive = Phase.driven(run.pause)
+  if (drive) return driven(self, row, run, drive)
   const now = Date.now()
   if (!Phase.unread(run, now)) return Phase.waking(run, now)
   if (now < run.at + settleMs) return run.at + settleMs
@@ -865,7 +897,7 @@ export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
   if (guards.known && !money.known) return Date.now() + Clock.minuteMs
   const down = Phase.outaged(run.pause)
   if (down && money.left < Store.reserveOf(money.row)) {
-    await pause(self, row, {
+    await hold(self, row, {
       balance: String(money.row.balance),
       left: String(money.left),
       needs: String(Store.reserveOf(money.row)),
@@ -884,4 +916,33 @@ export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
   }
   self.set({ ...paused, settled: Date.now() })
   return Phase.waking(run, Date.now())
+}
+
+async function choose(self: Swarm, row: Store.Row, left: bigint): Promise<Machine.Choice> {
+  const board = Drive.ensure(self)
+  if (!board) return { lost: null, source: 'credit' }
+  const plans = row.ai ? undefined : await Drive.plans(self, row)
+  return Machine.choose({ funded: left >= Store.reserveOf(row), harness: Store.setup(row)?.harness ?? 'claude', hosted: !!row.ai, last: board.source, plans })
+}
+
+async function halting(self: Swarm, row: Store.Row, run: Phase.Run, halt: Board.Halt) {
+  const sent = Phase.sent(run)
+  if (run.state === 'starting') self.set({ ...(sent ? { sent } : {}), since: run.since, state: 'waiting', until: Date.now() })
+  await hold(self, row, { drive: halt, why: 'idle' })
+  return null
+}
+
+async function driven(self: Swarm, row: Store.Row, run: Phase.Paused, halt: Board.Halt) {
+  const now = Date.now()
+  if (halt.why === 'limited' && now < halt.until) return halt.until
+  if (halt.why !== 'limited' && halt.why !== 'revoked') return null
+  const plans = halt.why === 'revoked' ? await Drive.plans(self, row, true) : undefined
+  const money = halt.why === 'revoked' ? await Money.refresh(self, row, { credit: true, hands: false }) : undefined
+  const paused = self.run()
+  if (paused.state !== 'paused' || paused.at !== run.at) return null
+  const resumed = Machine.resumes(halt, { funded: !!money && money.left >= Store.reserveOf(money.row), now: Date.now(), plans })
+  if (!resumed) return Machine.due(halt, Date.now())
+  Drive.resume(self, resumed)
+  self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
+  return null
 }

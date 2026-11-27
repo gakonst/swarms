@@ -2,6 +2,8 @@ import { z } from 'zod'
 import type { Failure, Halt, Lifecycle, Provider, Waiting, Why } from '../shared/Api.ts'
 import * as Assert from '../shared/Assert.ts'
 import * as Memo from '../shared/Memo.ts'
+import * as Board from '../shared/Drive.ts'
+import * as Drive from './machines/Drive.ts'
 import { failing, outage, reasons, short } from '../shared/Status.ts'
 import * as Limits from '../shared/Limits.ts'
 
@@ -24,7 +26,7 @@ export type Pause =
     }
   | { wanted: string; why: 'costly' }
   | { failures: number; why: 'rest' }
-  | { why: 'idle' }
+  | { drive?: Board.Halt | undefined; why: 'idle' }
 
 export type Told = [note: string, weight: string]
 
@@ -102,7 +104,7 @@ const pause = z.discriminatedUnion('why', [
     .loose(),
   z.object({ wanted: z.string(), why: z.literal('costly') }).loose(),
   z.object({ failures: z.number(), why: z.literal('rest') }).loose(),
-  z.object({ why: z.literal('idle') }).loose(),
+  z.object({ drive: Drive.haltSchema.optional(), why: z.literal('idle') }).loose(),
 ])
 
 const sentSchema = z.object({ id: z.string(), prompt: z.string(), told: z.array(told) }).loose()
@@ -157,7 +159,13 @@ export function halt(pause: Pause): Halt {
   return outaged(pause) ? 'provider' : pause.why
 }
 
+export function driven(pause: Pause | undefined): Board.Halt | undefined {
+  return pause?.why === 'idle' ? pause.drive : undefined
+}
+
 export function wakes(pause: Pause, reason: Reason) {
+  const drive = driven(pause)
+  if (drive) return Drive.wakes(drive, reason)
   if (outaged(pause)) return reason === 'note'
   return reason === 'money' || pause.why === 'rest' || pause.why === 'costly' || pause.why === 'idle'
 }
@@ -186,6 +194,8 @@ export function due(run: Run, now: number) {
 }
 
 function woken(run: Run) {
+  const drive = run.state === 'paused' ? driven(run.pause) : undefined
+  if (drive) return drive.why === 'limited' ? drive.until : Infinity
   if (run.state !== 'paused' || run.pause.why !== 'money') return Infinity
   if (outaged(run.pause) && run.pause.wake !== null) return run.pause.wake
   if (run.pause.wake !== null) return guards.patience ? Math.min(run.pause.wake, run.at + maxPatienceMs) : run.pause.wake
@@ -211,6 +221,8 @@ export function waiting(run: Run, stuck: boolean, sponsor: boolean): Waiting | n
 }
 
 export function reason(pause: Pause) {
+  const drive = driven(pause)
+  if (drive) return Board.reason(drive)
   if (pause.why === 'unfunded') return reasons.unfunded
   const down = outaged(pause)
   if (down) return outage(down.name, down.spent)
@@ -229,6 +241,7 @@ export function stuck(failure: Failure | null, sponsor: boolean) {
 }
 
 export function same(a: Pause, b: Pause) {
+  if (JSON.stringify(driven(a) ?? null) !== JSON.stringify(driven(b) ?? null)) return false
   return a.why === b.why && (a.why !== 'money' || b.why !== 'money' || (!a.sponsor === !b.sponsor && outaged(a)?.name === outaged(b)?.name))
 }
 

@@ -587,3 +587,28 @@ button.traces-note { cursor:pointer; }
   .repo-view { overflow:visible; }
   .repo-shut { display:block; }
 }
+
+.board-pin { display:grid; flex-shrink:0; gap:6px; margin:8px 0 2px; padding:10px 12px; border:1px solid var(--line); border-radius:var(--radius-medium); background:var(--bg); }
+.board-pin[data-lit] { border-color:var(--edge); }
+.board-pin-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.board-pin-name { display:inline-flex; align-items:center; gap:8px; font:15px var(--serif); }
+.board-pin-mark { width:8px; height:8px; border-radius:2px; background:var(--fg); transform:rotate(45deg); }
+.board-pin-goal { display:-webkit-box; margin:0; overflow:hidden; color:var(--muted); font-size:13px; line-height:1.4; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.board-pin-why { margin:0; padding:6px 8px; border-radius:8px; background:var(--warn-wash); color:var(--warn-ink); font-size:12px; line-height:1.4; white-space:pre-line; }
+.board-pin-items { display:grid; gap:3px; margin:0; padding:0; list-style:none; font-size:13px; }
+.board-pin-items li { display:flex; align-items:baseline; gap:8px; min-width:0; }
+.board-pin-items li > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.board-pin-items small { flex:none; width:34px; font:10px var(--mono); text-transform:uppercase; letter-spacing:.04em; color:var(--faint); }
+.board-pin-items li[data-state='flying'] small { color:var(--green-ink); }
+.board-pin-items em { flex:none; padding:0 6px; border-radius:6px; background:var(--glass); font:10px var(--mono); font-style:normal; color:var(--muted); }
+.board-pin-empty { margin:0; font-size:12px; color:var(--muted); }
+.board-pin-foot { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; font:11px var(--mono); color:var(--faint); }
+.board-pin-open { margin-left:auto; padding:0; border:0; background:none; font:11px var(--mono); color:var(--fg); cursor:pointer; }
+.board-pin-open:hover { text-decoration:underline; }
+.pill[data-mood='done'] i { background:var(--green); }
+@media (max-width:799px) {
+  .board-pin { margin:6px 0 2px; padding:8px 10px; }
+  .panel-chat .board-pin { margin-inline:var(--margin); }
+  .board-pin-goal { -webkit-line-clamp:1; }
+  .board-pin-open { margin-left:0; }
+}

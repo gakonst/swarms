@@ -250,5 +250,33 @@
     "invariant": "lost result",
     "found": "2026-11-27 by pnpm dst --job swarm_frozen --seeds 96: a run finished while a frozen list hid it, settled as gone, and its output was never folded when it reappeared completed",
     "fix": "fix(runner): hold a hidden run open until the gateway shows it ended"
+  },
+  {
+    "job": "drive_day",
+    "seed": "3",
+    "invariant": "items keep flowing",
+    "found": "2026-11-27 by pnpm dst --job drive_day: a turn ending 'Done: #34' then 'Done: #35' on the next line read #35 as #34's reason, so #35 stayed open and the run stopped as stuck",
+    "fix": "feat(board): read each Done or Dead end line on its own"
+  },
+  {
+    "job": "drive_day",
+    "seed": "1",
+    "invariant": "items keep flowing",
+    "found": "2026-11-27 by pnpm dst --job drive_day: the dedupe key dropped numbers, so 'Profile the sampler variant 55' matched 'variant 12' and every planning turn read as no progress until the swarm stopped as stuck",
+    "fix": "feat(board): numbers count toward an item's dedupe key"
+  },
+  {
+    "job": "drive_day",
+    "seed": "2",
+    "invariant": "items keep flowing",
+    "found": "2026-11-27 by pnpm dst --job drive_day: a turn first ordered while the hourly limit was full kept its plain prompt after a rate-limit pause, so it did not plan though the board was empty",
+    "fix": "feat(board): a turn plans whenever the board is empty and the hour has room"
+  },
+  {
+    "job": "drive_stuck",
+    "seed": "6",
+    "invariant": "human items go first",
+    "found": "2026-11-27 by pnpm dst --job drive_stuck: the turn's items went to the lead in id order, so the creator's answer to a stuck question came after older lead items",
+    "fix": "feat(board): a turn lists riders' items first"
   }
 ]

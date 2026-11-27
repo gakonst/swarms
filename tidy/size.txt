@@ -1,4 +1,4 @@
 # Worker and client upload sizes after pnpm build: name bytes gzip. scripts/check fails when either grows more than 2% past this line; pnpm size --update rewrites it in the commit that grows them, with the measurement in the commit message.
-swarms 8938365 2845920
-swarms-site 3226468 1042868
-client 14784938 3413297
+swarms 9112821 2909571
+swarms-site 2985591 991209
+client 14845041 3439049

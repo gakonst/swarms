@@ -13,11 +13,13 @@ import * as Reaction from '../shared/Reaction.ts'
 import * as About from './About.ts'
 import * as Artifacts from './Artifacts.ts'
 import * as Chain from './Chain.ts'
+import * as Drive from './Drive.ts'
 import * as Gateway from './Gateway.ts'
 import * as Hands from './Hands.ts'
 import * as Payment from './machines/Payment.ts'
 import * as Phase from './Phase.ts'
 import type { Why } from '../shared/Api.ts'
+import type { Board } from '../shared/Drive.ts'
 import * as Search from './Search.ts'
 import * as Sessions from './Sessions.ts'
 import * as Lobby from './Lobby.ts'
@@ -56,6 +58,7 @@ export type Contributed = {
 
 export type View = {
   about: string | null
+  board?: Board | null
   code: Code | null
   failure: Failure | null
   feed: Entry[]
@@ -140,6 +143,7 @@ const schema = [
   ...Runs.schema,
   ...Nodes.schema,
   ...Chat.schema,
+  ...Drive.schema,
 ]
 
 const columns = [
@@ -152,7 +156,7 @@ const columns = [
   ...Chat.columns,
 ] as const
 
-const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)', `CREATE INDEX IF NOT EXISTS feed_machines ON feed (seq) WHERE ${Feed.machined}`, ...Runs.indexes, ...Chat.indexes]
+const indexes = ["CREATE INDEX IF NOT EXISTS turns_committed ON turns (n) WHERE commits != '[]'", 'CREATE INDEX IF NOT EXISTS feed_who ON feed (who)', `CREATE INDEX IF NOT EXISTS feed_machines ON feed (seq) WHERE ${Feed.machined}`, ...Runs.indexes, ...Chat.indexes, ...Drive.indexes]
 
 const healMs = Limits.Swarm.healMs
 
@@ -227,6 +231,7 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     for (const statement of indexes) sql.exec(statement)
     const from = ctx.storage.kv.get<number>('v') ?? 0
     if (from < version) migrate(ctx.storage, from)
+    if (from < Limits.Swarm.boardFormat && ctx.storage.kv.get<string>('id')) Drive.ensure(this)
     ctx.storage.kv.put('instance', this.boot)
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
   }
@@ -546,8 +551,10 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
     const owner = this.kv.get<string>('owner')
     const turns = shape.pushed ? Feed.rows(this, Feed.pushedTurns) : this.turns()
     const shown = shape.pushed ? Feed.updates(turns).filter((update, index, all) => update.commits.length > 0 || index === all.length - 1) : Feed.updates(turns)
+    if (id && !this.kv.get<number>('archivedAt')) Drive.ensure(this)
     return {
       about: About.read(this),
+      board: Drive.view(this),
       code: id && repo && owner ? { app: Gateway.app(id), clone: `${this.env.GATEWAY_URL}/p/${owner}/${Gateway.app(id)}/git/${repo}.git`, name: repo, owner } : null,
       failure: Follow.recalled(this),
       feed,
@@ -864,7 +871,32 @@ export class Swarm extends DurableObject<Cloudflare.Env> {
       }
     }
     if (steer) this.changed('detail', 'members')
-    return Chat.speak(this, input.author, redact(input.text), input.mentions, steer, null, parent === undefined ? {} : { parent })
+    const said = Chat.speak(this, input.author, redact(input.text), input.mentions, steer, null, parent === undefined ? {} : { parent })
+    if (parent !== undefined && (await this.onBoard(input, said))) this.changed('detail')
+    return said
+  }
+
+  async onBoard(input: Spoken, said: Said) {
+    const found = Drive.lifecycle(this)
+    if (found.state === 'unboarded' || found.board.root !== said.parent) return false
+    const cap = Drive.command(input.text)
+    if (cap !== undefined) {
+      const row = await this.found(input.swarm)
+      if (!row?.creator || row.creator.toLowerCase() !== input.author.toLowerCase()) return false
+      if (Drive.capped(this, cap)) await this.uncapped()
+      return true
+    }
+    const added = Drive.human(this, said)
+    if (added === undefined) return false
+    await this.wake('note')
+    return true
+  }
+
+  async uncapped() {
+    const run = this.run()
+    if (run.state !== 'paused' || Phase.driven(run.pause)?.why !== 'capped') return
+    this.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
+    await this.ctx.storage.setAlarm(Date.now())
   }
 
   react(input: { author: Address; emoji: string; message: number; on: boolean }) {

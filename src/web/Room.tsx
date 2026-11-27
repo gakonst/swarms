@@ -7,6 +7,7 @@ import * as Mention from '../shared/Mention.ts'
 import type * as Tree from '../shared/Tree.ts'
 import * as Limits from '../shared/Limits.ts'
 import * as Api from './api.ts'
+import { BoardPin } from './BoardPin.tsx'
 import { seeded } from './boot.ts'
 import * as Local from './local.ts'
 import * as Outbox from './outbox.ts'
@@ -705,6 +706,7 @@ export const Room = memo(function Room(props: {
         {here.length > 0 && <span className="chat-faces">{here.map((member) => <Avatar address={member.address} handle={member.handle} key={member.address} size="small" />)}</span>}
         {watching > 0 && <span className="chat-live"><i />{watching} here</span>}
       </header>
+      <BoardPin lit={props.swarm.board ? props.thread === props.swarm.board.root : false} onOpen={props.onThread && props.swarm.board ? () => props.swarm.board && props.onThread?.(props.swarm.board.root) : undefined} swarm={props.swarm} />
       <div
         aria-live="polite"
         className="chat-list"

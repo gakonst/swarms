@@ -1,6 +1,7 @@
 import * as Answer from '../shared/Answer.ts'
 import * as Shelf from '../shared/Artifact.ts'
 import type { Account, Artifact, Branch, Branches, Code, Chatter, Config, Contributed, Contribution, Currency, Detail, Entry, Form, Hall, Heard, Kind, Lent, OwnAi, Plan, Live as LiveEvent, Lobby, Me, Member, NodeRun, NodeSteer, NodeUpdates, NodeView, Note, Part, Posted, Profile, ProgressView, ProofsView, Proposed, Pulse, Reacted, Reaction, Replied, Replies, Room, Roster, Said, Shouted, Status, Steering, Suggested, Suggestion, Summary, Token, TreeView, Update, Way, Why } from '../shared/Api.ts'
+import * as Drive from '../shared/Drive.ts'
 import { decimal, maxNote, units } from '../shared/Memo.ts'
 import * as Limits from '../shared/Limits.ts'
 import * as Mention from '../shared/Mention.ts'
@@ -395,13 +396,77 @@ const reasons = {
   rest: 'The agent hit 3 errors in a row, so the swarm stopped to rest. New money restarts it.',
 } as const
 
+const boardItems: Record<string, readonly (readonly [title: string, state: Drive.ItemState, source: Drive.Origin])[]> = {
+  'bench-coders': [
+    ['Run the 20-task smoke test on Qwen3-Coder and Llama 4 Scout', 'flying', 'lead'],
+    ['Add the held-out Rust tasks to the harness', 'flying', 'human'],
+    ['Publish per-task latency next to solve rate', 'open', 'lead'],
+    ['Rerun DeepSeek V4.1 Flash with a second seed to check variance', 'open', 'lead'],
+    ['Shortlist the gateway models that call tools', 'done', 'lead'],
+    ['Retry Kimi K2.7 on the full suite', 'dead', 'lead'],
+  ],
+}
+
+function haltOf(): Drive.Halt | null {
+  if (scene.has('ratelimit')) return { from: 'reset', plan: 'claude', tries: 1, until: Date.now() + Limits.FixtureBoard.resetMinutes * minute, why: 'limited' }
+  if (scene.has('signedout')) return { plan: 'claude', why: 'revoked' }
+  if (scene.has('goalmet')) return { why: 'met' }
+  if (scene.has('capped')) return { cap: Limits.FixtureBoard.cap, turns: Limits.FixtureBoard.cap, why: 'capped' }
+  if (scene.has('nogo'))
+    return {
+      misses: Limits.FixtureBoard.misses,
+      question:
+        "Stuck, here's why: the last four items ended without progress.\n- #6 Retry Kimi K2.7 on the full suite: its runs timed out twice\n- #7 Pin the sandbox image: no turn reported progress on it\n@gakonst, one question: what should the swarm try instead? Reply in this thread: your reply goes to the top of the board and the swarm starts again.",
+      why: 'stuck',
+    }
+  return null
+}
+
+function driven(swarm: Live) {
+  return boardItems[swarm.id] ? haltOf() : null
+}
+
+function boardOf(swarm: Live): Drive.Board | null {
+  const listed = boardItems[swarm.id]
+  if (!listed) return null
+  const root = seed(swarm).chat.find((item) => item.node === Drive.node && item.parent === undefined)
+  if (!root) return null
+  const halt = haltOf()
+  const items = listed.map(([title, state, source], index): Drive.Item => ({
+    at: at((index + 1) * Limits.FixtureBoard.itemMinutes),
+    id: index + 1,
+    message: null,
+    source,
+    state: halt && state === 'flying' ? 'open' : state,
+    title,
+    turn: state === 'flying' && !halt ? Limits.FixtureBoard.turns : null,
+    why: state === 'dead' ? 'Its runs timed out on the full suite twice.' : null,
+  }))
+  const counts: Record<Drive.ItemState, number> = { dead: 0, done: 0, flying: 0, open: 0 }
+  for (const item of items) counts[item.state] += 1
+  return {
+    cap: scene.has('capped') ? Limits.FixtureBoard.cap : null,
+    counts,
+    halt,
+    items,
+    plan: 'claude',
+    root: root.id,
+    source: 'plan',
+    state: halt ? 'paused' : counts.open + counts.flying ? 'driving' : 'planning',
+    turns: Limits.FixtureBoard.turns,
+  }
+}
+
 function why(swarm: Live): Why | null {
+  if (driven(swarm)) return 'idle'
   if (swarm.status === 'funding') return 'unfunded'
   if (swarm.status !== 'paused') return swarm.status === 'running' && scene.has('retrying') ? 'stuck' : null
   return (['costly', 'rest', 'provider'] as const).find((key) => scene.has(key)) ?? (swarm.resting ? 'idle' : 'money')
 }
 
 function reason(swarm: Live) {
+  const halt = driven(swarm)
+  if (halt) return Drive.reason(halt)
   const picked = why(swarm)
   if (picked === 'money' && scene.has('refused')) return Standing.reasons.refused
   if (picked === 'money' && scene.has('sponsor')) return Standing.reasons.sponsor
@@ -436,7 +501,7 @@ function summary(swarm: Live): Summary {
     remaining: swarm.remaining,
     setup: swarm.setup,
     spent: swarm.spent,
-    status: swarm.archivedAt ? 'archived' : swarm.status,
+    status: swarm.archivedAt ? 'archived' : driven(swarm) ? 'paused' : swarm.status,
     steering: swarm.steering,
     title: swarm.title,
     updatedAt: swarm.updatedAt,
@@ -449,6 +514,7 @@ function detail(swarm: Live): Detail {
   return {
     ...summary(swarm),
     about: swarm.id === treeId ? treeAbout : null,
+    board: boardOf(swarm),
     code: swarm.code,
     contributions: swarm.contributions,
     failure: swarm.failure,
@@ -1059,6 +1125,15 @@ function seed(swarm: Live) {
     swarm.chat.push({ artifact: shown ? { slug: shown.slug, title: shown.title } : null, at: at(minutes), author, id: swarm.chat.length + 1, mentions: mentions(swarm, text), steer, text })
   }
   settled()
+  const board = boardItems[swarm.id]
+  if (board) {
+    const root = swarm.chat.length + 1
+    swarm.chat.push({ artifact: null, at: at(board.length * Limits.FixtureBoard.itemMinutes + 1), author: null, id: root, mentions: [], node: Drive.node, steer: null, text: 'Board: the goal, the plan and the backlog. The lead posts the next items here and works them without waiting for anyone. Reply in this thread to add an item or steer: your items go first.' })
+    for (const [index, [title, , source]] of [...board.entries()].reverse())
+      swarm.chat.push({ artifact: null, at: at((index + 1) * Limits.FixtureBoard.itemMinutes), author: source === 'human' ? (people[1] ?? visitor) : null, id: swarm.chat.length + 1, mentions: [], parent: root, steer: null, text: source === 'human' ? title : 'Next: ' + title })
+    const halt = haltOf()
+    if (halt) swarm.chat.push({ artifact: null, at: at(0), author: null, id: swarm.chat.length + 1, mentions: [], parent: root, steer: null, text: Drive.reason(halt) })
+  }
   return swarm
 }
 

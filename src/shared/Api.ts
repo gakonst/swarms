@@ -1,3 +1,4 @@
+import type { Board } from './Drive.ts'
 import type { Picture } from './Picture.ts'
 import type * as Setup from './Setup.ts'
 import type * as Tree from './Tree.ts'
@@ -178,6 +179,7 @@ export type Live =
 
 export type Detail = Summary & {
   about: string | null
+  board?: Board | null
   code: Code | null
   contributions: Contribution[]
   failure: Failure | null

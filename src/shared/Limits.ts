@@ -733,11 +733,12 @@ export const Swarm = {
   stillMs: 2_000,
   maxWaitMs: 60_000,
   coalesceMs: 2_000,
-  version: 6,
+  version: 7,
   instructedFormat: 3,
   settledFormat: 4,
   progressedFormat: 5,
   workTablesFormat: 6,
+  boardFormat: 7,
   bootChars: 8,
   feedDefault: 200,
   feedSlack: 10,
@@ -789,6 +790,56 @@ export const Turns = {
   updateChars: 280,
   listPages: 20,
 } as const
+
+export const Drive = {
+  inFlightMost: 3,
+  generatedPerHour: 6,
+  hourMs: 60 * 60_000,
+  batchMost: 3,
+  stuckAfter: 4,
+  attemptsMost: 2,
+  limitFirstMs: 5 * 60_000,
+  limitMostMs: 5 * 60 * 60_000,
+  resetSecondsBelow: 100_000_000_000,
+  planReadMs: 5 * 60_000,
+  revokedReadMs: 10 * 60_000,
+  titleChars: 200,
+  whyChars: 300,
+  keyWordsMost: 16,
+  keyWordLeast: 3,
+  contextItems: 12,
+  shownItems: 40,
+  missesShown: 4,
+  capMost: 100_000,
+} as const
+
+export const SharedDrive = {
+  clockFrom: 11,
+  clockTo: 16,
+} as const
+
+export const DriveWhy: Record<keyof typeof Drive, string> = {
+  inFlightMost: 'One lead turn takes at most this many board items, so a turn finishes what it takes and a stuck item cannot hide a queue behind it.',
+  generatedPerHour: 'The lead posts at most this many new items an hour, so a plan with no limits cannot fill the board faster than turns finish them.',
+  hourMs: 'The window the generated-items limit counts over.',
+  batchMost: 'A planning turn posts at most this many items, so the next plan sees their results before it adds more.',
+  stuckAfter:
+    'After this many items in a row end without progress the swarm stops and asks its creator one question, instead of spending a plan on more of the same.',
+  attemptsMost: 'An item a turn took but did not mention goes back on the board this many times before it counts as a dead end.',
+  limitFirstMs: 'A plan rate limit with no retry-after or reset waits this long first, doubling each time.',
+  limitMostMs: 'No plan rate-limit wait is longer than a plan window, even when the provider names a later reset.',
+  resetSecondsBelow: 'A reset below this reads as Unix seconds, at or above it as milliseconds.',
+  planReadMs: "How long the creator's plan state read from the gateway is trusted before it is read again.",
+  revokedReadMs: "A swarm paused on a signed-out plan reads the creator's plan again this often.",
+  titleChars: 'An item title is one line a turn can act on.',
+  whyChars: "A dead end keeps this much of the lead's reason.",
+  keyWordsMost: "Dedupe compares at most this many of a title's words.",
+  keyWordLeast: 'Words shorter than this do not count toward a dedupe key.',
+  contextItems: 'A planning turn sees at most this many results and dead ends.',
+  shownItems: 'The Board shows at most this many items.',
+  missesShown: 'The stuck post lists at most this many of the items that made no progress.',
+  capMost: 'The largest turn cap a creator can set.',
+}
 
 export const Verify = {
   tailBytes: 4096,
@@ -1181,6 +1232,18 @@ export const WebArt = {
 
 export const WebArtifacts = {
   rowsMost: 500,
+} as const
+
+export const WebBoardPin = {
+  shown: 3,
+} as const
+
+export const FixtureBoard = {
+  turns: 41,
+  cap: 41,
+  resetMinutes: 47,
+  misses: 4,
+  itemMinutes: 9,
 } as const
 
 export const WebBoard = {

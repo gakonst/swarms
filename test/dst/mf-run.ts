@@ -1334,7 +1334,7 @@ function money() {
       await failing()
       const second = waited(Date.now() + limits.money.waits.second, 'the second refusal')
       const chat = w.sql
-        .exec('SELECT text FROM chat ORDER BY id')
+        .exec("SELECT text FROM chat WHERE parent IS NULL AND node IS NOT 'board' ORDER BY id")
         .toArray()
         .map((row) => String(row['text']))
       const told = ['Started working.', 'Its last step could not be paid for, though it has money. It tries again by itself.']
