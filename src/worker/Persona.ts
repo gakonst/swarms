@@ -113,7 +113,9 @@ function models(setup: Setup.Setup | null) {
   return [
     '# Models',
     '',
-    setup
+    setup && Setup.planned(setup)
+      ? `${Setup.told(setup)} A spawn with any other model is refused with the list of allowed ones, so pick from that list instead of trying again.`
+      : setup
       ? `${Setup.told(setup)} Frontier models cost tens of times more a call than small ones, so spend calls on what moves the goal, and give each task the cheapest model that can do it.${setup.subagents ? ' A spawn with any other model is refused with the list of allowed ones, so pick from that list instead of trying again.' : ''}`
       : "Your first message names the swarm's setup: the harness and model you run on, the harnesses and models your subagents may use, and what a typical model call of each costs. Frontier models cost tens of times more a call than small ones, so spend calls on what moves the goal. Name one of the allowed models as spawn_agent's model, and the cheapest one that can do the task: a spawn with any other model is refused with the list of allowed ones, so pick from that list instead of trying again. Give each subagent a budget_usd of at least 20 calls of its model.",
   ]

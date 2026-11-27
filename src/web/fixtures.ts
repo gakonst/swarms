@@ -56,6 +56,10 @@ function setup(choice: Setup.Choice) {
 
 const started = Date.now()
 
+const agy = scene.has('antigravity')
+
+const boardPlan: Plan = agy ? 'antigravity' : 'claude'
+
 export const balances: Record<Currency, bigint> = scene.has('broke') ? { mach: 0n, ousd: 0n, pathusd: 0n, usdce: 0n } : { mach: Limits.FixtureMoney.machBalance, ousd: Limits.FixtureMoney.ousdBalance, pathusd: Limits.FixtureMoney.pathusdBalance, usdce: Limits.FixtureMoney.usdceBalance }
 
 
@@ -150,7 +154,7 @@ function build(input: {
     resting: input.resting ?? false,
     remaining: '0',
     owner: input.owner ?? visitor,
-    setup: input.setup === undefined ? setup({ template: 'frontier-mix' }) : input.setup,
+    setup: input.setup === undefined ? setup({ template: input.id === 'bench-coders' && agy ? 'antigravity' : 'frontier-mix' }) : input.setup,
     script: input.script ?? [],
     since: input.status === 'running' ? at(input.since ?? Limits.FixtureSwarms.runningMinutes) : null,
     spent: input.spent,
@@ -408,8 +412,8 @@ const boardItems: Record<string, readonly (readonly [title: string, state: Drive
 }
 
 function haltOf(): Drive.Halt | null {
-  if (scene.has('ratelimit')) return { from: 'reset', plan: 'claude', tries: 1, until: Date.now() + Limits.FixtureBoard.resetMinutes * minute, why: 'limited' }
-  if (scene.has('signedout')) return { plan: 'claude', why: 'revoked' }
+  if (scene.has('ratelimit')) return { from: 'reset', plan: boardPlan, tries: 1, until: Date.now() + Limits.FixtureBoard.resetMinutes * minute, why: 'limited' }
+  if (scene.has('signedout')) return { plan: boardPlan, why: 'revoked' }
   if (scene.has('goalmet')) return { why: 'met' }
   if (scene.has('capped')) return { cap: Limits.FixtureBoard.cap, turns: Limits.FixtureBoard.cap, why: 'capped' }
   if (scene.has('nogo'))
@@ -449,7 +453,7 @@ function boardOf(swarm: Live): Drive.Board | null {
     counts,
     halt,
     items,
-    plan: 'claude',
+    plan: boardPlan,
     root: root.id,
     source: 'plan',
     state: halt ? 'paused' : counts.open + counts.flying ? 'driving' : 'planning',
@@ -1004,7 +1008,10 @@ export async function rider(who: string): Promise<Profile> {
 
 const own: OwnAi = {
   keys: scene.has('own') ? [{ added_at: Date.now(), hint: 'a4f2', provider: 'anthropic' }] : [],
-  plans: { claude: { state: scene.has('own') ? 'authenticated' : 'signed_out' }, ...(scene.has('soon') ? {} : { antigravity: { state: 'signed_out' }, codex: { state: 'signed_out' } }) },
+  plans: {
+    claude: { state: scene.has('own') ? 'authenticated' : 'signed_out' },
+    ...(scene.has('soon') ? {} : { antigravity: agy && !scene.has('signedout') ? { email: 'ada@gmail.com', state: 'authenticated' } : { state: 'signed_out' }, codex: { state: 'signed_out' } }),
+  },
   subject: visitor,
 }
 
@@ -1071,6 +1078,7 @@ export function ownSignOut(plan: Plan, who: `0x${string}` | undefined) {
 export async function hostAi(id: string, on: boolean, who: `0x${string}` | undefined): Promise<Summary> {
   const swarm = await find(id)
   const harness = swarm.setup?.harness ?? 'claude'
+  if (who && on && !Setup.credited(harness)) throw fail(Limits.Http.conflict, 'conflict', "An Antigravity swarm runs only on its creator's Antigravity plan: no rider's own AI or credit runs its model calls.")
   const [plan, provider] = harness === 'claude' ? (['claude', 'anthropic'] as const) : (['codex', 'openai'] as const)
   const runs = own.plans[plan]?.state === 'authenticated' || own.keys.some((kept) => kept.provider === provider)
   if (who && on && !runs) throw fail(Limits.Http.conflict, 'conflict', `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect your Claude plan or an Anthropic key' : 'Codex: connect your ChatGPT plan or an OpenAI key'} under Use your own AI first.`)

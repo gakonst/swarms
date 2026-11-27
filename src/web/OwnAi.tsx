@@ -6,12 +6,13 @@ import { useAttempt, useWallet } from './hooks.ts'
 import { Lost } from './Lost.tsx'
 import { Link } from './router.tsx'
 import * as Wallet from './wallet.ts'
+import * as Setup from '../shared/Setup.ts'
 import * as Limits from '../shared/Limits.ts'
 
 const plans = [
   ['claude', 'Claude plan', 'Claude', 'Pro or Max, for swarms on Claude', 'Paste the code Claude shows'],
   ['codex', 'ChatGPT plan', 'ChatGPT', 'Plus or Pro, for swarms on Codex', ''],
-  ['antigravity', 'Antigravity', 'Antigravity', 'Gemini, gemini-4-neon by default', 'Paste the address Google lands on'],
+  ['antigravity', 'Antigravity', 'Antigravity', 'Gemini, for swarms on Antigravity', 'Paste the address Google lands on'],
 ] as const
 
 const providers = [
@@ -206,7 +207,7 @@ export function OwnAi(props: { config: Config | undefined }) {
             const connected = state?.state === 'authenticated'
             const soon = !!read && (!state || state.state === 'unavailable')
             const open = flow?.plan === plan && !connected ? flow : undefined
-            const status = connected ? (state.email ? `Connected as ${state.email} ✓` : 'Connected ✓') : soon ? 'Coming soon' : undefined
+            const status = connected ? (state.email ? `Connected as ${state.email} ✓` : 'Connected ✓') + (plan === 'antigravity' ? ' · runs your Antigravity swarms' : '') : soon ? 'Coming soon' : undefined
             return (
               <div className="own-plan" key={plan}>
                 <div className="rider-row own-row">
@@ -272,18 +273,19 @@ export function OwnAi(props: { config: Config | undefined }) {
           })}
         </div>
       </section>
-      <p className="rider-none">Keys are checked with the provider, kept encrypted by the Tempo gateway and never shown again. Pick Run on my own AI when you ride a swarm: one on Claude runs on your Claude plan or an Anthropic key, one on Codex on your ChatGPT plan or an OpenAI key. Antigravity runs Gemini, gemini-4-neon by default.</p>
+      <p className="rider-none">Keys are checked with the provider, kept encrypted by the Tempo gateway and never shown again. Pick Run on my own AI when you ride a swarm: one on Claude runs on your Claude plan or an Anthropic key, one on Codex on your ChatGPT plan or an OpenAI key. A swarm on Antigravity runs Gemini, gemini-4-neon by default, only on its creator's Antigravity plan and never on credit: start one with Runs on My Antigravity.</p>
       <Link className="own-back" to="/ideas">Ride a swarm <span aria-hidden="true">→</span></Link>
     </div>
   )
 }
 
-export function Host(props: { config: Config | undefined; onChange: () => void; swarm: { ai?: { address: string } | null | undefined; id: string } }) {
+export function Host(props: { config: Config | undefined; onChange: () => void; swarm: { ai?: { address: string } | null | undefined; id: string; setup?: Pick<Setup.Setup, 'harness'> | null } }) {
   const wallet = useWallet()
   const [attempt, run] = useAttempt()
   const busy = Attempt.busy(attempt)
   const error = Attempt.error(attempt)
   if (!wallet.address || props.config?.ownAi === false) return null
+  if (Setup.planned(props.swarm.setup)) return <p className="own-host own-plan-only">Runs on its creator's Antigravity plan: riders' money pays its tools and machines, never its model calls.</p>
   const mine = props.swarm.ai?.address.toLowerCase() === wallet.address.toLowerCase()
   const flip = () => {
     void run(() => Api.hostAi(props.swarm.id, !mine)).then((done) => done && props.onChange())

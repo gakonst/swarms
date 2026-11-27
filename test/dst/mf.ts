@@ -62,6 +62,7 @@ const subject = {
   moved: Setup.moved,
   priced: Setup.priced,
   reserve: Setup.reserve,
+  resolve: Setup.resolve,
   status: Tree.status,
   told: Setup.told,
 }
@@ -328,7 +329,12 @@ const leads: Record<Exclude<Setup.Chosen, 'custom'>, { harness: Setup.Harness; m
   'frontier-anthropic': { harness: 'claude', model: Setup.fable, subagents: { harnesses: ['claude'], models: [Setup.fable] } },
   'frontier-mix': { harness: 'claude', model: Setup.opus, subagents: { harnesses: ['claude', 'codex'], models: [Setup.opus, Setup.kimi, Setup.glm] } },
   'frontier-openai': { harness: 'codex', model: Setup.sol, subagents: { harnesses: ['codex'], models: [Setup.sol, Setup.astra] } },
+  antigravity: { harness: 'antigravity', model: Setup.gemini, subagents: { harnesses: ['antigravity'], models: [Setup.gemini] } },
 }
+
+const geminis = [Setup.gemini, 'gemini-3.8-flash', 'gemini-4-argon']
+
+const planned = 'an antigravity setup runs gemini- models on antigravity only, and nothing else names antigravity'
 
 const movedTo: Record<string, string> = {
   'boundless/anthropic/claude-fable-5.2': Setup.fable,
@@ -388,7 +394,7 @@ async function setup(seed: string): Promise<Outcome> {
     for (const id of [...known, ...extras, ...Object.keys(movedTo)])
       if (random.chance(id.startsWith('boundless/') ? 1 / L.extras : 1 - 1 / L.extras))
         prices.set(id, { cached: random.next() / L.extras, id, input: random.next() * L.priceMost, output: random.next() * L.priceMost })
-    const op = random.pick(['template', 'custom', 'reserve', 'moved', 'board'] as const)
+    const op = random.pick(['template', 'custom', 'reserve', 'moved', 'board', 'plan'] as const)
     if (op === 'template') {
       const template = random.pick(Object.keys(leads) as (keyof typeof leads)[])
       const resolved = Setup.resolve({ template })
@@ -400,12 +406,12 @@ async function setup(seed: string): Promise<Outcome> {
       check(resolved, prices)
     } else if (op === 'custom') {
       const pool = [...known, ...extras, ...Object.keys(movedTo), 'nope/model']
-      const harness = random.pick(Setup.harnesses)
+      const harness = random.pick(Setup.metered)
       const bare = random.chance(1 / L.extras)
       const model = random.pick(pool)
       const subagents = random.chance(1 / L.extras)
         ? null
-        : { harnesses: [random.pick(Setup.harnesses)], models: Array.from({ length: random.int(1, L.extras) }, () => random.pick(pool)) }
+        : { harnesses: [random.pick(Setup.metered)], models: Array.from({ length: random.int(1, L.extras) }, () => random.pick(pool)) }
       const resolved = Setup.resolve(bare ? { template: 'custom' } : { harness, model, subagents, template: 'custom' })
       if (bare) {
         if (typeof resolved !== 'string') fail('setup template', 'a custom setup with no lead resolved to ' + JSON.stringify(resolved))
@@ -414,6 +420,39 @@ async function setup(seed: string): Promise<Outcome> {
       if (!same(resolved, { harness, model, subagents, template: 'custom' }))
         fail('setup template', 'custom ' + model + ' resolved to ' + JSON.stringify(resolved))
       if (typeof resolved !== 'string') check(resolved, prices)
+    } else if (op === 'plan') {
+      const pool = [...geminis, ...known, 'nope/model']
+      const harness = random.pick(Setup.harnesses)
+      const model = random.pick(pool)
+      const offered = random.chance(1 / L.extras)
+        ? null
+        : {
+            harnesses: [
+              ...new Set(
+                Array.from({ length: random.int(1, Setup.harnesses.length) }, () =>
+                  random.pick(random.chance(0.5) ? ['antigravity' as const] : Setup.harnesses),
+                ),
+              ),
+            ],
+            models: Array.from({ length: random.int(1, L.extras) }, () => random.pick(random.chance(0.5) ? geminis : pool)),
+          }
+      const resolved = subject.resolve({ harness, model, subagents: offered, template: 'custom' })
+      const gem = (one: string) => one.startsWith('gemini-')
+      const ok =
+        harness === 'antigravity'
+          ? gem(model) && (!offered || (offered.harnesses.every((one) => one === 'antigravity') && offered.models.every(gem)))
+          : !offered?.harnesses.includes('antigravity')
+      if (ok !== (typeof resolved !== 'string')) {
+        fail(planned, JSON.stringify({ harness, model, offered }) + ' resolved to ' + JSON.stringify(resolved).slice(0, L.reads * L.extras))
+        continue
+      }
+      if (typeof resolved === 'string') continue
+      if (harness === 'antigravity') {
+        const want = { harness, model, subagents: offered ?? { harnesses: ['antigravity'], models: [model] }, template: 'custom' }
+        if (!same(resolved, want)) fail(planned, 'antigravity resolved to ' + JSON.stringify(resolved) + ', expected ' + JSON.stringify(want))
+        if (!Setup.planned(resolved) || Setup.credited(resolved.harness)) fail(planned, 'an antigravity setup reads as credited')
+      } else if (Setup.planned(resolved)) fail(planned, harness + ' reads as plan-only')
+      check(resolved, prices)
     } else if (op === 'reserve') {
       const most = String(random.int(0, L.floorMost * L.extras))
       const step = String(random.int(0, L.floorMost))
@@ -471,6 +510,18 @@ async function setup(seed: string): Promise<Outcome> {
   }
   function check(resolved: Exclude<ReturnType<typeof Setup.resolve>, string>, prices: Map<string, Setup.Price>) {
     const priced = subject.priced(resolved, prices)
+    if (resolved.harness === 'antigravity') {
+      const zero = Object.fromEntries((resolved.subagents?.models ?? []).map((one) => [one, '0']))
+      if (typeof priced === 'string' || priced.most !== String(Setup.least) || priced.step !== '0' || !same(priced.steps, zero))
+        return fail(
+          'setup cost',
+          'an antigravity setup priced ' + JSON.stringify(priced).slice(0, L.reads * L.extras) + ': it runs on the plan, so no call costs credit',
+        )
+      const told = subject.told(priced)
+      if (!told.includes('you run on Antigravity with ' + priced.model) || !told.includes('costs the swarm nothing'))
+        fail('setup told', 'the antigravity brief is ' + told.slice(0, L.reads * L.extras))
+      return
+    }
     const missing = [resolved.model, ...(resolved.subagents?.models ?? [])].find((one) => !prices.has(one))
     if (missing) {
       const why = Setup.direct(missing) ? 'do not run on Boundless' : 'is not a gateway model'
@@ -563,7 +614,7 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
   {
     flip: swap('priced', (given, prices) => {
       const priced = Setup.priced(given, prices)
-      return typeof priced === 'string' ? priced : { ...priced, most: String(Setup.units(Setup.most(prices.get(given.model)!))) }
+      return typeof priced === 'string' || Setup.planned(given) ? priced : { ...priced, most: String(Setup.units(Setup.most(prices.get(given.model)!))) }
     }),
     invariant: 'setup cost',
     name: 'mf.setup.floor',
@@ -595,4 +646,15 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
     seeds: ['1', '2', '3'],
   },
   { flip: widened, invariant: 'setup board', name: 'mf.setup.board', scenario: 'mf.setup', seeds: ['1', '2', '3'] },
+  {
+    flip: swap('resolve', (choice) =>
+      choice.template === 'custom' && choice.harness && choice.model
+        ? { harness: choice.harness, model: choice.model, subagents: choice.subagents ?? null, template: 'custom' }
+        : Setup.resolve(choice),
+    ),
+    invariant: planned,
+    name: 'mf.setup.antigravity',
+    scenario: 'mf.setup',
+    seeds: ['1', '2', '3'],
+  },
 ]

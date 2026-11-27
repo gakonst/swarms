@@ -1,9 +1,14 @@
+import type { Plan } from './Api.ts'
 import * as Limits from './Limits.ts'
-export const harnesses = ['claude', 'codex'] as const
+export const harnesses = ['claude', 'codex', 'antigravity'] as const
 
 export type Harness = (typeof harnesses)[number]
 
-export const templates = ['cheap', 'frontier-mix', 'fable', 'frontier-anthropic', 'frontier-openai', 'free', 'custom'] as const
+export const metered = ['claude', 'codex'] as const satisfies readonly Harness[]
+
+export type Metered = (typeof metered)[number]
+
+export const templates = ['cheap', 'frontier-mix', 'fable', 'frontier-anthropic', 'frontier-openai', 'free', 'antigravity', 'custom'] as const
 
 export type Chosen = (typeof templates)[number]
 
@@ -36,6 +41,26 @@ export const glmFlash = '@cf/zai-org/glm-5.3-flash'
 export const glm = '@cf/zai-org/glm-5.3'
 
 export const kimi = 'vercel/moonshotai/kimi-k3.1-pro'
+
+export const gemini = 'gemini-4-neon'
+
+const plansOf: Record<Harness, Plan> = { antigravity: 'antigravity', claude: 'claude', codex: 'codex' }
+
+export function planOf(harness: Harness): Plan {
+  return plansOf[harness]
+}
+
+export function credited(harness: Harness) {
+  return (metered as readonly Harness[]).includes(harness)
+}
+
+export function planned(setup: Pick<Setup, 'harness'> | null | undefined) {
+  return !!setup && !credited(setup.harness)
+}
+
+export function geminiModel(model: string) {
+  return /^gemini-[a-z0-9.-]+$/.test(model)
+}
 
 const moves: Record<string, string> = {
   'boundless/anthropic/claude-fable-5.2': fable,
@@ -108,9 +133,17 @@ export const presets: Record<Exclude<Chosen, 'custom'>, { harness: Harness; hint
     model: flash,
     subagents: null,
   },
+  antigravity: {
+    harness: 'antigravity',
+    hint: "Antigravity on Gemini 4 Neon, for the lead and every subagent, on the creator's connected Antigravity plan. It never runs on credit.",
+    label: 'Antigravity',
+    model: gemini,
+    subagents: { harnesses: ['antigravity'], models: [gemini] },
+  },
 }
 
 export const labels: Record<Template, string> = {
+  antigravity: presets.antigravity.label,
   board: 'Board',
   cheap: presets.cheap.label,
   custom: 'Custom',
@@ -127,14 +160,14 @@ export function provider(model: string) {
   return model.split('/').at(-2) ?? ''
 }
 
-export function harnessOf(model: string): Harness {
+export function harnessOf(model: string): Metered {
   return provider(model) === 'anthropic' ? 'claude' : 'codex'
 }
 
 export function board(prices: ReadonlyMap<string, Price>): Omit<Setup, keyof Costs> | string {
   const models = [...prices.keys()].filter((model) => providers.includes(provider(model))).sort()
   if (!models.length) return 'The gateway lists no OpenAI, Anthropic or Google model right now.'
-  return { harness: 'claude', model: fable, subagents: { harnesses: [...harnesses], models }, template: 'board' }
+  return { harness: 'claude', model: fable, subagents: { harnesses: [...metered], models }, template: 'board' }
 }
 
 export const context = Limits.SharedSetup.context
@@ -155,7 +188,20 @@ export function resolve(choice: Choice): Omit<Setup, keyof Costs> | string {
     return { harness: preset.harness, model: preset.model, subagents: preset.subagents, template: choice.template }
   }
   if (!choice.harness || !choice.model) return 'A custom setup names the lead harness and model.'
+  if (choice.harness === 'antigravity') return plan(choice.model, choice.subagents)
+  if (choice.subagents?.harnesses.includes('antigravity'))
+    return "Subagents run on antigravity only under an antigravity lead, since Gemini runs only on the creator's Antigravity plan."
   return { harness: choice.harness, model: choice.model, subagents: choice.subagents ?? null, template: 'custom' }
+}
+
+function plan(model: string, subagents: Offer | null | undefined): Omit<Setup, keyof Costs> | string {
+  if (!geminiModel(model)) return `An antigravity lead runs a gemini- model on the creator's Antigravity plan, such as ${gemini}, not ${model}.`
+  const offer = subagents ?? { harnesses: ['antigravity'], models: [model] }
+  if (offer.harnesses.some((one) => one !== 'antigravity'))
+    return "An antigravity lead's subagents run on antigravity too: Gemini runs only on the creator's Antigravity plan, and no swarm of it spends credit on a model."
+  const stray = offer.models.find((one) => !geminiModel(one))
+  if (stray) return `An antigravity lead's subagents run gemini- models, not ${stray}.`
+  return { harness: 'antigravity', model, subagents: offer, template: 'custom' }
 }
 
 export function step(price: Price) {
@@ -171,6 +217,7 @@ export function units(usd: number) {
 }
 
 export function priced(setup: Omit<Setup, keyof Costs>, prices: ReadonlyMap<string, Price>): Setup | string {
+  if (planned(setup)) return { ...setup, most: String(least), step: '0', steps: Object.fromEntries((setup.subagents?.models ?? []).map((model) => [model, '0'])) }
   const missing = [setup.model, ...(setup.subagents?.models ?? [])].find((model) => !prices.has(model))
   if (missing && direct(missing)) return `${missing} is not offered: swarms do not run on Boundless until it charges a call as it streams instead of holding its worst case. Pick a model from GET /v1/config.`
   if (missing) return `${missing} is not a gateway model that calls tools.`
@@ -183,7 +230,9 @@ export function priced(setup: Omit<Setup, keyof Costs>, prices: ReadonlyMap<stri
 
 export function told(setup: Setup) {
   const dollars = (value: string) => '$' + (Number(value) / Limits.SharedSetup.microsPerDollar).toFixed(Number(value) < Limits.SharedSetup.fineBelow ? Limits.SharedSetup.fineDigits : Limits.SharedSetup.coarseDigits)
-  const harness = (value: Harness) => (value === 'claude' ? 'Claude Code' : 'Codex')
+  const harness = (value: Harness) => harnessNames[value]
+  if (planned(setup))
+    return `Models (the swarm's ${labels[setup.template]} setup): you run on Antigravity with ${setup.model}, on the creator's Antigravity plan, so a model call costs the swarm nothing. Your subagents may use only the Antigravity harness with ${(setup.subagents?.models ?? [setup.model]).join(', ')}: name one of them as spawn_agent's model, since the gateway refuses any other and runs no Gemini call off the plan. Tools and machines are still paid from the swarm's money.`
   const offer = setup.subagents && setup.subagents.models.map((model) => (setup.steps[model] ? model + ' (about ' + dollars(setup.steps[model]) + ' a call)' : model)).join(', ')
   if (setup.template === 'board' && setup.subagents)
     return `Models: the swarm's orchestrator picked the model you run on for this run. Your own subagents may use the ${setup.subagents.harnesses.map(harness).join(' or ')} harness with ${offer}: name one of them as spawn_agent's model, since the gateway refuses any other. Give each subagent a budget_usd of at least ${budgetCalls} of its model's calls.`
@@ -191,6 +240,8 @@ export function told(setup: Setup) {
   if (!setup.subagents) return `${lead} Your subagents may use any harness and gateway model; frontier models cost far more a call, so size each subagent's budget_usd to the model you give it.`
   return `${lead} Your subagents may use only the ${setup.subagents.harnesses.map(harness).join(' or ')} harness with ${offer}: name one of them as spawn_agent's model, since the gateway refuses any other. Give each subagent a budget_usd of at least ${budgetCalls} of its model's calls.`
 }
+
+export const harnessNames: Record<Harness, string> = { antigravity: 'Antigravity', claude: 'Claude Code', codex: 'Codex' }
 
 export function reserve(setup: Pick<Setup, 'most'> | null | undefined) {
   return setup ? BigInt(setup.most) : least

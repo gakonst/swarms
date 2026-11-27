@@ -32,14 +32,17 @@ export const commands: Record<string, () => Promise<Command>> = {
   version: async () => async (ctx: Context) => ctx.out({ version }, version),
 }
 
-export const aliases: Record<string, string> = { back: 'fund', ride: 'fund', env: 'byok', list: 'ls', create: 'new', log: 'logs' }
+export const aliases: Record<string, string> = { back: 'fund', ride: 'fund', env: 'byok', list: 'ls', create: 'new', start: 'new', log: 'logs' }
 
 export const usage: Record<string, [string, string]> = {
   login: ['swarms login [--no-browser] [--token <token>]', 'Sign in with Tempo ID in the browser; the token is kept in the OS keychain.'],
   logout: ['swarms logout', 'End the session and forget its token.'],
   whoami: ['swarms whoami', 'Who you are signed in as.'],
   ls: ['swarms ls [--status <status>] [--all]', 'Swarms, most recently active first.'],
-  new: ['swarms new <name> [--goal <text>] [--title <text>] [--amount <usd>] [--form tree|agent] [--template <name>]', 'Start a swarm at /<name>, and ride it.'],
+  new: [
+    'swarms new <name> [--goal <text>] [--title <text>] [--amount <usd>] [--form tree|agent] [--template <name>] [--harness claude|codex|antigravity --model <id>]',
+    'Start a swarm at /<name>, and ride it. --template antigravity runs Gemini on your own Antigravity plan (swarms byok connect antigravity first).',
+  ],
   open: ['swarms open [swarm]', 'Open a swarm, or the site, in the browser.'],
   status: ['swarms status <swarm>', 'Where a swarm stands: money, work and its latest update.'],
   watch: ['swarms watch <swarm> [--limit <n>] [--timeout <s>]', 'Follow a swarm live.'],

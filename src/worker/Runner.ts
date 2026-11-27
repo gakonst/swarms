@@ -223,7 +223,7 @@ export function picked(answer: string | undefined, models: readonly string[], fa
   const value = json(answer)
   const asked = typeof value?.['model'] === 'string' && models.includes(value['model']) ? value['model'] : undefined
   const model = asked ?? fallback
-  const harness = asked && Setup.harnesses.some((one) => one === value?.['harness']) ? String(value?.['harness']) : Setup.harnessOf(model)
+  const harness = asked && Setup.metered.some((one) => one === value?.['harness']) ? String(value?.['harness']) : Setup.harnessOf(model)
   return { harness, model, why: asked ? text(value?.['why'], Limits.Runner.whyChars) : null }
 }
 

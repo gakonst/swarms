@@ -38,6 +38,10 @@ export const node = 'board'
 
 const named: Record<Plan, string> = { antigravity: 'Antigravity', claude: 'Claude', codex: 'ChatGPT' }
 
+export const connect = 'Connect your Antigravity'
+
+export const ownAi = '/me/ai'
+
 export function planName(plan: Plan) {
   return named[plan]
 }
@@ -49,7 +53,7 @@ export function pill(board: Pick<Board, 'halt' | 'state'>): { mood: Mood; text: 
     case 'limited':
       return { mood: 'money', text: 'Plan rate limit' }
     case 'revoked':
-      return { mood: 'stuck', text: 'Plan signed out' }
+      return { mood: 'stuck', text: halt.plan === 'antigravity' ? connect : 'Plan signed out' }
     case 'met':
       return { mood: 'done', text: 'Goal met' }
     case 'capped':
@@ -64,6 +68,8 @@ export function reason(halt: Halt): string {
     case 'limited':
       return `Paused: the creator's ${planName(halt.plan)} plan hit its rate limit. It resumes by itself at ${new Date(halt.until).toISOString().slice(Limits.SharedDrive.clockFrom, Limits.SharedDrive.clockTo)} UTC${halt.from === 'backoff' ? ', a backoff since the provider named no reset' : ''}.`
     case 'revoked':
+      if (halt.plan === 'antigravity')
+        return `Paused: this swarm runs only on its creator's Antigravity plan, and none is connected. It starts again on the plan within ${Limits.Drive.revokedReadMs / Limits.SharedDrive.minuteMs} minutes of [connecting it on ${ownAi}](${ownAi}), and never runs on credit.`
       return `Paused: the creator's ${planName(halt.plan)} plan is signed out. Reconnect it on /me/ai, or ride the swarm so it runs on credit.`
     case 'met':
       return 'Paused: the lead says the goal is met. Add an item in this thread to keep going.'
@@ -72,6 +78,14 @@ export function reason(halt: Halt): string {
     case 'stuck':
       return halt.question
   }
+}
+
+export function plain(text: string) {
+  return text.replace(/\[([^\]]+)\]\([^)\s]+\)/g, '$1')
+}
+
+export function connects(halt: Halt | null) {
+  return halt?.why === 'revoked' && halt.plan === 'antigravity'
 }
 
 export function open(state: ItemState) {

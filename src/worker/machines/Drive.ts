@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { plans, type Plan } from '../../shared/Api.ts'
 import * as Assert from '../../shared/Assert.ts'
 import type { Halt, Item, Origin, Source } from '../../shared/Drive.ts'
-import type * as Setup from '../../shared/Setup.ts'
+import * as Setup from '../../shared/Setup.ts'
 import { clip } from '../../shared/Trail.ts'
 import * as Limits from '../../shared/Limits.ts'
 
@@ -43,7 +43,7 @@ export const next: Record<Kind, readonly Kind[]> = {
   unboarded: ['planning', 'driving'],
 }
 
-export const guards = { dedupe: true, fence: true, flight: true, hourly: true, legal: true, priority: true, reset: true, stuck: true }
+export const guards = { dedupe: true, fence: true, flight: true, hourly: true, legal: true, planOnly: true, priority: true, reset: true, stuck: true }
 
 export class Refused extends Error {
   readonly kind: 'Illegal' | 'Stale'
@@ -221,7 +221,7 @@ export function revoked(message: string | null) {
   return (
     !!message &&
     (/\b(Messages|Responses|Chat Completions|Chat)\b[^:]*\bHTTP 40[13]\b/.test(message) ||
-      /signed[ -]out|not signed in|token (expired|revoked)|invalid_grant|plan (was )?revoked|reconnect/i.test(message))
+      /signed[ -]out|not signed in|token (expired|revoked)|invalid_grant|plan (was )?revoked|reconnect|only on an Antigravity plan/i.test(message))
   )
 }
 
@@ -252,8 +252,12 @@ export function limit(message: string, now: number, tries: number, plan: Plan): 
 }
 
 export function serves(harness: Setup.Harness, signed: ReadonlySet<Plan>): Plan | null {
-  const plan: Plan = harness === 'claude' ? 'claude' : 'codex'
+  const plan = Setup.planOf(harness)
   return signed.has(plan) ? plan : null
+}
+
+export function credited(plan: Plan) {
+  return !guards.planOnly || Setup.metered.some((harness) => Setup.planOf(harness) === plan)
 }
 
 export type Plans = { known: boolean; signed: ReadonlySet<Plan> }
@@ -261,8 +265,13 @@ export type Plans = { known: boolean; signed: ReadonlySet<Plan> }
 export type Choice = { plan: Plan; source: 'plan' } | { lost: Plan | null; source: 'credit' } | { halt: Halt }
 
 export function choose(input: { funded: boolean; harness: Setup.Harness; hosted: boolean; last: Source | null; plans: Plans | undefined }): Choice {
+  const plan = Setup.planOf(input.harness)
+  if (!credited(plan)) {
+    if (input.plans?.known && serves(input.harness, input.plans.signed)) return { plan, source: 'plan' }
+    if (input.plans && !input.plans.known && input.last === 'plan' && !input.hosted) return { plan, source: 'plan' }
+    return { halt: { plan, why: 'revoked' } }
+  }
   if (input.hosted || !input.plans) return { lost: null, source: 'credit' }
-  const plan: Plan = input.harness === 'claude' ? 'claude' : 'codex'
   if (!input.plans.known) return input.last === 'plan' ? { plan, source: 'plan' } : { lost: null, source: 'credit' }
   if (serves(input.harness, input.plans.signed)) return { plan, source: 'plan' }
   if (input.last !== 'plan') return { lost: null, source: 'credit' }
@@ -279,7 +288,7 @@ export function resumes(found: Halt, input: { funded: boolean; now: number; plan
   if (found.why === 'limited') return input.now >= found.until ? 'reset' : null
   if (found.why !== 'revoked') return null
   if (input.plans?.known && input.plans.signed.has(found.plan)) return 'plan'
-  return input.funded ? 'credit' : null
+  return input.funded && credited(found.plan) ? 'credit' : null
 }
 
 export function wakes(found: Halt, reason: 'money' | 'note') {

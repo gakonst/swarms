@@ -110,7 +110,7 @@ async function armed() {
   if (mutants.patience) set(Runner.timing, 'spawnMs', 0)
   if (mutants.cap) set(Nodes.defaults, 'runCap', Nodes.defaults.runMin)
   if (mutants.harness) {
-    const harnesses = Setup.harnesses as unknown as string[]
+    const harnesses = Setup.metered as unknown as string[]
     harnesses.push('cursor')
     undo.push(() => void harnesses.pop())
   }

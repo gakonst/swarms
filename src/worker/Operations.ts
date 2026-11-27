@@ -119,8 +119,14 @@ const plan = z.enum(plans).describe('Which subscription: claude (Claude plan), c
 
 const planNames: Record<Plan, string> = { antigravity: 'Antigravity', codex: 'ChatGPT plan', claude: 'Claude plan' }
 
+const wanted: Record<Setup.Harness, string> = {
+  antigravity: 'Antigravity: connect your Antigravity',
+  claude: 'Claude: connect your Claude plan or an Anthropic key',
+  codex: 'Codex: connect your ChatGPT plan or an OpenAI key',
+}
+
 export function needs(harness: Setup.Harness) {
-  return `This swarm's agent runs on ${harness === 'claude' ? 'Claude: connect your Claude plan or an Anthropic key' : 'Codex: connect your ChatGPT plan or an OpenAI key'} under Use your own AI first.`
+  return `This swarm's agent runs on ${wanted[harness]} under Use your own AI first.`
 }
 
 const nid = z.string().trim().regex(/^(root|triage|[0-9a-f]{10})$/, 'A node id is root, triage or 10 hex characters.').describe('A node id, as in /s/<id>/n/<nid>.')
@@ -240,9 +246,9 @@ export const schema = {
       .default(Setup.fallback)
       .describe(
         "Agent swarms only: a tree swarm ignores template, harness, model and subagents, since riders never choose its models; its orchestrator, Claude Code on Claude Fable 5.2, picks each run's harness and model from the OpenAI, Anthropic and Google models the gateway lists, guided by riders' notes. " +
-          'Which models the swarm runs on. frontier-anthropic (the default): Claude Code on Claude Fable 5.2, for the lead and every subagent. frontier-mix: Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, Kimi K3.1 Pro or GLM-5.3 on Claude Code or Codex. fable: Claude Code on Fable 5.2 leads, and subagents use Fable 5.2, Opus 5.5, Kimi K3.1 Pro or GLM-5.3. cheap: Codex on DeepSeek V4.1 Flash leads, and subagents use DeepSeek V4.1 Flash or GLM-5.3 Flash on Codex or Claude Code. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra. Every template runs on models the gateway charges for by what each call uses; the Claude models come through Vercel, and no swarm runs on Boundless (the boundless/ ids) until it charges a call as it streams, so those are refused. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
+          'Which models the swarm runs on. frontier-anthropic (the default): Claude Code on Claude Fable 5.2, for the lead and every subagent. frontier-mix: Claude Code on Claude Opus 5.5 leads, and subagents use Opus 5.5, Kimi K3.1 Pro or GLM-5.3 on Claude Code or Codex. fable: Claude Code on Fable 5.2 leads, and subagents use Fable 5.2, Opus 5.5, Kimi K3.1 Pro or GLM-5.3. cheap: Codex on DeepSeek V4.1 Flash leads, and subagents use DeepSeek V4.1 Flash or GLM-5.3 Flash on Codex or Claude Code. frontier-openai: Codex on GPT-6.1 Sol leads, and subagents use Sol or GPT-6 Astra. Every template runs on models the gateway charges for by what each call uses; the Claude models come through Vercel, and no swarm runs on Boundless (the boundless/ ids) until it charges a call as it streams, so those are refused. free: Codex on DeepSeek V4.1 Flash leads, and subagents use any gateway model. antigravity: Antigravity on gemini-4-neon, for the lead and every subagent, on the connected Antigravity plan of its creator (sign in to create one; it never runs on credit, and without the plan it pauses until you connect your Antigravity on /me/ai). custom: harness, model and subagents choose. GET /v1/config lists every model with its price.',
       ),
-    harness: z.enum(Setup.harnesses).optional().describe('custom only: the lead agent\'s harness, claude (Claude Code) or codex.'),
+    harness: z.enum(Setup.harnesses).optional().describe("custom only: the lead agent's harness, claude (Claude Code), codex or antigravity (Gemini on the creator's Antigravity plan: a gemini- model such as gemini-4-neon, and subagents on antigravity only)."),
     model: z.string().min(1).max(Limits.Operations.modelChars).optional().describe('custom only: the lead agent\'s gateway model id, such as vercel/anthropic/claude-opus-5.5.'),
     subagents: z
       .object({
@@ -628,6 +634,10 @@ export function listed(value: Listing) {
 
 export const guards = { limit: true, owner: true, reviewed: true, setup: true, tag: true }
 
+export function planOnly(input: { harness?: unknown; template?: unknown }) {
+  return input.template === 'antigravity' || input.harness === 'antigravity'
+}
+
 export async function create(env: Cloudflare.Env, input: Input<'create'>, creator?: Address): Promise<Problem.Result<Summary>> {
   const parsed = parse(schema.create, input)
   if (!parsed.ok) return parsed
@@ -643,6 +653,8 @@ export async function create(env: Cloudflare.Env, input: Input<'create'>, creato
   if (typeof chosen === 'string') return Problem.fail(Limits.Http.unavailable, 'unavailable', chosen)
   const setup = Setup.priced(tree || parsed.value.template === 'custom' ? chosen : (Setup.moved(chosen, prices) ?? chosen), prices)
   if (typeof setup === 'string') return Problem.fail(Limits.Http.invalid, 'invalid_request', `${setup} GET /v1/config lists them.`)
+  if (Setup.planned(setup) && !creator)
+    return Problem.fail(Limits.Http.unauthorized, 'unauthorized', "An Antigravity swarm runs on its creator's Antigravity plan: sign in with Tempo ID to start one, and connect your Antigravity on /me/ai.")
   const policy = parsed.value.steering ?? (creator ? 'team' : 'open')
   const swarm = { goal: parsed.value.goal, id: identifier(), title: parsed.value.title }
   if (!tree && (parsed.value.seed.length || parsed.value.statement)) return Problem.fail(Limits.Http.invalid, 'invalid_request', 'seed and statement go with form tree.')
@@ -1045,6 +1057,8 @@ export async function ownSignOut(env: Cloudflare.Env, input: Input<'ownPlan'>, a
   return ownAi(env, address)
 }
 
+const hostless = "An Antigravity swarm runs only on its creator's Antigravity plan: no rider's own AI or credit runs its model calls."
+
 export function runsOn(own: OwnAi, harness: Setup.Harness) {
   return Key.runsOn(Key.access(own), harness)
 }
@@ -1073,6 +1087,7 @@ export async function hostAi(env: Cloudflare.Env, input: Input<'ownAi'>, address
   const own = await Gateway.ai(env, rider)
   if (!own.ok) return relayed(own)
   const harness = Store.setup(row)?.harness ?? 'claude'
+  if (!Setup.credited(harness)) return Problem.fail(Limits.Http.conflict, 'conflict', hostless)
   if (!runsOn(own.value, harness))
     return Problem.fail(Limits.Http.conflict, 'conflict', needs(harness))
   await Store.host(env, row.id, rider)

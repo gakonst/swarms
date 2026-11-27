@@ -1,5 +1,6 @@
 import type { Account, Artifact, Branch, Branches, Chatter, Config, Contributed, Detail, Entry, Hall, Heard, Issued, Lent, Listing, Live, Lobby, Named, NodeUpdates, NodeView, OwnAi, Plan, Posted, Problem, Profile, ProgressView, ProofsView, Proposed, Reacted, Replied, Room, Roster, Shouted, SignIn, Snapshot, Steering, Suggested, Summary, TreeView, Update } from '../shared/Api.ts'
 import type * as Tree from '../shared/Tree.ts'
+import type { Chosen } from '../shared/Setup.ts'
 import type * as Btw from '../shared/Btw.ts'
 import type { Progress } from '../shared/Progress.ts'
 import type { Job, Listed, Logged, Machine, Shown } from '../shared/Fleet.ts'
@@ -197,7 +198,7 @@ export function paint(id: string, image: Blob) {
   })
 }
 
-export function create(input: { goal: string; nickname?: string; problem?: string; steering?: Steering; title: string }) {
+export function create(input: { goal: string; nickname?: string; problem?: string; steering?: Steering; template?: Chosen; title: string }) {
   return signed(() => (fixture ? staged((fixtures) => fixtures.create(input, who())) : request<Summary>('/api/swarms', input)))
 }
 

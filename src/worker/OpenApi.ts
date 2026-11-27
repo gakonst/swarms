@@ -356,12 +356,12 @@ const schemas = {
     setup: nullable(
       object(
         {
-          harness: { enum: ['claude', 'codex'], type: 'string' },
+          harness: { enum: [...Setup.harnesses], type: 'string' },
           model: string,
           most: { description: 'Micro-dollars: what the gateway holds for one uncached step of the lead model (a 50,000-token context and 1,024 output tokens), which the swarm needs to start a step.', type: 'string' },
           step: { description: 'Micro-dollars: a typical step of the lead model, one call at a 50,000-token context, mostly cached.', type: 'string' },
           steps: { additionalProperties: string, description: "Micro-dollars: a typical step of each model the subagents may use.", type: 'object' },
-          subagents: nullable(object({ harnesses: { items: { enum: ['claude', 'codex'], type: 'string' }, type: 'array' }, models: { items: string, type: 'array' } })),
+          subagents: nullable(object({ harnesses: { items: { enum: [...Setup.harnesses], type: 'string' }, type: 'array' }, models: { items: string, type: 'array' } })),
           template: { enum: [...Setup.kinds], type: 'string' },
         },
         "The models the swarm runs on: its template, the lead's harness and model, and the harnesses and models its subagents may use (null: any). null for swarms made before setups, which run on the gateway's default.",

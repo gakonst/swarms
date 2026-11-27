@@ -387,6 +387,8 @@ html[data-viewing] body { overflow:hidden; }
 .runs b { font-weight:400; color:var(--fg); }
 .runs span span { color:var(--muted); }
 .runs small { font:12px var(--mono); letter-spacing:.02em; color:var(--muted); white-space:nowrap; }
+.runs-note { margin:8px 0 0; font-size:13px; line-height:1.45; color:var(--muted); }
+.runs-note a { color:var(--fg); white-space:nowrap; }
 .own-ideas { display:grid; row-gap:var(--space-3); margin-top:var(--space-9); }
 .own-ideas h2 { font-size:var(--size-body); font-weight:400; letter-spacing:-.03em; }
 .how-band { display:grid; row-gap:var(--space-3); margin-top:var(--space-8); }
@@ -595,6 +597,7 @@ button.traces-note { cursor:pointer; }
 .board-pin-mark { width:8px; height:8px; border-radius:2px; background:var(--fg); transform:rotate(45deg); }
 .board-pin-goal { display:-webkit-box; margin:0; overflow:hidden; color:var(--muted); font-size:13px; line-height:1.4; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
 .board-pin-why { margin:0; padding:6px 8px; border-radius:8px; background:var(--warn-wash); color:var(--warn-ink); font-size:12px; line-height:1.4; white-space:pre-line; }
+.board-pin-connect { color:inherit; font-weight:600; white-space:nowrap; }
 .board-pin-items { display:grid; gap:3px; margin:0; padding:0; list-style:none; font-size:13px; }
 .board-pin-items li { display:flex; align-items:baseline; gap:8px; min-width:0; }
 .board-pin-items li > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

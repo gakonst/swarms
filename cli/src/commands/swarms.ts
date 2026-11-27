@@ -91,8 +91,18 @@ export async function create(ctx: Context) {
   const asked = await gather(ctx)
   const title = ctx.flag('title') ?? name.replace(/[-_]+/g, ' ').replace(/^./, (first) => first.toUpperCase())
   const form = ctx.flag('form')
-  const template = ctx.flag('template')
-  const made = await ctx.api<Summary>('POST', '/v1/swarms', { goal: asked.goal, nickname: name, title, ...(form ? { form } : {}), ...(template ? { template } : {}) })
+  const harness = ctx.flag('harness')
+  const model = ctx.flag('model')
+  const template = ctx.flag('template') ?? (harness || model ? 'custom' : undefined)
+  const made = await ctx.api<Summary>('POST', '/v1/swarms', {
+    goal: asked.goal,
+    nickname: name,
+    title,
+    ...(form ? { form } : {}),
+    ...(template ? { template } : {}),
+    ...(harness ? { harness } : {}),
+    ...(model ? { model } : {}),
+  })
   const url = page(ctx.host, made)
   let funded: unknown = null
   if (asked.amount) {

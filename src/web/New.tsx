@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Config, Steering } from '../shared/Api.ts'
+import * as Drive from '../shared/Drive.ts'
 import * as Nickname from '../shared/Nickname.ts'
+import * as Setup from '../shared/Setup.ts'
 import type { Problem } from '../shared/ResearchBrief.ts'
 import * as Api from './api.ts'
 import { here, site } from './boot.ts'
@@ -12,12 +14,16 @@ import { launcher } from './launch.ts'
 import * as Names from './names.ts'
 import * as Pay from './pay.ts'
 import { brief, open, problems } from './research.ts'
-import { Back, navigate, useCanBack } from './router.tsx'
+import { Back, Link, navigate, useCanBack } from './router.tsx'
 import { Steered } from './Steering.tsx'
 import * as Wire from './wire.ts'
 import * as Limits from '../shared/Limits.ts'
 
 const prefill = { amount: '5', note: '', token: undefined } as const
+
+function started(): Engine {
+  return here().searchParams.get('runs') === 'antigravity' ? 'antigravity' : 'credit'
+}
 
 function starter() {
   const asked = here().searchParams.get('q')
@@ -36,9 +42,38 @@ async function named(input: Parameters<typeof Api.create>[0]) {
   })
 }
 
-function useLaunch(slot: string, title: string, goal: string, problem: string | undefined, steering: Steering, nickname: string | undefined) {
+type Engine = 'credit' | 'antigravity'
+
+const engines: readonly (readonly [Engine, string, string])[] = [
+  ['credit', "Riders' credit", 'Claude Fable 5.2, paid from what riders put in'],
+  ['antigravity', 'My Antigravity', 'Gemini on your own Antigravity plan, never on credit'],
+]
+
+function Runs(props: { disabled?: boolean; engine: Engine; onPick: (engine: Engine) => void }) {
+  return (
+    <>
+      <div aria-label="Runs on" className="runs" role="radiogroup">
+        <p>Runs on</p>
+        {engines.map(([name, label, hint]) => (
+          <label data-on={props.engine === name} key={name}>
+            <input checked={props.engine === name} disabled={props.disabled} name="engine" onChange={() => props.onPick(name)} type="radio" value={name} />
+            <i aria-hidden="true" />
+            <span><b>{label}</b> <span>{hint}</span></span>
+          </label>
+        ))}
+      </div>
+      {props.engine === 'antigravity' && (
+        <p className="runs-note">
+          {Setup.presets.antigravity.hint} Without the plan it waits. <Link to={Drive.ownAi}>{Drive.connect} →</Link>
+        </p>
+      )}
+    </>
+  )
+}
+
+function useLaunch(slot: string, title: string, goal: string, problem: string | undefined, steering: Steering, nickname: string | undefined, engine: Engine) {
   const [launch] = useState(() => launcher((input: Parameters<typeof Api.create>[0]) => named(input).then((swarm): Target => ({ id: swarm.id, ...(swarm.nickname ? { nickname: swarm.nickname } : {}) }))))
-  const input = { steering, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}), ...(nickname ? { nickname } : {}) }
+  const input = { steering, goal: goal.trim(), title: title.trim(), ...(problem ? { problem } : {}), ...(nickname ? { nickname } : {}), ...(engine === 'antigravity' ? { template: 'antigravity' as const } : {}) }
   return {
     busy: Pay.busy(Pay.useFlow(slot)),
     locked: !(input.title.length >= 1 && input.title.length <= Limits.Operations.titleChars && input.goal.length >= Limits.Operations.goalLeastChars && input.goal.length <= Limits.Operations.goalChars),
@@ -73,8 +108,9 @@ function Seed(props: { config: Config | undefined; name: string | undefined; pro
   const problem = props.problem
   const [note, setNote] = useState('')
   const [steering, setSteering] = useState<Steering>('team')
+  const [engine, setEngine] = useState<Engine>(started)
   const id = `idea:${problem.id}`
-  const launch = useLaunch(id, problem.title, problem.goal, problem.id, steering, props.name)
+  const launch = useLaunch(id, problem.title, problem.goal, problem.id, steering, props.name, engine)
   const backed = useCanBack()
 
   return (
@@ -92,7 +128,12 @@ function Seed(props: { config: Config | undefined; name: string | undefined; pro
           <Box
             config={props.config}
             creates
-            extra={<Steered disabled={launch.busy} onPick={setSteering} steering={steering} />}
+            extra={
+              <>
+                <Steered disabled={launch.busy} onPick={setSteering} steering={steering} />
+                <Runs disabled={launch.busy} engine={engine} onPick={setEngine} />
+              </>
+            }
             first
             focus={0}
             least="1"
@@ -121,7 +162,8 @@ function Own(props: { config: Config | undefined; name: string | undefined }) {
   const [note, setNote] = useState('')
   const drafted = brief(question)
   const [steering, setSteering] = useState<Steering>('team')
-  const launch = useLaunch('own', drafted.title, drafted.goal, undefined, steering, props.name)
+  const [engine, setEngine] = useState<Engine>(started)
+  const launch = useLaunch('own', drafted.title, drafted.goal, undefined, steering, props.name, engine)
   const free = (list.data ? open(list.data.swarms) : problems).slice(0, Limits.WebNew.free)
 
   return (
@@ -136,7 +178,12 @@ function Own(props: { config: Config | undefined; name: string | undefined }) {
         <Box
             config={props.config}
             creates
-            extra={<Steered disabled={launch.busy} onPick={setSteering} steering={steering} />}
+            extra={
+              <>
+                <Steered disabled={launch.busy} onPick={setSteering} steering={steering} />
+                <Runs disabled={launch.busy} engine={engine} onPick={setEngine} />
+              </>
+            }
             first
             focus={0}
             least="1"

@@ -417,10 +417,10 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
     'swarm_create',
     {
       annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false, readOnlyHint: false },
-      description: `Start a swarm with a title, a goal and a model template (frontier-anthropic by default, Fable 5.2 throughout; GET /v1/config lists every model's price). It costs nothing and waits in status funding until someone sends it money (swarm_contribute, or Fund on its page), and only funded swarms appear in swarms_list. Returns the swarm; its page is ${origin}/<nickname> when given one, else ${origin}/s/<id>.`,
+      description: `Start a swarm with a title, a goal and a model template (frontier-anthropic by default, Fable 5.2 throughout; GET /v1/config lists every model's price). It costs nothing and waits in status funding until someone sends it money (swarm_contribute, or Fund on its page), and only funded swarms appear in swarms_list. template antigravity (or harness antigravity with a gemini- model) runs Gemini on the signed-in user's own Antigravity plan and never on credit: connect it first with swarm_byok connect antigravity, else the swarm pauses until it is connected. Returns the swarm; its page is ${origin}/<nickname> when given one, else ${origin}/s/<id>.`,
       inputSchema: Operations.schema.create.omit({ steering: true }).shape,
     },
-    async (input) => reply(await Operations.create(env, input)),
+    async (input) => reply(await Operations.create(env, input, Operations.planOnly(input) ? address : undefined)),
   )
 
   registerTool(
@@ -644,7 +644,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
     'swarm_byok',
     {
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true, readOnlyHint: false },
-      description: "Your own AI, as swarms byok does: status lists your API keys (by hint) and subscriptions (claude, codex, antigravity; one the gateway does not take yet is absent, coming soon); set adds an Anthropic or OpenAI API key (checked with the provider, kept encrypted by the gateway, never shown again); remove drops one; connect starts a subscription sign-in and answers the page to open; for codex (ChatGPT plan) it also answers a code, open the page with ?user_code=<code>, and status shows authenticated once the user approves, with no finish; finish completes claude with the code its page showed and antigravity (Gemini) with the whole address Google lands on or its code; signout forgets it; use runs a swarm's agent on your own AI from now on, and stop hands it back to the swarm's money. A swarm on Claude runs on the Claude plan or an Anthropic key, one on Codex on the ChatGPT plan or an OpenAI key. Never echo the key back.",
+      description: "Your own AI, as swarms byok does: status lists your API keys (by hint) and subscriptions (claude, codex, antigravity; one the gateway does not take yet is absent, coming soon); set adds an Anthropic or OpenAI API key (checked with the provider, kept encrypted by the gateway, never shown again); remove drops one; connect starts a subscription sign-in and answers the page to open; for codex (ChatGPT plan) it also answers a code, open the page with ?user_code=<code>, and status shows authenticated once the user approves, with no finish; finish completes claude with the code its page showed and antigravity (Gemini) with the whole address Google lands on or its code; signout forgets it; use runs a swarm's agent on your own AI from now on, and stop hands it back to the swarm's money. A swarm on Claude runs on the Claude plan or an Anthropic key, one on Codex on the ChatGPT plan or an OpenAI key, and one on Antigravity only on its creator's Antigravity plan. Never echo the key back.",
       inputSchema: {
         action: z.enum(['status', 'set', 'remove', 'connect', 'finish', 'signout', 'use', 'stop']).describe('What to do.'),
         code: Operations.schema.ownCode.shape.code.optional().describe('finish: the code the sign-in page showed.'),

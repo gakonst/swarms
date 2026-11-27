@@ -308,11 +308,23 @@ export async function start(options: Options = {}) {
     finish(agent, sub, { ...(sub.status.output === undefined ? {} : { output: sub.status.output }), state })
   }
 
+  const gemini = 'The gateway runs Gemini only on an Antigravity plan: start the turn with credentials naming a subject signed in to one.'
+
+  const onPlan = (credentials: string | undefined) => !!credentials && owned.get(credentials)?.antigravity === 'authenticated'
+
   const play = async (agent: Agent, turn: Turn) => {
     turn.status = 'running'
     const emit = emitted(agent, null)
     const asked = Model.spawned(turn.prompt)
-    const paid = await meter(agent, null, asked ? settings.dispatcherUsd : 0.01, 20, 'turn')
+    const planned = agent.harness === 'antigravity'
+    if (planned && !onPlan(turn.credentials)) {
+      emit('model.call.failed', { error: gemini })
+      turn.status = 'failed'
+      turn.error = 'Chat HTTP 409: ' + gemini
+      append(agent, { error: { message: turn.error }, status: 'failed', type: 'result' }, turn.request_id)
+      return
+    }
+    const paid = planned ? { ok: true as const } : await meter(agent, null, asked ? settings.dispatcherUsd : 0.01, 20, 'turn')
     if (!paid.ok) {
       emit('model.call.failed', { error: paid.error })
       turn.status = 'failed'
@@ -320,8 +332,8 @@ export async function start(options: Options = {}) {
       append(agent, { error: { message: paid.error }, status: 'failed', type: 'result' }, turn.request_id)
       return
     }
-    turn.spent += units(asked ? settings.dispatcherUsd : 0.01)
-    emit('model.call.completed', { cost_usd: asked ? settings.dispatcherUsd : 0.01 })
+    turn.spent += planned ? 0n : units(asked ? settings.dispatcherUsd : 0.01)
+    emit('model.call.completed', { cost_usd: planned ? 0 : asked ? settings.dispatcherUsd : 0.01 })
     if (asked) {
       const budget = settings.dispatcherBudget === undefined ? asked.budget_usd : (settings.dispatcherBudget ?? undefined)
       emit('tool.call', { arguments: JSON.stringify({ ...asked, budget_usd: budget }), call_id: 'call_' + turn.request_id, name: 'spawn_agent' })
@@ -554,6 +566,11 @@ export async function start(options: Options = {}) {
     if (path.startsWith('/v1/teams/')) return { removed: true }
 
     if (path === '/v1/agents' && method === 'POST') {
+      if (body['harness'] === 'antigravity') {
+        const model = typeof body['model'] === 'string' ? body['model'] : 'gemini-4-neon'
+        if (!/^gemini-/.test(model)) throw new Problem(400, 'invalid_request', 'An antigravity agent runs a gemini- model on its Antigravity plan, not ' + model + '.')
+        body['model'] = model
+      }
       const id = 'agt_' + (++agentCount).toString(36) + Math.random().toString(36).slice(2, 6)
       const agent: Agent = {
         app: named(),
@@ -596,6 +613,9 @@ export async function start(options: Options = {}) {
         const request = typeof body['id'] === 'string' && body['id'] ? body['id'] : `${agent.id}:${agent.turns.size + 1}`
         const known = agent.turns.get(request)
         if (known) return { request_id: known.request_id, status: known.status }
+        if (agent.harness === 'antigravity' && typeof body['credentials'] !== 'string')
+          throw new Problem(400, 'invalid_request', 'An antigravity agent runs Gemini only on an Antigravity plan: send credentials naming a subject signed in to one.')
+        if (agent.harness === 'antigravity' && !onPlan(String(body['credentials']))) throw new Problem(409, 'conflict', gemini)
         const turn: Turn = { createdAt: Date.now(), ...(typeof body['credentials'] === 'string' ? { credentials: body['credentials'] } : {}), prompt: String(body['prompt'] ?? ''), request_id: request, spent: 0n, status: 'queued' }
         agent.turns.set(request, turn)
         setTimeout(() => void play(agent, turn).catch((error: unknown) => errors.push(String(error))), 5)

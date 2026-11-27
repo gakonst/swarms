@@ -1,6 +1,7 @@
 import type { Detail } from '../shared/Api.ts'
 import * as Drive from '../shared/Drive.ts'
 import * as Status from '../shared/Status.ts'
+import { Link } from './router.tsx'
 import * as Limits from '../shared/Limits.ts'
 
 type Shown = { mood: Drive.Mood | 'new'; reason: string | null; text: string }
@@ -8,7 +9,7 @@ type Shown = { mood: Drive.Mood | 'new'; reason: string | null; text: string }
 export function shown(swarm: Detail): Shown | null {
   const board = swarm.board
   if (!board) return null
-  if (board.halt) return { ...Drive.pill(board), reason: Drive.reason(board.halt) }
+  if (board.halt) return { ...Drive.pill(board), reason: Drive.plain(Drive.reason(board.halt)) }
   if (swarm.status === 'paused' || (swarm.status === 'funding' && swarm.why)) {
     const waiting = Status.waiting(swarm)
     if (waiting) return { mood: 'stuck', reason: swarm.reason, text: 'Waiting on ' + Status.on(waiting) }
@@ -45,7 +46,19 @@ export function BoardPin(props: { lit: boolean; onOpen?: (() => void) | undefine
         </span>
       </header>
       <p className="board-pin-goal">{props.swarm.goal}</p>
-      {pill.reason && <p className="board-pin-why">{pill.reason}</p>}
+      {pill.reason && (
+        <p className="board-pin-why">
+          {pill.reason}
+          {Drive.connects(board.halt) && (
+            <>
+              {' '}
+              <Link className="board-pin-connect" to={Drive.ownAi}>
+                {Drive.connect} →
+              </Link>
+            </>
+          )}
+        </p>
+      )}
       {next.length > 0 ? (
         <ol className="board-pin-items">
           {next.map((item) => (

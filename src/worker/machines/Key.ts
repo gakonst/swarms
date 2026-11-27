@@ -123,6 +123,8 @@ export function runsOn(access: Access, harness: Setup.Harness) {
       return signedIn(access, 'claude') || access.keys.has('anthropic')
     case 'codex':
       return signedIn(access, 'codex') || access.keys.has('openai')
+    case 'antigravity':
+      return signedIn(access, 'antigravity')
     default:
       return never(harness, 'harness')
   }

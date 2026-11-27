@@ -33,7 +33,7 @@ const tools = [
 const commands = [
   ['swarms login · logout · whoami', 'Sign in with Tempo ID in the browser, sign out, and who you are.'],
   ['swarms ls', 'Swarms, most recently active first.'],
-  ['swarms new <name>', 'Start a swarm at /<name>: it asks for the goal and how much to ride it with.'],
+  ['swarms new <name>', 'Start a swarm at /<name>: it asks for the goal and how much to ride it with. --template antigravity runs it on your own Antigravity plan.'],
   ['swarms status <swarm>', 'Its money, its work and its latest update.'],
   ['swarms watch <swarm>', 'Follow it live; logs shows the newest transcript entries.'],
   ['swarms tree <swarm>', "A tree swarm's nodes; ideas add suggests one, free."],

@@ -816,6 +816,7 @@ export const Drive = {
 export const SharedDrive = {
   clockFrom: 11,
   clockTo: 16,
+  minuteMs: 60_000,
 } as const
 
 export const DriveWhy: Record<keyof typeof Drive, string> = {
