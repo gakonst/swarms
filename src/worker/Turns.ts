@@ -935,13 +935,19 @@ async function halting(self: Swarm, row: Store.Row, run: Phase.Run, halt: Board.
 async function driven(self: Swarm, row: Store.Row, run: Phase.Paused, halt: Board.Halt) {
   const now = Date.now()
   if (halt.why === 'limited' && now < halt.until) return halt.until
-  if (halt.why !== 'limited' && halt.why !== 'revoked') return null
+  if (halt.why !== 'limited' && halt.why !== 'revoked') {
+    self.set({ ...run, settled: now })
+    return null
+  }
   const plans = halt.why === 'revoked' ? await Drive.plans(self, row, true) : undefined
   const money = halt.why === 'revoked' ? await Money.refresh(self, row, { credit: true, hands: false }) : undefined
   const paused = self.run()
   if (paused.state !== 'paused' || paused.at !== run.at) return null
   const resumed = Machine.resumes(halt, { funded: !!money && money.left >= Store.reserveOf(money.row), now: Date.now(), plans })
-  if (!resumed) return Machine.due(halt, Date.now())
+  if (!resumed) {
+    self.set({ ...paused, settled: Date.now() })
+    return Machine.due(halt, Date.now())
+  }
   Drive.resume(self, resumed)
   self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
   return null
