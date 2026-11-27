@@ -123,7 +123,7 @@ export const limits = {
     stuck: { before: [2, 4], passMs: [60_000, 120_000], stallMinutes: [21, 28] },
     throwing: { attempts: [2, 5], extra: [1, 3], jitterMs: 5_000 },
   },
-  provider: { mostMinutes: 4 * 60 + 1, pollMs: 11_000, repeats: 3, ringsMost: 6, roundsMost: 4 },
+  provider: { mostMinutes: 4 * 60 + 1, pollMs: 11_000, repeats: 3, retryMinutes: 11, ringsMost: 6, roundsMost: 4 },
   failures: {
     backoffMs: 15_000,
     calmMs: 10 * 60_000,
@@ -219,12 +219,15 @@ function gateway() {
 
   const prompts = (calls: string[]) => calls.filter((call) => call === 'POST /v1/agents/agt_1/turns').length
 
-  const failure = (random: Rng): (() => Response) => {
+  const failure = (random: Rng) => {
     const kind = random.pick(['throw', ...limits.gateway.statuses] as const)
-    return () => {
-      if (kind === 'throw') throw new TypeError(random.pick(['Network connection lost.', 'fetch failed', 'socket hang up']))
-      return Response.json({ error: 'upstream hiccup' }, { status: kind })
-    }
+    return Object.assign(
+      () => {
+        if (kind === 'throw') throw new TypeError(random.pick(['Network connection lost.', 'fetch failed', 'socket hang up']))
+        return Response.json({ error: 'upstream hiccup' }, { status: kind })
+      },
+      { kind },
+    )
   }
 
   const show = (value: unknown) => JSON.stringify(value)
@@ -251,8 +254,13 @@ function gateway() {
       const errors = w.errors()
       if (show(errors) !== show(['The gateway did not take the next message for the agent.']))
         fail('one error row', attempts + ' failed sends logged ' + show(errors))
-      if (prompts(w.calls) !== attempts)
+      const sent = Math.min(attempts, limits.provider.repeats)
+      if (prompts(w.calls) !== sent)
         fail('prompts sent', 'credit ran out after ' + attempts + ' failed sends but ' + prompts(w.calls) + ' prompts went out in ' + rings + ' alarms')
+      for (let ring = 0; ring < limits.provider.ringsMost && Phase.outaged(Phase.paused(w.swarm.run())); ring++) {
+        w.pass(Phase.rereadMs)
+        await w.ring()
+      }
       const run = w.swarm.run()
       if (run.state !== 'paused' || run.pause.why !== 'money')
         fail('money paused', 'with no credit left the run is ' + run.state + (run.state === 'paused' ? ' for ' + run.pause.why : ''))
@@ -2166,7 +2174,65 @@ function providers() {
     }
   }
 
-  const scenarios = { 'mf-run.provider': scenario('mf-run.provider', [outage]) }
+  async function stall(random: Rng, fail: Fail) {
+    const { id } = await import('../run.ts')
+    const Store = await import('../../src/worker/Store.ts')
+    const L = limits.provider
+    const failure = "The gateway failed: Error. Retry; if it repeats, send POST /v1/feedback with this response's cf-ray (none)."
+    let up = false
+    const w = (await world())((request, url) => {
+      if (url.pathname === '/api/keys/credit') return Response.json({ deposited: '5', left: '5', spent: '0' })
+      if (url.pathname === '/v1/agents/agt_1/turns' && request.method === 'POST' && !up)
+        return Response.json({ code: 'internal_error', detail: failure }, { status: random.pick([500, 502, 503]) })
+      return undefined
+    })
+    const turns = () => w.calls.filter((call) => call === 'POST /v1/agents/agt_1/turns').length
+    try {
+      await w.seed('5000000')
+      await w.swarm.wake('money')
+      await w.ring()
+      for (let ring = 0; ring < L.ringsMost && w.swarm.run().state !== 'paused'; ring++) {
+        w.pass(random.int(L.retryMinutes, 2 * L.retryMinutes) * limits.pause.minute)
+        await w.ring()
+      }
+      const paused = w.swarm.run()
+      const pause = paused.state === 'paused' ? paused.pause : undefined
+      const down = Phase.outaged(pause)
+      if (!down || down.name !== 'gateway' || turns() > L.repeats)
+        fail('gateway pause', turns() + ' prompts the gateway refused with a 5xx left ' + JSON.stringify(paused))
+      const said = pause ? Phase.reason(pause) : ''
+      if (down && said !== "Waiting on the gateway: it keeps failing to take the agent's next message. It tries again by itself.")
+        fail('gateway pause', 'the pause said ' + JSON.stringify(said))
+      const row = await Store.find(w.env, id)
+      const seen = JSON.stringify([row?.why, row ? Store.summary(row).waiting : undefined])
+      if (down && seen !== JSON.stringify(['provider', 'gateway'])) fail('gateway pause', 'D1 read the wait as ' + seen)
+      const tried = turns()
+      const rounds = random.int(1, L.roundsMost)
+      for (let round = 0; round < rounds; round++) {
+        w.pass(L.mostMinutes * limits.pause.minute)
+        await w.ring()
+        await w.ring()
+      }
+      if (down && turns() - tried > rounds) fail('gateway spend', 'it prompted ' + (turns() - tried) + ' times over ' + rounds + ' rounds of backoff')
+      const held = w.swarm.run()
+      if (down && (held.state !== 'paused' || Phase.outaged(held.pause)?.name !== 'gateway'))
+        fail('gateway pause', 'with the gateway still failing it left ' + JSON.stringify(held))
+      up = true
+      const before = turns()
+      for (let ring = 0; ring < L.ringsMost && w.swarm.run().state !== 'working'; ring++) {
+        w.pass(L.mostMinutes * limits.pause.minute)
+        await w.ring()
+      }
+      if (down && (turns() === before || w.swarm.run().state !== 'working'))
+        fail('gateway resume', 'after the gateway came back the swarm stayed ' + JSON.stringify(w.swarm.run()))
+      if (w.swarm.kv.get('gateway') !== undefined) fail('gateway resume', 'the stall was kept: ' + JSON.stringify(w.swarm.kv.get('gateway')))
+      return 4
+    } finally {
+      w.restore()
+    }
+  }
+
+  const scenarios = { 'mf-run.provider': scenario('mf-run.provider', [outage]), 'mf-run.gateway-stall': scenario('mf-run.gateway-stall', [stall]) }
 
   const canaries = [
     {
@@ -2177,6 +2243,16 @@ function providers() {
       invariant: 'provider pause',
       name: 'mf-run.provider.keep',
       scenario: 'mf-run.provider',
+      seeds: ['1', '2', '3', '4'],
+    },
+    {
+      flip: () => {
+        Provider.guards.gateway = false
+        return () => void (Provider.guards.gateway = true)
+      },
+      invariant: 'gateway pause',
+      name: 'mf-run.gateway-stall.retry',
+      scenario: 'mf-run.gateway-stall',
       seeds: ['1', '2', '3', '4'],
     },
   ]

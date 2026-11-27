@@ -6,7 +6,9 @@ export type Found = { message: string; provider: Provider; spent: boolean }
 
 export type Seen = Found & { count: number; tool: string }
 
-export const guards = { pause: true }
+export type Stalled = { count: number; message: string; tries: number }
+
+export const guards = { gateway: true, pause: true }
 
 export const repeats = Limits.Provider.repeats
 
@@ -54,4 +56,12 @@ export function decisive(held: Seen | undefined): held is Seen {
 
 export function later(tries: number) {
   return Math.min(Limits.Provider.firstMs * 2 ** Math.max(0, tries - 1), Limits.Provider.mostMs)
+}
+
+export function stalled(held: Stalled | undefined, text: string): Stalled {
+  return { count: (held?.count ?? 0) + 1, message: clip(redact(said(text).trim()), Limits.Provider.messageMost), tries: held?.tries ?? 0 }
+}
+
+export function halted(held: Stalled) {
+  return guards.gateway && (held.tries > 0 || held.count >= repeats)
 }

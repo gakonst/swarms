@@ -7,12 +7,15 @@ import * as Limits from '../shared/Limits.ts'
 
 export type Outage = { message: string; name: Provider; spent: boolean; tries: number }
 
+export type Stall = { message: string; tries: number }
+
 export type Pause =
   | { why: 'unfunded' }
   | {
       balance?: string | undefined
       left: string
       needs?: string | undefined
+      gateway?: Stall | undefined
       provider?: Outage | undefined
       remaining?: string | undefined
       sponsor?: true | undefined
@@ -84,6 +87,7 @@ const pause = z.discriminatedUnion('why', [
   z
     .object({
       balance: z.string().optional(),
+      gateway: z.object({ message: z.string(), tries: z.number() }).loose().optional(),
       left: z.string(),
       needs: z.string().optional(),
       provider: z
@@ -144,7 +148,9 @@ export function parse(raw: unknown): Run | undefined {
 }
 
 export function outaged(pause: Pause | undefined): Outage | undefined {
-  return pause?.why === 'money' && guards.provider ? pause.provider : undefined
+  if (pause?.why !== 'money' || !guards.provider) return undefined
+  if (pause.provider || !pause.gateway) return pause.provider
+  return { message: pause.gateway.message, name: 'gateway', spent: false, tries: pause.gateway.tries }
 }
 
 export function halt(pause: Pause): Halt {

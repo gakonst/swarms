@@ -411,8 +411,22 @@ export async function advance(self: Swarm, found: Store.Row) {
     failed(self, 'The gateway did not take the next message for the agent.', sent.detail)
     const until = Date.now() + Clock.retryMs
     await self.move(money.row, { sent: { id: claim, prompt, told: start.told }, since, state: 'waiting', until })
-    return until
+    const stall = Provider.stalled(self.kv.get<Provider.Stalled>('gateway'), sent.detail)
+    if (!Provider.halted(stall)) {
+      self.kv.put('gateway', stall)
+      return until
+    }
+    const tries = stall.tries + 1
+    self.kv.put('gateway', { ...stall, count: 0, tries })
+    await pause(self, money.row, {
+      gateway: { message: stall.message, tries },
+      left: String(money.left),
+      wake: Date.now() + Provider.later(tries),
+      why: 'money',
+    })
+    return null
   }
+  self.kv.delete('gateway')
 
   const now = Date.now()
   const turn = sent.ok ? sent.value.request_id : claim
@@ -850,7 +864,18 @@ export async function settle(self: Swarm, row: Store.Row, run: Phase.Paused) {
   if (paused.state !== 'paused' || paused.at !== run.at) return null
   if (guards.known && !money.known) return Date.now() + Clock.minuteMs
   const down = Phase.outaged(run.pause)
-  if (down && Phase.due(run, Date.now()) && money.left >= Store.reserveOf(money.row)) return probed(self, row, paused, down)
+  if (down && money.left < Store.reserveOf(money.row)) {
+    await pause(self, row, {
+      balance: String(money.row.balance),
+      left: String(money.left),
+      needs: String(Store.reserveOf(money.row)),
+      remaining: String(BigInt(money.row.balance) - BigInt(money.row.spent)),
+      wake: null,
+      why: 'money',
+    })
+    return null
+  }
+  if (down && Phase.due(run, Date.now())) return probed(self, row, paused, down)
   if (
     Phase.resumes(run.pause, { balance: BigInt(money.row.balance), due: Phase.due(run, Date.now()), left: money.left, reserve: Store.reserveOf(money.row) })
   ) {

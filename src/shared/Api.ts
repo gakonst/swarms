@@ -201,7 +201,7 @@ export type Brief = Omit<Update, 'text'> & { excerpt: string }
 
 export type Failure = { at: number; code: string | null; message: string; route: string; status: number | null }
 
-export type Provider = 'browserbase' | 'e2b' | 'modal'
+export type Provider = 'browserbase' | 'e2b' | 'gateway' | 'modal'
 
 export type Waiting = 'tempo' | Provider
 

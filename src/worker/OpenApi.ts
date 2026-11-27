@@ -371,7 +371,7 @@ const schemas = {
     status: ref('Status'),
     title: string,
     updatedAt: time,
-    waiting: nullable({ description: "Who the swarm is waiting on when it is not money: tempo while Tempo cannot pay the network fee for its AI calls (it has money and tries again by itself); modal, e2b or browserbase while that provider of the gateway refuses machines (why is provider). null otherwise.", enum: ['tempo', 'modal', 'e2b', 'browserbase'], type: 'string' }),
+    waiting: nullable({ description: "Who the swarm is waiting on when it is not money: tempo while Tempo cannot pay the network fee for its AI calls (it has money and tries again by itself); modal, e2b or browserbase while that provider of the gateway refuses machines, gateway while the gateway itself keeps failing to take the agent's next message (why is provider). null otherwise.", enum: ['tempo', 'modal', 'e2b', 'browserbase', 'gateway'], type: 'string' }),
   }),
   Room: object({
     me: nullable({ ...ref('Me'), description: 'The signed-in caller, when the request carries a session token.' }),

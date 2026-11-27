@@ -27,12 +27,17 @@ export const reasons = {
   unfunded: 'Nobody is riding it yet.',
 } as const
 
-export const providers: Record<Provider, string> = { browserbase: 'Browserbase', e2b: 'E2B', modal: 'Modal' }
+export const providers: Record<Provider, string> = { browserbase: 'Browserbase', e2b: 'E2B', gateway: 'the gateway', modal: 'Modal' }
 
-const accounts: Record<Provider, string> = { browserbase: 'browser provider account', e2b: 'machine provider account', modal: 'GPU provider account' }
+const accounts: Record<Exclude<Provider, 'gateway'>, string> = {
+  browserbase: 'browser provider account',
+  e2b: 'machine provider account',
+  modal: 'GPU provider account',
+}
 
 export function outage(provider: Provider, spent: boolean) {
   const said = spent ? 'is over its spend limit' : 'keeps failing'
+  if (provider === 'gateway') return "Waiting on the gateway: it keeps failing to take the agent's next message. It tries again by itself."
   return `Waiting on ${providers[provider]}: the gateway's ${accounts[provider]} ${said}. It tries again by itself.`
 }
 
