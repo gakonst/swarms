@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 usage="scripts/check: every check below in parallel, one green/red line each with its time, then GREEN or RED.
-  scripts/check            fmt, lint, typecheck, tidy, build + size, dst (pass jobs and canaries)
+  scripts/check            fmt, lint, typecheck, tidy, build + size, dst (seeds.json, fresh seeds per job, canaries)
   scripts/check --no-dst   everything but the simulator
   scripts/check --seeds N  seeds per DST pass job (passed to pnpm dst)
 Logs: output/check/<check>.log. Allowances: tidy/*.txt (path count why; counts only fall)."
@@ -53,8 +53,11 @@ typecheck() {
 tidy() { "${node[@]}" scripts/tidy.ts; }
 sim() {
   grep -q '"dst":' package.json || { echo "no dst script in package.json yet: test/dst is the only test"; return 3; }
-  if [ -n "$seeds" ]; then pnpm -s dst --seeds "$seeds"; else pnpm -s dst --seeds-file; fi || return 1
-  pnpm -s dst --canaries
+  local bad=0
+  if [ -n "$seeds" ]; then pnpm -s dst --seeds "$seeds"; else pnpm -s dst --seeds-file; fi || bad=1
+  pnpm -s dst --fresh --salt "$(git rev-parse --short=12 HEAD)" || bad=1
+  pnpm -s dst --canaries || bad=1
+  return $bad
 }
 build() { pnpm -s build >/dev/null && "${node[@]}" scripts/size.ts; }
 unit() {

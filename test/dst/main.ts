@@ -39,7 +39,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 
 const seedsFile = join(here, 'seeds.json')
 
-export const limits = { canarySeeds: 8, huntMinutesMost: 24 * 60, outputBytes: 64 * 1024 * 1024, seedsMost: 100_000 }
+export const limits = { canarySeeds: 8, freshMs: 3 * 60_000, freshSeeds: 3, huntMinutesMost: 24 * 60, outputBytes: 64 * 1024 * 1024, seedsMost: 100_000 }
 
 type Module = {
   canaries: { flip: () => () => void; invariant: string; name: string; scenario: string; seeds: string[] }[]
@@ -145,9 +145,10 @@ function failed(job: string, seed: string, outcome: Outcome) {
   process.stdout.write('  repro: ' + command(job, seed, null) + '\n')
 }
 
-async function pass(pairs: { job: string; seed: string }[], width: number) {
+async function pass(pairs: { job: string; late?: boolean; seed: string }[], width: number, until = Infinity) {
   let bad = 0
-  await pool(pairs, width, async ({ job, seed }) => {
+  await pool(pairs, width, async ({ job, late, seed }) => {
+    if (late && Date.now() > until) return process.stdout.write('SKIP ' + job + ' seed=' + seed + ' past the fresh sweep time bound\n')
     const outcome = await run(job, seed).catch((error: unknown) => ({
       ms: 0,
       steps: 0,
@@ -159,6 +160,18 @@ async function pass(pairs: { job: string; seed: string }[], width: number) {
       failed(job, seed, outcome)
     } else process.stdout.write('PASS ' + job + ' seed=' + seed + ' steps=' + outcome.steps + ' ' + outcome.ms + 'ms\n')
   })
+  return bad
+}
+
+async function fresh(names: string[], salt: string, width: number) {
+  const until = Date.now() + limits.freshMs
+  const pairs = Array.from({ length: limits.freshSeeds }, (_, round) =>
+    names.map((job) => ({ job, late: round > 0, seed: 'f' + salt + '-' + (round + 1) })),
+  ).flat()
+  const bad = await pass(pairs, width, until)
+  process.stdout.write(
+    'FRESH ' + names.length + ' jobs x ' + limits.freshSeeds + ' seeds f' + salt + '-N in ' + Math.round((Date.now() - until + limits.freshMs) / 1000) + 's\n',
+  )
   return bad
 }
 
@@ -234,6 +247,8 @@ async function main() {
       seed: { type: 'string' },
       seeds: { type: 'string' },
       'seeds-file': { type: 'boolean' },
+      fresh: { type: 'boolean' },
+      salt: { type: 'string' },
       width: { type: 'string' },
     },
   })
@@ -252,7 +267,8 @@ async function main() {
     if (!known.some((one) => one.name === name)) throw new Error('No job ' + name + '; pick from ' + known.map((one) => one.name).join(','))
   const available = named
   let bad = 0
-  if (values.hunt) bad += await hunt(Number(values.minutes ?? '10'), width, available)
+  if (values.fresh) bad += await fresh(available, values.salt ?? randomBytes(6).toString('hex'), width)
+  else if (values.hunt) bad += await hunt(Number(values.minutes ?? '10'), width, available)
   else if (values.canary)
     bad += await canaryRun(
       (await allCanaries()).filter((one) => one.name === values.canary),
