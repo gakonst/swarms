@@ -102,8 +102,6 @@ src/worker/Feed.ts 1 pre-existing hand formatting
 src/worker/Feedback.ts 1 pre-existing hand formatting
 src/worker/Film.ts 1 pre-existing hand formatting
 src/worker/Flow.ts 1 pre-existing hand formatting
-src/worker/Follow.ts 1 pre-existing hand formatting
-src/worker/Gateway.ts 1 pre-existing hand formatting
 src/worker/Glyphs.ts 1 pre-existing hand formatting
 src/worker/Hands.ts 1 pre-existing hand formatting
 src/worker/Held.ts 1 pre-existing hand formatting
@@ -119,7 +117,6 @@ src/worker/OpenApi.ts 1 pre-existing hand formatting
 src/worker/Operations.ts 1 pre-existing hand formatting
 src/worker/Page.ts 1 pre-existing hand formatting
 src/worker/Paint.ts 1 pre-existing hand formatting
-src/worker/Persona.ts 1 pre-existing hand formatting
 src/worker/Posters.ts 1 pre-existing hand formatting
 src/worker/Problem.ts 1 pre-existing hand formatting
 src/worker/Replica.ts 1 pre-existing hand formatting

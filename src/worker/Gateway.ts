@@ -154,7 +154,7 @@ export async function wallet(env: Cloudflare.Env) {
 
 let pricing: { at: number; value: Map<string, Setup.Price> } | undefined
 
-export const guards = { direct: true }
+export const guards = { direct: true, probe: true }
 
 export async function prices(env: Cloudflare.Env) {
   if (pricing && Date.now() - pricing.at < Limits.Gateway.pricingMs) return pricing.value
@@ -176,7 +176,9 @@ export async function prices(env: Cloudflare.Env) {
 async function models(env: Cloudflare.Env) {
   const response = await call(env, '/v1/models')
   if (!response.ok) return undefined
-  const listed = (await response.json()) as { data?: { capabilities?: { tools?: boolean }; id: string; kind?: string; pricing?: { cached?: number; input?: number; output?: number } }[] }
+  const listed = (await response.json()) as {
+    data?: { capabilities?: { tools?: boolean }; id: string; kind?: string; pricing?: { cached?: number; input?: number; output?: number } }[]
+  }
   const found: Setup.Price[] = []
   for (const model of listed.data ?? []) {
     const price = model.pricing
@@ -316,7 +318,10 @@ export function signOut(env: Cloudflare.Env, rider: string, plan: Plan) {
 }
 
 export function side(env: Cloudflare.Env, swarm: string, agent: string, question: string) {
-  return send<{ text: string; usage?: { estimated_cost?: { total_usd?: number } } }>(env, `/v1/agents/${agent}/side_question`, { app: app(swarm), body: { question } })
+  return send<{ text: string; usage?: { estimated_cost?: { total_usd?: number } } }>(env, `/v1/agents/${agent}/side_question`, {
+    app: app(swarm),
+    body: { question },
+  })
 }
 
 export async function subagents(env: Cloudflare.Env, swarm: string, agent: string): Promise<Result<Subagent[]>> {
@@ -390,11 +395,17 @@ export function events(env: Cloudflare.Env, swarm: string, agent: string, after:
 type Stored = { key: string; public: boolean }
 
 export function values(env: Cloudflare.Env, swarm: string, cursor: string | null) {
-  return send<{ cursor: string | null; entries: Stored[] }>(env, '/v1/kv/list', { app: app(swarm), body: { limit: Limits.Gateway.listPage, prefix: '', ...(cursor ? { cursor } : {}) } })
+  return send<{ cursor: string | null; entries: Stored[] }>(env, '/v1/kv/list', {
+    app: app(swarm),
+    body: { limit: Limits.Gateway.listPage, prefix: '', ...(cursor ? { cursor } : {}) },
+  })
 }
 
 export function objects(env: Cloudflare.Env, swarm: string, cursor: string | null) {
-  return send<{ cursor: string | null; objects: Stored[] }>(env, '/v1/bucket/list', { app: app(swarm), body: { limit: Limits.Gateway.listPage, prefix: '', ...(cursor ? { cursor } : {}) } })
+  return send<{ cursor: string | null; objects: Stored[] }>(env, '/v1/bucket/list', {
+    app: app(swarm),
+    body: { limit: Limits.Gateway.listPage, prefix: '', ...(cursor ? { cursor } : {}) },
+  })
 }
 
 export function repos(env: Cloudflare.Env, swarm: string) {
@@ -415,7 +426,10 @@ export function sandboxes(env: Cloudflare.Env, swarm: string) {
 export type Logged = { before: string | null; entries: { at: number; stream: string; text: string }[]; provider?: string; sandboxId: string }
 
 export function output(env: Cloudflare.Env, swarm: string, sandboxId: string, input: { before?: string | undefined; limit: number }) {
-  return send<Logged>(env, '/v1/compute/output', { app: app(swarm), body: { limit: input.limit, sandboxId, stream: 'all', ...(input.before ? { before: input.before } : {}) } })
+  return send<Logged>(env, '/v1/compute/output', {
+    app: app(swarm),
+    body: { limit: input.limit, sandboxId, stream: 'all', ...(input.before ? { before: input.before } : {}) },
+  })
 }
 
 export async function tail(env: Cloudflare.Env, swarm: string, sandboxId: string, logPath: string, offset: number, signal: AbortSignal) {
@@ -431,12 +445,14 @@ export async function event(env: Cloudflare.Env, swarm: string, agent: string, s
   return send<Page>(env, `/v1/agents/${agent}/events?after=${seq - 1}&limit=${limit}`, { app: app(swarm) })
 }
 
-export async function probe(env: Cloudflare.Env, swarm: string) {
+export async function probe(env: Cloudflare.Env, swarm: string, provider: 'e2b' | 'modal') {
   const seconds = Limits.Provider.probeSeconds
-  const made = await send<{ sandboxId: string }>(env, '/v1/compute/create', {
-    app: app(swarm),
-    body: { cpu: Limits.Provider.probeCpu, lease: seconds, memory: Limits.Provider.probeMemory, provider: 'modal', timeout: seconds },
-  })
+  const target = guards.probe ? provider : 'modal'
+  const body =
+    target === 'modal'
+      ? { cpu: Limits.Provider.probeCpu, lease: seconds, memory: Limits.Provider.probeMemory, provider: target, timeout: seconds }
+      : { lease: seconds, provider: target, timeout: seconds }
+  const made = await send<{ sandboxId: string }>(env, '/v1/compute/create', { app: app(swarm), body })
   if (made.ok) await terminate(env, swarm, made.value.sandboxId)
   return made
 }

@@ -386,6 +386,8 @@ export const Provider = {
   probeSeconds: 60,
   probeCpu: 0.125,
   probeMemory: 128,
+  e2bCpu: 1,
+  e2bMemory: 512,
 } as const
 
 export const Relay = {

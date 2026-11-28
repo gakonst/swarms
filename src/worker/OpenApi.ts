@@ -310,7 +310,7 @@ const schemas = {
         hands: { items: ref('Hand'), type: 'array' },
         notes: { items: ref('Note'), type: 'array' },
         reason: nullable({ description: 'Why the swarm is waiting, when it is.', type: 'string' }),
-        why: nullable({ description: 'The reason as a code: unfunded (no money yet), money (too little payable), provider (a provider the gateway runs machines on, such as Modal, refuses them, for example over its spend limit; waiting names it, and the swarm retries it by itself with backoff, without spending turns), costly (the next call holds more than any one source can pay), rest (stopped after repeated errors), idle (its agent ended its last update with Waiting for backers; new money or a funded steer wakes it) or, while running, stuck (its last turns failed without spending anything, or the current one has made no progress for 20 minutes; it keeps retrying with its money).', enum: ['unfunded', 'money', 'provider', 'costly', 'rest', 'idle', 'stuck'], type: 'string' }),
+        why: nullable({ description: 'The reason as a code: unfunded (no money yet), money (too little payable), provider (a provider the gateway runs machines on refuses the machines the work needs, for example over its spend limit: E2B, or Modal for work that needs a GPU, since other work moves to E2B; waiting names it, and the swarm retries it by itself with backoff, without spending turns), costly (the next call holds more than any one source can pay), rest (stopped after repeated errors), idle (its agent ended its last update with Waiting for backers; new money or a funded steer wakes it) or, while running, stuck (its last turns failed without spending anything, or the current one has made no progress for 20 minutes; it keeps retrying with its money).', enum: ['unfunded', 'money', 'provider', 'costly', 'rest', 'idle', 'stuck'], type: 'string' }),
         updates: { items: ref('Brief'), type: 'array' },
         working: nullable(ref('Working')),
       }),
@@ -371,7 +371,7 @@ const schemas = {
     status: ref('Status'),
     title: string,
     updatedAt: time,
-    waiting: nullable({ description: "Who the swarm is waiting on when it is not money: tempo while Tempo cannot pay the network fee for its AI calls (it has money and tries again by itself); modal, e2b or browserbase while that provider of the gateway refuses machines, gateway while the gateway itself keeps failing to take the agent's next message (why is provider). null otherwise.", enum: ['tempo', 'modal', 'e2b', 'browserbase', 'gateway'], type: 'string' }),
+    waiting: nullable({ description: "Who the swarm is waiting on when it is not money: tempo while Tempo cannot pay the network fee for its AI calls (it has money and tries again by itself); e2b or browserbase while that provider of the gateway refuses machines, modal while Modal refuses a GPU the work needs, gateway while the gateway itself keeps failing to take the agent's next message (why is provider). null otherwise.", enum: ['tempo', 'modal', 'e2b', 'browserbase', 'gateway'], type: 'string' }),
   }),
   Room: object({
     me: nullable({ ...ref('Me'), description: 'The signed-in caller, when the request carries a session token.' }),

@@ -1,7 +1,22 @@
 import * as Turns from './Turns.ts'
 import * as Repo from './Repo.ts'
 import type { Failure, Hand, Live } from '../shared/Api.ts'
-import { type Buffers, type Crew, type Thinking, appended, clip, crew, narrate, output, placed, redact, spoken, subagent, thought, tool } from '../shared/Trail.ts'
+import {
+  type Buffers,
+  type Crew,
+  type Thinking,
+  appended,
+  clip,
+  crew,
+  narrate,
+  output,
+  placed,
+  redact,
+  spoken,
+  subagent,
+  thought,
+  tool,
+} from '../shared/Trail.ts'
 import * as Gateway from './Gateway.ts'
 import * as Store from './Store.ts'
 import * as Relay from './Relay.ts'
@@ -26,7 +41,10 @@ function streamed(who: string | null, type: string | undefined, payload: Record<
   const text = typeof payload['text'] === 'string' ? redact(payload['text']) : ''
   const offset = typeof payload['offset'] === 'number' ? payload['offset'] : null
   if (type === 'assistant.delta') return [{ channel: 'text', delta: text, item: String(payload['item_id'] ?? ''), offset, type: 'delta', who }]
-  if (type === 'reasoning.summary.delta') return [{ channel: 'thinking', delta: text, item: `reasoning:${String(payload['item_id'] ?? payload['model_call_index'] ?? '')}`, offset, type: 'delta', who }]
+  if (type === 'reasoning.summary.delta')
+    return [
+      { channel: 'thinking', delta: text, item: `reasoning:${String(payload['item_id'] ?? payload['model_call_index'] ?? '')}`, offset, type: 'delta', who },
+    ]
   if (type === 'tool.input.delta') return [{ channel: 'input', delta: text, item: String(payload['call_id'] ?? ''), offset, type: 'delta', who }]
   return []
 }
@@ -71,7 +89,11 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
     self.stream = streaming
     ended = window.ended
   } else {
-    if (tried) self.stream = stream.state === 'streaming' && guards.twice && stream.fails + 1 < streamFails ? { fails: stream.fails + 1, state: 'streaming' } : { retry: Date.now() + Clock.minuteMs, state: 'polling' }
+    if (tried)
+      self.stream =
+        stream.state === 'streaming' && guards.twice && stream.fails + 1 < streamFails
+          ? { fails: stream.fails + 1, state: 'streaming' }
+          : { retry: Date.now() + Clock.minuteMs, state: 'polling' }
     let cursor = agent.cursor
     for (let page = 0; page < Limits.Follow.eventPages; page++) {
       const read = await Gateway.events(self.env, row.id, agent.id, cursor)
@@ -89,6 +111,7 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
     }
   }
 
+  if (!ended) await rerouted(self, row, agent, run)
   const short = ended ? undefined : starved(self)
   if (short) {
     await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
@@ -100,7 +123,9 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
   if (!window && !ended && now - self.checked < Clock.refreshMs) return now + Clock.followMs
 
   self.checked = now
-  const plan = window ? planned(self, now) : { ...Money.everything, artifacts: now - (self.kv.get<number>('shelvedAt') ?? 0) >= Clock.shelfMs, git: true, turn: true }
+  const plan = window
+    ? planned(self, now)
+    : { ...Money.everything, artifacts: now - (self.kv.get<number>('shelvedAt') ?? 0) >= Clock.shelfMs, git: true, turn: true }
   const refreshing = plan.credit || plan.hands
   const reported = ended ? self.reported : undefined
   self.reported = undefined
@@ -119,7 +144,11 @@ export async function follow(self: Swarm, row: Store.Row, run: Turning) {
     const idle = Math.round((Date.now() - Turns.progress(self, run).progressed) / Limits.Clock.minuteMs)
     const detail = !failing ? '' : !report || report.ok ? ': its events did not load' : `: ${report.detail}`
     await Gateway.cancel(self.env, row.id, agent.id, run.turn).catch(() => undefined)
-    return Turns.finish(self, row, run, { error: `The agent made no model call or tool call for ${idle} minutes${detail}, so the swarm stopped the turn to start another.`, request_id: run.turn, status: 'failed' })
+    return Turns.finish(self, row, run, {
+      error: `The agent made no model call or tool call for ${idle} minutes${detail}, so the swarm stopped the turn to start another.`,
+      request_id: run.turn,
+      status: 'failed',
+    })
   }
   return window ? Date.now() : now + Clock.followMs
 }
@@ -259,7 +288,7 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
     }
     if (update.type === 'event') {
       advanced(self, update.event?.type, at)
-      provided(self, update.event?.type, update.event?.payload ?? {})
+      provided(self, found.who, update.event?.type, update.event?.payload ?? {})
       if (update.event?.type === 'tool.call') for (const found of cues(update.event.payload ?? {})) self.cue(found)
       for (const delta of streamed(found.who, update.event?.type, update.event?.payload ?? {})) Relay.relay(self, delta)
     }
@@ -270,7 +299,7 @@ export function digest(self: Swarm, event: Gateway.Event, turn: string) {
   const inner = outer.event
   advanced(self, inner?.type, at)
   refused(self, inner?.type, inner?.payload ?? {}, at)
-  provided(self, inner?.type, inner?.payload ?? {})
+  provided(self, null, inner?.type, inner?.payload ?? {})
   if (inner?.type === 'tool.call') for (const found of cues(inner.payload ?? {})) self.cue(found)
   for (const delta of streamed(null, inner?.type, inner?.payload ?? {})) Relay.relay(self, delta)
   record(self, null, inner?.type, inner?.payload ?? {}, event.seq, at)
@@ -304,8 +333,23 @@ export function failure(error: string, at: number): Failure {
 export function recalled(self: Swarm): Failure | null {
   const kept = self.kv.get<Failure | null>('failure')
   if (kept !== undefined) return kept
-  const rows = self.ctx.storage.sql.exec<{ at: number; detail: string }>("SELECT at, detail FROM feed WHERE kind = 'error' AND text LIKE 'A model call failed%' AND detail IS NOT NULL ORDER BY seq DESC LIMIT 20").toArray()
-  const found = rows.map((row) => ({ at: Number(row.at), error: (() => { try { return (JSON.parse(row.detail) as { error?: unknown }).error } catch { return undefined } })() })).find((row) => typeof row.error === 'string' && row.error !== 'the turn was cancelled')
+  const rows = self.ctx.storage.sql
+    .exec<{ at: number; detail: string }>(
+      "SELECT at, detail FROM feed WHERE kind = 'error' AND text LIKE 'A model call failed%' AND detail IS NOT NULL ORDER BY seq DESC LIMIT 20",
+    )
+    .toArray()
+  const found = rows
+    .map((row) => ({
+      at: Number(row.at),
+      error: (() => {
+        try {
+          return (JSON.parse(row.detail) as { error?: unknown }).error
+        } catch {
+          return undefined
+        }
+      })(),
+    }))
+    .find((row) => typeof row.error === 'string' && row.error !== 'the turn was cancelled')
   const value = found ? failure(found.error as string, found.at) : null
   self.kv.put('failure', value)
   return value
@@ -314,19 +358,39 @@ export function recalled(self: Swarm): Failure | null {
 export function refused(self: Swarm, type: string | undefined, payload: Record<string, unknown>, at = Date.now()) {
   const error = payload['error']
   if (type === 'model.call.failed' && typeof error === 'string' && error !== 'the turn was cancelled') self.kv.put('failure', failure(error, at))
-  if (type === 'model.call.failed' && typeof error === 'string' && Turns.broke(error)) self.kv.put('unpaid', { count: (self.kv.get<{ count: number }>('unpaid')?.count ?? 0) + 1, error: error.slice(0, Limits.Follow.unpaidChars) })
+  if (type === 'model.call.failed' && typeof error === 'string' && Turns.broke(error))
+    self.kv.put('unpaid', { count: (self.kv.get<{ count: number }>('unpaid')?.count ?? 0) + 1, error: error.slice(0, Limits.Follow.unpaidChars) })
   else if (type !== undefined && progress.has(type) && self.kv.get('unpaid') !== undefined) self.kv.delete('unpaid')
 }
 
-export function provided(self: Swarm, type: string | undefined, payload: Record<string, unknown>) {
-  if (type !== 'tool.result') return
+function asking(who: string | null) {
+  return who === null ? 'asked' : 'asked:' + who
+}
+
+export function provided(self: Swarm, who: string | null, type: string | undefined, payload: Record<string, unknown>) {
+  if (type !== 'tool.call' && type !== 'tool.result') return
   const name = tool(payload)
   if (!Provider.machine(name)) return
+  if (type === 'tool.call') {
+    if (name === 'compute_create') self.kv.put(asking(who), Provider.asked(payload['arguments']))
+    return
+  }
   const failed = payload['status'] !== 'completed'
-  const seen = Provider.found(name, output(payload['result']), failed)
+  const request = name === 'compute_create' ? self.kv.get<Provider.Asked>(asking(who)) : undefined
+  const seen = Provider.found(name, output(payload['result']), failed, request)
   const held = self.kv.get<Provider.Seen>('provider')
   if (seen) self.kv.put('provider', Provider.next(held, name, seen))
   else if (!failed && held !== undefined) self.kv.delete('provider')
+}
+
+async function rerouted(self: Swarm, row: Store.Row, agent: Lead, run: Turning) {
+  const held = self.kv.get<Provider.Seen>('provider')
+  if (!held || !Provider.avoidable(held)) return
+  const key = run.turn + ':' + held.message
+  if (self.kv.get<string>('rerouted') === key) return
+  self.kv.put('rerouted', key)
+  self.log('status', 'Modal refused a machine, so the swarm told the agent to use E2B and keeps working.', held.message)
+  await Gateway.prompt(self.env, row.id, agent.id, { prompt: Provider.reroute(held), steer: true })
 }
 
 export function starved(self: Swarm) {

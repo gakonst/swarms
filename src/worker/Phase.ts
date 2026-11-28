@@ -7,7 +7,7 @@ import * as Drive from './machines/Drive.ts'
 import { failing, outage, reasons, short } from '../shared/Status.ts'
 import * as Limits from '../shared/Limits.ts'
 
-export type Outage = { message: string; name: Provider; spent: boolean; tries: number }
+export type Outage = { gpu?: boolean | undefined; message: string; name: Provider; spent: boolean; tries: number }
 
 export type Stall = { message: string; tries: number }
 
@@ -93,7 +93,7 @@ const pause = z.discriminatedUnion('why', [
       left: z.string(),
       needs: z.string().optional(),
       provider: z
-        .object({ message: z.string(), name: z.enum(['browserbase', 'e2b', 'modal']), spent: z.boolean(), tries: z.number() })
+        .object({ gpu: z.boolean().optional(), message: z.string(), name: z.enum(['browserbase', 'e2b', 'modal']), spent: z.boolean(), tries: z.number() })
         .loose()
         .optional(),
       remaining: z.string().optional(),

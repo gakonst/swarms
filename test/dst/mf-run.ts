@@ -2077,100 +2077,261 @@ function providers() {
   const world = async () => harness.world
   const spendLimit = 'Compute provider error 8: Workspace swarms-gw has exceeded its spend limit. Raise it in the workspace settings to start new sandboxes.'
   const capacity = '{"code":"unavailable","detail":"Modal has no capacity for an H200 in any region right now."}'
+  const built =
+    'Image python:3.12-slim failed to build (TERMINATED): Container terminated due to reaching billing cycle spend limit. Its apt and pip steps stop after 600 s.'
+  const e2bSpent = 'E2B answered 402: the team has exceeded its spend limit.'
+  const e2bDown = '{"code":"unavailable","detail":"E2B could not be reached: HTTP 503 Service Unavailable"}'
+  const gpus = [
+    { cpu: 4, gpu: 'H200', lease: 600, memory: 32768, provider: 'modal', timeout: 3600 },
+    { cpu: 2, gpu: 'T4', lease: 600, memory: 8192, timeout: 1800 },
+  ]
+  const big = [
+    { cpu: 4, lease: 600, memory: 12288, provider: 'modal', region: 'any', timeout: 3600 },
+    { cpu: 8, lease: 600, memory: 2048, pip: ['python-sat'], provider: 'modal', region: 'any', timeout: 2400 },
+    { lease: 600, pip: ['numpy'], timeout: 1200 },
+  ]
+  const e2b = { lease: 600, provider: 'e2b', region: 'any', timeout: 1200 }
 
-  async function outage(random: Rng, fail: Fail) {
-    const { id } = await import('../run.ts')
-    const Store = await import('../../src/worker/Store.ts')
-    const L = limits.provider
-    const hard = random.chance(0.5)
-    const text = hard ? spendLimit : capacity
-    const fails = hard ? 1 : L.repeats
-    let up = false
-    let probes = 0
-    let seq = 0
-    let events: unknown[] = []
-    let report: Record<string, unknown> = { request_id: 'agt_1:1', status: 'running' }
-    const w = (await world())((request, url) => {
+  type Rig = Awaited<ReturnType<typeof rig>>
+
+  async function rig() {
+    const state = {
+      creates: [] as { provider?: string }[],
+      e2b: true,
+      events: [] as unknown[],
+      modal: false,
+      prompts: 0,
+      report: { request_id: 'agt_1:1', status: 'running' } as Record<string, unknown>,
+      seq: 0,
+      steers: [] as string[],
+    }
+    const w = (await world())(async (request, url) => {
       if (url.pathname === '/api/keys/credit') return Response.json({ deposited: '5', left: '5', spent: '0' })
       if (url.pathname === '/v1/agents/agt_1/events' && url.searchParams.get('live') !== '1') {
-        const page = events
-        events = []
-        return Response.json({ events: page, has_more: false, next_cursor: seq })
+        const page = state.events
+        state.events = []
+        return Response.json({ events: page, has_more: false, next_cursor: state.seq })
       }
-      if (url.pathname.startsWith('/v1/agents/agt_1/turns/agt_1:')) return Response.json(report)
+      if (url.pathname === '/v1/agents/agt_1/turns' && request.method === 'POST') {
+        const body = (await request.clone().json()) as { prompt?: unknown; steer?: unknown }
+        if (body.steer === true) {
+          state.steers.push(String(body.prompt))
+          return Response.json({ request_id: 'agt_1:steer', status: 'queued' })
+        }
+        state.prompts += 1
+        return undefined
+      }
+      if (url.pathname.startsWith('/v1/agents/agt_1/turns/agt_1:')) return Response.json(state.report)
       if (url.pathname === '/v1/compute/create' && request.method === 'POST') {
-        probes += 1
-        return up
-          ? Response.json({ provider: 'modal', sandboxId: 'sb-probe' })
+        const body = (await request.clone().json()) as { provider?: string }
+        state.creates.push(body)
+        const on = body.provider === 'e2b'
+        if (on ? state.e2b : state.modal) return Response.json({ provider: on ? 'e2b' : 'modal', sandboxId: 'sb-probe' })
+        return on
+          ? Response.json({ code: 'unavailable', detail: 'E2B could not be reached: HTTP 503' }, { status: 503 })
           : Response.json({ code: 'upstream_failed', detail: spendLimit }, { status: 502 })
       }
       if (url.pathname === '/v1/compute/terminate') return Response.json({ ok: true })
       return undefined
     })
-    const turns = () => w.calls.filter((call) => call === 'POST /v1/agents/agt_1/turns').length
-    try {
-      await w.seed('5000000')
-      await w.swarm.wake('money')
+    const push = (type: 'tool.call' | 'tool.result', payload: Record<string, unknown>) =>
+      state.events.push({ created_at: Date.now(), event: { event: { payload, type }, source: 'agent' }, request_id: 'agt_1:1', seq: ++state.seq })
+    const asked = (args: Record<string, unknown>) => push('tool.call', { arguments: args, call_id: 'call_' + state.seq, tool: 'mcp__gateway__compute_create' })
+    const answered = (text: string, status: 'completed' | 'failed') =>
+      push('tool.result', { call_id: 'call_' + state.seq, result: [{ text, type: 'text' }], status, tool: 'mcp__gateway__compute_create' })
+    return { answered, asked, state, w }
+  }
+
+  async function started(r: Rig, fail: Fail, invariant: string) {
+    await r.w.seed('5000000')
+    await r.w.swarm.wake('money')
+    await r.w.ring()
+    if (r.w.swarm.run().state !== 'working') fail(invariant, 'the turn did not start: ' + r.w.swarm.run().state)
+  }
+
+  async function polled(random: Rng, r: Rig) {
+    const L = limits.provider
+    r.w.swarm.checked = 0
+    for (let ring = 0; ring < L.ringsMost && r.w.swarm.run().state === 'working'; ring++) {
+      r.w.pass(random.int(L.pollMs, 2 * L.pollMs))
+      await r.w.ring()
+    }
+  }
+
+  async function waited(random: Rng, r: Rig, fail: Fail, name: 'e2b' | 'modal', hard: boolean) {
+    const { id } = await import('../run.ts')
+    const Store = await import('../../src/worker/Store.ts')
+    const L = limits.provider
+    const { state, w } = r
+    const paused = w.swarm.run()
+    const pause = paused.state === 'paused' ? paused.pause : undefined
+    const down = Phase.outaged(pause)
+    if (!down || down.name !== name || down.spent !== hard)
+      fail('provider pause', 'expected a pause on ' + name + ' (spent ' + hard + ') but left ' + JSON.stringify(paused))
+    const said = pause ? Phase.reason(pause) : ''
+    const account = name === 'modal' ? 'GPU provider account' : 'machine provider account'
+    const label = name === 'modal' ? 'Modal' : 'E2B'
+    if (hard && said !== 'Waiting on ' + label + ": the gateway's " + account + ' is over its spend limit. It tries again by itself.')
+      fail('provider pause', 'the pause said ' + JSON.stringify(said))
+    const row = await Store.find(w.env, id)
+    const seen = JSON.stringify([row?.status, row?.why, row ? Store.summary(row).waiting : undefined])
+    if (down && seen !== JSON.stringify(['paused', 'provider', name])) fail('provider pause', 'D1 read the wait as ' + seen)
+    state.report = { request_id: 'agt_1:1', status: 'completed' }
+    const before = state.prompts
+    const probing = state.creates.length
+    const rounds = random.int(1, L.roundsMost)
+    for (let round = 0; round < rounds; round++) {
+      w.pass(L.mostMinutes * limits.pause.minute)
       await w.ring()
-      if (w.swarm.run().state !== 'working') fail('provider pause', 'the turn did not start: ' + w.swarm.run().state)
+      await w.ring()
+    }
+    if (state.prompts !== before)
+      fail('provider spend', 'the swarm started ' + (state.prompts - before) + ' turns over ' + rounds + ' rounds while ' + name + ' was down')
+    const probes = state.creates.slice(probing)
+    if (down && probes.length < rounds) fail('provider spend', 'it probed ' + probes.length + ' times over ' + rounds + ' rounds')
+    const wrong = probes.filter((body) => body.provider !== name)
+    if (wrong.length) fail('probe target', name + ' failed but the probe asked ' + JSON.stringify(wrong[0]))
+    const held = w.swarm.run()
+    if (down && (held.state !== 'paused' || Phase.outaged(held.pause)?.name !== name))
+      fail('provider pause', 'with ' + name + ' still down it left ' + JSON.stringify(held))
+    state[name] = true
+    for (let ring = 0; ring < L.ringsMost && state.prompts === before; ring++) {
+      w.pass(L.mostMinutes * limits.pause.minute)
+      await w.ring()
+    }
+    if (down && state.prompts === before) fail('provider resume', 'after ' + name + ' came back the swarm stayed ' + JSON.stringify(w.swarm.run()))
+    if (w.swarm.kv.get('provider') !== undefined) fail('provider resume', 'the outage was kept: ' + JSON.stringify(w.swarm.kv.get('provider')))
+  }
+
+  async function gpu(random: Rng, fail: Fail) {
+    const L = limits.provider
+    const r = await rig()
+    try {
+      await started(r, fail, 'provider pause')
+      const hard = random.chance(0.5)
       const before = random.int(0, L.repeats - 1)
       for (let i = 0; i < before; i++)
-        events.push({
+        r.state.events.push({
           created_at: Date.now(),
           event: { event: { payload: { result: 'ok', status: 'completed', tool: 'mcp__gateway__compute_status' }, type: 'tool.result' }, source: 'agent' },
           request_id: 'agt_1:1',
-          seq: ++seq,
+          seq: ++r.state.seq,
         })
-      for (let i = 0; i < fails; i++)
-        events.push({
-          created_at: Date.now(),
-          event: {
-            event: { payload: { result: [{ text, type: 'text' }], status: 'failed', tool: 'mcp__gateway__compute_create' }, type: 'tool.result' },
-            source: 'agent',
-          },
-          request_id: 'agt_1:1',
-          seq: ++seq,
-        })
+      for (let i = 0; i < (hard ? 1 : L.repeats); i++) {
+        r.asked(random.pick(gpus))
+        r.answered(hard ? spendLimit : capacity, 'failed')
+      }
+      await polled(random, r)
+      if (r.state.steers.length) fail('provider pause', 'a GPU request that only Modal serves was sent to E2B: ' + r.state.steers[0])
+      await waited(random, r, fail, 'modal', hard)
+      return 4
+    } finally {
+      r.w.restore()
+    }
+  }
+
+  async function around(random: Rng, fail: Fail) {
+    const { id } = await import('../run.ts')
+    const Store = await import('../../src/worker/Store.ts')
+    const L = limits.provider
+    const r = await rig()
+    const { state, w } = r
+    try {
+      await started(r, fail, 'e2b keeps working')
+      const args = random.pick(big)
+      r.asked(args)
+      r.answered(args.pip ? random.pick([built, spendLimit]) : spendLimit, 'failed')
+      await polled(random, r)
+      const cancelled = w.calls.filter((call) => call.endsWith('/cancel')).length
+      if (w.swarm.run().state !== 'working' || cancelled)
+        fail(
+          'e2b keeps working',
+          'Modal refused ' +
+            JSON.stringify(args) +
+            ' while E2B works, and the swarm went ' +
+            JSON.stringify(w.swarm.run()) +
+            ' after ' +
+            cancelled +
+            ' cancels',
+        )
+      if (state.steers.length !== 1 || !state.steers[0]?.includes('retry with provider e2b'))
+        fail('reroute told', 'the agent was told ' + JSON.stringify(state.steers) + ' after Modal refused ' + JSON.stringify(args))
+      r.asked(e2b)
+      r.answered(JSON.stringify({ provider: 'e2b', sandboxId: 'ie2b' }), 'completed')
       w.swarm.checked = 0
-      for (let ring = 0; ring < L.ringsMost && w.swarm.run().state === 'working'; ring++) {
-        w.pass(random.int(L.pollMs, 2 * L.pollMs))
+      w.pass(random.int(L.pollMs, 2 * L.pollMs))
+      await w.ring()
+      if (w.swarm.kv.get('provider') !== undefined)
+        fail('e2b keeps working', 'E2B served a machine but the swarm still holds ' + JSON.stringify(w.swarm.kv.get('provider')))
+      if (state.steers.length !== 1) fail('reroute told', 'the agent was told ' + state.steers.length + ' times for one refusal')
+      state.report = { request_id: 'agt_1:1', status: 'completed' }
+      const turns = state.prompts
+      for (let ring = 0; ring < L.ringsMost && state.prompts === turns; ring++) {
+        w.pass(L.mostMinutes * limits.pause.minute)
         await w.ring()
       }
-      const paused = w.swarm.run()
-      const pause = paused.state === 'paused' ? paused.pause : undefined
-      const down = Phase.outaged(pause)
-      if (!down || down.name !== 'modal' || down.spent !== hard)
-        fail('provider pause', (hard ? 'a spend-limit failure' : fails + ' identical capacity failures') + ' left ' + JSON.stringify(paused))
-      const said = pause ? Phase.reason(pause) : ''
-      if (hard && said !== "Waiting on Modal: the gateway's GPU provider account is over its spend limit. It tries again by itself.")
-        fail('provider pause', 'the pause said ' + JSON.stringify(said))
+      const run = w.swarm.run()
+      if (run.state === 'paused' || state.prompts === turns) fail('e2b keeps working', 'after its turn the swarm went ' + JSON.stringify(run))
       const row = await Store.find(w.env, id)
-      const seen = JSON.stringify([row?.status, row?.why, row ? Store.summary(row).waiting : undefined])
-      if (down && seen !== JSON.stringify(['paused', 'provider', 'modal'])) fail('provider pause', 'D1 read the wait as ' + seen)
-      report = { request_id: 'agt_1:1', status: 'completed' }
-      const started = turns()
-      const rounds = random.int(1, L.roundsMost)
-      for (let round = 0; round < rounds; round++) {
-        w.pass(L.mostMinutes * limits.pause.minute)
-        await w.ring()
-        await w.ring()
-      }
-      if (turns() !== started)
-        fail('provider spend', 'the swarm started ' + (turns() - started) + ' turns over ' + rounds + ' rounds while its provider was down')
-      if (down && probes < rounds) fail('provider spend', 'it probed ' + probes + ' times over ' + rounds + ' rounds')
-      const held = w.swarm.run()
-      if (down && (held.state !== 'paused' || !Phase.outaged(held.pause)))
-        fail('provider pause', 'with the provider still down it left ' + JSON.stringify(held))
-      up = true
-      for (let ring = 0; ring < L.ringsMost && turns() === started; ring++) {
-        w.pass(L.mostMinutes * limits.pause.minute)
-        await w.ring()
-      }
-      if (down && turns() === started) fail('provider resume', 'after the provider came back the swarm stayed ' + JSON.stringify(w.swarm.run()))
-      if (w.swarm.kv.get('provider') !== undefined) fail('provider resume', 'the outage was kept: ' + JSON.stringify(w.swarm.kv.get('provider')))
+      if (row?.why === 'provider') fail('e2b keeps working', 'D1 lists it waiting on ' + (row ? Store.summary(row).waiting : null))
+      if (state.creates.length) fail('probe target', 'it probed ' + JSON.stringify(state.creates) + ' with nothing down')
       return 4
     } finally {
       w.restore()
+    }
+  }
+
+  async function legacy(random: Rng, fail: Fail) {
+    const L = limits.provider
+    const r = await rig()
+    const { state, w } = r
+    try {
+      await started(r, fail, 'e2b keeps working')
+      r.asked(random.pick(gpus))
+      r.answered(spendLimit, 'failed')
+      await polled(random, r)
+      const run = w.swarm.run()
+      if (run.state !== 'paused') {
+        fail('e2b keeps working', 'a GPU refusal did not pause: ' + JSON.stringify(run))
+        return 2
+      }
+      const pause =
+        run.pause.why === 'money' && run.pause.provider
+          ? { ...run.pause, provider: { message: spendLimit, name: 'modal' as const, spent: true, tries: 1 } }
+          : run.pause
+      w.swarm.set({ ...run, pause })
+      state.report = { request_id: 'agt_1:1', status: 'completed' }
+      const turns = state.prompts
+      for (let ring = 0; ring < L.ringsMost && state.prompts === turns; ring++) {
+        w.pass(L.mostMinutes * limits.pause.minute)
+        await w.ring()
+      }
+      if (state.prompts === turns) fail('e2b keeps working', 'a stored Modal outage from before GPU tracking kept the swarm ' + JSON.stringify(w.swarm.run()))
+      if (state.creates.length) fail('probe target', 'it probed Modal for work E2B serves: ' + JSON.stringify(state.creates))
+      return 4
+    } finally {
+      w.restore()
+    }
+  }
+
+  async function both(random: Rng, fail: Fail) {
+    const L = limits.provider
+    const r = await rig()
+    try {
+      r.state.e2b = false
+      await started(r, fail, 'provider pause')
+      r.asked(random.pick(big))
+      r.answered(spendLimit, 'failed')
+      const hard = random.chance(0.5)
+      for (let i = 0; i < (hard ? 1 : L.repeats); i++) {
+        r.asked(e2b)
+        r.answered(hard ? e2bSpent : e2bDown, 'failed')
+      }
+      await polled(random, r)
+      await waited(random, r, fail, 'e2b', hard)
+      return 4
+    } finally {
+      r.w.restore()
     }
   }
 
@@ -2232,17 +2393,52 @@ function providers() {
     }
   }
 
-  const scenarios = { 'mf-run.provider': scenario('mf-run.provider', [outage]), 'mf-run.gateway-stall': scenario('mf-run.gateway-stall', [stall]) }
+  const scenarios = {
+    'mf-run.provider': scenario('mf-run.provider', [gpu]),
+    'mf-run.provider-e2b': scenario('mf-run.provider-e2b', [around, legacy]),
+    'mf-run.provider-both': scenario('mf-run.provider-both', [both]),
+    'mf-run.gateway-stall': scenario('mf-run.gateway-stall', [stall]),
+  }
+
+  const flag = (module: Record<string, boolean>, name: string) => () => {
+    module[name] = false
+    return () => void (module[name] = true)
+  }
 
   const canaries = [
     {
-      flip: () => {
-        Provider.guards.pause = false
-        return () => void (Provider.guards.pause = true)
-      },
+      flip: () => flag(Provider.guards, 'pause')(),
       invariant: 'provider pause',
       name: 'mf-run.provider.keep',
       scenario: 'mf-run.provider',
+      seeds: ['1', '2', '3', '4'],
+    },
+    {
+      flip: () => flag(Provider.guards, 'gpu')(),
+      invariant: 'provider pause',
+      name: 'mf-run.provider.gpu',
+      scenario: 'mf-run.provider',
+      seeds: ['1', '2', '3', '4'],
+    },
+    {
+      flip: () => flag(Provider.guards, 'route')(),
+      invariant: 'e2b keeps working',
+      name: 'mf-run.provider-e2b.route',
+      scenario: 'mf-run.provider-e2b',
+      seeds: ['1', '2', '3', '4'],
+    },
+    {
+      flip: () => flag(Provider.guards, 'attribute')(),
+      invariant: 'provider pause',
+      name: 'mf-run.provider-both.attribute',
+      scenario: 'mf-run.provider-both',
+      seeds: ['1', '2', '3', '4'],
+    },
+    {
+      flip: () => flag(Gateway.guards, 'probe')(),
+      invariant: 'probe target',
+      name: 'mf-run.provider-both.probe',
+      scenario: 'mf-run.provider-both',
       seeds: ['1', '2', '3', '4'],
     },
     {

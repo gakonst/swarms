@@ -613,7 +613,7 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
     const grew = run.balance !== undefined && BigInt(money.row.balance) > BigInt(run.balance)
     const short = !Drive.planned(self) && money.known && money.left < Store.reserveOf(money.row)
     const down = run.ending.provider
-    const outage = !short && Provider.decisive(down) ? { message: down.message, name: down.provider, spent: down.spent, tries: 1 } : undefined
+    const outage = !short && Provider.decisive(down) ? { gpu: down.gpu, message: down.message, name: down.provider, spent: down.spent, tries: 1 } : undefined
     const refused = outage !== undefined || (status !== 'completed' && (short || ((broke(message) || unpaidBy !== undefined) && !grew)))
     const pushed = commits.length ? ` and pushed ${commits.length} commit${commits.length === 1 ? '' : 's'} to ${repo.state === 'ready' ? repo.name : ''}` : ''
     const lines = commits.map((commit) => `${commit.sha.slice(0, Limits.SharedTree.shortSha)} ${commit.message.split('\n')[0]}`)
@@ -730,15 +730,23 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
 }
 
 async function probed(self: Swarm, row: Store.Row, run: Phase.Paused, down: Phase.Outage) {
-  const tried = down.name === 'modal' ? await Gateway.probe(self.env, row.id) : undefined
+  const machine = down.name === 'gateway' ? undefined : { gpu: down.gpu === true, provider: down.name }
+  const around = machine !== undefined && Provider.avoidable(machine)
+  const target = machine?.provider === 'browserbase' || around ? undefined : machine?.provider
+  const tried = target ? await Gateway.probe(self.env, row.id, target) : undefined
   const now = self.run()
   if (now.state !== 'paused' || now.at !== run.at) return null
-  const still = tried && !tried.ok ? Provider.found('compute_create', 'HTTP ' + tried.status + ': ' + tried.detail, true) : undefined
+  const asked = target ? { gpu: machine?.gpu === true, provider: target } : undefined
+  const still = tried && !tried.ok ? Provider.found('compute_create', 'HTTP ' + tried.status + ': ' + tried.detail, true, asked) : undefined
   if (!still) {
     self.kv.delete('provider')
     self.log(
       'status',
-      tried ? Status.providers[down.name] + ' started a machine again, so the swarm goes back to work.' : 'Trying ' + Status.providers[down.name] + ' again.',
+      around
+        ? 'Modal is still unavailable, but this work does not need a GPU, so the swarm goes back to work on E2B.'
+        : tried
+          ? Status.providers[down.name] + ' started a machine again, so the swarm goes back to work.'
+          : 'Trying ' + Status.providers[down.name] + ' again.',
     )
     self.set({ from: run.pause, since: null, state: 'waiting', until: Date.now() })
     return null

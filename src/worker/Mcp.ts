@@ -11,7 +11,7 @@ import * as Limits from '../shared/Limits.ts'
 
 function instructions(origin: string) {
   return [
-    `Swarms (${origin}) are crowdfunded, long-running AI agents on the Tempo gateway. Anyone starts a swarm with a title and a goal, which can be anything an agent can do with code, machines and the web: research a question, build and ship software, port or audit code, gather data, write. It waits in status funding until someone funds it, and then one nanocode agent works on it in a single continuous thread, spending on models, Modal machines and any subagents it spawns. Whenever it pauses to reply, it posts an update; the newest update is the swarm's answer, and the swarm then tells it to keep going. It keeps the code it writes in a public git repository that swarm_get names, with a read-only clone URL (code.clone) for git clone. A swarm is never done: it works while its money lasts and waits whenever it runs out (paused, and new money resumes it).`,
+    `Swarms (${origin}) are crowdfunded, long-running AI agents on the Tempo gateway. Anyone starts a swarm with a title and a goal, which can be anything an agent can do with code, machines and the web: research a question, build and ship software, port or audit code, gather data, write. It waits in status funding until someone funds it, and then one nanocode agent works on it in a single continuous thread, spending on models, machines (E2B by default, Modal for GPUs) and any subagents it spawns. Whenever it pauses to reply, it posts an update; the newest update is the swarm's answer, and the swarm then tells it to keep going. It keeps the code it writes in a public git repository that swarm_get names, with a read-only clone URL (code.clone) for git clone. A swarm is never done: it works while its money lasts and waits whenever it runs out (paused, and new money resumes it).`,
     "Money comes one way: anyone sends MACH, OUSD, USDC.e or pathUSD from their own wallet to the Tempo gateway with a memo that names the swarm, and the swarm counts it by its transaction hash. The gateway holds it as the swarm's credit and spends it only on what the swarm's agent does; a swarm holds no wallet, and money sent is not returned. Money may carry a note: money behind the same note backs it together, the agent reads the notes ranked by the money behind them whenever it keeps going, and a note that arrives while it works reaches it at once.",
     "Contributors can also lend a swarm their own machine as a hand: swarm_hand issues one and returns the nanocode command (nc hand '<url>' --token <token>) and a nanocode-ts snippet (Hand.connect) to run on that machine. The swarm's agent then runs commands there, and is told the machine and its data belong to a contributor. A hand can set its own prices, such as a price per file; the swarm pays them through the gateway from its money and caps what each hand may charge. Issue a hand only when the user asks, and make sure they know the swarm's agents will run commands on the machine.",
     "Swarms publish artifacts as they work, such as a live dashboard of their results, a chart or a write-up; swarm_artifacts lists them with a url to fetch.",
@@ -309,7 +309,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
     {
       annotations: reading,
       description:
-        "A swarm's transcript, oldest first: its agent's messages and reasoning summaries (message, thinking), tool calls, scripts, shell commands and subagents (tool), outputs (output), Modal machines (machine), money coming in and going back (funds), steering (steer), the swarm starting, pausing and posting updates (status) and failures (error), each with seq, time, text, an optional detail and who (null for the agent, else the subagent's name). Page forward with after set to the previous page's next, or back with before.",
+        "A swarm's transcript, oldest first: its agent's messages and reasoning summaries (message, thinking), tool calls, scripts, shell commands and subagents (tool), outputs (output), machines (machine), money coming in and going back (funds), steering (steer), the swarm starting, pausing and posting updates (status) and failures (error), each with seq, time, text, an optional detail and who (null for the agent, else the subagent's name). Page forward with after set to the previous page's next, or back with before.",
       inputSchema: Operations.schema.feed.shape,
     },
     async (input) => reply(await Operations.feed(read, input)),
@@ -323,7 +323,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
 
   registerTool(
     'swarm_machines',
-    { annotations: reading, description: "Every machine a swarm used over its whole life, as its Machines tab shows them: Modal sandboxes from compute_create (with their image, CPU, memory, GPU, lease and timeout, and their sandbox ids), Browserbase browsers, and contributors' lent nanocode hands (label, price, what their owners were paid, requests), each with whether it is connected, when it started and stopped, and how many commands ran on it (runs.count, runs.failed). List the commands with swarm_machine_commands.", inputSchema: Operations.schema.swarm.shape },
+    { annotations: reading, description: "Every machine a swarm used over its whole life, as its Machines tab shows them: E2B and Modal sandboxes from compute_create (with their image, CPU, memory, GPU, lease and timeout, and their sandbox ids), Browserbase browsers, and contributors' lent nanocode hands (label, price, what their owners were paid, requests), each with whether it is connected, when it started and stopped, and how many commands ran on it (runs.count, runs.failed). List the commands with swarm_machine_commands.", inputSchema: Operations.schema.swarm.shape },
     async (input) => reply(await Operations.machines(read, input)),
   )
 
@@ -341,7 +341,7 @@ function create(env: Cloudflare.Env, read: Cloudflare.Env, origin: string, calle
 
   registerTool(
     'swarm_machine_logs',
-    { annotations: reading, description: "A sandbox's own log from the gateway (Modal's system, stdout and stderr lines, such as the image build, an out-of-memory kill or why it ended), kept by Swarms once fetched; the gateway keeps it up to 7 days after the sandbox ended. Lines oldest first, the newest page by default; page back with before set to the previous answer's next. complete says Swarms fetched all of it and will not ask the gateway again.", inputSchema: Machines.schema.logs.shape },
+    { annotations: reading, description: "A sandbox's own log from the gateway (the provider's system, stdout and stderr lines, such as the image build, an out-of-memory kill or why it ended), kept by Swarms once fetched; the gateway keeps it up to 7 days after the sandbox ended. Lines oldest first, the newest page by default; page back with before set to the previous answer's next. complete says Swarms fetched all of it and will not ask the gateway again.", inputSchema: Machines.schema.logs.shape },
     async (input) => reply(await Machines.logs(read, input)),
   )
 
