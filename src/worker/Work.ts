@@ -104,7 +104,7 @@ export async function holding<T>(board: Board, id: string, leaseMs: number, work
       (verdict) => apply(verdict.ok ? { type: 'renewed', until: until(verdict) ?? Date.now() + leaseMs } : { type: 'refused', why: verdict.rejection.kind }),
       () => apply({ type: 'transport' }),
     )
-  }, Math.max(1, Math.floor(leaseMs / Limits.Work.renewsPerLease)))
+  }, Math.max(Limits.Work.renewFloorMs, Math.floor(leaseMs / Limits.Work.renewsPerLease)))
   try {
     const value = await work({ epoch, signal: stop.signal, writable: () => Lease.writable(state, epoch, Date.now()) })
     apply({ now: Date.now(), type: 'tick' })

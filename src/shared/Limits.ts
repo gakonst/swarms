@@ -916,6 +916,7 @@ export const Work = {
   serialPollMs: 50,
   serialWaitMs: 30_000,
   renewsPerLease: 3,
+  renewFloorMs: 1,
 } as const
 
 export const WorkerGlyphs = {

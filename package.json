@@ -29,7 +29,7 @@
     "@resvg/resvg-wasm": "2.6.2",
     "accounts": "1.13.20261127025712",
     "hono": "^4.13.14",
-    "nanocode-ts": "https://github.com/nanocodexyz/nanocode-ts/releases/download/build-9bf3261/nanocode-ts-9bf3261.tgz",
+    "nanocode-ts": "https://github.com/nanocodexyz/nanocode-ts/releases/download/build-407de7e/nanocode-ts-407de7e.tgz",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "viem": "2.58.8",
