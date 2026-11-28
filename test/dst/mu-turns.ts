@@ -39,16 +39,21 @@ async function turns(seed: string): Promise<Outcome> {
       },
     ],
     [
-      'two turns in a row ending in a session reset replace the agent once, and the new agent is not replaced for the old one',
+      'two failed turns in a row from restarts, host crashes or stalls, with a crash among them, make the session unusable, counted again after a rotation',
       async (_t) => {
-        const said = 'The session was reset after its host crashed four times in a row while running a code cell.'
-        a.ok(Turns.reset(said))
-        a.ok(!Turns.reset('vercel failed upstream'))
-        a.ok(!Turns.reset(null))
+        const said = 'the turn restarted 4 times without progress'
+        const stalled = 'The agent made no model call or tool call for 30 minutes, so the swarm stopped the turn to start another.'
+        a.ok(Turns.crashed(said))
+        a.ok(Turns.crashed('The session was reset after its host crashed four times in a row while running a code cell.'))
+        a.ok(Turns.crashed('Tool execution interrupted by a host crash; outcome unknown.'))
+        a.ok(Turns.unusable(stalled))
+        a.ok(!Turns.crashed(stalled))
+        a.ok(!Turns.unusable('vercel failed upstream'))
+        a.ok(!Turns.unusable(null))
         const kv = new Map<string, unknown>()
-        const turns = [
+        let turns = [
           { message: said, started_at: 20, status: 'failed' },
-          { message: said, started_at: 10, status: 'failed' },
+          { message: stalled, started_at: 10, status: 'failed' },
           { message: null, started_at: 5, status: 'completed' },
         ]
         const self = {
@@ -59,18 +64,15 @@ async function turns(seed: string): Promise<Outcome> {
               },
             },
           },
+          agent: () => undefined,
           kv: { get: (key: string) => kv.get(key) },
         } as never
-        a.equal(Turns.resets(self), 2)
-        a.equal(
-          Turns.resets({
-            ...(self as object),
-            ctx: { storage: { sql: { exec: (_q: string, _s: number, limit: number) => ({ toArray: () => [turns[0], turns[2]].slice(0, limit) }) } } },
-          } as never),
-          1,
-        )
+        a.equal(Turns.unusables(self), 2)
         kv.set('renewedAt', 15)
-        a.equal(Turns.resets(self), 1)
+        a.equal(Turns.unusables(self), 1)
+        kv.delete('renewedAt')
+        turns = [turns[1]!, turns[1]!, turns[2]!]
+        a.equal(Turns.unusables(self), 0)
       },
     ],
     [

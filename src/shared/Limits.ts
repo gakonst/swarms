@@ -782,7 +782,6 @@ export const Turns = {
   leaseMs: 30 * 60_000,
   sendingMs: 5 * 60_000,
   sponsorWaitMs: 15 * 60_000,
-  resetsToRenew: 2,
   quickMs: 60_000,
   settleMs: 15_000,
   calmMs: 10 * 60_000,
@@ -796,6 +795,27 @@ export const Turns = {
   updateChars: 280,
   listPages: 20,
 } as const
+
+export const Session = {
+  failsToRotate: 2,
+  rotationsPerDay: 3,
+  dayMs: 24 * 60 * 60_000,
+  handoffItems: 12,
+  handoffCommits: 10,
+  handoffFileChars: 4_000,
+  handoffUpdateChars: 4_000,
+} as const
+
+export const SessionWhy: Record<keyof typeof Session, string> = {
+  failsToRotate:
+    "After this many failed turns in a row, each a restart, host crash, memory reset or stall with at least one crash among them, the agent's session counts as unusable and the swarm starts a fresh one.",
+  rotationsPerDay: 'The swarm starts at most this many fresh agent sessions in a day; past it, it pauses and says why.',
+  dayMs: 'The window the rotation limit counts over.',
+  handoffItems: "A fresh session's first turn lists at most this many Board items of each kind.",
+  handoffCommits: "A fresh session's first turn lists at most this many of the repository's latest commits.",
+  handoffFileChars: "A fresh session's first turn quotes at most this much of the README and SUMMARY.md, and is told to read the rest.",
+  handoffUpdateChars: "A fresh session's first turn quotes at most this much of the last update.",
+}
 
 export const Drive = {
   inFlightMost: 3,

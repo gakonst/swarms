@@ -28,6 +28,8 @@ import * as Chat from './Chat.ts'
 import * as Work from './Work.ts'
 import * as Run from './machines/Run.ts'
 import * as Provider from './Provider.ts'
+import * as Handoff from './Handoff.ts'
+import * as Session from './machines/Session.ts'
 import type { Lead, Swarm, Turning } from './Swarm.ts'
 import * as Limits from '../shared/Limits.ts'
 
@@ -95,7 +97,7 @@ export const retry: Work.Retry = { ...Limits.Turns.retry }
 
 export const paying: Work.Retry = { backoffMs: Phase.rereadMs, maxAttempts: Limits.Turns.retry.maxAttempts }
 
-export const guards = { fresh: true, gone: true, known: true, ordered: true }
+export const guards = { fresh: true, gone: true, known: true, ordered: true, since: true, switch: true }
 
 export const sponsorWaitMs = Limits.Turns.sponsorWaitMs
 
@@ -105,8 +107,6 @@ export function wakeIn(attempts: number, sponsor: boolean) {
 }
 
 export const noteboard = 'notes'
-
-const resetsToRenew = Limits.Turns.resetsToRenew
 
 const quickMs = Limits.Turns.quickMs
 
@@ -203,14 +203,7 @@ async function attempted(self: Swarm, task: string, claim: string, outcome: Work
 }
 
 function exhausted(self: Swarm, attempts: number, detail: string) {
-  const agent = self.agent()
-  if (!agent) return
-  self.kv.delete('agent')
-  self.log(
-    'error',
-    `The agent's turn failed ${attempts} tries in a row, so the swarm starts a new agent with its goal, notes and updates; the old agent's workspace stays behind.`,
-    `${agent.id}: ${detail}`,
-  )
+  rotate(self, `The agent's turn failed ${attempts} tries in a row.`, detail)
 }
 
 export async function lease(self: Swarm, run: Turning) {
@@ -330,6 +323,15 @@ async function stumble(self: Swarm, row: Store.Row, run: Phase.Run, error: strin
 
 export async function advance(self: Swarm, found: Store.Row) {
   const run = self.run()
+  const sessions = Session.kv(self.kv)
+  const session = Session.read(sessions)
+  if (session.kind === 'Spent' && !session.paused) {
+    await halting(self, found, run, spent())
+    const held = Session.read(sessions)
+    Session.write(sessions, Session.step(held, { type: 'paused' }), Session.rev(held))
+    return null
+  }
+  if (session.kind === 'Spent') Session.write(sessions, Session.step(session, { type: 'resumed' }), Session.rev(session))
   const remodeled = await remodel(self, found)
   if ('error' in remodeled) return stumble(self, found, run, remodeled.error, remodeled.detail)
   const row = remodeled
@@ -374,6 +376,9 @@ export async function advance(self: Swarm, found: Store.Row) {
 
   const agent = await lead(self, row)
   if ('error' in agent) return fail(self, money.row, task, claim, agent.error, agent.detail)
+  const seeding = Session.read(sessions)
+  const handing = seeding.kind === 'Seeding' && seeding.agent === agent.id && !agent.briefed
+  const handoff = handing ? await Handoff.brief(self, money.row, seeding.from, repo) : ''
 
   const since = Phase.since(run)
   const notes = await self.notes(money.row)
@@ -390,7 +395,7 @@ export async function advance(self: Swarm, found: Store.Row) {
   const told = agent.briefed
     ? next(self.tell(included), repo.state === 'ready' ? '' : repoLine, Persona.frozen(self.kv, Store.setup(row)).includes(Persona.roomless) ? room : '')
     : brief(money.row, self.tell(notes), repoLine, room)
-  const text = [told, ordered.text].filter(Boolean).join('\n\n')
+  const text = [told, handoff, ordered.text].filter(Boolean).join('\n\n')
   const tried = Phase.sent(run)
   const again = tried?.id === claim ? tried : undefined
   const start: Extract<Phase.Run, { state: 'starting' }> =
@@ -449,6 +454,9 @@ export async function advance(self: Swarm, found: Store.Row) {
   if (until !== undefined) leased(self, task, until)
   await Money.cap(self, row, money.left / Hands.share, money.listed)
   self.kv.put('agent', { ...(self.agent() ?? agent), briefed: true })
+  const seeded = Session.read(sessions)
+  if (seeded.kind === 'Seeding' && seeded.agent === agent.id)
+    Session.write(sessions, Session.step(seeded, { agent: agent.id, type: 'seeded' }), Session.rev(seeded))
   self.ctx.storage.sql.exec(
     "INSERT OR REPLACE INTO turns (n, turn, started_at, status, spent_before, base) VALUES (?, ?, ?, 'running', ?, ?)",
     n,
@@ -529,16 +537,24 @@ export async function lead(self: Swarm, row: Store.Row): Promise<Lead | { detail
 
   const setup = Store.setup(row)
   const instructions = Persona.frozen(self.kv, setup)
+  const sessions = Session.kv(self.kv)
+  const before = Session.read(sessions)
   const created = await Gateway.agent(self.env, row.id, { instructions, name: row.title.slice(0, 60), setup })
   if (!created.ok) return { detail: created.detail, error: 'The gateway did not create the agent.' }
   Persona.keep(self.kv, instructions)
-  const agent: Lead = { briefed: false, cursor: 0, id: created.value.id, instructed: true, url: credited }
+  const agent: Lead = { at: Date.now(), briefed: false, cursor: 0, id: created.value.id, instructed: true, url: credited }
+  const fresh = before.kind === 'Rotating' || before.kind === 'Seeding'
+  if (fresh) Session.write(sessions, Session.step(before, { agent: agent.id, type: 'made' }), Session.rev(before))
   self.kv.put('agent', agent)
-  self.log(
-    'status',
-    "Created the swarm's agent on the gateway. Every model call, machine and tool it uses is paid from the money the swarm's riders sent, which the gateway holds as its credit.",
-    created.value.id,
-  )
+  if (fresh) {
+    self.log('status', Handoff.said, before.from + ' -> ' + agent.id)
+    Drive.post(self, Handoff.said)
+  } else
+    self.log(
+      'status',
+      "Created the swarm's agent on the gateway. Every model call, machine and tool it uses is paid from the money the swarm's riders sent, which the gateway holds as its credit.",
+      created.value.id,
+    )
   await Branching.release(self, row.id, created.value.id).catch((error: unknown) => console.error("Releasing the old agent's branches failed", error))
   return agent
 }
@@ -723,7 +739,10 @@ async function ending(self: Swarm, row: Store.Row, n: number): Promise<number | 
     )
     return null
   }
-  const renewed = status !== 'completed' && resets(self) >= resetsToRenew && renew(self, message)
+  const renewed =
+    status !== 'completed' &&
+    unusables(self) >= Limits.Session.failsToRotate &&
+    rotate(self, `The agent's session failed ${Limits.Session.failsToRotate} turns in a row with restarts or host crashes and could not recover.`, message)
   const until = status === 'completed' ? Math.max(Date.now(), run.started + quickMs) : renewed ? Date.now() : (due ?? Date.now())
   await self.move(fresh, { since: run.since, state: 'waiting', until }, {}, Run.rev(Run.ending(store, n)))
   return until
@@ -786,33 +805,73 @@ async function quiet(self: Swarm, row: Store.Row) {
   return listed.value.every((subagent) => !['pending', 'queued', 'running'].includes(subagent.status.state))
 }
 
-export function reset(message: string | null) {
-  return !!message && /session was reset/i.test(message)
+const crashes =
+  /session was reset|restarted \d+ times without progress|host crash|moved to another host|request authority stopped|Durable Object reset|exceeded (?:its )?memory|memory limit/i
+
+const stalls = /made no model call or tool call/i
+
+export function crashed(message: string | null) {
+  return !!message && crashes.test(message)
 }
 
-export function resets(self: Swarm) {
-  const since = self.kv.get<number>('renewedAt') ?? 0
+export function unusable(message: string | null) {
+  return crashed(message) || (!!message && stalls.test(message))
+}
+
+function born(self: Swarm) {
+  const agent = self.agent()
+  if (!agent) return 0
+  if (agent.at !== undefined) return agent.at
+  const made = self.ctx.storage.sql.exec<{ at: number | null }>("SELECT MAX(at) AS at FROM feed WHERE kind = 'status' AND detail LIKE ?", '%' + agent.id).one()
+  return Number(made?.at ?? 0)
+}
+
+export function unusables(self: Swarm) {
+  const since = guards.since ? Math.max(self.kv.get<number>('renewedAt') ?? 0, Session.since(Session.read(Session.kv(self.kv))), born(self)) : 0
   let count = 0
+  let crash = false
   for (const row of self.ctx.storage.sql
-    .exec<{ message: string | null; status: string }>('SELECT status, message FROM turns WHERE started_at >= ? ORDER BY n DESC LIMIT ?', since, resetsToRenew)
+    .exec<{ message: string | null; status: string }>(
+      'SELECT status, message FROM turns WHERE started_at >= ? AND ended_at IS NOT NULL ORDER BY n DESC LIMIT ?',
+      since,
+      Limits.Session.failsToRotate,
+    )
     .toArray()) {
-    if (row.status === 'completed' || !reset(row.message)) break
+    if (row.status === 'completed' || !unusable(row.message)) break
     count += 1
+    crash = crash || crashed(row.message)
   }
-  return count
+  return crash ? count : 0
 }
 
-function renew(self: Swarm, message: string | null) {
+export function rotate(self: Swarm, why: string, detail: string | null) {
   const agent = self.agent()
   if (!agent) return false
-  self.kv.delete('agent')
-  self.kv.put('renewedAt', Date.now())
+  const sessions = Session.kv(self.kv)
+  const now = Session.read(sessions)
+  const next = Session.step(now, { agent: agent.id, at: Date.now(), type: 'unusable', why })
+  if (next === now) return false
+  Session.write(sessions, next, Session.rev(now))
+  if (next.kind !== 'Rotating') return false
+  if (guards.switch) self.kv.delete('agent')
   self.log(
     'error',
-    `The agent's session was reset and could not recover ${resetsToRenew} turns in a row, so the swarm starts a new agent with its goal, notes and updates; the repository stays, the old conversation does not.`,
-    `${agent.id}: ${message === null ? '' : redact(message)}`,
+    why +
+      " The swarm starts a fresh agent session and hands it the goal, the Board, the repository and the last update; the old session's conversation stays behind.",
+    agent.id + ': ' + (detail === null ? '' : redact(detail)),
   )
   return true
+}
+
+export function spent(): Board.Halt {
+  return {
+    misses: 0,
+    question:
+      "Paused: the agent's session became unusable again (its turns keep failing with restarts or host crashes), and the swarm already started " +
+      Limits.Session.rotationsPerDay +
+      ' fresh sessions in the last 24 hours, its daily limit. Reply in this thread to start it again.',
+    why: 'stuck',
+  }
 }
 
 export async function expose(self: Swarm, row: Store.Row, kinds: ReadonlySet<'bucket' | 'git' | 'kv'> = new Set(['bucket', 'git', 'kv'])) {

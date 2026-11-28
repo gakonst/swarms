@@ -85,7 +85,7 @@ export type Spoken = {
 
 type Seen = { title: string; turn: number; version: number }
 
-export type Lead = { briefed: boolean; cursor: number; id: string; instructed?: boolean; url: string }
+export type Lead = { at?: number | undefined; briefed: boolean; cursor: number; id: string; instructed?: boolean; url: string }
 
 export type Turning = Extract<Phase.Run, { state: 'working' }>
 
