@@ -607,14 +607,14 @@ export async function list(env: Cloudflare.Env, input: Input<'list'>): Promise<P
     summaries(env, status),
     Edge.cached(env, 'riding', listSeconds, () => Store.riding(env), idleSeconds),
   ])
-  const heads = await Edge.cached(env, `heads?status=${status ?? ''}`, listSeconds, () => headlines(env, swarms), idleSeconds)
+  const heads = await Edge.cached(env, `heads?status=${status ?? 'active'}`, listSeconds, () => headlines(env, swarms), idleSeconds)
   resume(env, swarms)
   Store.know(swarms.map((swarm) => swarm.id))
   return Problem.ok({ funders: Object.fromEntries(swarms.flatMap((swarm) => (riding.funders[swarm.id] ? [[swarm.id, riding.funders[swarm.id]!]] : []))), heads, riders: riding.riders, swarms })
 }
 
 function summaries(env: Cloudflare.Env, status?: Summary['status']) {
-  return Edge.cached(env, `swarms?status=${status ?? ''}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row)), idleSeconds)
+  return Edge.cached(env, `swarms?status=${status ?? 'active'}`, listSeconds, async () => (await Store.list(env, status)).map((row) => Store.summary(row)), idleSeconds)
 }
 
 async function headlines(env: Cloudflare.Env, swarms: readonly Summary[]) {
@@ -2254,7 +2254,7 @@ export async function archive(env: Cloudflare.Env, input: Input<'swarm'>, addres
   const archived = await stub(env, row.id).archive(row.id, at).then(() => undefined, (error: unknown) => (error instanceof Error ? error.message : String(error)))
   if (archived !== undefined) return Problem.fail(Limits.Http.unavailable, 'unavailable', 'The swarm was not archived. ' + archived + ' Try again shortly.')
   await Store.archive(env, row.id, at)
-  Edge.put(env, 'swarms?status=', (await Store.list(env)).map((each) => Store.summary(each)), idleSeconds)
+  Edge.put(env, 'swarms?status=active', (await Store.list(env)).map((each) => Store.summary(each)), idleSeconds)
   const updated = await Store.find(env, row.id)
   return Problem.ok(Store.summary(updated ?? row))
 }

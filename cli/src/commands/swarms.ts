@@ -62,11 +62,17 @@ function clock(at: number) {
 
 export async function ls(ctx: Context) {
   const status = ctx.flag('status')
-  const listing = await ctx.api<{ heads?: Record<string, Headline>; swarms: Summary[] }>('GET', `/v1/swarms${status ? `?status=${encodeURIComponent(status)}` : ''}`)
-  ctx.out(listing, () => {
-    const shown = ctx.flags['all'] === true ? listing.swarms : listing.swarms.filter((each) => !each.archivedAt)
+  type Listing = { heads?: Record<string, Headline>; swarms: Summary[] }
+  const showArchived = ctx.flags['all'] === true || status === 'archived'
+  const [listing, archived] = await Promise.all([
+    ctx.api<Listing>('GET', `/v1/swarms${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+    ctx.flags['all'] === true && !status ? ctx.api<Listing>('GET', '/v1/swarms?status=archived') : undefined,
+  ])
+  const swarms = [...listing.swarms, ...(archived?.swarms.filter((each) => !listing.swarms.some((listed) => listed.id === each.id)) ?? [])]
+  ctx.out({ ...listing, swarms }, () => {
+    const shown = showArchived ? swarms : swarms.filter((each) => !each.archivedAt)
     if (!shown.length) return 'No swarms yet. Start one with swarms new <name>.'
-    const hidden = listing.swarms.length - shown.length
+    const hidden = swarms.length - shown.length
     return table([['NAME', 'STATUS', 'LEFT', 'RIDERS', 'TITLE'], ...shown.map((each) => [each.nickname ?? each.id, state(each, listing.heads?.[each.id]), usd(each.remaining), String(each.contributors), line(each.title, 60)])]) + (hidden ? `\n\n+${hidden} archived (--all shows them)` : '')
   })
 }

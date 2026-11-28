@@ -82,6 +82,30 @@ async function store(seed: string): Promise<Outcome> {
       },
     ],
     [
+      'archived swarms stay out of the public active list and keep their direct links',
+      async (_t) => {
+        const db = open()
+        swarm(db, 'active')
+        swarm(db, 'closed')
+        give(db, 'active', '0x01', 100)
+        give(db, 'closed', '0x02', 100)
+        a.equal(await Store.archive(db.env, 'closed', 42), 42)
+        a.deepEqual(
+          (await Store.list(db.env)).map((row) => row.id),
+          ['active'],
+        )
+        a.deepEqual(
+          (await Store.list(db.env, 'paused')).map((row) => row.id),
+          ['active'],
+        )
+        a.deepEqual(
+          (await Store.list(db.env, 'archived')).map((row) => row.id),
+          ['closed'],
+        )
+        a.equal((await Store.find(db.env, 'closed'))?.archived_at, 42)
+      },
+    ],
+    [
       "the listing counts each rider once and names each swarm's top three riders by what they put in",
       async (_t) => {
         const db = open()
@@ -352,11 +376,23 @@ export const canaries: { flip: () => () => void; invariant: string; name: string
     flip: mutant(
       'store.store',
       'src/worker/Store.ts',
-      "const filter = status === 'archived' ? ' and s.archived_at is not null' : status ? ' and s.status = ? and s.archived_at is null' : ''",
-      "const filter = status !== 'archived' ? ' and s.archived_at is not null' : status ? ' and s.status = ? and s.archived_at is null' : ''",
+      "const filter = status === 'archived' ? ' and s.archived_at is not null' : status ? ' and s.status = ? and s.archived_at is null' : ' and s.archived_at is null'",
+      "const filter = status !== 'archived' ? ' and s.archived_at is not null' : status ? ' and s.status = ? and s.archived_at is null' : ' and s.archived_at is null'",
     ),
     invariant: 'what is left is the balance less what was spent, once 0030 counts what the old wallets and channels used as spent',
     name: 'store.store',
+    scenario: 'store',
+    seeds: ['1', '2', '3'],
+  },
+  {
+    flip: mutant(
+      'store.active-archive-filter',
+      'src/worker/Store.ts',
+      "const filter = status === 'archived' ? ' and s.archived_at is not null' : status ? ' and s.status = ? and s.archived_at is null' : ' and s.archived_at is null'",
+      "const filter = status === 'archived' ? ' and s.archived_at is not null' : status ? ' and s.status = ? and s.archived_at is null' : ''",
+    ),
+    invariant: 'archived swarms stay out of the public active list and keep their direct links',
+    name: 'store.active-archive-filter',
     scenario: 'store',
     seeds: ['1', '2', '3'],
   },

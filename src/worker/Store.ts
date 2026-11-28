@@ -155,7 +155,7 @@ export function summary(row: Row): Summary {
 }
 
 export async function list(env: Cloudflare.Env, status?: Summary['status']) {
-  const filter = status === 'archived' ? ' and s.archived_at is not null' : status ? ' and s.status = ? and s.archived_at is null' : ''
+  const filter = status === 'archived' ? ' and s.archived_at is not null' : status ? ' and s.status = ? and s.archived_at is null' : ' and s.archived_at is null'
   const { results } = await env.DB.prepare(
     `select s.*, coalesce(c.balance, 0) as balance, s.pool_spent + s.sponsor_spent + s.spent_before as spent, coalesce(c.balance, 0) - (s.pool_spent + s.sponsor_spent + s.spent_before) as remaining, coalesce(c.contributors, 0) as contributors, (select name from swarm_names where swarm = s.id and current = 1) as nickname, (select json_object('emoji', emoji, 'color', color, 'at', at) from swarm_pictures where swarm = s.id) as picture, (select name from names where address = s.ai) as ai_name
     from swarms s left join (select swarm, sum(cast(amount as integer)) as balance, count(distinct contributor) as contributors from contributions group by swarm) c on c.swarm = s.id
